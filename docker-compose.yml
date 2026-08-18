@@ -1,0 +1,44 @@
+name: arkade-vault-server
+
+services:
+  vault-authorizer:
+    build:
+      context: ${EMULATOR_ROOT:?set EMULATOR_ROOT to the emulator checkout}
+      dockerfile: poc/2fa-vault/Dockerfile.mutinynet
+    command:
+      - -addr=0.0.0.0:8788
+      - -db=/app/data/vault.sqlite
+      - -vault-cosigner-key-file=/run/secrets/vault_cosigner_key
+      - -enrollment-token-file=/run/secrets/vault_enrollment_token
+    environment:
+      VAULT_NETWORK: ${VAULT_NETWORK:-mutinynet}
+      VAULT_CLIENT_ORIGIN: ${VAULT_CLIENT_ORIGIN:?set VAULT_CLIENT_ORIGIN}
+      VAULT_RP_ID: ${VAULT_RP_ID:?set VAULT_RP_ID}
+      VAULT_EXTERNAL_OWNER_WALLET_PUB: ${VAULT_EXTERNAL_OWNER_WALLET_PUB:?set hardware pub}
+      VAULT_OPERATIONAL_CSV_BLOCKS: ${VAULT_OPERATIONAL_CSV_BLOCKS:-144}
+      VAULT_SAVINGS_CSV_BLOCKS: ${VAULT_SAVINGS_CSV_BLOCKS:-6}
+      VAULT_ESPLORA_URL: ${VAULT_ESPLORA_URL:-https://mempool.mutinynet.arkade.sh/api}
+      VAULT_MULTI_TENANT_ENROLLMENT: ${VAULT_MULTI_TENANT_ENROLLMENT:-1}
+    secrets:
+      - vault_cosigner_key
+      - vault_enrollment_token
+    volumes:
+      - vault-data:/app/data
+    ports:
+      - "8788:8788"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  vault_cosigner_key:
+    file: ./secrets/vault-cosigner-key
+  vault_enrollment_token:
+    file: ./secrets/enrollment-token
+
+volumes:
+  vault-data:

@@ -1,0 +1,34 @@
+{
+  "name": "arkade-vault-contract",
+  "version": 1,
+  "note": "Named programs only. Not operator knobs. Keep this file byte-identical to arkade-vault-server/contract-pack.json. Client tests pin this copy.",
+  "unsafeFixturePubs": [
+    "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+  ],
+  "programs": {
+    "staged": {
+      "status": "live",
+      "enrollable": true,
+      "schema": "arkade-vault/v5",
+      "template": "phone-hww-recovery-staged-v6",
+      "policy": "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3",
+      "csv": { "hardware": 6, "phone": 144, "recovery": 288 },
+      "recovery": "optional",
+      "serverFreeClawback": true,
+      "internalTag": "arkade-vault/v5/internal",
+      "recoveryPopTag": "arkade-vault/v5/recovery-pop"
+    }
+  },
+  "domains": {
+    "prf": "arkade-2fa-vault/prf/v1",
+    "kek": "arkade-2fa-vault/kek/v1",
+    "directP256": "arkade-2fa-vault/direct-p256/v1",
+    "enrollmentPop": "arkade-2fa-vault/enrollment-pop/v3",
+    "credentialRecord": "arkade-2fa-vault/credential-record/v3",
+    "issuanceRecord": "arkade-2fa-vault/issuance-record/v3",
+    "vaultRecord": "arkade-2fa-vault/vault-record/v4",
+    "vaultCredential": "arkade-2fa-vault/vault-credential/v1",
+    "recoverySession": "arkade-2fa-vault/recovery-session/v2"
+  }
+}
