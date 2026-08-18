@@ -197,7 +197,11 @@ func (s *Service) dispatchPublication(ctx context.Context, vaultID string, raw [
 }
 
 func (s *Service) publishResult(ctx context.Context, vaultID, txid string, conf int64) (*PublishResult, error) {
-	st, err := s.statusFor(ctx, routeVaultID(vaultID))
+	id, err := s.routeVaultID(vaultID)
+	if err != nil {
+		return nil, err
+	}
+	st, err := s.statusFor(ctx, id)
 	if err != nil {
 		return nil, err
 	}

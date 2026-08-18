@@ -225,7 +225,6 @@ func (s *Service) RegisterWithBootstrap(req RegisterRequest, bootstrap string) e
 		s.clearEnrollmentTokenHash()
 		return nil
 	}
-	s.bindRemoteExpected(op)
 	s.publishEnrollmentAt(fixture.VaultID, parsed.id, parsed.phoneRoutine, op, sv)
 	s.clearEnrollmentTokenHash()
 	return nil
@@ -566,7 +565,6 @@ func (s *Service) publishStoredEnrollment(cred *policy.Credential, startup bool)
 		s.VaultCosignerPub = vaultBase
 		s.ArkadeCosignerPub = arkadeBase
 	}
-	s.bindRemoteExpected(op)
 	s.publishEnrollmentAt(cred.VaultID, cred.ID, phoneRoutine, op, sv)
 	if runtimeVaultCosigner != nil && !sameCompressed(runtimeVaultCosigner, cred.VaultCosignerBase) {
 		log.Printf("rebuilt vault from enrolled VaultCosigner base %x; current runtime signer %x must remain deprecated",
@@ -840,10 +838,6 @@ func sameCompressed(pub *btcec.PublicKey, raw []byte) bool {
 	return pub != nil && bytes.Equal(pub.SerializeCompressed(), raw)
 }
 
-func (s *Service) bindRemoteExpected(op *vault.Built) {
-	// Expected tweaked keys are supplied per signExactStage call.
-}
-
 func parsePhoneRoutineBIP340Pub(hexPub string, fallback *btcec.PublicKey) (*btcec.PublicKey, error) {
 	if hexPub == "" {
 		if fallback == nil {
@@ -1023,11 +1017,25 @@ func (s *Service) snapshot(vaultID string) enrolledSnapshot {
 	return enrolledSnapshot{}
 }
 
-func routeVaultID(vaultID string) string {
-	if vaultID == "" {
-		return fixture.VaultID
+func periodAllowanceSats(rec *policy.VaultRecord, cred *policy.Credential) int64 {
+	if rec != nil && rec.PeriodAllowanceSats > 0 {
+		return rec.PeriodAllowanceSats
 	}
-	return vaultID
+	if cred != nil && cred.PeriodAllowanceSats > 0 {
+		return cred.PeriodAllowanceSats
+	}
+	return fixture.PeriodAllowanceSats
+}
+
+func (s *Service) routeVaultID(vaultID string) (string, error) {
+	id := strings.TrimSpace(vaultID)
+	if id != "" {
+		return id, nil
+	}
+	if s != nil && s.MultiTenantEnrollment {
+		return "", fmt.Errorf("vault id required")
+	}
+	return fixture.VaultID, nil
 }
 
 func (s *Service) resolveSpendVault(vaultID string) (string, enrolledSnapshot, error) {
@@ -1036,7 +1044,10 @@ func (s *Service) resolveSpendVault(vaultID string) (string, enrolledSnapshot, e
 }
 
 func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnapshot, *policy.VaultRecord, error) {
-	id := routeVaultID(vaultID)
+	id, err := s.routeVaultID(vaultID)
+	if err != nil {
+		return "", enrolledSnapshot{}, nil, err
+	}
 	snap := s.snapshot(id)
 	if snap.Operational == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
@@ -1176,7 +1187,26 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if err != nil {
 		return Status{}, err
 	}
-	rem := fixture.PeriodAllowanceSats - spent
+	allowance := periodAllowanceSats(nil, cred)
+	txCap := fixture.TxRecipientCapSats
+	feeCap := fixture.AbsoluteFeeCeiling
+	feerate := fixture.FeerateCeilingSatPerV
+	policyVersion := fixture.PolicyVersion
+	if cred != nil {
+		if cred.TxRecipientCapSats > 0 {
+			txCap = cred.TxRecipientCapSats
+		}
+		if cred.AbsoluteFeeCapSats >= 0 {
+			feeCap = cred.AbsoluteFeeCapSats
+		}
+		if cred.FeerateCapSatPerV > 0 {
+			feerate = cred.FeerateCapSatPerV
+		}
+		if cred.PolicyVersion != "" {
+			policyVersion = cred.PolicyVersion
+		}
+	}
+	rem := allowance - spent
 	if rem < 0 {
 		rem = 0
 	}
@@ -1187,15 +1217,15 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		RPID:                 cfg.RPID,
 		VaultID:              vaultID,
 		TemplateVersion:      publicEnrollTemplate(s),
-		PolicyVersion:        fixture.PolicyVersion,
+		PolicyVersion:        policyVersion,
 		OperationalCSVBlocks: cfg.OperationalCSVBlocks,
 		SavingsCSVBlocks:     cfg.SavingsCSVBlocks,
-		PeriodAllowance:      fixture.PeriodAllowanceSats,
+		PeriodAllowance:      allowance,
 		PeriodSpent:          spent,
 		PeriodRemaining:      rem,
-		TxCap:                fixture.TxRecipientCapSats,
-		AbsoluteFeeCap:       fixture.AbsoluteFeeCeiling,
-		FeerateCapSatPerV:    fixture.FeerateCeilingSatPerV,
+		TxCap:                txCap,
+		AbsoluteFeeCap:       feeCap,
+		FeerateCapSatPerV:    feerate,
 	}
 	if cred != nil {
 		st.EnrollmentMode = "closed"
@@ -1489,9 +1519,10 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 	if err != nil {
 		return "", false, err
 	}
+	allowance := periodAllowanceSats(rec, nil)
 	return s.Ledger.IssueSequential(
 		ctx, vaultID, challenge, requestPSBT,
-		cl.Recipient.Value, cl.Fee, fixture.PeriodAllowanceSats,
+		cl.Recipient.Value, cl.Fee, allowance,
 		func(issueCtx context.Context, storedRequest string) (string, error) {
 			if err := issueCtx.Err(); err != nil {
 				return "", err
@@ -1697,7 +1728,10 @@ func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (
 		return nil, err
 	}
 	defer zeroServiceBytes(key)
-	vaultID = routeVaultID(vaultID)
+	vaultID, err = s.routeVaultID(vaultID)
+	if err != nil {
+		return nil, err
+	}
 	if s.Ledger != nil && s.Ledger.MultiTenantReady() {
 		envelope, err := s.Ledger.GetVaultEnvelope(vaultID)
 		if err != nil {
@@ -1740,7 +1774,10 @@ func (s *Service) loadVerifiedCredentialFor(vaultID string) (*policy.Credential,
 		return nil, err
 	}
 	defer zeroServiceBytes(key)
-	vaultID = routeVaultID(vaultID)
+	vaultID, err = s.routeVaultID(vaultID)
+	if err != nil {
+		return nil, err
+	}
 	if vaultID == fixture.VaultID {
 		cred, err := s.Ledger.GetCredential()
 		if err != nil || cred == nil {

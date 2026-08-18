@@ -267,6 +267,21 @@ func TestRemoteSignerExpectedKeyIsPerCallNotSharedState(t *testing.T) {
 	}
 }
 
+func TestMultiTenantAuthorizeRequiresVaultID(t *testing.T) {
+	svc := &Service{MultiTenantEnrollment: true}
+	if _, err := svc.routeVaultID(""); err == nil || !strings.Contains(err.Error(), "vault id required") {
+		t.Fatalf("empty vault id on a tenant process: %v", err)
+	}
+	if _, _, _, err := svc.resolveSpendVaultRecord(""); err == nil || !strings.Contains(err.Error(), "vault id required") {
+		t.Fatalf("empty spend resolve: %v", err)
+	}
+	legacy := &Service{}
+	id, err := legacy.routeVaultID("")
+	if err != nil || id != fixture.VaultID {
+		t.Fatalf("leftover singleton default: %q %v", id, err)
+	}
+}
+
 type dualBaseRemoteTransport struct {
 	bases []*btcec.PrivateKey
 }

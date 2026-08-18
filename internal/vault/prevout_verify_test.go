@@ -84,3 +84,25 @@ func TestRequireVerifiedPrevoutFailClosed(t *testing.T) {
 	scriptMismatch.Inputs[0].WitnessUtxo.PkScript[0] ^= 0x01
 	mustReject("witness script mismatch", scriptMismatch)
 }
+
+func TestRequireVerifiedPrevoutRejectsForgedWitnessAmount(t *testing.T) {
+	t.Parallel()
+	f := newSecurityVaultFixture(t)
+	spend, err := BuildRoutineSpend(f.routineParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := spend.Packet.B64Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ptx, err := psbt.NewFromRawBytes(strings.NewReader(raw), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Leave txid/vout alone. Only the client WitnessUtxo amount is forged.
+	ptx.Inputs[0].WitnessUtxo.Value++
+	if _, err := RequireVerifiedPrevout(ptx); err == nil {
+		t.Fatal("accepted a forged WitnessUtxo amount")
+	}
+}

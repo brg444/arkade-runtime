@@ -242,16 +242,10 @@ func addSats(a, b int64) (int64, error) {
 }
 
 func estimatedWitnessBytes(op *vault.Built) int {
-	script := op.Leaves.Routine.Script
-	control := op.Leaves.Routine.ControlBlock
-	// marker+flag, then one input witness: CompactSize(5 items), three
-	// 64-byte BIP342 signatures, script, control block.
-	return 2 + varintSize(5) +
-		varintSize(64) + 64 +
-		varintSize(64) + 64 +
-		varintSize(64) + 64 +
-		varintSize(len(script)) + len(script) +
-		varintSize(len(control)) + len(control)
+	if op == nil || op.Leaves.Routine == nil {
+		return 0
+	}
+	return int(vault.RoutineWitnessSize(op.Leaves.Routine.Script, op.Leaves.Routine.ControlBlock))
 }
 
 func estimatedFullSize(tx *wire.MsgTx, op *vault.Built) int {
@@ -265,17 +259,4 @@ func estimatedWeight(tx *wire.MsgTx, op *vault.Built) int {
 
 func estimatedVBytes(tx *wire.MsgTx, op *vault.Built) int64 {
 	return int64((estimatedWeight(tx, op) + 3) / 4)
-}
-
-func varintSize(n int) int {
-	switch {
-	case n < 0xfd:
-		return 1
-	case n <= 0xffff:
-		return 3
-	case n <= 0xffffffff:
-		return 5
-	default:
-		return 9
-	}
 }

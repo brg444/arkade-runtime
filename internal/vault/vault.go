@@ -421,11 +421,15 @@ func leafContainsKey(leaf *Leaf, want []byte) bool {
 	if leaf == nil || len(want) == 0 {
 		return false
 	}
-	if bytes.Contains(leaf.Script, want) {
-		return true
-	}
-	if decoded, err := arkscript.DecodeClosure(leaf.Script); err == nil && closureContainsKey(decoded, want) {
-		return true
+	if len(leaf.Script) > 0 {
+		decoded, err := arkscript.DecodeClosure(leaf.Script)
+		if err != nil {
+			// Cannot prove the key is absent from an undecodable leaf.
+			return true
+		}
+		if closureContainsKey(decoded, want) {
+			return true
+		}
 	}
 	return closureContainsKey(leaf.Closure, want)
 }
@@ -433,9 +437,6 @@ func leafContainsKey(leaf *Leaf, want []byte) bool {
 func closureContainsKey(c arkscript.Closure, want []byte) bool {
 	if c == nil || len(want) == 0 {
 		return false
-	}
-	if script, err := c.Script(); err == nil && bytes.Contains(script, want) {
-		return true
 	}
 	for _, pub := range closurePubKeys(c) {
 		if pub != nil && bytes.Equal(schnorr.SerializePubKey(pub), want) {

@@ -294,3 +294,12 @@ func TestAuthorizationScriptRejectsOffCurveAndNoncanonicalP256(t *testing.T) {
 		}
 	}
 }
+
+func TestRoutineWitnessBytesMatchesEstimate(t *testing.T) {
+	t.Parallel()
+	f := newSecurityVaultFixture(t)
+	got := RoutineWitnessSize(f.operational.Leaves.Routine.Script, f.operational.Leaves.Routine.ControlBlock)
+	if got != RoutineWitnessBytes {
+		t.Fatalf("witness size %d drifted from committed RoutineWitnessBytes %d", got, RoutineWitnessBytes)
+	}
+}

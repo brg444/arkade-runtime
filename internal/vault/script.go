@@ -19,6 +19,29 @@ import (
 // check committed below.
 const RoutineWitnessBytes int64 = 399
 
+// RoutineWitnessSize is the same count the on-chain OP_TXWEIGHT policy
+// commits to. AuthorizationScript must keep using RoutineWitnessBytes;
+// tests fail if this estimate and the committed constant drift.
+func RoutineWitnessSize(script, control []byte) int64 {
+	return int64(2 + compactSize(5) +
+		3*(compactSize(64)+64) +
+		compactSize(len(script)) + len(script) +
+		compactSize(len(control)) + len(control))
+}
+
+func compactSize(n int) int {
+	switch {
+	case n < 0xfd:
+		return 1
+	case n <= 0xffff:
+		return 3
+	case n <= 0xffffffff:
+		return 5
+	default:
+		return 9
+	}
+}
+
 // AuthorizationScript is the committed transaction-local Operational policy.
 // It requires the canonical one-input recipient/change/packet shape, caps the
 // recipient and fee, requires recursive change to this exact vault, and then

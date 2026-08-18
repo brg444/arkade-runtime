@@ -143,11 +143,8 @@ func passkeyChallengeKey(vaultID, challengeID string) string {
 	return vaultID + "\x00" + challengeID
 }
 
-func routePasskeyVaultID(vaultID string) string {
-	if vaultID == "" {
-		return fixture.VaultID
-	}
-	return vaultID
+func (s *Service) routePasskeyVaultID(vaultID string) (string, error) {
+	return s.routeVaultID(vaultID)
 }
 
 func (s *Service) IssuePasskeyChallenge(ctx context.Context, purpose string) (*PasskeyChallengeResponse, error) {
@@ -161,7 +158,10 @@ func (s *Service) IssuePasskeyChallengeFor(ctx context.Context, vaultID, purpose
 	if purpose != passkeyPurposeRecover && purpose != passkeyPurposeInstall {
 		return nil, fmt.Errorf("invalid passkey challenge purpose")
 	}
-	vaultID = routePasskeyVaultID(vaultID)
+	vaultID, err := s.routePasskeyVaultID(vaultID)
+	if err != nil {
+		return nil, err
+	}
 	cred, err := s.loadVerifiedCredentialFor(vaultID)
 	if err != nil {
 		return nil, err
@@ -241,7 +241,10 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 		return nil, err
 	}
 	defer release()
-	vaultID = routePasskeyVaultID(vaultID)
+	vaultID, err = s.routePasskeyVaultID(vaultID)
+	if err != nil {
+		return nil, err
+	}
 	challenge, err := s.consumePasskeyChallenge(vaultID, req.ChallengeID, purpose)
 	if err != nil {
 		return nil, failPasskeyAuth("challenge", err)
@@ -323,7 +326,10 @@ func (s *Service) BuildRecoveryBinding(req RecoveryBindingRequest) (*RecoveryBin
 }
 
 func (s *Service) BuildRecoveryBindingFor(vaultID string, req RecoveryBindingRequest) (*RecoveryBindingResponse, error) {
-	vaultID = routePasskeyVaultID(vaultID)
+	vaultID, err := s.routePasskeyVaultID(vaultID)
+	if err != nil {
+		return nil, err
+	}
 	cred, err := s.loadVerifiedCredentialFor(vaultID)
 	if err != nil {
 		return nil, err
@@ -388,7 +394,10 @@ func recoveryBindingDigest(binding string) []byte {
 }
 
 func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCredentialEnvelopeRequest) error {
-	vaultID := routePasskeyVaultID(req.VaultID)
+	vaultID, err := s.routePasskeyVaultID(req.VaultID)
+	if err != nil {
+		return err
+	}
 	cred, err := s.authenticatePasskeySession(ctx, passkeyPurposeInstall, vaultID, req.SessionAssertionRequest)
 	if err != nil {
 		return err
@@ -432,7 +441,10 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 		Version: policy.CredentialEnvelopeVersion, Binding: expectedBinding,
 		Nonce: nonce, Ciphertext: ciphertext, DirectSig: directSig, PhoneSig: phoneSigRaw,
 	}
-	vaultID = routePasskeyVaultID(firstNonEmpty(vaultID, cred.VaultID))
+	vaultID, err = s.routePasskeyVaultID(firstNonEmpty(vaultID, cred.VaultID))
+	if err != nil {
+		return err
+	}
 	if vaultID != fixture.VaultID {
 		if err := s.sealVaultEnvelope(&envelope, vaultID, cred.ID); err != nil {
 			return err
@@ -446,12 +458,18 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 }
 
 func (s *Service) RecoverCredentialEnvelope(ctx context.Context, req RecoverCredentialEnvelopeRequest) (*RecoverCredentialEnvelopeResponse, error) {
-	vaultID := routePasskeyVaultID(req.VaultID)
+	vaultID, err := s.routePasskeyVaultID(req.VaultID)
+	if err != nil {
+		return nil, err
+	}
 	cred, err := s.authenticatePasskeySession(ctx, passkeyPurposeRecover, vaultID, req.SessionAssertionRequest)
 	if err != nil {
 		return nil, err
 	}
-	vaultID = routePasskeyVaultID(firstNonEmpty(vaultID, cred.VaultID))
+	vaultID, err = s.routePasskeyVaultID(firstNonEmpty(vaultID, cred.VaultID))
+	if err != nil {
+		return nil, err
+	}
 	envelope, err := s.loadVerifiedEnvelopeFor(vaultID, cred.ID)
 	if err != nil {
 		return nil, err
