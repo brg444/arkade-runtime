@@ -1,0 +1,7 @@
+{
+  "comment": "First funded Mutinynet vault uses the master VaultCosigner scalar directly. Address, script, and compressed pubkey must stay byte-identical after v4 migration.",
+  "mode": "legacy-direct-v0",
+  "vaultId": "operational-vault-v1",
+  "masterScalarHex": "2121212121212121212121212121212121212121212121212121212121212121",
+  "compressedPubHex": "028d7500dd4c12685d1f568b4c2b5048e8534b873319f3a8daa612b469132ec7f7"
+}

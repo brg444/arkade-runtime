@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.env.*
+secrets
+*.sqlite
+*.sqlite-*
+.DS_Store
+.railway
+*.md
+.dockerignore
+.gitignore

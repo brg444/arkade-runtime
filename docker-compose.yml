@@ -3,8 +3,8 @@ name: arkade-vault-server
 services:
   vault-authorizer:
     build:
-      context: ${EMULATOR_ROOT:?set EMULATOR_ROOT to the emulator checkout}
-      dockerfile: poc/2fa-vault/Dockerfile.mutinynet
+      context: .
+      dockerfile: Dockerfile.mutinynet
     command:
       - -addr=0.0.0.0:8788
       - -db=/app/data/vault.sqlite
