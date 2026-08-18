@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const publicDescriptorSchema = "arkade-vault/v4"
@@ -116,10 +116,10 @@ func publicDescriptorFromCredential(c policy.Credential) (PublicVaultDescriptor,
 		},
 	}
 	if d.TemplateVersion == "" {
-		d.TemplateVersion = fixture.TemplateVersion
+		d.TemplateVersion = program.LeftoverV4Template
 	}
 	if d.PolicyVersion == "" {
-		d.PolicyVersion = fixture.PolicyVersion
+		d.PolicyVersion = program.PolicyVersion
 	}
 	return d, nil
 }

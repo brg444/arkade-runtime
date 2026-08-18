@@ -7,14 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/apperr"
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const GatewaySecretHeader = "X-Vault-Gateway-Secret"
@@ -142,7 +142,7 @@ func NewHandler(svc *Service, webDir string, demo *Demo) http.Handler {
 
 func serviceOrigin(svc *Service) string {
 	if svc == nil {
-		return fixture.Origin
+		return program.RegtestOrigin
 	}
 	return svc.runtimeConfig().ClientOrigin
 }
@@ -366,16 +366,28 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, ErrEnrollmentClosed) {
+		code := apperr.CodeRejected
+		switch {
+		case errors.Is(err, ErrEnrollmentClosed), errors.Is(err, apperr.ErrEnrollmentClosed), errors.Is(err, apperr.ErrNotFound):
 			status = http.StatusNotFound
-		} else if errors.Is(err, ErrVerificationBusy) {
+			code = apperr.CodeNotFound
+		case errors.Is(err, ErrVerificationBusy), errors.Is(err, apperr.ErrBusy):
 			status = http.StatusTooManyRequests
+			code = apperr.CodeBusy
 			w.Header().Set("Retry-After", "1")
-		} else {
-			log.Printf("provider error: %s", redact(err.Error()))
+		case errors.Is(err, apperr.ErrVaultIDRequired):
+			code = apperr.CodeVaultIDRequired
+		case errors.Is(err, apperr.ErrNotEnrolled):
+			code = apperr.CodeNotEnrolled
+		case errors.Is(err, apperr.ErrLegacyMasterSign):
+			code = apperr.CodeLegacyMasterSign
+		default:
+			if e := apperr.Of(err); e != nil && e.Code != apperr.CodeRejected {
+				code = e.Code
+			}
 		}
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": publicErrorMessage(err)})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": publicErrorMessage(err), "code": string(code)})
 		return
 	}
 	_ = json.NewEncoder(w).Encode(v)

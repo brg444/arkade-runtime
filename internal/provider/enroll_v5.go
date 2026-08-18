@@ -9,8 +9,8 @@ import (
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/arkade-os/emulator/pkg/arkade"
-	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -33,7 +33,7 @@ func recoveryProofField(req RegisterRequest) string {
 }
 
 func (s *Service) previewV5Descriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
-	if vaultID == "" || vaultID == fixture.VaultID {
+	if vaultID == "" || vaultID == program.LeftoverVaultID {
 		return nil, fmt.Errorf("tenant vault id required")
 	}
 	master, err := s.vaultCosignerMaster()
@@ -124,7 +124,7 @@ func (s *Service) mintV5Credential(vaultID string, parsed parsedRegisterRequest,
 		ArkadeCosignerOrigin:  origin,
 		ArkadeCosignerVersion: version,
 		TemplateVersion:       v5.Template,
-		PolicyVersion:         fixture.PolicyVersion,
+		PolicyVersion:         program.PolicyVersion,
 		Network:               cfg.Network,
 		VaultID:               vaultID,
 		OperationalCSVType:    int64(arklib.LocktimeTypeBlock),
@@ -135,11 +135,11 @@ func (s *Service) mintV5Credential(vaultID string, parsed parsedRegisterRequest,
 		OperationalScript:     append([]byte(nil), fam.Daily.PkScript...),
 		SavingsAddress:        fam.Savings.Address,
 		SavingsScript:         append([]byte(nil), fam.Savings.PkScript...),
-		RecipientDustSats:     fixture.DustSats,
-		TxRecipientCapSats:    fixture.TxRecipientCapSats,
-		PeriodAllowanceSats:   fixture.PeriodAllowanceSats,
-		AbsoluteFeeCapSats:    fixture.AbsoluteFeeCeiling,
-		FeerateCapSatPerV:     fixture.FeerateCeilingSatPerV,
+		RecipientDustSats:     program.DustSats,
+		TxRecipientCapSats:    program.TxRecipientCapSats,
+		PeriodAllowanceSats:   program.PeriodAllowanceSats,
+		AbsoluteFeeCapSats:    program.AbsoluteFeeCeiling,
+		FeerateCapSatPerV:     program.FeerateCeilingSatPerV,
 	}
 	op, sv, err := wrapV5Family(cred, fam, in)
 	if err != nil {
@@ -346,7 +346,7 @@ func (s *Service) rebuildV5(cred *policy.Credential) (
 }
 
 func knownTemplate(template string) bool {
-	return template == fixture.TemplateVersion || template == v5.Template
+	return template == program.LeftoverV4Template || template == v5.Template
 }
 
 func xOnlyHexOf(pub *btcec.PublicKey) string {

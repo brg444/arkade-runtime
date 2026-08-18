@@ -11,14 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/provider"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 )
 
@@ -225,8 +223,8 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := runtime.service.VaultSigner.(provider.LocalSigner); !ok {
-		t.Fatalf("protected runtime signer = %T, want local policy-final signer", runtime.service.VaultSigner)
+	if runtime.service.VaultSigner != nil {
+		t.Fatal("protected runtime installed the master scalar as VaultSigner")
 	}
 	if len(runtime.service.EnrollmentTokenHash) != 32 {
 		t.Fatal("fresh runtime did not load the enrollment authorization hash")
@@ -267,7 +265,7 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 	}
 }
 
-func TestPortableOpenEnrollmentLetsFirstClaimantChooseImmutablePublicRoles(t *testing.T) {
+func TestMutinynetRejectsOpenEnrollment(t *testing.T) {
 	dir := t.TempDir()
 	vaultCosignerKey, err := btcec.NewPrivateKey()
 	if err != nil {
@@ -287,61 +285,13 @@ func TestPortableOpenEnrollmentLetsFirstClaimantChooseImmutablePublicRoles(t *te
 		OpenEnrollment:       true,
 		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
 	}
-	dial := func(context.Context, string, string) (provider.Broadcaster, error) {
-		return stubPublisher{}, nil
-	}
-	emulatorDial := func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (provider.Signer, provider.PublicEmulatorIdentity, error) {
-		return stubEmulatorSigner{}, provider.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
-	}
-	runtime, err := openWithDialers(context.Background(), cfg, dial, emulatorDial)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runtime.service.ExternalOwnerWallet != nil || runtime.service.RecoveryKey != nil {
-		t.Fatal("fresh portable runtime preselected claimant public keys")
-	}
-	initial, err := runtime.service.Status(context.Background())
-	if err != nil || initial.EnrollmentMode != "open" || initial.EnrollmentExpiresAt == "" {
-		t.Fatalf("open enrollment status = %+v, %v", initial, err)
-	}
-	runtime.service.EnrollmentNow = func() time.Time { return runtime.service.EnrollmentDeadline }
-	expired, err := runtime.service.Status(context.Background())
-	if err != nil || expired.EnrollmentMode != "expired" {
-		t.Fatalf("expired enrollment status = %+v, %v", expired, err)
-	}
-	runtime.service.EnrollmentNow = nil
-	owner, _ := btcec.NewPrivateKey()
-	recovery, _ := btcec.NewPrivateKey()
-	_ = recovery
-	phone, _ := btcec.NewPrivateKey()
-	passkey, _ := webauthn.NewP256()
-	direct, _ := webauthn.NewP256()
-	req := provider.RegisterRequest{
-		CredentialID:             hex.EncodeToString([]byte("portable-credential")),
-		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passkey)),
-		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(phone.PubKey().SerializeCompressed()),
-		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
-	}
-	if err := runtime.service.RegisterWithBootstrap(req, ""); err != nil {
-		t.Fatal(err)
-	}
-	status, err := runtime.service.Status(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !status.Enrolled || status.EnrollmentMode != "closed" || status.PasskeyLoginAvailable ||
-		status.ExternalOwnerWalletPub[2:] != req.ExternalOwnerWalletXOnly {
-		t.Fatalf("portable enrollment status = %+v", status)
-	}
-	if err := runtime.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Persisted public roles were committed in-process above. Restarting this
-	// sealed v5 singleton without a historical .pre-v5 must fail closed.
-	if _, err := openWithDialers(context.Background(), cfg, dial, emulatorDial); err == nil ||
-		!strings.Contains(err.Error(), "already advanced") {
-		t.Fatalf("singleton restart without pre-v5: %v", err)
+	_, err = openWithDialers(context.Background(), cfg,
+		func(context.Context, string, string) (provider.Broadcaster, error) { return stubPublisher{}, nil },
+		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (provider.Signer, provider.PublicEmulatorIdentity, error) {
+			return stubEmulatorSigner{}, provider.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "invite-only") {
+		t.Fatalf("open enrollment: %v", err)
 	}
 }

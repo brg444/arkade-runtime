@@ -811,8 +811,8 @@ type SequentialAuthorizeFn func(ctx context.Context, storedPSBT string) (nextPSB
 
 const persistTimeout = 5 * time.Second
 
-// Issue preserves the one-stage API for the regtest/external-signer tests. A
-// reserved legacy issuance never retries the ambiguous signer callback.
+// Issue is the leftover one-stage helper for tests. Production HTTP uses
+// IssueSequential only.
 func (l *Ledger) Issue(
 	ctx context.Context,
 	vaultID string,

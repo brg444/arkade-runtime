@@ -7,7 +7,7 @@ import (
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/arkade-os/emulator/pkg/arkade"
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
@@ -86,13 +86,13 @@ type OperationalKeys struct {
 // plus both independently tweaked routine cosigners, the phone+hardware
 // admin path, CSV+phone, and CSV+hardware.
 func NewOperational(keys OperationalKeys) (*Built, error) {
-	return NewOperationalForNetwork(keys, fixture.Network)
+	return NewOperationalForNetwork(keys, program.NetworkRegtest)
 }
 
 // NewOperationalForNetwork builds the same code-pinned Operational template
 // using the address encoding of an explicitly supported deployment network.
 func NewOperationalForNetwork(keys OperationalKeys, network string) (*Built, error) {
-	return NewOperationalWithPolicy(keys, network, fixture.OperationalCSV(), fixture.SavingsCSV(), fixtureAuthorizationPolicy())
+	return NewOperationalWithPolicy(keys, network, program.OperationalCSV(), program.SavingsCSV(), fixtureAuthorizationPolicy())
 }
 
 // NewOperationalWithPolicy makes both CSV delays and every transaction-local
@@ -122,22 +122,22 @@ func NewOperationalWithPolicy(keys OperationalKeys, network string, phoneCSV, ha
 
 func fixtureAuthorizationPolicy() AuthorizationPolicy {
 	return AuthorizationPolicy{
-		RecipientDustSats:      fixture.DustSats,
-		RecipientCapSats:       fixture.TxRecipientCapSats,
-		AbsoluteFeeCeilingSats: fixture.AbsoluteFeeCeiling,
-		FeerateCeilingSatPerV:  fixture.FeerateCeilingSatPerV,
+		RecipientDustSats:      program.DustSats,
+		RecipientCapSats:       program.TxRecipientCapSats,
+		AbsoluteFeeCeilingSats: program.AbsoluteFeeCeiling,
+		FeerateCeilingSatPerV:  program.FeerateCeilingSatPerV,
 	}
 }
 
 // NewSavings builds the Savings tree: phone+hardware admin, CSV+phone, and
 // CSV+hardware. Neither routine cosigner appears.
 func NewSavings(phoneRoutine, externalOwner *btcec.PublicKey, forbidden ...*btcec.PublicKey) (*Built, error) {
-	return NewSavingsForNetwork(phoneRoutine, externalOwner, fixture.Network, forbidden...)
+	return NewSavingsForNetwork(phoneRoutine, externalOwner, program.NetworkRegtest, forbidden...)
 }
 
 // NewSavingsForNetwork builds the v4 Savings template for network.
 func NewSavingsForNetwork(phoneRoutine, externalOwner *btcec.PublicKey, network string, forbidden ...*btcec.PublicKey) (*Built, error) {
-	return NewSavingsWithPolicy(phoneRoutine, externalOwner, network, fixture.OperationalCSV(), fixture.SavingsCSV(), forbidden...)
+	return NewSavingsWithPolicy(phoneRoutine, externalOwner, network, program.OperationalCSV(), program.SavingsCSV(), forbidden...)
 }
 
 // NewSavingsWithPolicy makes both CSV delays explicit.
@@ -175,7 +175,7 @@ func NewFromRecord(rec Record) (*Built, error) {
 		return nil, fmt.Errorf("csv delays required")
 	}
 	if rec.Network == "" {
-		rec.Network = fixture.Network
+		rec.Network = program.NetworkRegtest
 	}
 	switch rec.Kind {
 	case Operational:
@@ -465,7 +465,7 @@ func closurePubKeys(c arkscript.Closure) []*btcec.PublicKey {
 
 func networkParams(name string) (*chaincfg.Params, error) {
 	switch name {
-	case "", fixture.Network, chaincfg.RegressionNetParams.Name:
+	case "", program.NetworkRegtest, chaincfg.RegressionNetParams.Name:
 		return &chaincfg.RegressionNetParams, nil
 	case "mutinynet":
 		// Use ark-lib's pinned custom challenge/block interval rather than the

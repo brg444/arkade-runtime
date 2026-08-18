@@ -59,7 +59,7 @@ func main() {
 		VaultCosignerKeyFile:      *keyFile,
 		ExternalOwnerWalletPubHex: *ownerHex,
 		EnrollmentTokenFile:       *tokenFile,
-		MultiTenantEnrollment:     envTruthy("VAULT_MULTI_TENANT_ENROLLMENT"),
+		MultiTenantEnrollment:     true,
 		FreshOnly:                 *freshOnly,
 		EsploraURL:                *esploraURL,
 	}

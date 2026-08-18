@@ -8,7 +8,7 @@ import (
 	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/arkade-os/emulator/pkg/arkade"
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
@@ -362,30 +362,7 @@ func verifyRoutinePartials(ptx *psbt.Packet, v *Built) error {
 }
 
 func verifySchnorrTapSig(ptx *psbt.Packet, s *psbt.TaprootScriptSpendSig, wantXOnly, leafScript []byte) error {
-	if len(s.Signature) != 64 {
-		return fmt.Errorf("signature length")
-	}
-	prev := ptx.Inputs[0].WitnessUtxo
-	fetcher := NewPrevFetcher(ptx.UnsignedTx.TxIn[0].PreviousOutPoint, prev)
-	digest, err := txscript.CalcTapscriptSignaturehash(
-		txscript.NewTxSigHashes(ptx.UnsignedTx, fetcher),
-		txscript.SigHashDefault, ptx.UnsignedTx, 0, fetcher, txscript.NewBaseTapLeaf(leafScript),
-	)
-	if err != nil {
-		return err
-	}
-	sig, err := schnorr.ParseSignature(s.Signature)
-	if err != nil {
-		return err
-	}
-	pub, err := schnorr.ParsePubKey(wantXOnly)
-	if err != nil {
-		return err
-	}
-	if !sig.Verify(digest, pub) {
-		return fmt.Errorf("invalid")
-	}
-	return nil
+	return VerifySchnorrOnSubmittedTx(ptx, s.Signature, wantXOnly, leafScript)
 }
 
 func writeFinalWitness(ptx *psbt.Packet, leaf *Leaf) error {
@@ -564,7 +541,7 @@ func AdminSpend(v *Built, prevTx *wire.MsgTx, op wire.OutPoint, dest []byte, des
 	if err != nil {
 		return nil, err
 	}
-	if destAmt < fixture.DustSats || fee < 0 {
+	if destAmt < program.DustSats || fee < 0 {
 		return nil, fmt.Errorf("invalid amount")
 	}
 	change, err := remainingAfter(prev.Value, destAmt, fee)
@@ -580,7 +557,7 @@ func AdminSpend(v *Built, prevTx *wire.MsgTx, op wire.OutPoint, dest []byte, des
 	switch {
 	case change == 0:
 		// fully consumed
-	case change >= fixture.DustSats && !bytes.Equal(dest, v.PkScript):
+	case change >= program.DustSats && !bytes.Equal(dest, v.PkScript):
 		tx.AddTxOut(&wire.TxOut{Value: change, PkScript: v.PkScript})
 	default:
 		return nil, fmt.Errorf("owner spend does not balance")
@@ -618,7 +595,7 @@ func RecoverySpend(v *Built, prevTx *wire.MsgTx, op wire.OutPoint, dest []byte, 
 	if len(dest) == 0 {
 		return nil, fmt.Errorf("destination script required")
 	}
-	if destAmt < fixture.DustSats || fee < 0 {
+	if destAmt < program.DustSats || fee < 0 {
 		return nil, fmt.Errorf("invalid amount")
 	}
 	prev, err := checkedPrevout(v, prevTx, op)

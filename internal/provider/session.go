@@ -12,8 +12,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -148,7 +148,7 @@ func (s *Service) routePasskeyVaultID(vaultID string) (string, error) {
 }
 
 func (s *Service) IssuePasskeyChallenge(ctx context.Context, purpose string) (*PasskeyChallengeResponse, error) {
-	return s.IssuePasskeyChallengeFor(ctx, fixture.VaultID, purpose)
+	return s.IssuePasskeyChallengeFor(ctx, program.LeftoverVaultID, purpose)
 }
 
 func (s *Service) IssuePasskeyChallengeFor(ctx context.Context, vaultID, purpose string) (*PasskeyChallengeResponse, error) {
@@ -445,7 +445,7 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 	if err != nil {
 		return err
 	}
-	if vaultID != fixture.VaultID {
+	if vaultID != program.LeftoverVaultID {
 		if err := s.sealVaultEnvelope(&envelope, vaultID, cred.ID); err != nil {
 			return err
 		}

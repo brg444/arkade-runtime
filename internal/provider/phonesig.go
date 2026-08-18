@@ -33,30 +33,8 @@ func verifyPhoneRoutineSignature(ptx *psbt.Packet, op *vault.Built) error {
 	if s.SigHash != txscript.SigHashDefault {
 		return fmt.Errorf("PhoneRoutineBIP340 signature sighash")
 	}
-	sig := s.Signature
-	if len(sig) != 64 {
-		return fmt.Errorf("missing PhoneRoutineBIP340 signature")
-	}
-	prev := ptx.Inputs[0].WitnessUtxo
-	fetcher := vault.NewPrevFetcher(ptx.UnsignedTx.TxIn[0].PreviousOutPoint, prev)
-	sigHashes := txscript.NewTxSigHashes(ptx.UnsignedTx, fetcher)
-	leaf := txscript.NewBaseTapLeaf(op.Leaves.Routine.Script)
-	digest, err := txscript.CalcTapscriptSignaturehash(
-		sigHashes, txscript.SigHashDefault, ptx.UnsignedTx, 0, fetcher, leaf,
-	)
-	if err != nil {
-		return fmt.Errorf("PhoneRoutineBIP340 sighash: %w", err)
-	}
-	parsed, err := schnorr.ParseSignature(sig)
-	if err != nil {
+	if err := vault.VerifySchnorrOnSubmittedTx(ptx, s.Signature, wantPub, op.Leaves.Routine.Script); err != nil {
 		return fmt.Errorf("PhoneRoutineBIP340 signature: %w", err)
-	}
-	pub, err := schnorr.ParsePubKey(wantPub)
-	if err != nil {
-		return err
-	}
-	if !parsed.Verify(digest, pub) {
-		return fmt.Errorf("PhoneRoutineBIP340 signature invalid")
 	}
 	return nil
 }

@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
-const PolicyVersion = fixture.PolicyVersion
+const PolicyVersion = program.PolicyVersion
 
 var familyKeys = []string{
 	"daily-phone", "daily-hardware", "daily-recovery",
@@ -137,11 +137,11 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 		ArkadeCosigner: PublicArkade{Origin: strings.TrimSpace(origin), Version: strings.TrimSpace(version)},
 		CSV:            PublicCSV{Hardware: 6, Phone: 144, Recovery: 288},
 		Policy: PublicPolicy{
-			RecipientDustSats:   fixture.DustSats,
-			RecipientCapSats:    fixture.TxRecipientCapSats,
-			PeriodAllowanceSats: fixture.PeriodAllowanceSats,
-			AbsoluteFeeCapSats:  fixture.AbsoluteFeeCeiling,
-			FeerateCapSatVb:     fixture.FeerateCeilingSatPerV,
+			RecipientDustSats:   program.DustSats,
+			RecipientCapSats:    program.TxRecipientCapSats,
+			PeriodAllowanceSats: program.PeriodAllowanceSats,
+			AbsoluteFeeCapSats:  program.AbsoluteFeeCeiling,
+			FeerateCapSatVb:     program.FeerateCeilingSatPerV,
 		},
 		P2A: PublicP2A{
 			Script:      P2AScriptHex,

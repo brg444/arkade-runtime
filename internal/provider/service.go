@@ -17,9 +17,10 @@ import (
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/arkade-os/emulator/pkg/arkade"
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
@@ -82,6 +83,67 @@ type Service struct {
 	sessionChallenges          map[string]passkeyChallenge
 	SessionNow                 func() time.Time
 	afterLoadPending           func()
+	// vaultIKM is the long-lived master scalar. It is never a Taproot signer.
+	// Per-vault keys are HKDF children. Leftover-direct-v0 signing is refused.
+	vaultIKM *btcec.PrivateKey
+}
+
+// Deps is the constructor input. The master scalar is IKM only.
+type Deps struct {
+	Ledger                *policy.Ledger
+	Deployment            deployment.Config
+	IntegrityKey          []byte
+	MasterIKM             *btcec.PrivateKey
+	ExternalOwner         *btcec.PublicKey
+	VaultCosignerPub      *btcec.PublicKey
+	ArkadeCosignerPub     *btcec.PublicKey
+	ArkadeCosignerOrigin  string
+	ArkadeCosignerVersion string
+	ArkadeSigner          Signer
+	EnrollmentTokenHash   []byte
+	OpenEnrollment        bool
+	MultiTenantEnrollment bool
+	EnrollmentDeadline    time.Time
+	Broadcaster           Broadcaster
+}
+
+// New builds the application service. VaultSigner is not the master scalar.
+func New(d Deps) *Service {
+	return &Service{
+		Ledger:                 d.Ledger,
+		Deployment:             d.Deployment,
+		CredentialIntegrityKey: d.IntegrityKey,
+		ExternalOwnerWallet:    d.ExternalOwner,
+		VaultCosignerPub:       d.VaultCosignerPub,
+		ArkadeCosignerPub:      d.ArkadeCosignerPub,
+		ArkadeCosignerOrigin:   d.ArkadeCosignerOrigin,
+		ArkadeCosignerVersion:  d.ArkadeCosignerVersion,
+		ArkadeCosignerSigner:   d.ArkadeSigner,
+		EnrollmentTokenHash:    d.EnrollmentTokenHash,
+		OpenEnrollment:         d.OpenEnrollment,
+		MultiTenantEnrollment:  d.MultiTenantEnrollment,
+		EnrollmentDeadline:     d.EnrollmentDeadline,
+		Broadcaster:            d.Broadcaster,
+		vaultIKM:               d.MasterIKM,
+	}
+}
+
+// WipeSecrets zeros the IKM and integrity key. Called on process shutdown.
+func (s *Service) WipeSecrets() {
+	if s == nil {
+		return
+	}
+	zeroServiceBytes(s.CredentialIntegrityKey)
+	s.CredentialIntegrityKey = nil
+	zeroServiceBytes(s.EnrollmentTokenHash)
+	s.EnrollmentTokenHash = nil
+	if s.vaultIKM != nil {
+		raw := s.vaultIKM.Serialize()
+		zeroServiceBytes(raw)
+		s.vaultIKM.Key = btcec.ModNScalar{}
+		s.vaultIKM = nil
+	}
+	s.VaultSigner = nil
 }
 
 const defaultConcurrentVerifications = 4
@@ -225,7 +287,7 @@ func (s *Service) RegisterWithBootstrap(req RegisterRequest, bootstrap string) e
 		s.clearEnrollmentTokenHash()
 		return nil
 	}
-	s.publishEnrollmentAt(fixture.VaultID, parsed.id, parsed.phoneRoutine, op, sv)
+	s.publishEnrollmentAt(program.LeftoverVaultID, parsed.id, parsed.phoneRoutine, op, sv)
 	s.clearEnrollmentTokenHash()
 	return nil
 }
@@ -242,7 +304,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err := s.runtimeConfig().Validate(); err != nil {
 		return fmt.Errorf("deployment: %w", err)
 	}
-	if vaultID == "" || vaultID == fixture.VaultID {
+	if vaultID == "" || vaultID == program.LeftoverVaultID {
 		return fmt.Errorf("tenant vault id required")
 	}
 	if req.ExternalOwnerWalletXOnly == "" {
@@ -311,9 +373,12 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 }
 
 func (s *Service) vaultCosignerMaster() (*btcec.PrivateKey, error) {
+	if s.vaultIKM != nil {
+		return s.vaultIKM, nil
+	}
 	ls, ok := s.VaultSigner.(LocalSigner)
 	if !ok || ls.Priv == nil {
-		return nil, fmt.Errorf("local VaultCosigner required to derive tenant keys")
+		return nil, fmt.Errorf("vault cosigner IKM required")
 	}
 	return ls.Priv, nil
 }
@@ -543,7 +608,7 @@ func (s *Service) LoadVaults() error {
 		if quarantineLegacyVault(s, id, cred.TemplateVersion) {
 			continue
 		}
-		if err := s.publishStoredEnrollment(&cred, true && id == fixture.VaultID); err != nil {
+		if err := s.publishStoredEnrollment(&cred, true && id == program.LeftoverVaultID); err != nil {
 			return err
 		}
 	}
@@ -704,10 +769,10 @@ func descriptorFromTrees(
 		TweakedArkadeCosigner: op.TweakedArkadeCosigner.SerializeCompressed(),
 		ArkadeCosignerOrigin:  arkadeOrigin,
 		ArkadeCosignerVersion: arkadeVersion,
-		TemplateVersion:       fixture.TemplateVersion,
-		PolicyVersion:         fixture.PolicyVersion,
+		TemplateVersion:       program.LeftoverV4Template,
+		PolicyVersion:         program.PolicyVersion,
 		Network:               cfg.Network,
-		VaultID:               fixture.VaultID,
+		VaultID:               program.LeftoverVaultID,
 		OperationalCSVType:    int64(opCSV.Type),
 		OperationalCSVValue:   opCSV.Value,
 		SavingsCSVType:        int64(svCSV.Type),
@@ -716,16 +781,16 @@ func descriptorFromTrees(
 		OperationalScript:     append([]byte(nil), op.PkScript...),
 		SavingsAddress:        sv.Address,
 		SavingsScript:         append([]byte(nil), sv.PkScript...),
-		RecipientDustSats:     fixture.DustSats,
-		TxRecipientCapSats:    fixture.TxRecipientCapSats,
-		PeriodAllowanceSats:   fixture.PeriodAllowanceSats,
-		AbsoluteFeeCapSats:    fixture.AbsoluteFeeCeiling,
-		FeerateCapSatPerV:     fixture.FeerateCeilingSatPerV,
+		RecipientDustSats:     program.DustSats,
+		TxRecipientCapSats:    program.TxRecipientCapSats,
+		PeriodAllowanceSats:   program.PeriodAllowanceSats,
+		AbsoluteFeeCapSats:    program.AbsoluteFeeCeiling,
+		FeerateCapSatPerV:     program.FeerateCeilingSatPerV,
 	}
 }
 
 func retiredRecoveryPlaceholder() []byte {
-	raw, err := hex.DecodeString(fixture.RecoveryKeyPubHex)
+	raw, err := hex.DecodeString(program.UnsafeGeneratorG)
 	if err != nil {
 		return []byte{0}
 	}
@@ -734,10 +799,10 @@ func retiredRecoveryPlaceholder() []byte {
 
 func configuredAuthorizationPolicy() vault.AuthorizationPolicy {
 	return vault.AuthorizationPolicy{
-		RecipientDustSats:      fixture.DustSats,
-		RecipientCapSats:       fixture.TxRecipientCapSats,
-		AbsoluteFeeCeilingSats: fixture.AbsoluteFeeCeiling,
-		FeerateCeilingSatPerV:  fixture.FeerateCeilingSatPerV,
+		RecipientDustSats:      program.DustSats,
+		RecipientCapSats:       program.TxRecipientCapSats,
+		AbsoluteFeeCeilingSats: program.AbsoluteFeeCeiling,
+		FeerateCeilingSatPerV:  program.FeerateCeilingSatPerV,
 	}
 }
 
@@ -755,8 +820,8 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	if !knownTemplate(cred.TemplateVersion) {
 		return fmt.Errorf("stored template %q incompatible with runtime", cred.TemplateVersion)
 	}
-	if cred.PolicyVersion != fixture.PolicyVersion {
-		return fmt.Errorf("stored policy %q incompatible with runtime %q", cred.PolicyVersion, fixture.PolicyVersion)
+	if cred.PolicyVersion != program.PolicyVersion {
+		return fmt.Errorf("stored policy %q incompatible with runtime %q", cred.PolicyVersion, program.PolicyVersion)
 	}
 	if cred.Network != cfg.Network {
 		return fmt.Errorf("stored network %q incompatible with runtime %q", cred.Network, cfg.Network)
@@ -778,11 +843,11 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	if cred.RPID != cfg.RPID {
 		return fmt.Errorf("stored rp id %q incompatible with runtime %q", cred.RPID, cfg.RPID)
 	}
-	if cred.RecipientDustSats != fixture.DustSats ||
-		cred.TxRecipientCapSats != fixture.TxRecipientCapSats ||
-		cred.PeriodAllowanceSats != fixture.PeriodAllowanceSats ||
-		cred.AbsoluteFeeCapSats != fixture.AbsoluteFeeCeiling ||
-		cred.FeerateCapSatPerV != fixture.FeerateCeilingSatPerV {
+	if cred.RecipientDustSats != program.DustSats ||
+		cred.TxRecipientCapSats != program.TxRecipientCapSats ||
+		cred.PeriodAllowanceSats != program.PeriodAllowanceSats ||
+		cred.AbsoluteFeeCapSats != program.AbsoluteFeeCeiling ||
+		cred.FeerateCapSatPerV != program.FeerateCeilingSatPerV {
 		return fmt.Errorf("stored economic policy incompatible with runtime")
 	}
 	wantOrigin, wantVersion := s.arkadeIdentity()
@@ -804,7 +869,7 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	// equal after a reviewed key/version rotation: an existing descriptor stays
 	// live only when its exact MAC-authenticated key is still advertised as an
 	// active deprecated signer.
-	if cred.VaultID == fixture.VaultID {
+	if cred.VaultID == program.LeftoverVaultID {
 		if s.ExternalOwnerWallet != nil && !sameCompressed(s.ExternalOwnerWallet, cred.ExternalOwnerWallet) {
 			return fmt.Errorf("runtime ExternalOwnerWallet does not match enrolled vault")
 		}
@@ -890,7 +955,7 @@ func (s *Service) parseOnboardingKey(name, encoded string, configured, persisted
 }
 
 func knownFixtureXOnly(xonly []byte) bool {
-	for _, encoded := range []string{fixture.ExternalOwnerWalletPubHex, fixture.RecoveryKeyPubHex} {
+	for _, encoded := range []string{program.UnsafeGenerator2G, program.UnsafeGeneratorG} {
 		raw, err := hex.DecodeString(encoded)
 		if err != nil {
 			continue
@@ -955,7 +1020,7 @@ type Status struct {
 }
 
 func (s *Service) publishEnrollment(phoneRoutine *btcec.PublicKey, op, sv *vault.Built) {
-	s.publishEnrollmentAt(fixture.VaultID, nil, phoneRoutine, op, sv)
+	s.publishEnrollmentAt(program.LeftoverVaultID, nil, phoneRoutine, op, sv)
 }
 
 func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phoneRoutine *btcec.PublicKey, op, sv *vault.Built) {
@@ -989,7 +1054,7 @@ func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phoneRoutin
 	}
 	s.published.Store(next)
 	// Keep exported legacy/test fields stable after their first publication.
-	if vaultID == fixture.VaultID {
+	if vaultID == program.LeftoverVaultID {
 		if s.PhoneRoutineBIP340 == nil {
 			s.PhoneRoutineBIP340 = phoneRoutine
 		}
@@ -1003,7 +1068,7 @@ func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phoneRoutin
 }
 
 func (s *Service) enrolled() enrolledSnapshot {
-	return s.snapshot(fixture.VaultID)
+	return s.snapshot(program.LeftoverVaultID)
 }
 
 func (s *Service) snapshot(vaultID string) enrolledSnapshot {
@@ -1024,7 +1089,7 @@ func periodAllowanceSats(rec *policy.VaultRecord, cred *policy.Credential) int64
 	if cred != nil && cred.PeriodAllowanceSats > 0 {
 		return cred.PeriodAllowanceSats
 	}
-	return fixture.PeriodAllowanceSats
+	return program.PeriodAllowanceSats
 }
 
 func (s *Service) routeVaultID(vaultID string) (string, error) {
@@ -1033,9 +1098,9 @@ func (s *Service) routeVaultID(vaultID string) (string, error) {
 		return id, nil
 	}
 	if s != nil && s.MultiTenantEnrollment {
-		return "", fmt.Errorf("vault id required")
+		return "", apperr.ErrVaultIDRequired
 	}
-	return fixture.VaultID, nil
+	return program.LeftoverVaultID, nil
 }
 
 func (s *Service) resolveSpendVault(vaultID string) (string, enrolledSnapshot, error) {
@@ -1053,7 +1118,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
 	if s.Ledger == nil || !s.Ledger.MultiTenantReady() {
-		if id != fixture.VaultID {
+		if id != program.LeftoverVaultID {
 			return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 		}
 		return id, snap, nil, nil
@@ -1067,14 +1132,20 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	if err != nil {
 		return "", enrolledSnapshot{}, nil, err
 	}
-	if rec == nil && id != fixture.VaultID {
+	if rec == nil && id != program.LeftoverVaultID {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
 	return id, snap, rec, nil
 }
 
 func (s *Service) vaultCosignerSigner(rec *policy.VaultRecord) (Signer, error) {
-	if rec == nil || rec.CosignerMode == "" || rec.CosignerMode == policy.CosignerModeLegacyDirectV0 {
+	if rec != nil && rec.CosignerMode == policy.CosignerModeLegacyDirectV0 {
+		return nil, apperr.ErrLegacyMasterSign
+	}
+	if rec == nil || rec.CosignerMode == "" {
+		if isNilInterface(s.VaultSigner) {
+			return nil, apperr.ErrLegacyMasterSign
+		}
 		return s.VaultSigner, nil
 	}
 	master, err := s.vaultCosignerMaster()
@@ -1106,7 +1177,7 @@ func (s *Service) rejectCrossVaultCredential(vaultID string, credID []byte) erro
 // Status is the first-vault snapshot used by in-process tests. HTTP never
 // calls this for an unauthenticated dump; see PublicStatus and StatusFor.
 func (s *Service) Status(ctx context.Context) (Status, error) {
-	return s.statusFor(ctx, fixture.VaultID)
+	return s.statusFor(ctx, program.LeftoverVaultID)
 }
 
 // StatusFor returns one tenant the caller already named. An empty id is
@@ -1130,7 +1201,7 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 		ClientOrigin:         cfg.ClientOrigin,
 		RPID:                 cfg.RPID,
 		TemplateVersion:      publicEnrollTemplate(s),
-		PolicyVersion:        fixture.PolicyVersion,
+		PolicyVersion:        program.PolicyVersion,
 		OperationalCSVBlocks: cfg.OperationalCSVBlocks,
 		SavingsCSVBlocks:     cfg.SavingsCSVBlocks,
 	}
@@ -1180,7 +1251,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if err != nil {
 		return Status{}, err
 	}
-	if cred == nil && vaultID != fixture.VaultID {
+	if cred == nil && vaultID != program.LeftoverVaultID {
 		return Status{}, fmt.Errorf("not enrolled")
 	}
 	spent, err := s.Ledger.SpentInPeriod(ctx, vaultID, s.Ledger.PeriodStart())
@@ -1188,10 +1259,10 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		return Status{}, err
 	}
 	allowance := periodAllowanceSats(nil, cred)
-	txCap := fixture.TxRecipientCapSats
-	feeCap := fixture.AbsoluteFeeCeiling
-	feerate := fixture.FeerateCeilingSatPerV
-	policyVersion := fixture.PolicyVersion
+	txCap := program.TxRecipientCapSats
+	feeCap := program.AbsoluteFeeCeiling
+	feerate := program.FeerateCeilingSatPerV
+	policyVersion := program.PolicyVersion
 	if cred != nil {
 		if cred.TxRecipientCapSats > 0 {
 			txCap = cred.TxRecipientCapSats
@@ -1719,7 +1790,7 @@ func (s *Service) sealCredentialEnvelope(envelope *policy.CredentialEnvelope, cr
 }
 
 func (s *Service) loadVerifiedCredentialEnvelope(credentialID []byte) (*policy.CredentialEnvelope, error) {
-	return s.loadVerifiedEnvelopeFor(fixture.VaultID, credentialID)
+	return s.loadVerifiedEnvelopeFor(program.LeftoverVaultID, credentialID)
 }
 
 func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (*policy.CredentialEnvelope, error) {
@@ -1738,7 +1809,7 @@ func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (
 			return nil, err
 		}
 		if envelope != nil {
-			if vaultID == fixture.VaultID {
+			if vaultID == program.LeftoverVaultID {
 				if err := policy.VerifyCredentialEnvelope(envelope, credentialID, key); err != nil {
 					return nil, fmt.Errorf("authoritative credential envelope integrity verification failed: %w; restore a verified backup or use a reviewed migration", err)
 				}
@@ -1747,11 +1818,11 @@ func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (
 			}
 			return envelope, nil
 		}
-		if vaultID != fixture.VaultID {
+		if vaultID != program.LeftoverVaultID {
 			return nil, nil
 		}
 	}
-	if vaultID != fixture.VaultID {
+	if vaultID != program.LeftoverVaultID {
 		return nil, nil
 	}
 	envelope, err := s.Ledger.GetCredentialEnvelope()
@@ -1765,7 +1836,7 @@ func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (
 }
 
 func (s *Service) loadVerifiedCredential() (*policy.Credential, error) {
-	return s.loadVerifiedCredentialFor(fixture.VaultID)
+	return s.loadVerifiedCredentialFor(program.LeftoverVaultID)
 }
 
 func (s *Service) loadVerifiedCredentialFor(vaultID string) (*policy.Credential, error) {
@@ -1778,7 +1849,7 @@ func (s *Service) loadVerifiedCredentialFor(vaultID string) (*policy.Credential,
 	if err != nil {
 		return nil, err
 	}
-	if vaultID == fixture.VaultID {
+	if vaultID == program.LeftoverVaultID {
 		cred, err := s.Ledger.GetCredential()
 		if err != nil || cred == nil {
 			return cred, err

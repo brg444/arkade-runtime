@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/provider"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -66,16 +66,7 @@ func (r *Runtime) Close() error {
 		return nil
 	}
 	if r.service != nil {
-		zero(r.service.CredentialIntegrityKey)
-		r.service.CredentialIntegrityKey = nil
-		zero(r.service.EnrollmentTokenHash)
-		r.service.EnrollmentTokenHash = nil
-		if ls, ok := r.service.VaultSigner.(provider.LocalSigner); ok && ls.Priv != nil {
-			raw := ls.Priv.Serialize()
-			zero(raw)
-			ls.Priv.Key = btcec.ModNScalar{}
-		}
-		r.service.VaultSigner = nil
+		r.service.WipeSecrets()
 	}
 	if r.ledger == nil {
 		return nil
@@ -100,6 +91,10 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 	if cfg.Deployment.Network != deployment.NetworkMutinynet {
 		return nil, fmt.Errorf("protected authorizer is mutinynet-only")
 	}
+	if cfg.OpenEnrollment {
+		return nil, fmt.Errorf("mutinynet enroll is invite-only")
+	}
+	cfg.MultiTenantEnrollment = true
 	if !filepath.IsAbs(cfg.DatabasePath) || cfg.DatabasePath == "/" || strings.Contains(strings.ToLower(cfg.DatabasePath), "mode=memory") {
 		return nil, fmt.Errorf("authoritative database must be an absolute on-disk file path")
 	}
@@ -285,21 +280,21 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	svc := &provider.Service{
-		Ledger:                 ledger,
-		Deployment:             cfg.Deployment,
-		CredentialIntegrityKey: credentialIntegrityKey,
-		ExternalOwnerWallet:    externalOwner,
-		VaultCosignerPub:       vaultCosignerKey.PubKey(),
-		ArkadeCosignerPub:      arkadeIdentity.BasePub,
-		ArkadeCosignerOrigin:   arkadeIdentity.Origin,
-		ArkadeCosignerVersion:  arkadeIdentity.Version,
-		VaultSigner:            provider.LocalSigner{Priv: vaultCosignerKey},
-		ArkadeCosignerSigner:   arkadeSigner,
-		EnrollmentTokenHash:    enrollmentTokenHash,
-		OpenEnrollment:         cfg.OpenEnrollment,
-		MultiTenantEnrollment:  cfg.MultiTenantEnrollment,
-	}
+	svc := provider.New(provider.Deps{
+		Ledger:                ledger,
+		Deployment:            cfg.Deployment,
+		IntegrityKey:          credentialIntegrityKey,
+		MasterIKM:             vaultCosignerKey,
+		ExternalOwner:         externalOwner,
+		VaultCosignerPub:      vaultCosignerKey.PubKey(),
+		ArkadeCosignerPub:     arkadeIdentity.BasePub,
+		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
+		ArkadeCosignerVersion: arkadeIdentity.Version,
+		ArkadeSigner:          arkadeSigner,
+		EnrollmentTokenHash:   enrollmentTokenHash,
+		OpenEnrollment:        cfg.OpenEnrollment,
+		MultiTenantEnrollment: cfg.MultiTenantEnrollment,
+	})
 	if persisted == nil {
 		window := cfg.EnrollmentWindow
 		if window == 0 {
@@ -416,8 +411,8 @@ func parseDeploymentPub(role, encoded string) (*btcec.PublicKey, error) {
 
 func knownPublicFixtureRole(pub *btcec.PublicKey) (string, bool) {
 	for role, encoded := range map[string]string{
-		"RecoveryKey":         fixture.RecoveryKeyPubHex,
-		"ExternalOwnerWallet": fixture.ExternalOwnerWalletPubHex,
+		"RecoveryKey":         program.UnsafeGeneratorG,
+		"ExternalOwnerWallet": program.UnsafeGenerator2G,
 	} {
 		fixturePub, err := parseCanonicalCompressedPub(role+" fixture", encoded)
 		if err != nil {

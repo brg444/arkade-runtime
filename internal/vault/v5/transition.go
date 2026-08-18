@@ -7,7 +7,7 @@ import (
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
 	"github.com/arkade-os/emulator/pkg/arkade"
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
@@ -106,7 +106,7 @@ func assembleTransitionScript(dest, prefix, phone []byte, witnessBytes int64) ([
 		AddOp(txscript.OP_EQUALVERIFY).
 		AddInt64(0).
 		AddOp(arkade.OP_INSPECTOUTPUTVALUE).
-		AddInt64(fixture.DustSats).
+		AddInt64(program.DustSats).
 		AddOp(txscript.OP_GREATERTHANOREQUAL).
 		AddOp(txscript.OP_VERIFY).
 		AddInt64(P2AOutputIndex).
@@ -148,7 +148,7 @@ func assembleTransitionScript(dest, prefix, phone []byte, witnessBytes int64) ([
 		AddOp(txscript.OP_GREATERTHANOREQUAL).
 		AddOp(txscript.OP_VERIFY).
 		AddOp(txscript.OP_DUP).
-		AddInt64(fixture.AbsoluteFeeCeiling).
+		AddInt64(program.AbsoluteFeeCeiling).
 		AddOp(txscript.OP_LESSTHANOREQUAL).
 		AddOp(txscript.OP_VERIFY).
 		AddOp(txscript.OP_DUP).
@@ -159,7 +159,7 @@ func assembleTransitionScript(dest, prefix, phone []byte, witnessBytes int64) ([
 		AddOp(txscript.OP_ADD).
 		AddInt64(4).
 		AddOp(txscript.OP_DIV).
-		AddInt64(fixture.FeerateCeilingSatPerV).
+		AddInt64(program.FeerateCeilingSatPerV).
 		AddOp(txscript.OP_MUL).
 		AddOp(txscript.OP_LESSTHANOREQUAL).
 		AddOp(txscript.OP_VERIFY).

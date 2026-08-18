@@ -186,24 +186,7 @@ func extractVerifiedSignerSig(submitted, response *psbt.Packet, expectedXOnly []
 }
 
 func verifySignerSig(submitted *psbt.Packet, found *psbt.TaprootScriptSpendSig, expectedXOnly []byte, leaf txscript.TapLeaf) error {
-	prev := submitted.Inputs[0].WitnessUtxo
-	fetcher := vault.NewPrevFetcher(submitted.UnsignedTx.TxIn[0].PreviousOutPoint, prev)
-	digest, err := txscript.CalcTapscriptSignaturehash(
-		txscript.NewTxSigHashes(submitted.UnsignedTx, fetcher),
-		txscript.SigHashDefault, submitted.UnsignedTx, 0, fetcher, leaf,
-	)
-	if err != nil {
-		return err
-	}
-	sig, err := schnorr.ParseSignature(found.Signature)
-	if err != nil {
-		return err
-	}
-	pub, err := schnorr.ParsePubKey(expectedXOnly)
-	if err != nil {
-		return err
-	}
-	if !sig.Verify(digest, pub) {
+	if err := vault.VerifySchnorrOnSubmittedTx(submitted, found.Signature, expectedXOnly, leaf.Script); err != nil {
 		return fmt.Errorf("signer signature invalid")
 	}
 	return nil

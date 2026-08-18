@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const (
@@ -61,9 +61,9 @@ func (c Config) BitcoinCheckpoint() (int64, string, error) {
 // Default is the local regtest demonstration identity.
 func Default() Config {
 	return Config{
-		ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: NetworkRegtest,
-		OperationalCSVBlocks: fixture.OperationalCSVBlocks,
-		SavingsCSVBlocks:     fixture.SavingsCSVBlocks,
+		ClientOrigin: program.RegtestOrigin, RPID: program.RegtestRPID, Network: NetworkRegtest,
+		OperationalCSVBlocks: program.OperationalCSVBlocks,
+		SavingsCSVBlocks:     program.SavingsCSVBlocks,
 	}
 }
 
