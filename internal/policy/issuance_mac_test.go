@@ -12,12 +12,12 @@ func TestIssuanceMACIsPerVaultAndCoversTimestamps(t *testing.T) {
 	led := openTestLedger(t, nil)
 	ctx := context.Background()
 	digest := digest(0xaa)
-	if _, _, err := led.Issue(ctx, "vault-a", digest, 10, 1, 100, func(context.Context) (string, error) {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest, 10, 1, 100, func(context.Context) (string, error) {
 		return "a", nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := led.Issue(ctx, "vault-b", digest, 10, 1, 100, func(context.Context) (string, error) {
+	if _, _, err := led.IssueForTest(ctx, "vault-b", digest, 10, 1, 100, func(context.Context) (string, error) {
 		return "b", nil
 	}); err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestCompletedRejectsTamperedSignedReceipt(t *testing.T) {
 	led := openTestLedger(t, nil)
 	ctx := context.Background()
 	d := digest(0xcc)
-	if _, _, err := led.Issue(ctx, "vault-a", d, 10, 1, 100, func(context.Context) (string, error) {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", d, 10, 1, 100, func(context.Context) (string, error) {
 		return "signed-receipt", nil
 	}); err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestRollingWindowIgnoresRowsOlderThan24h(t *testing.T) {
 	clock := newManualClock(time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC))
 	led := openTestLedger(t, clock.Now)
 	ctx := context.Background()
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x01), 90, 3, 100, func(context.Context) (string, error) {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x01), 90, 3, 100, func(context.Context) (string, error) {
 		return "old", nil
 	}); err != nil {
 		t.Fatal(err)

@@ -813,7 +813,7 @@ const persistTimeout = 5 * time.Second
 
 // Issue is the leftover one-stage helper for tests. Production HTTP uses
 // IssueSequential only.
-func (l *Ledger) Issue(
+func (l *Ledger) IssueForTest(
 	ctx context.Context,
 	vaultID string,
 	digest []byte,

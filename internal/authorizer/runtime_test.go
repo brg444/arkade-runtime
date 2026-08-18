@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/provider"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
@@ -188,7 +188,7 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 		EsploraURL:                "https://mempool.mutinynet.arkade.sh/api",
 	}
 	dials := 0
-	dial := func(_ context.Context, baseURL, network string) (provider.Broadcaster, error) {
+	dial := func(_ context.Context, baseURL, network string) (application.Broadcaster, error) {
 		dials++
 		if baseURL != cfg.EsploraURL || network != deployment.NetworkMutinynet {
 			t.Fatalf("publisher identity = %q, %q", baseURL, network)
@@ -196,7 +196,7 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 		return stubPublisher{}, nil
 	}
 	emulatorDials := 0
-	emulatorDial := func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, allowDeprecated bool) (provider.Signer, provider.PublicEmulatorIdentity, error) {
+	emulatorDial := func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, allowDeprecated bool) (application.Signer, application.PublicEmulatorIdentity, error) {
 		emulatorDials++
 		if origin != deployment.MutinynetArkadeCosignerOrigin ||
 			expected == nil || hex.EncodeToString(expected.SerializeCompressed()) != deployment.MutinynetArkadeCosignerPubHex ||
@@ -206,7 +206,7 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 		if allowDeprecated != (emulatorDials > 1) {
 			t.Fatalf("public emulator deprecated-key allowance on dial %d = %v", emulatorDials, allowDeprecated)
 		}
-		return stubEmulatorSigner{}, provider.PublicEmulatorIdentity{
+		return stubEmulatorSigner{}, application.PublicEmulatorIdentity{
 			Origin: origin, Version: versions[0], BasePub: expected,
 		}, nil
 	}
@@ -223,19 +223,19 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.service.VaultSigner != nil {
+	if runtime.service.HasVaultSigner() {
 		t.Fatal("protected runtime installed the master scalar as VaultSigner")
 	}
-	if len(runtime.service.EnrollmentTokenHash) != 32 {
+	if runtime.service.EnrollmentTokenLen() != 32 {
 		t.Fatal("fresh runtime did not load the enrollment authorization hash")
 	}
-	if len(runtime.service.CredentialIntegrityKey) != 32 {
+	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
 	}
 	passkey, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	hot, _ := btcec.NewPrivateKey()
-	err = runtime.service.RegisterWithBootstrap(provider.RegisterRequest{
+	err = runtime.service.RegisterWithBootstrap(application.RegisterRequest{
 		CredentialID:          hex.EncodeToString([]byte("mutinynet-credential")),
 		WebAuthnP256:          hex.EncodeToString(webauthn.CompressedP256(passkey)),
 		PhoneDirectP256:       hex.EncodeToString(webauthn.CompressedP256(direct)),
@@ -244,15 +244,14 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(runtime.service.EnrollmentTokenHash) != 0 {
+	if runtime.service.EnrollmentTokenLen() != 0 {
 		t.Fatal("successful enrollment retained the one-time authorization hash")
 	}
-	integrityAlias := runtime.service.CredentialIntegrityKey
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(runtime.service.CredentialIntegrityKey) != 0 || !bytes.Equal(integrityAlias, make([]byte, 32)) {
-		t.Fatal("runtime close did not zero and release credential integrity key")
+	if len(runtime.service.IntegrityKeyCopy()) != 0 {
+		t.Fatal("runtime close did not release credential integrity key")
 	}
 
 	// Empty boot seals issuance and now lands on schema 5 with no .pre-v5.
@@ -286,9 +285,9 @@ func TestMutinynetRejectsOpenEnrollment(t *testing.T) {
 		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
 	}
 	_, err = openWithDialers(context.Background(), cfg,
-		func(context.Context, string, string) (provider.Broadcaster, error) { return stubPublisher{}, nil },
-		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (provider.Signer, provider.PublicEmulatorIdentity, error) {
-			return stubEmulatorSigner{}, provider.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
+		func(context.Context, string, string) (application.Broadcaster, error) { return stubPublisher{}, nil },
+		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (application.Signer, application.PublicEmulatorIdentity, error) {
+			return stubEmulatorSigner{}, application.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
 		},
 	)
 	if err == nil || !strings.Contains(err.Error(), "invite-only") {

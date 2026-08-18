@@ -20,7 +20,7 @@ import (
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/arkade-os/emulator/pkg/arkade"
 	"github.com/brg444/arkade-vault-server/fixture"
-	"github.com/brg444/arkade-vault-server/internal/provider"
+	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -175,10 +175,10 @@ func buildFinalizedCollaborative(t *testing.T, prev *wire.MsgTx) (*wire.MsgTx, d
 		t.Fatal(err)
 	}
 	vault.AddPartialSig(spend.Packet, hot.PubKey(), op.Leaves.Routine.Hash, hotSig)
-	if _, err := (provider.LocalSigner{Priv: providerKey}).Sign(context.Background(), spend.Packet); err != nil {
+	if _, err := (application.LocalSigner{Priv: providerKey}).Sign(context.Background(), spend.Packet); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (provider.LocalSigner{Priv: arkadeKey}).Sign(context.Background(), spend.Packet); err != nil {
+	if _, err := (application.LocalSigner{Priv: arkadeKey}).Sign(context.Background(), spend.Packet); err != nil {
 		t.Fatal(err)
 	}
 	if err := vault.FinalizeRoutine(spend.Packet, op); err != nil {
@@ -406,7 +406,7 @@ func broadcastAgainstRegtest(t *testing.T, measured onchainSizes) {
 		t.Fatal(err)
 	}
 	vault.AddPartialSig(spend.Packet, hot.PubKey(), op.Leaves.Routine.Hash, hotSig)
-	if _, err := (provider.LocalSigner{Priv: providerKey}).Sign(context.Background(), spend.Packet); err != nil {
+	if _, err := (application.LocalSigner{Priv: providerKey}).Sign(context.Background(), spend.Packet); err != nil {
 		t.Fatal(err)
 	}
 	if err := vault.FinalizeRoutine(spend.Packet, op); err != nil {

@@ -25,7 +25,7 @@ func TestDailyAllowanceCountsRecipientAndFee(t *testing.T) {
 	)
 	var signerCalls atomic.Int32
 	for i := byte(0); i < 10; i++ {
-		if _, _, err := led.Issue(
+		if _, _, err := led.IssueForTest(
 			ctx, "vault-a", digest(0xa0+i), dust, fee, allowance,
 			func(context.Context) (string, error) {
 				signerCalls.Add(1)
@@ -36,7 +36,7 @@ func TestDailyAllowanceCountsRecipientAndFee(t *testing.T) {
 		}
 	}
 
-	if _, _, err := led.Issue(
+	if _, _, err := led.IssueForTest(
 		ctx, "vault-a", digest(0xb0), dust, fee, allowance,
 		func(context.Context) (string, error) {
 			signerCalls.Add(1)
@@ -69,7 +69,7 @@ func TestAllowanceRejectsRecipientPlusFeeOverflow(t *testing.T) {
 	ctx := context.Background()
 	var signerCalls atomic.Int32
 
-	_, _, err := led.Issue(
+	_, _, err := led.IssueForTest(
 		ctx, "vault-a", digest(0xba), math.MaxInt64, 1, math.MaxInt64,
 		func(context.Context) (string, error) {
 			signerCalls.Add(1)

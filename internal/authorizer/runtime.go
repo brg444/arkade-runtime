@@ -19,10 +19,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
+	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/program"
-	"github.com/brg444/arkade-vault-server/internal/provider"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -47,7 +48,7 @@ type Config struct {
 // Runtime owns the Service and its SQLite connection for one process lifetime.
 type Runtime struct {
 	handler http.Handler
-	service *provider.Service
+	service *application.Service
 	ledger  *policy.Ledger
 }
 
@@ -74,14 +75,14 @@ func (r *Runtime) Close() error {
 	return r.ledger.Close()
 }
 
-type publisherDialer func(context.Context, string, string) (provider.Broadcaster, error)
-type arkadeSignerDialer func(context.Context, string, *btcec.PublicKey, []string, bool) (provider.Signer, provider.PublicEmulatorIdentity, error)
+type publisherDialer func(context.Context, string, string) (application.Broadcaster, error)
+type arkadeSignerDialer func(context.Context, string, *btcec.PublicKey, []string, bool) (application.Signer, application.PublicEmulatorIdentity, error)
 
 // Open constructs the Mutinynet authorizer and checkpoint-pins its publisher.
 func Open(ctx context.Context, cfg Config) (*Runtime, error) {
-	return openWithDialers(ctx, cfg, func(ctx context.Context, baseURL, network string) (provider.Broadcaster, error) {
-		return provider.DialEsplora(ctx, baseURL, network)
-	}, provider.DialPublicEmulator)
+	return openWithDialers(ctx, cfg, func(ctx context.Context, baseURL, network string) (application.Broadcaster, error) {
+		return application.DialEsplora(ctx, baseURL, network)
+	}, application.DialPublicEmulator)
 }
 
 func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dialArkade arkadeSignerDialer) (*Runtime, error) {
@@ -259,7 +260,7 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 				zero(credentialIntegrityKey)
 				return nil, err
 			}
-			enrollmentTokenHash, err = provider.HashEnrollmentToken(string(token))
+			enrollmentTokenHash, err = application.HashEnrollmentToken(string(token))
 			zero(token)
 			if err != nil {
 				zero(credentialIntegrityKey)
@@ -280,7 +281,7 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	svc := provider.New(provider.Deps{
+	svc := application.New(application.Deps{
 		Ledger:                ledger,
 		Deployment:            cfg.Deployment,
 		IntegrityKey:          credentialIntegrityKey,
@@ -301,16 +302,14 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 			window = 30 * time.Minute
 		}
 		if window < time.Minute || window > 24*time.Hour {
-			zero(svc.EnrollmentTokenHash)
-			zero(svc.CredentialIntegrityKey)
+			svc.WipeSecrets()
 			return nil, fmt.Errorf("enrollment window must be between 1 minute and 24 hours")
 		}
-		svc.EnrollmentDeadline = time.Now().Add(window)
+		svc.ArmEnrollmentDeadline(time.Now().Add(window))
 	}
 	defer func() {
 		if closeOnError {
-			zero(svc.EnrollmentTokenHash)
-			zero(svc.CredentialIntegrityKey)
+			svc.WipeSecrets()
 		}
 	}()
 	// Authenticate and rebuild persisted state before contacting the external
@@ -327,10 +326,10 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 	if publisher == nil {
 		return nil, fmt.Errorf("publisher not configured")
 	}
-	svc.Broadcaster = publisher
+	svc.AttachBroadcaster(publisher)
 
 	closeOnError = false
-	return &Runtime{handler: provider.AuthorizerHandler(svc), service: svc, ledger: ledger}, nil
+	return &Runtime{handler: httpapi.Authorizer(svc), service: svc, ledger: ledger}, nil
 }
 
 func parseCanonicalCompressedPub(role, encoded string) (*btcec.PublicKey, error) {

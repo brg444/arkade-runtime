@@ -31,7 +31,7 @@ func TestReservationIsDurableBeforeExternalSignerCanReleaseSignature(t *testing.
 	t.Cleanup(func() { _ = issuer.Close() })
 
 	var visibleBeforeSignature int64 = -1
-	signed, replay, err := issuer.Issue(
+	signed, replay, err := issuer.IssueForTest(
 		context.Background(), "vault-a", digest(0x9a), 75, 2, 100,
 		func(context.Context) (string, error) {
 			observer, err := OpenLedger(dbPath, clock)
@@ -80,7 +80,7 @@ func TestAmbiguousSignerTimeoutRetainsDurableReservation(t *testing.T) {
 
 	d := digest(0x9b)
 	externalSignerRetainedUsableSignature := false
-	_, replay, err := issuer.Issue(
+	_, replay, err := issuer.IssueForTest(
 		context.Background(), "vault-a", d, 75, 2, 100,
 		func(context.Context) (string, error) {
 			externalSignerRetainedUsableSignature = true
@@ -105,7 +105,7 @@ func TestAmbiguousSignerTimeoutRetainsDurableReservation(t *testing.T) {
 	}
 
 	var retrySignerCalled bool
-	if _, _, retryErr := issuer.Issue(
+	if _, _, retryErr := issuer.IssueForTest(
 		context.Background(), "vault-a", d, 75, 2, 100,
 		func(context.Context) (string, error) {
 			retrySignerCalled = true

@@ -41,7 +41,7 @@ func TestReviewerIndependentHandlesCannotOversubscribeRecipientPlusFee(t *testin
 		go func(i int, ledger *Ledger) {
 			defer wg.Done()
 			<-start
-			_, _, err := ledger.Issue(
+			_, _, err := ledger.IssueForTest(
 				context.Background(), "vault-a", digest(byte(0xc0+i)),
 				45, 6, 100,
 				func(context.Context) (string, error) {
@@ -99,7 +99,7 @@ func TestReviewerAmbiguousFullOutflowSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := digest(0xd0)
-	if _, _, err := ledger.Issue(
+	if _, _, err := ledger.IssueForTest(
 		context.Background(), "vault-a", d, 75, 2, 100,
 		func(context.Context) (string, error) {
 			return "", context.DeadlineExceeded
@@ -132,10 +132,10 @@ func TestReviewerAmbiguousFullOutflowSurvivesRestart(t *testing.T) {
 		signerCalls.Add(1)
 		return "must-not-sign", nil
 	}
-	if _, _, err := ledger.Issue(context.Background(), "vault-a", d, 75, 2, 100, sign); err == nil {
+	if _, _, err := ledger.IssueForTest(context.Background(), "vault-a", d, 75, 2, 100, sign); err == nil {
 		t.Fatal("same digest was re-signed after restart")
 	}
-	if _, _, err := ledger.Issue(context.Background(), "vault-a", digest(0xd1), 24, 0, 100, sign); err == nil {
+	if _, _, err := ledger.IssueForTest(context.Background(), "vault-a", digest(0xd1), 24, 0, 100, sign); err == nil {
 		t.Fatal("different digest exceeded allowance after ambiguous outflow")
 	}
 	if got := signerCalls.Load(); got != 0 {

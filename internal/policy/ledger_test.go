@@ -385,7 +385,7 @@ func TestUTCMidnightDoesNotRefillRollingAllowance(t *testing.T) {
 	if got, want := led.PeriodStart(), "2026-08-15"; got != want {
 		t.Fatalf("period label before UTC midnight = %q, want %q", got, want)
 	}
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x01), 90, 3, 100,
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x01), 90, 3, 100,
 		func(context.Context) (string, error) { return "signed-before-midnight", nil }); err != nil {
 		t.Fatalf("pre-midnight issue: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestUTCMidnightDoesNotRefillRollingAllowance(t *testing.T) {
 	if got, want := led.PeriodStart(), "2026-08-16"; got != want {
 		t.Fatalf("period label after UTC midnight = %q, want %q", got, want)
 	}
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x02), 90, 3, 100,
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x02), 90, 3, 100,
 		func(context.Context) (string, error) { return "must-not-refill", nil }); err == nil {
 		t.Fatal("UTC midnight refilled the rolling 24h allowance")
 	} else if !strings.Contains(err.Error(), "allowance") {
@@ -409,7 +409,7 @@ func TestUTCMidnightDoesNotRefillRollingAllowance(t *testing.T) {
 	}
 
 	clock.Set(time.Date(2026, 8, 17, 8, 0, 0, 0, utcPlusEight))
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x03), 90, 3, 100,
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x03), 90, 3, 100,
 		func(context.Context) (string, error) { return "signed-after-window", nil }); err != nil {
 		t.Fatalf("issue after rolling 24h: %v", err)
 	}
@@ -427,13 +427,13 @@ func TestSequentialIssuesRespectExactAllowance(t *testing.T) {
 		}
 	}
 
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x10), 40, 2, 100, sign("signed-40")); err != nil {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x10), 40, 2, 100, sign("signed-40")); err != nil {
 		t.Fatalf("first issue: %v", err)
 	}
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x11), 51, 7, 100, sign("signed-58")); err != nil {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x11), 51, 7, 100, sign("signed-58")); err != nil {
 		t.Fatalf("issue at exact allowance: %v", err)
 	}
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x12), 1, 0, 100, sign("must-not-sign")); err == nil {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x12), 1, 0, 100, sign("must-not-sign")); err == nil {
 		t.Fatal("issue above allowance succeeded")
 	} else if !strings.Contains(err.Error(), "allowance") {
 		t.Fatalf("issue above allowance returned non-policy error: %v", err)
@@ -464,7 +464,7 @@ func TestConcurrentIssuesCannotCollectivelyExceedAllowance(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, _, err := led.Issue(
+			_, _, err := led.IssueForTest(
 				context.Background(),
 				"vault-a",
 				digest(byte(0x20+i)),
@@ -539,7 +539,7 @@ func TestConcurrentLedgerHandlesCannotInterleaveBudgetCheckAndReservation(t *tes
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, _, err := ledgers[i%len(ledgers)].Issue(
+			_, _, err := ledgers[i%len(ledgers)].IssueForTest(
 				context.Background(),
 				"vault-a",
 				digest(byte(0x30+i)),
@@ -599,7 +599,7 @@ func TestPostSubmitSignerFailureRemainsReserved(t *testing.T) {
 			ctx := context.Background()
 			d := digest(byte(0x40 + i))
 
-			_, replay, err := led.Issue(ctx, "vault-a", d, 75, 2, 100,
+			_, replay, err := led.IssueForTest(ctx, "vault-a", d, 75, 2, 100,
 				func(context.Context) (string, error) { return "", test.signErr })
 			if !errors.Is(err, test.signErr) {
 				t.Fatalf("issue error = %v, want %v", err, test.signErr)
@@ -621,7 +621,7 @@ func TestPostSubmitSignerFailureRemainsReserved(t *testing.T) {
 			}
 
 			var retryCalls atomic.Int32
-			if _, _, retryErr := led.Issue(ctx, "vault-a", d, 75, 2, 100,
+			if _, _, retryErr := led.IssueForTest(ctx, "vault-a", d, 75, 2, 100,
 				func(context.Context) (string, error) {
 					retryCalls.Add(1)
 					return "signed-after-retry", nil
@@ -646,7 +646,7 @@ func TestCanceledClientAfterUsableSignatureCompletesIndependently(t *testing.T) 
 	// the request context disappears before SQLite can record completion. The
 	// external signer could already have retained or broadcast that transaction.
 	escapedSignedPSBT := ""
-	_, replay, err := led.Issue(ctx, "vault-a", d, 75, 2, 100,
+	_, replay, err := led.IssueForTest(ctx, "vault-a", d, 75, 2, 100,
 		func(context.Context) (string, error) {
 			escapedSignedPSBT = "signed-visible-to-external-signer"
 			cancel()
@@ -668,7 +668,7 @@ func TestCanceledClientAfterUsableSignatureCompletesIndependently(t *testing.T) 
 	}
 
 	var signerCalls atomic.Int32
-	signed, replay, retryErr := led.Issue(
+	signed, replay, retryErr := led.IssueForTest(
 		context.Background(), "vault-a", d, 75, 2, 100,
 		func(context.Context) (string, error) {
 			signerCalls.Add(1)
@@ -689,7 +689,7 @@ func TestEmptySignerOutputLeavesDurableReservation(t *testing.T) {
 	ctx := context.Background()
 	d := digest(0x4f)
 
-	signed, replay, err := led.Issue(ctx, "vault-a", d, 75, 2, 100,
+	signed, replay, err := led.IssueForTest(ctx, "vault-a", d, 75, 2, 100,
 		func(context.Context) (string, error) { return "", nil })
 	if err == nil {
 		t.Fatal("empty signer output was committed")
@@ -711,7 +711,7 @@ func TestEmptySignerOutputLeavesDurableReservation(t *testing.T) {
 	}
 
 	var retryCalls atomic.Int32
-	if _, _, retryErr := led.Issue(ctx, "vault-a", d, 75, 2, 100,
+	if _, _, retryErr := led.IssueForTest(ctx, "vault-a", d, 75, 2, 100,
 		func(context.Context) (string, error) {
 			retryCalls.Add(1)
 			return "signed-after-empty-output", nil
@@ -737,7 +737,7 @@ func TestExactIdempotentRetryReturnsPersistedOutputWithoutResigning(t *testing.T
 	d := digest(0x50)
 	var signerCalls atomic.Int32
 
-	signed, replay, err := led.Issue(ctx, "vault-a", d, 40, 3, 100,
+	signed, replay, err := led.IssueForTest(ctx, "vault-a", d, 40, 3, 100,
 		func(context.Context) (string, error) {
 			signerCalls.Add(1)
 			return "persisted-signed-psbt", nil
@@ -761,7 +761,7 @@ func TestExactIdempotentRetryReturnsPersistedOutputWithoutResigning(t *testing.T
 			t.Errorf("close reopened ledger: %v", err)
 		}
 	})
-	signed, replay, err = led.Issue(ctx, "vault-a", d, 40, 3, 100,
+	signed, replay, err = led.IssueForTest(ctx, "vault-a", d, 40, 3, 100,
 		func(context.Context) (string, error) {
 			signerCalls.Add(1)
 			return "must-not-replace-output", nil
@@ -799,7 +799,7 @@ func TestSameDigestIsNamespacedByVault(t *testing.T) {
 		{vault: "vault-a", amount: 70, output: "signed-a"},
 		{vault: "vault-b", amount: 80, output: "signed-b"},
 	} {
-		signed, replay, err := led.Issue(ctx, test.vault, d, test.amount, 1, 100,
+		signed, replay, err := led.IssueForTest(ctx, test.vault, d, test.amount, 1, 100,
 			func(context.Context) (string, error) { return test.output, nil })
 		if err != nil || replay || signed != test.output {
 			t.Fatalf("issue %s: signed=%q replay=%v err=%v", test.vault, signed, replay, err)
@@ -866,12 +866,12 @@ func TestReservedIssuanceCountsAgainstAllowanceAndCannotBeReissued(t *testing.T)
 		signerCalls.Add(1)
 		return "must-not-sign", nil
 	}
-	if _, _, err := led.Issue(ctx, "vault-a", reservedDigest, 60, 1, 100, sign); err == nil {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", reservedDigest, 60, 1, 100, sign); err == nil {
 		t.Fatal("reserved digest was issued a second time")
 	} else if !strings.Contains(err.Error(), "reserved") {
 		t.Fatalf("reserved retry returned unexpected error: %v", err)
 	}
-	if _, _, err := led.Issue(ctx, "vault-a", digest(0x71), 50, 1, 100, sign); err == nil {
+	if _, _, err := led.IssueForTest(ctx, "vault-a", digest(0x71), 50, 1, 100, sign); err == nil {
 		t.Fatal("a second issuance ignored the active reservation")
 	} else if !strings.Contains(err.Error(), "allowance") {
 		t.Fatalf("allowance rejection returned unexpected error: %v", err)
@@ -1079,7 +1079,7 @@ func TestIssueRejectsInvalidLedgerInputsBeforeCallingSigner(t *testing.T) {
 			var panicked any
 			func() {
 				defer func() { panicked = recover() }()
-				_, _, issueErr = led.Issue(
+				_, _, issueErr = led.IssueForTest(
 					context.Background(), test.vaultID, test.digest,
 					test.recipient, test.fee, test.cap, sign,
 				)
@@ -1111,7 +1111,7 @@ func TestIssueRejectsInvalidLedgerInputsBeforeCallingSigner(t *testing.T) {
 func TestAllowanceAdditionCannotOverflow(t *testing.T) {
 	led := openTestLedger(t, nil)
 	ctx := context.Background()
-	if _, _, err := led.Issue(
+	if _, _, err := led.IssueForTest(
 		ctx, "overflow-vault", digest(0x91), math.MaxInt64, 0, math.MaxInt64,
 		func(context.Context) (string, error) { return "first-signed", nil },
 	); err != nil {
@@ -1119,7 +1119,7 @@ func TestAllowanceAdditionCannotOverflow(t *testing.T) {
 	}
 
 	var signerCalls atomic.Int32
-	_, _, err := led.Issue(
+	_, _, err := led.IssueForTest(
 		ctx, "overflow-vault", digest(0x92), 1, 0, math.MaxInt64,
 		func(context.Context) (string, error) {
 			signerCalls.Add(1)

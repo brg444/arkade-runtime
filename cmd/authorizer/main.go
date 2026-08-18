@@ -15,7 +15,7 @@ import (
 
 	"github.com/brg444/arkade-vault-server/internal/authorizer"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/provider"
+	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
 )
 
 func main() {
@@ -71,7 +71,7 @@ func main() {
 	}
 	defer runtime.Close()
 
-	server := provider.NewServer(*addr, runtime.Handler())
+	server := httpapi.NewServer(*addr, runtime.Handler())
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	errCh := make(chan error, 1)
