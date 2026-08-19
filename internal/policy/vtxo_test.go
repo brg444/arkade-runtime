@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"math"
 	"strings"
 	"testing"
@@ -188,6 +189,75 @@ func TestVtxoBundleDigestBindsPurposeAndLengthPrefixes(t *testing.T) {
 	}
 	if bytes.Equal(spend, alt) {
 		t.Fatal("0x00-separated scripts collided")
+	}
+}
+
+func TestVtxoBundleDigestIsPermutationInvariant(t *testing.T) {
+	low := bytes.Repeat([]byte{0x01}, 32)
+	high := bytes.Repeat([]byte{0x02}, 32)
+	a := []VtxoBundleInput{
+		{Txid: high, Vout: 2, ValueSats: 3},
+		{Txid: low, Vout: 1, ValueSats: 1},
+		{Txid: high, Vout: 0, ValueSats: 2},
+	}
+	b := []VtxoBundleInput{
+		{Txid: low, Vout: 1, ValueSats: 1},
+		{Txid: high, Vout: 0, ValueSats: 2},
+		{Txid: high, Vout: 2, ValueSats: 3},
+	}
+	dest := []byte{0x51}
+	change := []byte{0x52}
+	created := "2026-08-19T12:00:00Z"
+	left, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", dest, change, 10_000, 200, a, created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", dest, change, 10_000, 200, b, created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(left, right) {
+		t.Fatal("bundle digest depends on caller input order")
+	}
+	ordered, err := CanonicalVtxoBundleInputs(a)
+	if err != nil || len(ordered) != 3 {
+		t.Fatalf("canonical = %#v err=%v", ordered, err)
+	}
+	if !bytes.Equal(ordered[0].Txid, low) || ordered[0].Vout != 1 {
+		t.Fatalf("want low:1 first, got %+v", ordered[0])
+	}
+	if !bytes.Equal(ordered[1].Txid, high) || ordered[1].Vout != 0 {
+		t.Fatalf("want high:0 second, got %+v", ordered[1])
+	}
+	if !bytes.Equal(ordered[2].Txid, high) || ordered[2].Vout != 2 {
+		t.Fatalf("want high:2 third, got %+v", ordered[2])
+	}
+	hexInputs := []VtxoBundleInput{
+		{Txid: []byte(strings.ToUpper(hex.EncodeToString(high))), Vout: 2, ValueSats: 3},
+		{Txid: []byte(hex.EncodeToString(low)), Vout: 1, ValueSats: 1},
+		{Txid: high, Vout: 0, ValueSats: 2},
+	}
+	fromHex, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", dest, change, 10_000, 200, hexInputs, created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(left, fromHex) {
+		t.Fatal("hex and raw txids produced different digests")
+	}
+}
+
+func TestVtxoBundleDigestRejectsDuplicateOutpoints(t *testing.T) {
+	txid := bytes.Repeat([]byte{0xab}, 32)
+	inputs := []VtxoBundleInput{
+		{Txid: txid, Vout: 1, ValueSats: 1},
+		{Txid: []byte(strings.ToUpper(hex.EncodeToString(txid))), Vout: 1, ValueSats: 2},
+	}
+	_, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x51}, []byte{0x52}, 10_000, 200, inputs, "2026-08-19T12:00:00Z")
+	if err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate outpoint accepted: %v", err)
+	}
+	if _, err := CanonicalVtxoBundleInputs(inputs); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("canonical accepted duplicate: %v", err)
 	}
 }
 
