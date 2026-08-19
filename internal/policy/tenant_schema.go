@@ -11,13 +11,16 @@ const (
 	schemaVersionSessions       = 6
 	schemaVersionSessionMAC     = 7
 	schemaVersionAuthzHardening = 8
-	schemaVersionCurrent        = schemaVersionAuthzHardening
+	schemaVersionVtxoOperation  = 9
+	schemaVersionCurrent        = schemaVersionVtxoOperation
 	vaultRecordMACDomain        = "arkade-2fa-vault/vault-record/v4"
 	vaultCredentialMACDomain    = "arkade-2fa-vault/vault-credential/v1"
 	sessionMACDomain            = "arkade-2fa-vault/recovery-session/v2"
 	signCountMACDomain          = "arkade-2fa-vault/webauthn-sign-count/v1"
 	vaultMapMACDomain           = "arkade-2fa-vault/vault-map/v1"
 	monotonicMACDomain          = "arkade-2fa-vault/issuance-monotonic/v1"
+	vtxoOperationMACDomain      = "arkade-2fa-vault/vtxo-operation/v1"
+	vtxoBundleDigestTag         = "arkade-2fa-vault/vtxo-bundle/v1"
 )
 
 const createMultiTenantSchema = `
