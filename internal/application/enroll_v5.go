@@ -2,7 +2,6 @@ package application
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -362,13 +361,6 @@ func knownTemplate(template string) bool {
 
 func isStagedTemplate(template string) bool {
 	return template == v5.Template || template == v5.PriorTemplate
-}
-
-func xOnlyHexOf(pub *btcec.PublicKey) string {
-	if pub == nil {
-		return ""
-	}
-	return hex.EncodeToString(schnorr.SerializePubKey(pub))
 }
 
 func isV5Template(template string) bool {

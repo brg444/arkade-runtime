@@ -1028,39 +1028,39 @@ type PublicStatus struct {
 
 // Status is the UI snapshot.
 type Status struct {
-	Enrolled                        bool   `json:"enrolled"`
-	Network                         string `json:"network"`
-	ClientOrigin                    string `json:"clientOrigin"`
-	RPID                            string `json:"rpId"`
-	VaultID                         string `json:"vaultId"`
-	TemplateVersion                 string `json:"templateVersion"`
-	PolicyVersion                   string `json:"policyVersion"`
-	OperationalCSVBlocks            uint32 `json:"operationalCsvBlocks"`
-	SavingsCSVBlocks                uint32 `json:"savingsCsvBlocks"`
-	ExternalOwnerWalletPub          string `json:"externalOwnerWalletPub,omitempty"`
-	RecoveryKeyPub                  string `json:"recoveryKeyPub,omitempty"`
-	VaultCosignerBasePub            string `json:"vaultCosignerBasePub,omitempty"`
-	ArkadeCosignerBasePub           string `json:"arkadeCosignerBasePub,omitempty"`
-	ArkadeCosignerOrigin            string `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion           string `json:"arkadeCosignerVersion"`
-	OperationalAddr                 string `json:"operationalAddress"`
-	OperationalScript               string `json:"operationalScript,omitempty"`
-	SavingsAddr                     string `json:"savingsAddress"`
-	SavingsScript                   string `json:"savingsScript,omitempty"`
-	SavingsExcludesRoutineCosigners bool   `json:"savingsExcludesRoutineCosigners"`
-	PasskeyLoginAvailable           bool   `json:"passkeyLoginAvailable"`
-	EnrollmentMode                  string `json:"enrollmentMode"`
-	EnrollmentExpiresAt             string `json:"enrollmentExpiresAt,omitempty"`
-	PeriodAllowance                 int64  `json:"periodAllowance"`
-	PeriodSpent                     int64  `json:"periodSpent"`
-	PeriodRemaining                 int64  `json:"periodRemaining"`
-	TxCap                           int64  `json:"txCap"`
-	AbsoluteFeeCap                  int64  `json:"absoluteFeeCap"`
-	FeerateCapSatPerV               int64  `json:"feerateCapSatVb"`
-	PhoneRoutineBIP340Pub           string `json:"phoneRoutineBip340Pub,omitempty"`
-	PhoneDirectP256                 string `json:"phoneDirectP256,omitempty"`
-	TweakedVaultCosignerXOnly       string `json:"tweakedVaultCosignerXOnly,omitempty"`
-	TweakedArkadeCosignerXOnly      string `json:"tweakedArkadeCosignerXOnly,omitempty"`
+	Enrolled                        bool     `json:"enrolled"`
+	Network                         string   `json:"network"`
+	ClientOrigin                    string   `json:"clientOrigin"`
+	RPID                            string   `json:"rpId"`
+	VaultID                         string   `json:"vaultId"`
+	TemplateVersion                 string   `json:"templateVersion"`
+	PolicyVersion                   string   `json:"policyVersion"`
+	OperationalCSVBlocks            uint32   `json:"operationalCsvBlocks"`
+	SavingsCSVBlocks                uint32   `json:"savingsCsvBlocks"`
+	ExternalOwnerWalletPub          string   `json:"externalOwnerWalletPub,omitempty"`
+	RecoveryKeyPub                  string   `json:"recoveryKeyPub,omitempty"`
+	VaultCosignerBasePub            string   `json:"vaultCosignerBasePub,omitempty"`
+	ArkadeCosignerBasePub           string   `json:"arkadeCosignerBasePub,omitempty"`
+	ArkadeCosignerOrigin            string   `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion           string   `json:"arkadeCosignerVersion"`
+	OperationalAddr                 string   `json:"operationalAddress"`
+	OperationalScript               string   `json:"operationalScript,omitempty"`
+	SavingsAddr                     string   `json:"savingsAddress"`
+	SavingsScript                   string   `json:"savingsScript,omitempty"`
+	SavingsExcludesRoutineCosigners bool     `json:"savingsExcludesRoutineCosigners"`
+	PasskeyLoginAvailable           bool     `json:"passkeyLoginAvailable"`
+	EnrollmentMode                  string   `json:"enrollmentMode"`
+	EnrollmentExpiresAt             string   `json:"enrollmentExpiresAt,omitempty"`
+	PeriodAllowance                 int64    `json:"periodAllowance"`
+	PeriodSpent                     int64    `json:"periodSpent"`
+	PeriodRemaining                 int64    `json:"periodRemaining"`
+	TxCap                           int64    `json:"txCap"`
+	AbsoluteFeeCap                  int64    `json:"absoluteFeeCap"`
+	FeerateCapSatPerV               int64    `json:"feerateCapSatVb"`
+	PhoneRoutineBIP340Pub           string   `json:"phoneRoutineBip340Pub,omitempty"`
+	PhoneDirectP256                 string   `json:"phoneDirectP256,omitempty"`
+	TweakedVaultCosignerXOnly       string   `json:"tweakedVaultCosignerXOnly,omitempty"`
+	TweakedArkadeCosignerXOnly      string   `json:"tweakedArkadeCosignerXOnly,omitempty"`
 	Warnings                        []string `json:"warnings,omitempty"`
 }
 
@@ -1079,10 +1079,6 @@ func statusWarnings(cred *policy.Credential) []string {
 		out = append(out, "Mutinynet blocks are much faster than mainnet. Delays are block counts, not days.")
 	}
 	return out
-}
-
-func (s *Service) publishEnrollment(phoneRoutine *btcec.PublicKey, op, sv *vault.Built) {
-	s.publishEnrollmentAt(program.LeftoverVaultID, nil, phoneRoutine, op, sv)
 }
 
 func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phoneRoutine *btcec.PublicKey, op, sv *vault.Built) {
