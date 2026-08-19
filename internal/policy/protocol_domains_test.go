@@ -22,6 +22,9 @@ func TestFrozenProtocolDomains(t *testing.T) {
 		{vaultCosignerHKDFInfo, "vault-cosigner/v1"},
 		{CosignerModeLegacyDirectV0, "legacy-direct-v0"},
 		{CosignerModeHKDFSHA256V1, "hkdf-sha256-v1"},
+		{CosignerModeVtxoHKDFSHA256V1, "vtxo-hkdf-sha256-v1"},
+		{vtxoVaultCosignerHKDFSalt, "arkade-2fa-vault/vtxo-vault-cosigner/hkdf-sha256-v1"},
+		{vtxoVaultCosignerHKDFInfo, "vtxo-vault-cosigner/v1"},
 		{LegacyFirstVaultID, "operational-vault-v1"},
 	}
 	for _, p := range pairs {

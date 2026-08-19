@@ -1,0 +1,39 @@
+{
+  "comment": "Checked-in RFC 5869 HKDF-SHA256 vectors for vtxo-vault-cosigner vtxo-hkdf-sha256-v1. IKM is the 32-byte master scalar. salt is UTF-8. info is vtxo-vault-cosigner/v1 || 0x00 || vault_id || 0x00 || policyVersion || 0x00 || network || 0x00 || advertisedServerPub33 || 0x00 || counter. Expand is one-block HMAC-SHA256(PRK, info || 0x01). okmHex is the even-Y scalar (rawOkmHex negated when raw pub is odd-Y). Preimage never includes a collaborative leaf or ArkScriptHash.",
+  "mode": "vtxo-hkdf-sha256-v1",
+  "salt": "arkade-2fa-vault/vtxo-vault-cosigner/hkdf-sha256-v1",
+  "infoPrefix": "vtxo-vault-cosigner/v1",
+  "policyVersion": "vault-policy-v1",
+  "network": "mutinynet",
+  "advertisedServerPubHex": "02989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
+  "masterScalarHex": "2121212121212121212121212121212121212121212121212121212121212121",
+  "masterCompressedPubHex": "028d7500dd4c12685d1f568b4c2b5048e8534b873319f3a8daa612b469132ec7f7",
+  "vectors": [
+    {
+      "vaultId": "tenant-example",
+      "counter": 0,
+      "preimageHex": "7674786f2d7661756c742d636f7369676e65722f76310074656e616e742d6578616d706c65007661756c742d706f6c6963792d7631006d7574696e796e65740002989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f0000",
+      "rawOkmHex": "fca26f535f697bfa1d29ee22bd664043d0f94b37a4b85cf4135844cccff4acd2",
+      "okmHex": "fca26f535f697bfa1d29ee22bd664043d0f94b37a4b85cf4135844cccff4acd2",
+      "compressedPubHex": "024ba44a2abf7a9e94884cd5ef26b2189bc1047021e248661d28dc7b3e6814ce71"
+    },
+    {
+      "vaultId": "tenant-other",
+      "comment": "raw OKM is odd-Y; okmHex is the negated even-Y scalar",
+      "counter": 0,
+      "preimageHex": "7674786f2d7661756c742d636f7369676e65722f76310074656e616e742d6f74686572007661756c742d706f6c6963792d7631006d7574696e796e65740002989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f0000",
+      "rawOkmHex": "f826af847d1870f38eaa445f9061812cdb98e33a209e765c3b71d243fa3b0e6a",
+      "okmHex": "07d9507b82e78f0c7155bba06f9e7ed1df15f9ac8eaa29df84608c48d5fb32d7",
+      "compressedPubHex": "02dc37d7bd70f9a0f1ea202cea4a2f4ec01e9a26858e2d7db5a37d99fd18d38f72"
+    },
+    {
+      "vaultId": "550e8400-e29b-41d4-a716-446655440000",
+      "comment": "UTF-8 UUID string, not 16 raw bytes",
+      "counter": 0,
+      "preimageHex": "7674786f2d7661756c742d636f7369676e65722f76310035353065383430302d653239622d343164342d613731362d343436363535343430303030007661756c742d706f6c6963792d7631006d7574696e796e65740002989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f0000",
+      "rawOkmHex": "ac6a90be6664eb2f549448cbff6929b3bd7f15c65ed60c591a59296d5c93f9c2",
+      "okmHex": "53956f41999b14d0ab6bb7340096d64afd2fc720507293e2a579351f73a2477f",
+      "compressedPubHex": "0219aa0a696993dcee7c6c6e7e2c01c873ef0a57cae3dc9405ecbccda41148e5a7"
+    }
+  ]
+}

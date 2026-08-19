@@ -37,6 +37,11 @@ const (
 	LeftoverV3Template = "phone-direct-p256-routine-3of3-admin-2of2-v3"
 	PolicyVersion      = "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3"
 	NetworkRegtest     = "regtest"
+	NetworkMutinynet   = "mutinynet"
+
+	VaultPolicyV1         = "vault-policy-v1"
+	VaultPolicyV1Schema   = "arkade-vault/vtxo-policy-v1"
+	VaultPolicyV1Template = "vault-policy-v1-collaborative-4pub"
 )
 
 func OperationalCSV() arklib.RelativeLocktime {
