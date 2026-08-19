@@ -10,7 +10,7 @@ const testGatewaySecret = "test-gateway-secret"
 func testAuthorizer(svc *Service) http.Handler {
 	inner := requireGatewaySecretValue(testGatewaySecret, authorizerSurface(svc))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get(GatewaySecretHeader) == "" && r.URL.Path != "/health" {
+		if r.Header.Get(GatewaySecretHeader) == "" && r.URL.Path != "/health" && r.URL.Path != "/ready" {
 			clone := r.Clone(r.Context())
 			clone.Header.Set(GatewaySecretHeader, testGatewaySecret)
 			r = clone

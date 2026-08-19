@@ -1,0 +1,86 @@
+{
+  "note": "Frozen cross-implementation vectors. Do not regenerate from the implementation under test.",
+  "fixtureVaultId": "aabbccddeeff00112233445566778899",
+  "requiredGuardians": {
+    "phone": { "withRecovery": ["hardware", "recovery"], "withoutRecovery": ["hardware"] },
+    "hardware": { "withRecovery": ["phone", "recovery"], "withoutRecovery": ["phone"] },
+    "recovery": { "withRecovery": ["phone", "hardware"] }
+  },
+  "witnessBytes": {
+    "initiateDailyPhoneOrHardwareWithRecovery": 431,
+    "initiateOtherwiseWithRecovery": 399,
+    "initiateSavingsHardwareWithoutRecovery": 367,
+    "clawback": 399,
+    "clawbackServerFreeWithRecovery": 431
+  },
+  "vectors": [
+    {
+      "name": "v5-recovery",
+      "template": "phone-hww-recovery-staged-v5",
+      "recovery": true,
+      "daily": "tb1pp8ctfhpqwkxnpuyk2fpkfn547a2wnc2lt0l2jxt608ehrwdyquyqtm34r8",
+      "savings": "tb1pze88nd4d9ny6tmp36fwre8e7dhphap52hkx766f5hazfms9gjs7qx3nkjs",
+      "descriptorHash": "f864eb57894578ef152e1e6d19550206b2c384d14e738c0d3206dde02e6ddcfa",
+      "pending": {
+        "daily-phone": "tb1pggqqnenkr0e6uh9l79lamxwsz3gq9v7t3ejrpjy6g8cpyf0hm44q54jr9x",
+        "daily-hardware": "tb1psl33fzw2fethj3jrkx7tzv2x47n8fh7syyq6v2278u0drkhgazsse5jdgf",
+        "daily-recovery": "tb1pauglx20q6rfkf8wq3sy3z02dn404zzrtluspd6mt6uhclxgkwqpsr48veg",
+        "savings-phone": "tb1pug0lqtxsfc6rjjzr3fscnfuxdpacuz72zzxcjdj92x92nyc0mv9qyv0d4g",
+        "savings-hardware": "tb1pmmgwjhtnupx70flzckt09wre5swrc3jlr7kenysgkc73h2s0atlse5fdyw",
+        "savings-recovery": "tb1pz8x7ue2zafky0xfqmcnjj2yzu7ll2seywwrcng84cd5rw87x9uuqrhgmuc"
+      },
+      "quarantine": {
+        "daily-phone": "tb1pawzg0ayf2hg3v32pxklq2vzc8vnrly4xun26hp4udm52ffwffncs0t7mep",
+        "daily-hardware": "tb1psz2w9zaejsq45e44lcrpppqwvmrs9hetfnhp5gv77shwpcfysz6s8nvp4t",
+        "daily-recovery": "tb1prtnehy7a4pp084cufv5w49shkxj46xdm77clp8kac076ajkl6dvsdslhpy",
+        "savings-phone": "tb1ptat2893ze3f8v5qgmy8f7kg234t06t22ng07ptepy6k3pfpypy7qrt5sh6",
+        "savings-hardware": "tb1p6hetvtpddk0sgpfyv7nmtrh7dfzxqu2l04d26zcrhlyy3pdwrpmsd8sw5g",
+        "savings-recovery": "tb1pfewlmeusalmazeggct22a5v8hspvzj2n0ppzuerpdextj0g23g4qwexgt5"
+      }
+    },
+    {
+      "name": "v6-recovery",
+      "template": "phone-hww-recovery-staged-v6",
+      "recovery": true,
+      "daily": "tb1p8qhq36ejt8z0lkyjna9lm0320pq7m25rjhjxvrx0vjefuv8sdh9qmrzlc4",
+      "savings": "tb1p9jm4xuxvlxy09t546zavpnh896v0pg7hhlg9e9nsetjzd8w9uzpq8nhljy",
+      "descriptorHash": "f2ad86beb90ddd5a572053c5694413ef3510198a6865cc64cd3fdd7d27011934",
+      "pending": {
+        "daily-phone": "tb1pyx2c3wuj2hc24l8mrnffvslzalgp78dusslqljhknmlmp6mm2rxq4weh0e",
+        "daily-hardware": "tb1pyj8ajv90fegvsd6skf2y5js6shtm7r24k4n729clrls9pckr6fjsmh9ch9",
+        "daily-recovery": "tb1pq94r43tszd3khj8ayc7vln3dr3f6q573yggv2hmgkddec3mclzlqs9cpd6",
+        "savings-phone": "tb1pfuyv986nasenqckrusmuzpfdamsd6xc76g2p2nry3urneuxthlwqh5l2wh",
+        "savings-hardware": "tb1pkm3zja6aqsu7u85wrdpkex6ggjedr6rfn000fvsrg7w2yedq5x6s97jhgy",
+        "savings-recovery": "tb1pzqxdz2cgxxg9wqxg68favdyt8ada2y9wttc7r2dw7wf5zh7hnl2sjafuy2"
+      },
+      "quarantine": {
+        "daily-phone": "tb1pml938jt4z3qf2c33qm48nmgtphracjyvvapu6vqjrhdtxj8vua7sdl4dpj",
+        "daily-hardware": "tb1pvzg5w8czfxzpal5w4kzpkfj3pj8kmkt5vy3hjdz30u3xnwguc00smp3xz6",
+        "daily-recovery": "tb1p9akvt6lrgvtvw5z36fu4gkcy3y8wga7crjfcffupqu75ev9rx5ksaq5czy",
+        "savings-phone": "tb1pequz6ypk797zmkvxfykmdqr9kx6hxwlse5sw9y3sfje6eu60z47qg24fc6",
+        "savings-hardware": "tb1pyr7v22kneep409jsszn2lq4588p0lct2gjgwhxs209ytwt9whc6svljer7",
+        "savings-recovery": "tb1pwuw9lqphw2zcrzsm36j6dm6m8wjamj842nwg3l89ltdafrrmx0xsqsrnjh"
+      }
+    },
+    {
+      "name": "v6-skip",
+      "template": "phone-hww-recovery-staged-v6",
+      "recovery": false,
+      "daily": "tb1pkxtndlc38sdy6ptz05vts9j3rcak02k0g78nm9scft8mugrchl6qv8va5x",
+      "savings": "tb1pz7lu365n6kfhfxjrvrf88mltva0tehgzx3e5d4wlrdurky0ercns0efppe",
+      "descriptorHash": "8f6dcb4f68075c0325de2422e29f7bc8e07ac90791ad038508312f73eb3b8c6f",
+      "pending": {
+        "daily-phone": "tb1py4vfupz72876e0tu2fvs8lvdgtdxvuk2zrj9x8u7swj8lfed2ljsp55uyk",
+        "daily-hardware": "tb1p9lpepzm5794nuans0mfgrshvd9z4yzz50xp7envcqm97fxzu2q4s0x2w2m",
+        "savings-phone": "tb1phru9tzspp39lmt5x9ygtqdz4jtqckqhkl5z4v60wvh4xvvdyqqpqw5lkyr",
+        "savings-hardware": "tb1p6ttcjqxsl3t75pnfvkc5jxpjme6uqt66up82kl2ala57y0mzs9jsxnpxrs"
+      },
+      "quarantine": {
+        "daily-phone": "tb1pmglwcpxv97hgas5td632e385nshyq3uy9ufu89pk8nc7y3f7zf3s3zsh2m",
+        "daily-hardware": "tb1py0memkv95l5qqg02ag072lvg3d6glcmlu5z97ar23plhnmyp5qsqxx6hns",
+        "savings-phone": "tb1px6mudxelpnmcj3c4nsky4ys37g65muwzlsx5v0gewm3335cu0ywq78qhg5",
+        "savings-hardware": "tb1pfugzqn7tq3ch49u00yevaazrqe653c346jtma8veq9gl6etpledqll672l"
+      }
+    }
+  ]
+}

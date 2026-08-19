@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -63,7 +64,7 @@ func authorizerSurface(svc *Service) http.Handler {
 	origin := serviceOrigin(svc)
 	mux := http.NewServeMux()
 	attachCoreRoutes(mux, svc, origin)
-	inner := withCORS(mux, origin)
+	inner := withRequestLog(withCORS(mux, origin))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		methods, known := authorizerRouteMethods[r.URL.Path]
 		if !known {
@@ -79,6 +80,18 @@ func authorizerSurface(svc *Service) http.Handler {
 	})
 }
 
+func withRequestLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.Header.Get("X-Request-Id"))
+		if id == "" {
+			id = fmt.Sprintf("%d", time.Now().UnixNano())
+		}
+		w.Header().Set("X-Request-Id", id)
+		log.Printf("request id=%s op=%s %s", id, r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func requireGatewaySecret(next http.Handler) http.Handler {
 	return requireGatewaySecretValue(strings.TrimSpace(os.Getenv("VAULT_GATEWAY_SECRET")), next)
 }
@@ -86,7 +99,7 @@ func requireGatewaySecret(next http.Handler) http.Handler {
 func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 	want = strings.TrimSpace(want)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" {
+		if r.URL.Path == "/health" || r.URL.Path == "/ready" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -107,6 +120,7 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/health":               {http.MethodGet: {}},
+	"/ready":                {http.MethodGet: {}},
 	"/v1/status":            {http.MethodGet: {}, http.MethodOptions: {}},
 	"/v1/invite":            {http.MethodGet: {}, http.MethodOptions: {}},
 	"/v1/enroll/start":      {http.MethodPost: {}, http.MethodOptions: {}},
@@ -167,6 +181,13 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, _ *http.Request) {
+		st := svc.Ready()
+		if !st.Ok {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		writeJSON(w, st, nil)
 	})
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		vaultID := strings.TrimSpace(r.URL.Query().Get("vault"))

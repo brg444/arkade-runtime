@@ -1,0 +1,62 @@
+package application
+
+import (
+	"fmt"
+
+	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
+)
+
+// ReadyStatus is the unauthenticated readiness body. It never includes keys,
+// tokens, PSBTs, or credential envelopes.
+type ReadyStatus struct {
+	Ok              bool   `json:"ok"`
+	Schema          int    `json:"schema"`
+	Network         string `json:"network"`
+	EnrollTemplate  string `json:"enrollTemplate"`
+	ArkadeOrigin    string `json:"arkadeOrigin"`
+	ArkadeVersion   string `json:"arkadeVersion"`
+	Error           string `json:"error,omitempty"`
+}
+
+// Ready checks ledger access and the pinned Arkade identity.
+func (s *Service) Ready() ReadyStatus {
+	st := ReadyStatus{
+		EnrollTemplate: v5.Template,
+	}
+	if s == nil {
+		st.Error = "service unavailable"
+		return st
+	}
+	cfg := s.runtimeConfig()
+	st.Network = cfg.Network
+	st.ArkadeOrigin = s.ArkadeCosignerOrigin
+	st.ArkadeVersion = s.ArkadeCosignerVersion
+	if err := cfg.Validate(); err != nil {
+		st.Error = "deployment not ready"
+		return st
+	}
+	if s.Ledger == nil {
+		st.Error = "ledger unavailable"
+		return st
+	}
+	ver, err := s.Ledger.SchemaVersion()
+	if err != nil {
+		st.Error = "schema unread"
+		return st
+	}
+	st.Schema = ver
+	if s.ArkadeCosignerOrigin == "" || s.ArkadeCosignerVersion == "" || s.ArkadeCosignerPub == nil {
+		st.Error = "arkade signer not pinned"
+		return st
+	}
+	st.Ok = true
+	return st
+}
+
+func (s *Service) readyError() error {
+	st := s.Ready()
+	if st.Ok {
+		return nil
+	}
+	return fmt.Errorf("%s", st.Error)
+}
