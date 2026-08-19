@@ -26,26 +26,27 @@ func fixtureFamilyInput(t *testing.T) FamilyInput {
 		ArkadeCosignerBase: scalarPub(t, 15),
 		RoutineVault:       scalarPub(t, 6),
 		RoutineArkade:      scalarPub(t, 7),
+		TemplateVersion:    PriorTemplate,
 	}
 }
 
-func TestFamilyV6AddsServerFreePendingLeaf(t *testing.T) {
+func TestFamilyCurrentDiffersFromPriorStaged(t *testing.T) {
 	in := fixtureFamilyInput(t)
-	v5fam, err := BuildFamily(in)
+	prior, err := BuildFamily(in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in.TemplateVersion = TemplateV6
+	in.TemplateVersion = Template
 	in.ServerFreeClawback = true
-	v6fam, err := BuildFamily(in)
+	cur, err := BuildFamily(in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v6fam.Daily.Address == v5fam.Daily.Address {
-		t.Fatal("v6 daily address must differ from v5")
+	if cur.Daily.Address == prior.Daily.Address {
+		t.Fatal("current daily address must differ from the prior staged family")
 	}
-	if v6fam.Pending["daily-phone"].Address == v5fam.Pending["daily-phone"].Address {
-		t.Fatal("v6 pending must include the extra guardian leaf")
+	if cur.Pending["daily-phone"].Address == prior.Pending["daily-phone"].Address {
+		t.Fatal("current pending must include the extra guardian leaf")
 	}
 }
 

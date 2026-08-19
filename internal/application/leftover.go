@@ -6,10 +6,8 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
-// quarantineLegacyVault isolates the one retired v3 template. Multi-tenant
-// boot may leave that row unloaded. Daily-program (v4) rows are not
-// quarantined: they still load and sign, they are just not enrollable.
-// Any other stored mismatch fails closed.
+// quarantineLegacyVault isolates one retired template id that may still
+// exist on the live ledger. Other known templates still load and sign.
 func quarantineLegacyVault(s *Service, vaultID, template string) bool {
 	if s == nil || !s.MultiTenantEnrollment {
 		return false

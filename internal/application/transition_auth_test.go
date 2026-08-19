@@ -36,7 +36,7 @@ func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.TemplateV6 {
+	if st.TemplateVersion != v5.Template {
 		t.Fatalf("template %s", st.TemplateVersion)
 	}
 	if len(st.Warnings) == 0 {

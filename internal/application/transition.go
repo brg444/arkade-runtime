@@ -216,7 +216,7 @@ func (s *Service) transitionFamily(cred *policy.Credential) (*v5.Family, error) 
 		return nil, err
 	}
 	in.TemplateVersion = cred.TemplateVersion
-	in.ServerFreeClawback = cred.TemplateVersion == v5.TemplateV6
+	in.ServerFreeClawback = cred.TemplateVersion == v5.Template
 	_, fam, err := v5.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)
 	if err != nil {
 		return nil, err

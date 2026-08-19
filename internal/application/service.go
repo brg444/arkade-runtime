@@ -1069,13 +1069,10 @@ func statusWarnings(cred *policy.Credential) []string {
 		return nil
 	}
 	var out []string
-	if cred.TemplateVersion == program.LeftoverV4Template {
-		out = append(out, "This leftover vault has a phone-only delay exit. A stolen phone can take Spending and Savings after 144 blocks without hardware.")
-	}
 	if isStagedTemplate(cred.TemplateVersion) {
 		out = append(out, "A recovery already in flight cannot be cancelled if both cosigners are gone.")
-		if cred.TemplateVersion == v5.Template {
-			out = append(out, "This vault still needs both cosigners to cancel a pending recovery. New vaults add a hardware-only cancel path.")
+		if cred.TemplateVersion != v5.Template {
+			out = append(out, "This vault still needs both cosigners to cancel a pending recovery.")
 		}
 	}
 	if cred.Network == deployment.NetworkMutinynet {

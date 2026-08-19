@@ -28,9 +28,9 @@ func TestQuarantineAddressesMatchClientGoldens(t *testing.T) {
 	}
 	for key, addrWant := range want {
 		kind, claimant, _ := strings.Cut(key, "-")
-		addr, _, err := BuildQuarantine(
+		addr, _, err := BuildQuarantineTemplate(
 			"aabbccddeeff00112233445566778899",
-			kind, claimant, "mutinynet",
+			kind, claimant, "mutinynet", PriorTemplate,
 			phone, hardware, recovery,
 		)
 		if err != nil {

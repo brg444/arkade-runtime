@@ -17,10 +17,12 @@ import (
 
 const (
 	Schema      = "arkade-vault/v5"
-	Template    = "phone-hww-recovery-staged-v5"
-	TemplateV6  = "phone-hww-recovery-staged-v6"
+	Template    = "phone-hww-recovery-staged-v6"
 	InternalTag = "arkade-vault/v5/internal"
 	PopTag      = "arkade-vault/v5/recovery-pop"
+
+	// PriorTemplate is a frozen ledger id. New enrolls never mint it.
+	PriorTemplate = "phone-hww-recovery-staged-v5"
 )
 
 var numsXOnly = mustHex("50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0")

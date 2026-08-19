@@ -53,7 +53,7 @@ func (s *Service) previewV5Descriptor(vaultID string, req RegisterRequest) (*Pro
 	if err != nil {
 		return nil, err
 	}
-	applyStagedProgram(&in, v5.TemplateV6)
+	applyStagedProgram(&in, v5.Template)
 	origin, version := s.arkadeIdentity()
 	desc, _, err := v5.BuildPublicDescriptor(in, origin, version)
 	if err != nil {
@@ -98,7 +98,7 @@ func (s *Service) mintV5Credential(vaultID string, parsed parsedRegisterRequest,
 	if err != nil {
 		return policy.Credential{}, nil, nil, err
 	}
-	applyStagedProgram(&in, v5.TemplateV6)
+	applyStagedProgram(&in, v5.Template)
 	origin, version := s.arkadeIdentity()
 	_, fam, err := v5.BuildPublicDescriptor(in, origin, version)
 	if err != nil {
@@ -125,7 +125,7 @@ func (s *Service) mintV5Credential(vaultID string, parsed parsedRegisterRequest,
 		ArkadeCosignerBase:    s.ArkadeCosignerPub.SerializeCompressed(),
 		ArkadeCosignerOrigin:  origin,
 		ArkadeCosignerVersion: version,
-		TemplateVersion:       v5.TemplateV6,
+		TemplateVersion:       v5.Template,
 		PolicyVersion:         program.PolicyVersion,
 		Network:               cfg.Network,
 		VaultID:               vaultID,
@@ -350,10 +350,10 @@ func applyStagedProgram(in *v5.FamilyInput, template string) {
 		return
 	}
 	if template == "" {
-		template = v5.TemplateV6
+		template = v5.Template
 	}
 	in.TemplateVersion = template
-	in.ServerFreeClawback = template == v5.TemplateV6
+	in.ServerFreeClawback = template == v5.Template
 }
 
 func knownTemplate(template string) bool {
@@ -361,7 +361,7 @@ func knownTemplate(template string) bool {
 }
 
 func isStagedTemplate(template string) bool {
-	return template == v5.Template || template == v5.TemplateV6
+	return template == v5.Template || template == v5.PriorTemplate
 }
 
 func xOnlyHexOf(pub *btcec.PublicKey) string {
@@ -376,5 +376,5 @@ func isV5Template(template string) bool {
 }
 
 func publicEnrollTemplate(s *Service) string {
-	return v5.TemplateV6
+	return v5.Template
 }

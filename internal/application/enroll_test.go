@@ -168,7 +168,7 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	if st.VaultID != replay.VaultID || st.OperationalAddr == "" {
 		t.Fatalf("finish status: %+v", st)
 	}
-	if st.TemplateVersion != v5.TemplateV6 {
+	if st.TemplateVersion != v5.Template {
 		t.Fatalf("skip-recovery enroll minted %q, want v5", st.TemplateVersion)
 	}
 	if st.RecoveryKeyPub != "" {
@@ -373,7 +373,7 @@ func TestProposeMintsRebuiltV5Descriptor(t *testing.T) {
 		t.Fatal(err)
 	}
 	desc, ok := proposed.Descriptor.(v5.PublicDescriptor)
-	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.TemplateV6 {
+	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.Template {
 		t.Fatalf("propose did not mint v6: %+v", proposed.Descriptor)
 	}
 	if desc.Daily.Address == "" || desc.Savings.Address == "" || desc.Keys.Recovery == "" {
@@ -383,7 +383,7 @@ func TestProposeMintsRebuiltV5Descriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.TemplateV6 || st.RecoveryKeyPub == "" || st.OperationalAddr != desc.Daily.Address {
+	if st.TemplateVersion != v5.Template || st.RecoveryKeyPub == "" || st.OperationalAddr != desc.Daily.Address {
 		t.Fatalf("finish status: %+v", st)
 	}
 	if _, err := svc.SignTransition(context.Background(), TransitionRequest{
@@ -415,7 +415,7 @@ func TestProposeMintsV5WithoutRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	desc, ok := proposed.Descriptor.(v5.PublicDescriptor)
-	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.TemplateV6 {
+	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.Template {
 		t.Fatalf("skip-recovery propose did not mint v6: %+v", proposed.Descriptor)
 	}
 	if desc.Keys.Recovery != "" {
@@ -431,7 +431,7 @@ func TestProposeMintsV5WithoutRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.TemplateV6 || st.RecoveryKeyPub != "" || st.OperationalAddr != desc.Daily.Address {
+	if st.TemplateVersion != v5.Template || st.RecoveryKeyPub != "" || st.OperationalAddr != desc.Daily.Address {
 		t.Fatalf("skip-recovery finish status: %+v", st)
 	}
 }
