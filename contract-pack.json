@@ -18,6 +18,22 @@
       "serverFreeClawback": true,
       "internalTag": "arkade-vault/v5/internal",
       "recoveryPopTag": "arkade-vault/v5/recovery-pop"
+    },
+    "vault-policy-v1": {
+      "status": "listed",
+      "module": "vtxo",
+      "schema": "arkade-vault/vtxo-policy-v1",
+      "template": "vault-policy-v1-collaborative-4pub",
+      "policy": "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3",
+      "recovery": "optional",
+      "caps": {
+        "txRecipientSats": 50000,
+        "periodAllowanceSats": 100000,
+        "absoluteFeeSats": 5000,
+        "feerateSatVb": 10,
+        "dustSats": 330
+      },
+      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. Exit object omitted until leaf PR (mapping decided: Key Decision 13)."
     }
   },
   "domains": {
