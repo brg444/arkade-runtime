@@ -28,6 +28,18 @@ checklist at the bottom is actually true.
 The only enrollable program is the staged program,
 `phone-hww-recovery-staged-v6`. That is what `/v1/enroll/*` mints.
 
+Leftover template ids may still exist on the live ledger:
+
+| Job | `template_version` | Enrollable |
+| --- | --- | --- |
+| Daily leftover | `phone-direct-p256-routine-3of3-admin-phone-hww-v4` | no |
+| Prior staged leftover | `phone-hww-recovery-staged-v5` | no |
+| Live staged | `phone-hww-recovery-staged-v6` | yes |
+
+v5 and v6 share schema `arkade-vault/v5`. v6 adds cancellation with the
+remaining user keys. The phone app watcher is best-effort local polling,
+not a watchtower.
+
 `RefuseLegacyDatabase` refuses a non-empty singleton `credential` table
 and `cosigner_mode = 'legacy-direct-v0'`. It does **not** inspect
 `template_version`. “Is the ledger empty?” is a gate, not a footnote.

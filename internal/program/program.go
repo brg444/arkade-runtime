@@ -31,7 +31,9 @@ const (
 	UnsafeGeneratorG  = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 	UnsafeGenerator2G = "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
 
+	// LeftoverV4Template is the retired daily program. Not enrollable.
 	LeftoverV4Template = "phone-direct-p256-routine-3of3-admin-phone-hww-v4"
+	// LeftoverV3Template is a quarantined pre-daily id that may still exist.
 	LeftoverV3Template = "phone-direct-p256-routine-3of3-admin-2of2-v3"
 	PolicyVersion      = "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3"
 	NetworkRegtest     = "regtest"

@@ -87,11 +87,14 @@ holding the key — otherwise an attacker who reaches the key skips the ledger.
 
 A *program* is a named Taproot template. The stored `template_version` on each
 vault says which one it was minted under, and that string is frozen for the
-life of the vault. There is one enrollable program:
+life of the vault. v5 and v6 share the `arkade-vault/v5` descriptor schema and
+have different template identities. Only v6 is enrollable:
 
 | Job | `template_version` | `enrollable` |
 | --- | --- | --- |
-| **Staged program** | `phone-hww-recovery-staged-v6` | true. Optional recovery. Pending can be cancelled with remaining user keys, no server. |
+| **Daily leftover** | `phone-direct-p256-routine-3of3-admin-phone-hww-v4` | no. Existing rows still load. |
+| **Prior staged leftover** | `phone-hww-recovery-staged-v5` | no. Existing rows still load. Cancel still needs both cosigners. |
+| **Staged program** | `phone-hww-recovery-staged-v6` | yes. Optional recovery. Pending can be cancelled with remaining user keys, no server. |
 
 ### Moving money out without the server
 
