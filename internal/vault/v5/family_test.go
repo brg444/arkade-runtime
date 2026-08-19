@@ -3,8 +3,6 @@ package v5
 import (
 	"encoding/hex"
 	"testing"
-
-	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 const fixturePhoneDirectP256 = "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721"
@@ -188,9 +186,4 @@ func TestFixtureDescriptorHashMatchesClient(t *testing.T) {
 	if hash != want {
 		t.Fatalf("descriptor hash %s, want %s", hash, want)
 	}
-}
-
-func mustPubCompressed(t *testing.T, pub *btcec.PublicKey) string {
-	t.Helper()
-	return hex.EncodeToString(pub.SerializeCompressed())
 }

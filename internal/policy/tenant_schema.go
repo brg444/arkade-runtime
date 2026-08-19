@@ -3,52 +3,22 @@ package policy
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 )
 
 const (
-	schemaVersionMultiTenant = 4
-	schemaVersionIssuanceMAC = 5
-	schemaVersionSessions    = 6
-	schemaVersionSessionMAC    = 7
+	schemaVersionMultiTenant    = 4
+	schemaVersionIssuanceMAC    = 5
+	schemaVersionSessions       = 6
+	schemaVersionSessionMAC     = 7
 	schemaVersionAuthzHardening = 8
 	schemaVersionCurrent        = schemaVersionAuthzHardening
-	vaultRecordMACDomain     = "arkade-2fa-vault/vault-record/v4"
-	vaultCredentialMACDomain = "arkade-2fa-vault/vault-credential/v1"
-	sessionMACDomain         = "arkade-2fa-vault/recovery-session/v2"
-	signCountMACDomain       = "arkade-2fa-vault/webauthn-sign-count/v1"
-	vaultMapMACDomain        = "arkade-2fa-vault/vault-map/v1"
-	monotonicMACDomain       = "arkade-2fa-vault/issuance-monotonic/v1"
+	vaultRecordMACDomain        = "arkade-2fa-vault/vault-record/v4"
+	vaultCredentialMACDomain    = "arkade-2fa-vault/vault-credential/v1"
+	sessionMACDomain            = "arkade-2fa-vault/recovery-session/v2"
+	signCountMACDomain          = "arkade-2fa-vault/webauthn-sign-count/v1"
+	vaultMapMACDomain           = "arkade-2fa-vault/vault-map/v1"
+	monotonicMACDomain          = "arkade-2fa-vault/issuance-monotonic/v1"
 )
-
-var schemaMetaColumns = []string{"version"}
-
-var vaultColumns = []string{
-	"vault_id", "template_version", "policy_version", "network", "rp_id", "origin",
-	"phone_routine_bip340_compressed", "phone_direct_p256_compressed",
-	"external_owner_wallet_compressed", "recovery_key_compressed",
-	"vault_cosigner_base_compressed", "tweaked_vault_cosigner_compressed",
-	"arkade_cosigner_base_compressed", "tweaked_arkade_cosigner_compressed",
-	"arkade_cosigner_origin", "arkade_cosigner_version", "cosigner_mode",
-	"operational_csv_type", "operational_csv_value", "savings_csv_type", "savings_csv_value",
-	"operational_address", "operational_script", "savings_address", "savings_script",
-	"recipient_dust_sats", "tx_recipient_cap_sats", "period_allowance_sats",
-	"absolute_fee_cap_sats", "feerate_cap_sat_vb", "integrity_mac",
-}
-
-var vaultCredentialColumns = []string{
-	"credential_id", "vault_id", "webauthn_p256_compressed", "user_handle", "resident", "integrity_mac",
-}
-
-var vaultEnvelopeColumns = []string{
-	"vault_id", "version", "binding", "nonce", "ciphertext", "direct_signature", "phone_signature", "integrity_mac",
-}
-
-var inviteColumns = []string{"token_hash", "expires_at", "consumed_vault_id", "created_at"}
-
-var pendingEnrollmentColumns = []string{
-	"handle", "vault_id", "token_hash", "challenge", "expires_at", "created_at",
-}
 
 const createMultiTenantSchema = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -193,17 +163,6 @@ func (l *Ledger) MultiTenantReady() bool {
 	return v4TableExists(l.db)
 }
 
-func validateSchemaMeta(db *sql.DB) error {
-	ver, n, err := schemaMetaState(db)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return nil
-	}
-	return checkSchemaVersionAt(ver, n, schemaVersionCurrent)
-}
-
 // checkSchemaVersionAt is the version gate used by this binary (max =
 // schemaVersionCurrent) and by the v4-binary rollback test (max = 4).
 func checkSchemaVersionAt(ver, n, max int) error {
@@ -264,20 +223,6 @@ func schemaVersion(db *sql.DB) (int, error) {
 	return ver, nil
 }
 
-func schemaVersionTx(tx *sql.Tx) (int, error) {
-	ver, n, err := schemaMetaState(tx)
-	if err != nil {
-		return 0, err
-	}
-	if n == 0 {
-		return 0, nil
-	}
-	if n != 1 {
-		return 0, fmt.Errorf("schema_meta must contain exactly one version row, have %d", n)
-	}
-	return ver, nil
-}
-
 func requireForeignKeysEnabled(db *sql.DB) error {
 	var enabled int
 	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&enabled); err != nil {
@@ -306,24 +251,4 @@ func requireForeignKeyCheckClean(db *sql.DB) error {
 		return fmt.Errorf("foreign key violation: table %s row %d parent %s", table, rowid, parent)
 	}
 	return rows.Err()
-}
-
-func requireIndex(db *sql.DB, name, table string, fragments []string) error {
-	var sqlText sql.NullString
-	err := db.QueryRow(
-		`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ? AND tbl_name = ?`,
-		name, table,
-	).Scan(&sqlText)
-	if err == sql.ErrNoRows || (err == nil && !sqlText.Valid) {
-		return fmt.Errorf("incompatible vault database: missing index %s on %s", name, table)
-	}
-	if err != nil {
-		return err
-	}
-	for _, fragment := range fragments {
-		if !strings.Contains(sqlText.String, fragment) {
-			return fmt.Errorf("incompatible vault database: index %s missing %q", name, fragment)
-		}
-	}
-	return nil
 }

@@ -14,11 +14,6 @@ import (
 
 const PolicyVersion = program.PolicyVersion
 
-var familyKeys = []string{
-	"daily-phone", "daily-hardware", "daily-recovery",
-	"savings-phone", "savings-hardware", "savings-recovery",
-}
-
 // PublicDescriptor is the hashed v5 client descriptor.
 type PublicDescriptor struct {
 	Schema             string                   `json:"schema"`

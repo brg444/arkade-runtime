@@ -1870,10 +1870,6 @@ func (s *Service) sealCredentialEnvelope(envelope *policy.CredentialEnvelope, cr
 	return nil
 }
 
-func (s *Service) loadVerifiedCredentialEnvelope(credentialID []byte) (*policy.CredentialEnvelope, error) {
-	return s.loadVerifiedEnvelopeFor(program.LeftoverVaultID, credentialID)
-}
-
 func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (*policy.CredentialEnvelope, error) {
 	key, err := s.credentialIntegrityKey()
 	if err != nil {
@@ -2035,17 +2031,6 @@ func decodeHex(s string) ([]byte, error) {
 		return nil, fmt.Errorf("hex: %w", err)
 	}
 	return b, nil
-}
-
-func redact(s string) string {
-	lower := strings.ToLower(s)
-	if strings.Contains(lower, "prf") || strings.Contains(lower, "token") || strings.Contains(lower, "scalar") {
-		return "[redacted]"
-	}
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 func init() {
