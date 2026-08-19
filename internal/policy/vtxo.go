@@ -1,10 +1,14 @@
 package policy
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"sort"
+	"strings"
 )
 
 const (
@@ -121,8 +125,67 @@ func VerifyVtxoOperationInput(rec *VtxoOperationInput, integrityKey []byte) erro
 	return nil
 }
 
+// CanonicalVtxoBundleInputs copies inputs, normalizes each txid, sorts by
+// lowercase 64-hex then vout, and rejects duplicate outpoints. Digest and
+// reserved set must share this order; callers cannot choose it.
+func CanonicalVtxoBundleInputs(inputs []VtxoBundleInput) ([]VtxoBundleInput, error) {
+	if len(inputs) > 0xffff {
+		return nil, fmt.Errorf("too many vtxo inputs")
+	}
+	type keyed struct {
+		in  VtxoBundleInput
+		hex string
+	}
+	ordered := make([]keyed, len(inputs))
+	seen := make(map[string]struct{}, len(inputs))
+	for i, in := range inputs {
+		canon, raw, err := canonicalVtxoTxid(in.Txid)
+		if err != nil {
+			return nil, err
+		}
+		key := canon + ":" + fmt.Sprintf("%d", in.Vout)
+		if _, dup := seen[key]; dup {
+			return nil, fmt.Errorf("duplicate vtxo outpoint")
+		}
+		seen[key] = struct{}{}
+		ordered[i] = keyed{
+			in:  VtxoBundleInput{Txid: raw, Vout: in.Vout, ValueSats: in.ValueSats},
+			hex: canon,
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].hex != ordered[j].hex {
+			return ordered[i].hex < ordered[j].hex
+		}
+		return ordered[i].in.Vout < ordered[j].in.Vout
+	})
+	out := make([]VtxoBundleInput, len(ordered))
+	for i := range ordered {
+		out[i] = ordered[i].in
+	}
+	return out, nil
+}
+
+func canonicalVtxoTxid(txid []byte) (string, []byte, error) {
+	var raw []byte
+	switch len(txid) {
+	case 32:
+		raw = bytes.Clone(txid)
+	case 64:
+		decoded, err := hex.DecodeString(strings.ToLower(string(txid)))
+		if err != nil || len(decoded) != 32 {
+			return "", nil, fmt.Errorf("vtxo input txid must be 32 bytes or 64 hex chars")
+		}
+		raw = decoded
+	default:
+		return "", nil, fmt.Errorf("vtxo input txid must be 32 bytes or 64 hex chars")
+	}
+	return hex.EncodeToString(raw), raw, nil
+}
+
 // ComputeVtxoBundleDigest binds purpose and length-prefixes variable fields so
-// dest/change scripts cannot be split at an embedded 0x00.
+// dest/change scripts cannot be split at an embedded 0x00. Inputs are sorted
+// internally; caller order is not trusted.
 func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript []byte, amountSats, feeSats uint64, inputs []VtxoBundleInput, createdAt string) ([]byte, error) {
 	if purpose != vtxoPurposeSpend && purpose != vtxoPurposeBoard {
 		return nil, fmt.Errorf("vtxo purpose must be spend or board")
@@ -130,11 +193,11 @@ func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript [
 	if vaultID == "" {
 		return nil, fmt.Errorf("vault id required")
 	}
-	if len(inputs) > 0xffff {
-		return nil, fmt.Errorf("too many vtxo inputs")
+	ordered, err := CanonicalVtxoBundleInputs(inputs)
+	if err != nil {
+		return nil, err
 	}
 	payload := make([]byte, 0, 256)
-	var err error
 	payload, err = appendCredentialField(payload, []byte(purpose))
 	if err != nil {
 		return nil, err
@@ -156,12 +219,8 @@ func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript [
 		return nil, err
 	}
 	payload = binary.LittleEndian.AppendUint64(payload, feeSats)
-	payload = binary.LittleEndian.AppendUint16(payload, uint16(len(inputs)))
-	for _, in := range inputs {
-		if len(in.Txid) != 32 {
-			zeroBytes(payload)
-			return nil, fmt.Errorf("vtxo input txid must be 32 bytes")
-		}
+	payload = binary.LittleEndian.AppendUint16(payload, uint16(len(ordered)))
+	for _, in := range ordered {
 		payload = append(payload, in.Txid...)
 		payload = binary.LittleEndian.AppendUint32(payload, in.Vout)
 		payload = binary.LittleEndian.AppendUint64(payload, in.ValueSats)
