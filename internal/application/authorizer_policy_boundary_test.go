@@ -20,7 +20,7 @@ import (
 func TestAuthorizerHTTPBoundaryEnforcesPolicyBeforeProviderKeyUse(t *testing.T) {
 	t.Run("recipient cap", func(t *testing.T) {
 		e := newBoundaryEnv(t)
-		handler := AuthorizerHandler(e.service)
+		handler := testAuthorizer(e.service)
 		draft := e.canonicalDraft(t, 90_000, fixture.TxRecipientCapSats+1, 500)
 		req, _ := e.requestFor(t, draft, e.passkeyPriv)
 
@@ -35,7 +35,7 @@ func TestAuthorizerHTTPBoundaryEnforcesPolicyBeforeProviderKeyUse(t *testing.T) 
 
 	t.Run("period allowance", func(t *testing.T) {
 		e := newBoundaryEnv(t)
-		handler := AuthorizerHandler(e.service)
+		handler := testAuthorizer(e.service)
 		for i := 0; i < 2; i++ {
 			draft := e.canonicalDraft(t, 90_000, fixture.TxRecipientCapSats-500, 500)
 			req, _ := e.requestFor(t, draft, e.passkeyPriv)
@@ -55,6 +55,22 @@ func TestAuthorizerHTTPBoundaryEnforcesPolicyBeforeProviderKeyUse(t *testing.T) 
 			t.Fatalf("period-policy rejection reached provider key: calls=%d, want 2", got)
 		}
 	})
+}
+
+func TestAuthorizerFailsClosedWithoutGatewaySecret(t *testing.T) {
+	t.Setenv("VAULT_GATEWAY_SECRET", "")
+	e := newBoundaryEnv(t)
+	handler := AuthorizerHandler(e.service)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("empty gateway secret = %d %s", rec.Code, rec.Body.String())
+	}
+	health := httptest.NewRecorder()
+	handler.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if health.Code != http.StatusOK {
+		t.Fatalf("health without secret = %d %s", health.Code, health.Body.String())
+	}
 }
 
 func TestAuthorizerRequiresGatewaySecretOnV1WhenConfigured(t *testing.T) {
@@ -86,7 +102,7 @@ func TestAuthorizerRequiresGatewaySecretOnV1WhenConfigured(t *testing.T) {
 
 func TestAuthorizerDoesNotServeRegister(t *testing.T) {
 	e := newBoundaryEnv(t)
-	handler := AuthorizerHandler(e.service)
+	handler := testAuthorizer(e.service)
 	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodOptions} {
 		rec := boundaryHTTPCall(t, handler, method, "/v1/register", "application/json", fixture.Origin, `{}`)
 		if rec.Code != http.StatusNotFound {
@@ -97,7 +113,7 @@ func TestAuthorizerDoesNotServeRegister(t *testing.T) {
 
 func TestAuthorizerHTTPBoundaryHasNoGenericSigningOrStaticSurface(t *testing.T) {
 	e := newBoundaryEnv(t)
-	handler := AuthorizerHandler(e.service)
+	handler := testAuthorizer(e.service)
 	for _, path := range []string{
 		"/v1/onchain-tx",
 		"/v1/onchain-tx/",
@@ -153,6 +169,7 @@ func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
 		"/v1/passkey/binding":   {http.MethodOptions, http.MethodPost},
 		"/v1/passkey/install":   {http.MethodOptions, http.MethodPost},
 		"/v1/passkey/recover":   {http.MethodOptions, http.MethodPost},
+		"/v1/map":               {http.MethodGet, http.MethodOptions, http.MethodPost},
 	}
 	got := make(map[string][]string, len(authorizerRouteMethods))
 	for path, methods := range authorizerRouteMethods {

@@ -34,6 +34,9 @@ func TestCredentialEnvelopeMACAndCreateOnlyPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = ledger.Close() })
+	if err := ledger.SetIntegrityKey(key); err != nil {
+		t.Fatal(err)
+	}
 	if err := ledger.EnrollWithEnvelope(cred, &envelope); err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +64,31 @@ func TestCredentialEnvelopeMACAndCreateOnlyPersistence(t *testing.T) {
 	}
 	if err := ledger.StoreCredentialEnvelopeIfAbsent(mutated); err == nil {
 		t.Fatal("replacement envelope accepted")
+	}
+}
+
+func TestStoreCredentialEnvelopeIfAbsentRejectsUnverifiedMAC(t *testing.T) {
+	key := bytes.Repeat([]byte{0x42}, 32)
+	cred := validCredential(0x52)
+	ledger, err := OpenLedger(filepath.Join(t.TempDir(), "envelope-mac.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	if err := ledger.SetIntegrityKey(key); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Enroll(cred); err != nil {
+		t.Fatal(err)
+	}
+	junk := testCredentialEnvelope(t, cred.ID, key)
+	junk.IntegrityMAC = bytes.Repeat([]byte{0x99}, 32)
+	if err := ledger.StoreCredentialEnvelopeIfAbsent(junk); err == nil {
+		t.Fatal("unverified envelope MAC stored")
+	}
+	good := testCredentialEnvelope(t, cred.ID, key)
+	if err := ledger.StoreCredentialEnvelopeIfAbsent(good); err != nil {
+		t.Fatalf("honest envelope: %v", err)
 	}
 }
 

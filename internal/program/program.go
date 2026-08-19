@@ -1,6 +1,8 @@
 // Package program is the pinned named-program data. Production code reads
-// these values, not testdata. Leftover v4 identity is here so leftover rows
-// can be recognized and refused, not so they can be minted again.
+// these values, not testdata. The daily-program (v4) identity is here so
+// existing rows can still load and sign. It is not enrollable. The staged
+// program (v5) is the only mint. Schema integers and domain suffixes are
+// a different axis — see docs/versions.md.
 package program
 
 import arklib "github.com/arkade-os/arkd/pkg/ark-lib"

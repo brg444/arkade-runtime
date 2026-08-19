@@ -29,6 +29,26 @@ func fixtureFamilyInput(t *testing.T) FamilyInput {
 	}
 }
 
+func TestFamilyV6AddsServerFreePendingLeaf(t *testing.T) {
+	in := fixtureFamilyInput(t)
+	v5fam, err := BuildFamily(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.TemplateVersion = TemplateV6
+	in.ServerFreeClawback = true
+	v6fam, err := BuildFamily(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v6fam.Daily.Address == v5fam.Daily.Address {
+		t.Fatal("v6 daily address must differ from v5")
+	}
+	if v6fam.Pending["daily-phone"].Address == v5fam.Pending["daily-phone"].Address {
+		t.Fatal("v6 pending must include the extra guardian leaf")
+	}
+}
+
 func TestFamilyAddressesMatchClientGoldens(t *testing.T) {
 	fam, err := BuildFamily(fixtureFamilyInput(t))
 	if err != nil {

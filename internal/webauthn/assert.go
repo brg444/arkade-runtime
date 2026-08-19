@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 )
@@ -12,6 +11,10 @@ import (
 const (
 	flagUP = 1 << 0
 	flagUV = 1 << 2
+
+	// maxClientDataJSON matches maxCBORBytes: legitimate WebAuthn client
+	// data is well under 1 KiB.
+	maxClientDataJSON = 4096
 )
 
 // Assertion is the explicit field-by-field provider payload. It never includes
@@ -41,6 +44,8 @@ type Expected struct {
 }
 
 // Verified is a semantically valid assertion plus its compact signature.
+// Authenticator signCount is not persisted: many platform passkeys report 0,
+// and spend replay is already bound to a 32-byte sighash challenge.
 type Verified struct {
 	Assertion
 	CompactSig []byte
@@ -62,6 +67,9 @@ func Validate(a Assertion, exp Expected) (*Verified, error) {
 	}
 	if len(a.AuthenticatorData) < 37 {
 		return nil, fmt.Errorf("authenticatorData too short")
+	}
+	if len(a.ClientDataJSON) == 0 || len(a.ClientDataJSON) > maxClientDataJSON {
+		return nil, fmt.Errorf("clientDataJSON too large")
 	}
 
 	var cd ClientData
@@ -96,7 +104,6 @@ func Validate(a Assertion, exp Expected) (*Verified, error) {
 	if flags&flagUV == 0 {
 		return nil, fmt.Errorf("user verification required")
 	}
-	signCount := binary.BigEndian.Uint32(a.AuthenticatorData[33:37])
 
 	compact, err := CompactLowS(a.DERSignature)
 	if err != nil {
@@ -109,7 +116,16 @@ func Validate(a Assertion, exp Expected) (*Verified, error) {
 	if err := VerifyES256(pub, a.AuthenticatorData, a.ClientDataJSON, compact); err != nil {
 		return nil, err
 	}
-	return &Verified{Assertion: a, CompactSig: compact, ClientData: cd, SignCount: signCount}, nil
+	return &Verified{Assertion: a, CompactSig: compact, ClientData: cd, SignCount: SignCount(a.AuthenticatorData)}, nil
+}
+
+// SignCount is the authenticator counter from authenticatorData. Many
+// platform passkeys report 0; a stored non-zero value must not go backwards.
+func SignCount(authData []byte) uint32 {
+	if len(authData) < 37 {
+		return 0
+	}
+	return uint32(authData[33])<<24 | uint32(authData[34])<<16 | uint32(authData[35])<<8 | uint32(authData[36])
 }
 
 func decodeChallenge(s string) ([]byte, error) {

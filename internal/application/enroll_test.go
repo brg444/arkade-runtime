@@ -61,7 +61,7 @@ func proposedPoPHandle(t *testing.T, svc *Service, vaultID, handle string, owner
 
 func TestEnrollRoutesAreUnreachableWhenFlagOff(t *testing.T) {
 	svc := &Service{Deployment: deployment.Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: deployment.NetworkMutinynet}}
-	h := AuthorizerHandler(svc)
+	h := testAuthorizer(svc)
 	for _, path := range []string{"/v1/invite", "/v1/enroll/start", "/v1/enroll/propose", "/v1/enroll/finish"} {
 		method := http.MethodPost
 		body := "{}"
@@ -158,8 +158,8 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	unsigned.ExternalOwnerProof = ""
 	unsigned.RecoveryProof = ""
 	unsigned.RecoveryPoP = ""
-	if _, err := svc.FinishEnrollment(context.Background(), token, unsigned); err != nil {
-		t.Fatalf("finish without ownership proofs: %v", err)
+	if _, err := svc.FinishEnrollment(context.Background(), token, unsigned); err == nil {
+		t.Fatal("finish accepted a tenant without ownership proof")
 	}
 	st, err := svc.FinishEnrollment(context.Background(), token, req)
 	if err != nil {
@@ -168,7 +168,7 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	if st.VaultID != replay.VaultID || st.OperationalAddr == "" {
 		t.Fatalf("finish status: %+v", st)
 	}
-	if st.TemplateVersion != v5.Template {
+	if st.TemplateVersion != v5.TemplateV6 {
 		t.Fatalf("skip-recovery enroll minted %q, want v5", st.TemplateVersion)
 	}
 	if st.RecoveryKeyPub != "" {
@@ -373,8 +373,8 @@ func TestProposeMintsRebuiltV5Descriptor(t *testing.T) {
 		t.Fatal(err)
 	}
 	desc, ok := proposed.Descriptor.(v5.PublicDescriptor)
-	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.Template {
-		t.Fatalf("propose did not mint v5: %+v", proposed.Descriptor)
+	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.TemplateV6 {
+		t.Fatalf("propose did not mint v6: %+v", proposed.Descriptor)
 	}
 	if desc.Daily.Address == "" || desc.Savings.Address == "" || desc.Keys.Recovery == "" {
 		t.Fatalf("v5 descriptor missing trees: %+v", desc)
@@ -383,13 +383,18 @@ func TestProposeMintsRebuiltV5Descriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.Template || st.RecoveryKeyPub == "" || st.OperationalAddr != desc.Daily.Address {
+	if st.TemplateVersion != v5.TemplateV6 || st.RecoveryKeyPub == "" || st.OperationalAddr != desc.Daily.Address {
 		t.Fatalf("finish status: %+v", st)
 	}
 	if _, err := svc.SignTransition(context.Background(), TransitionRequest{
 		VaultID: start.VaultID, Purpose: "claim", PSBT: "00",
 	}); err == nil {
 		t.Fatal("signed a claim")
+	}
+	if _, err := svc.SignTransition(context.Background(), TransitionRequest{
+		VaultID: start.VaultID, Purpose: "initiate", PSBT: "cHNidP8BAHECAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AQAAAAAAAAAA",
+	}); err == nil {
+		t.Fatal("signed a transition without a verified prevout")
 	}
 }
 
@@ -410,8 +415,8 @@ func TestProposeMintsV5WithoutRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	desc, ok := proposed.Descriptor.(v5.PublicDescriptor)
-	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.Template {
-		t.Fatalf("skip-recovery propose did not mint v5: %+v", proposed.Descriptor)
+	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.TemplateV6 {
+		t.Fatalf("skip-recovery propose did not mint v6: %+v", proposed.Descriptor)
 	}
 	if desc.Keys.Recovery != "" {
 		t.Fatalf("skip-recovery descriptor included recovery: %+v", desc.Keys)
@@ -426,7 +431,7 @@ func TestProposeMintsV5WithoutRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.Template || st.RecoveryKeyPub != "" || st.OperationalAddr != desc.Daily.Address {
+	if st.TemplateVersion != v5.TemplateV6 || st.RecoveryKeyPub != "" || st.OperationalAddr != desc.Daily.Address {
 		t.Fatalf("skip-recovery finish status: %+v", st)
 	}
 }

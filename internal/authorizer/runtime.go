@@ -95,6 +95,9 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 	if cfg.OpenEnrollment {
 		return nil, fmt.Errorf("mutinynet enroll is invite-only")
 	}
+	if strings.TrimSpace(os.Getenv("VAULT_GATEWAY_SECRET")) == "" {
+		return nil, fmt.Errorf("VAULT_GATEWAY_SECRET is required")
+	}
 	cfg.MultiTenantEnrollment = true
 	if !filepath.IsAbs(cfg.DatabasePath) || cfg.DatabasePath == "/" || strings.Contains(strings.ToLower(cfg.DatabasePath), "mode=memory") {
 		return nil, fmt.Errorf("authoritative database must be an absolute on-disk file path")
@@ -159,6 +162,23 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 	if err := ledger.MigrateRecoverySessions(); err != nil {
 		zero(credentialIntegrityKey)
 		return nil, fmt.Errorf("recovery session migration: %w", err)
+	}
+	if err := ledger.MigrateAuthzHardening(); err != nil {
+		zero(credentialIntegrityKey)
+		return nil, fmt.Errorf("authz hardening migration: %w", err)
+	}
+	mono, err := policy.OpenMonotonic(cfg.DatabasePath+".monotonic", credentialIntegrityKey)
+	if err != nil {
+		zero(credentialIntegrityKey)
+		return nil, fmt.Errorf("monotonic counter: %w", err)
+	}
+	ledger.SetMonotonic(mono)
+	if n, countErr := ledger.IssuanceRowCount(); countErr != nil {
+		zero(credentialIntegrityKey)
+		return nil, fmt.Errorf("issuance count: %w", countErr)
+	} else if err := mono.Observe(n); err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
 	}
 
 	persisted, err := ledger.GetCredential()

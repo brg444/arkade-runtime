@@ -76,7 +76,11 @@ func rolePub(roles map[string]*btcec.PublicKey, name string) (*btcec.PublicKey, 
 
 // BuildQuarantine returns the 2-of-2 excluding claimant.
 func BuildQuarantine(vaultID, kind, claimant, network string, phone, hardware, recovery *btcec.PublicKey) (addr string, pkScript []byte, err error) {
-	internal, err := ContextInternalKey(vaultID, kind, claimant)
+	return BuildQuarantineTemplate(vaultID, kind, claimant, network, Template, phone, hardware, recovery)
+}
+
+func BuildQuarantineTemplate(vaultID, kind, claimant, network, template string, phone, hardware, recovery *btcec.PublicKey) (addr string, pkScript []byte, err error) {
+	internal, err := ContextInternalKeyTemplate(vaultID, kind, claimant, template)
 	if err != nil {
 		return "", nil, err
 	}
@@ -99,7 +103,11 @@ func BuildQuarantine(vaultID, kind, claimant, network string, phone, hardware, r
 
 // BuildPending returns CSV+claimant, two guardian 3-of-3s, padding.
 func BuildPending(vaultID, kind, claimant, network string, phone, hardware, recovery, vaultTweak, arkadeTweak *btcec.PublicKey) (addr string, pkScript []byte, err error) {
-	internal, err := ContextInternalKey(vaultID, kind, claimant)
+	return BuildPendingTemplate(vaultID, kind, claimant, network, Template, false, phone, hardware, recovery, vaultTweak, arkadeTweak)
+}
+
+func BuildPendingTemplate(vaultID, kind, claimant, network, template string, serverFree bool, phone, hardware, recovery, vaultTweak, arkadeTweak *btcec.PublicKey) (addr string, pkScript []byte, err error) {
+	internal, err := ContextInternalKeyTemplate(vaultID, kind, claimant, template)
 	if err != nil {
 		return "", nil, err
 	}
@@ -113,6 +121,7 @@ func BuildPending(vaultID, kind, claimant, network string, phone, hardware, reco
 		return "", nil, err
 	}
 	var clawbacks [][]byte
+	var guardians []*btcec.PublicKey
 	for _, g := range familyClaimants(recovery != nil) {
 		if g == claimant {
 			continue
@@ -121,6 +130,7 @@ func BuildPending(vaultID, kind, claimant, network string, phone, hardware, reco
 		if err != nil {
 			return "", nil, err
 		}
+		guardians = append(guardians, gp)
 		cb, err := checksig(gp, vaultTweak, arkadeTweak)
 		if err != nil {
 			return "", nil, err
@@ -129,6 +139,16 @@ func BuildPending(vaultID, kind, claimant, network string, phone, hardware, reco
 	}
 	scripts := [][]byte{claim}
 	scripts = append(scripts, clawbacks...)
+	if serverFree {
+		if len(guardians) == 0 {
+			return "", nil, fmt.Errorf("server-free clawback requires a remaining key")
+		}
+		free, err := checksig(guardians...)
+		if err != nil {
+			return "", nil, err
+		}
+		scripts = append(scripts, free)
+	}
 	scripts = append(scripts, padScript)
 	return taprootFromScripts(internal, scripts, network)
 }

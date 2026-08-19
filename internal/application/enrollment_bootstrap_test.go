@@ -76,3 +76,15 @@ func TestFirstEnrollmentRequiresBootstrapAndTokenCannotReplaceEnrollment(t *test
 		t.Fatalf("consumed bootstrap token replaced enrollment: %v", err)
 	}
 }
+
+func TestRegtestOpenEnrollmentHonorsArmedDeadline(t *testing.T) {
+	ledger, err := policy.OpenLedger(filepath.Join(t.TempDir(), "deadline.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	svc := &Service{Ledger: ledger, EnrollmentDeadline: time.Now().Add(-time.Minute)}
+	if err := svc.RegisterWithBootstrap(RegisterRequest{}, ""); err == nil || !strings.Contains(err.Error(), "enrollment window is closed") {
+		t.Fatalf("expired regtest window: %v", err)
+	}
+}

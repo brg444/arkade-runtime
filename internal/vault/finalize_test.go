@@ -80,6 +80,15 @@ func TestFinalizeRoutineFailClosed(t *testing.T) {
 		t.Fatal("invalid signature accepted")
 	}
 
+	forgedPrev := clonePSBT(t, ptx)
+	forgedPrev.Inputs[0].WitnessUtxo = &wire.TxOut{
+		Value:    ptx.Inputs[0].WitnessUtxo.Value + 1,
+		PkScript: append([]byte(nil), ptx.Inputs[0].WitnessUtxo.PkScript...),
+	}
+	if err := FinalizeRoutine(forgedPrev, f.operational); err == nil {
+		t.Fatal("forged witness utxo accepted")
+	}
+
 	if err := FinalizeRoutine(ptx, f.operational); err != nil {
 		t.Fatalf("valid routine finalize: %v", err)
 	}

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -55,11 +56,15 @@ func Handler(svc *Service, webDir string) http.Handler {
 // AuthorizerHandler is the protected software-box surface. It deliberately
 // has no static file handler, demo controller, or raw signing route.
 func AuthorizerHandler(svc *Service) http.Handler {
+	return requireGatewaySecret(authorizerSurface(svc))
+}
+
+func authorizerSurface(svc *Service) http.Handler {
 	origin := serviceOrigin(svc)
 	mux := http.NewServeMux()
 	attachCoreRoutes(mux, svc, origin)
 	inner := withCORS(mux, origin)
-	return requireGatewaySecret(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		methods, known := authorizerRouteMethods[r.URL.Path]
 		if !known {
 			http.NotFound(w, r)
@@ -71,18 +76,28 @@ func AuthorizerHandler(svc *Service) http.Handler {
 			return
 		}
 		inner.ServeHTTP(w, r)
-	}))
+	})
 }
 
 func requireGatewaySecret(next http.Handler) http.Handler {
+	return requireGatewaySecretValue(strings.TrimSpace(os.Getenv("VAULT_GATEWAY_SECRET")), next)
+}
+
+func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
+	want = strings.TrimSpace(want)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := strings.TrimSpace(os.Getenv("VAULT_GATEWAY_SECRET"))
-		if want == "" || r.URL.Path == "/health" {
+		if r.URL.Path == "/health" {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if want == "" {
+			http.Error(w, "gateway authentication is not configured", http.StatusServiceUnavailable)
+			return
+		}
 		got := r.Header.Get(GatewaySecretHeader)
-		if subtle.ConstantTimeCompare([]byte(want), []byte(got)) != 1 {
+		wantHash := sha256.Sum256([]byte(want))
+		gotHash := sha256.Sum256([]byte(got))
+		if subtle.ConstantTimeCompare(wantHash[:], gotHash[:]) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -109,6 +124,7 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/passkey/binding":   {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/passkey/install":   {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/passkey/recover":   {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/map":               {http.MethodGet: {}, http.MethodPost: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -305,6 +321,19 @@ func attachSpendRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		}
 		out, err := svc.RecoverCredentialEnvelope(r.Context(), req)
 		writeJSON(w, out, err)
+	})
+	mux.HandleFunc("GET /v1/map", func(w http.ResponseWriter, r *http.Request) {
+		out, err := svc.GetMap(r.URL.Query().Get("vault"))
+		writeJSON(w, out, err)
+	})
+	mux.HandleFunc("POST /v1/map", func(w http.ResponseWriter, r *http.Request) {
+		var req MapWriteRequest
+		if err := decodeMutation(r, &req, origin); err != nil {
+			writeMutationError(w, err)
+			return
+		}
+		err := svc.PutMap(r.Context(), req)
+		writeJSON(w, map[string]any{"ok": err == nil}, err)
 	})
 	mux.HandleFunc("GET /v1/tx", func(w http.ResponseWriter, r *http.Request) {
 		opCtx, cancel := context.WithTimeout(r.Context(), publishOperationTimeout)

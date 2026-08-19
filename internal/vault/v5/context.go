@@ -18,6 +18,7 @@ import (
 const (
 	Schema      = "arkade-vault/v5"
 	Template    = "phone-hww-recovery-staged-v5"
+	TemplateV6  = "phone-hww-recovery-staged-v6"
 	InternalTag = "arkade-vault/v5/internal"
 	PopTag      = "arkade-vault/v5/recovery-pop"
 )
@@ -41,9 +42,12 @@ func appendText(dst []byte, value, name string) ([]byte, error) {
 	return append(append(dst, lenBuf[:]...), value...), nil
 }
 
-func encodeTreeContext(vaultID, kind, claimant string) ([]byte, error) {
+func encodeTreeContext(vaultID, kind, claimant, template string) ([]byte, error) {
 	if claimant == "" {
 		claimant = "-"
+	}
+	if template == "" {
+		template = Template
 	}
 	var dst []byte
 	var err error
@@ -56,7 +60,7 @@ func encodeTreeContext(vaultID, kind, claimant string) ([]byte, error) {
 	if dst, err = appendText(dst, claimant, "claimant"); err != nil {
 		return nil, err
 	}
-	return appendText(dst, Template, "templateVersion")
+	return appendText(dst, template, "templateVersion")
 }
 
 func taggedSHA256(tag string, msgs ...[]byte) []byte {
@@ -84,7 +88,12 @@ func numsPub() *btcec.PublicKey {
 
 // ContextInternalKey is NUMS TapTweaked with tagged_hash(InternalTag, context).
 func ContextInternalKey(vaultID, kind, claimant string) (*btcec.PublicKey, error) {
-	ctx, err := encodeTreeContext(vaultID, kind, claimant)
+	return ContextInternalKeyTemplate(vaultID, kind, claimant, Template)
+}
+
+// ContextInternalKeyTemplate uses an explicit template identity in the NUMS tweak.
+func ContextInternalKeyTemplate(vaultID, kind, claimant, template string) (*btcec.PublicKey, error) {
+	ctx, err := encodeTreeContext(vaultID, kind, claimant, template)
 	if err != nil {
 		return nil, err
 	}

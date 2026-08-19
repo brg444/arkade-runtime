@@ -997,6 +997,97 @@ func TestSequentialIssuancePersistsEachStageAndResumesExactRequestAfterRestart(t
 	}
 }
 
+func TestIssueSequentialDoesNotHoldMutexAcrossSigner(t *testing.T) {
+	led := openTestLedger(t, nil)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	d := digest(0xa1)
+	errCh := make(chan error, 1)
+	go func() {
+		_, _, err := led.IssueSequential(context.Background(), "vault-a", d, "req", 10, 1, 100,
+			func(context.Context, string) (string, error) {
+				close(started)
+				<-release
+				return "vault-signed", nil
+			},
+			func(_ context.Context, stored string) (string, error) {
+				return stored + "-arkade", nil
+			},
+		)
+		errCh <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("signer never started")
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := led.SpentInPeriod(context.Background(), "vault-a", "")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("SpentInPeriod: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SpentInPeriod blocked behind signer")
+	}
+	close(release)
+	if err := <-errCh; err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+}
+
+func TestIssueSequentialSameDigestIsSingleFlight(t *testing.T) {
+	led := openTestLedger(t, nil)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	d := digest(0xa2)
+	var calls atomic.Int32
+	vaultSign := func(context.Context, string) (string, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-release
+		}
+		return "vault-signed", nil
+	}
+	arkadeSign := func(_ context.Context, stored string) (string, error) {
+		return stored + "-arkade", nil
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		_, _, err := led.IssueSequential(context.Background(), "vault-a", d, "req", 10, 1, 100, vaultSign, arkadeSign)
+		errCh <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first signer never started")
+	}
+	second := make(chan error, 1)
+	go func() {
+		_, _, err := led.IssueSequential(context.Background(), "vault-a", d, "req", 10, 1, 100, vaultSign, arkadeSign)
+		second <- err
+	}()
+	select {
+	case err := <-second:
+		if !errors.Is(err, ErrIssuanceBusy) {
+			t.Fatalf("second worker: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("second worker blocked behind first signer")
+	}
+	close(release)
+	if err := <-errCh; err != nil {
+		t.Fatalf("first issue: %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("vault signer calls = %d, want 1", got)
+	}
+}
+
 func TestEnrollRejectsInvalidCredentialRecords(t *testing.T) {
 	valid := validCredential(0x31)
 	tests := []struct {

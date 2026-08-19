@@ -129,10 +129,8 @@ func TestPasskeyChallengeIsPurposeBoundExpiringAndOneUse(t *testing.T) {
 	if _, err := e.svc.RecoverCredentialEnvelope(context.Background(), RecoverCredentialEnvelopeRequest{SessionAssertionRequest: wrong}); err == nil {
 		t.Fatal("wrong-purpose challenge accepted")
 	}
-	if err := e.svc.InstallCredentialEnvelope(context.Background(), InstallCredentialEnvelopeRequest{
-		SessionAssertionRequest: req,
-	}); err == nil {
-		t.Fatal("consumed wrong-purpose challenge was reusable")
+	if _, err := e.svc.consumePasskeyChallenge(fixture.VaultID, issued.ChallengeID, passkeyPurposeInstall); err != nil {
+		t.Fatalf("wrong-purpose attempt burned the challenge: %v", err)
 	}
 
 	issued, req = passkeySessionAssertion(t, e, passkeyPurposeInstall)

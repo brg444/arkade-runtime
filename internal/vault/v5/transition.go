@@ -45,6 +45,15 @@ func InitiateWitnessBytes(kind, claimant string, hasRecovery bool) int64 {
 
 func ClawbackWitnessBytes() int64 { return WitnessBytes399 }
 
+// clawbackWitnessForServerFree is the 3-of-3 pending clawback witness after
+// the extra guardian-only leaf is added (one more merkle sibling).
+func clawbackWitnessForServerFree(hasRecovery bool) int64 {
+	if hasRecovery {
+		return WitnessBytes431
+	}
+	return WitnessBytes399
+}
+
 // BuildTransitionScript pins dest, funded P2A, packet, fee, and optional
 // PhoneDirectP256 CSFS. Phone initiate is the only bound path.
 func BuildTransitionScript(destScript []byte, phoneDirect []byte, witnessBytes int64) ([]byte, error) {

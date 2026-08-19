@@ -86,7 +86,7 @@ func TestAuthorizerRejectsExcessCryptoWorkWithoutQueueingOrReserving(t *testing.
 		{path: "/v1/authorize", body: fmt.Sprintf(`{"psbt":%q}`, malformed)},
 	} {
 		t.Run(request.path, func(t *testing.T) {
-			response := postJSON(t, AuthorizerHandler(e.service), request.path, request.body)
+			response := postJSON(t, testAuthorizer(e.service), request.path, request.body)
 			if response.Code != http.StatusTooManyRequests {
 				t.Fatalf("excess authorizer work = %d %s", response.Code, response.Body.String())
 			}

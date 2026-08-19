@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -23,6 +24,10 @@ const (
 	stateCompleted   = "completed"
 )
 
+// ErrIssuanceBusy is returned when another goroutine is already advancing
+// the same (vault, digest) issuance. Exact HTTP retries should wait and retry.
+var ErrIssuanceBusy = errors.New("issuance already in progress")
+
 // Clock is injectable so rolling 24h allowance windows are testable.
 type Clock func() time.Time
 
@@ -32,6 +37,8 @@ type Ledger struct {
 	clock        Clock
 	mu           sync.Mutex // extra process-local serialization around the SQL tx
 	integrityKey []byte     // authorizer-only; used to dual-write operational-vault-v1
+	signing      map[string]struct{}
+	monotonic    *Monotonic
 }
 
 // OpenLedger opens (or creates) the SQLite file.
@@ -223,7 +230,8 @@ func knownSchemaTable(table string) bool {
 	switch table {
 	case "credential", "issuance", "credential_envelope",
 		"vault", "vault_credential", "vault_envelope",
-		"invite", "pending_enrollment", "recovery_session", "schema_meta":
+		"invite", "pending_enrollment", "recovery_session", "schema_meta",
+		"webauthn_sign_count", "vault_map":
 		return true
 	default:
 		return false
@@ -291,6 +299,27 @@ func (l *Ledger) SetIntegrityKey(key []byte) error {
 	defer l.mu.Unlock()
 	zeroBytes(l.integrityKey)
 	l.integrityKey = append([]byte(nil), key...)
+	if hasTable(l.db, "vault") {
+		if _, err := l.db.Exec(`CREATE TABLE IF NOT EXISTS webauthn_sign_count (
+  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
+  credential_id BLOB NOT NULL,
+  sign_count INTEGER NOT NULL CHECK (sign_count >= 0),
+  updated_at TEXT NOT NULL,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
+  PRIMARY KEY (vault_id, credential_id)
+)`); err != nil {
+			return fmt.Errorf("webauthn sign count table: %w", err)
+		}
+		if _, err := l.db.Exec(`CREATE TABLE IF NOT EXISTS vault_map (
+  vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),
+  kit_hash TEXT NOT NULL CHECK (length(kit_hash) = 64),
+  payload TEXT NOT NULL CHECK (length(payload) > 0 AND length(payload) <= 98304),
+  updated_at TEXT NOT NULL,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)
+)`); err != nil {
+			return fmt.Errorf("vault map table: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -614,6 +643,9 @@ func (l *Ledger) EnrollWithEnvelope(c Credential, envelope *CredentialEnvelope) 
 		if len(envelope.IntegrityMAC) != sha256.Size {
 			return fmt.Errorf("credential envelope integrity MAC must be 32 bytes")
 		}
+		if err := VerifyCredentialEnvelope(envelope, c.ID, l.integrityKey); err != nil {
+			return err
+		}
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -837,6 +869,41 @@ func (l *Ledger) IssueForTest(
 // private in-process stage after a crash, or the public stage after any
 // ambiguous timeout, but it can never replace the bound request or spend a
 // second allowance reservation.
+func (l *Ledger) SetMonotonic(m *Monotonic) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.monotonic = m
+}
+
+func (l *Ledger) IssuanceRowCount() (uint64, error) {
+	if l == nil {
+		return 0, fmt.Errorf("ledger required")
+	}
+	var n int64
+	err := l.db.QueryRow(`SELECT COUNT(*) FROM issuance`).Scan(&n)
+	if err != nil {
+		return 0, err
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("issuance count")
+	}
+	return uint64(n), nil
+}
+
+func (l *Ledger) observeIssuanceLocked() error {
+	if l == nil || l.monotonic == nil {
+		return nil
+	}
+	n, err := l.IssuanceRowCount()
+	if err != nil {
+		return err
+	}
+	return l.monotonic.Observe(n)
+}
+
 func (l *Ledger) IssueSequential(
 	ctx context.Context,
 	vaultID string,
@@ -891,15 +958,28 @@ func (l *Ledger) issueSequential(
 	}
 
 	l.mu.Lock()
-	defer l.mu.Unlock()
-
 	stage, err := l.commitReservation(ctx, vaultID, digest, requestPSBT, recipient, fee, remainingCap)
 	if err != nil {
+		l.mu.Unlock()
 		return "", false, err
 	}
 	if stage.state == stateCompleted {
-		return stage.signedPSBT, true, nil
+		signed = stage.signedPSBT
+		l.mu.Unlock()
+		return signed, true, nil
 	}
+	flight := issuanceFlightKey(vaultID, digest)
+	if l.signing == nil {
+		l.signing = make(map[string]struct{})
+	}
+	if _, busy := l.signing[flight]; busy {
+		l.mu.Unlock()
+		return "", false, fmt.Errorf("%w: %s", ErrIssuanceBusy, hex.EncodeToString(digest))
+	}
+	l.signing[flight] = struct{}{}
+	l.mu.Unlock()
+	defer l.endIssuanceFlight(flight)
+
 	if stage.state == stateReserved {
 		if !stage.created && !resumeReserved {
 			return "", false, fmt.Errorf("issuance %s already reserved after an ambiguous signer attempt", hex.EncodeToString(digest))
@@ -912,7 +992,9 @@ func (l *Ledger) issueSequential(
 			return "", false, fmt.Errorf("empty private-signed response")
 		}
 		persist, cancel := context.WithTimeout(context.Background(), persistTimeout)
+		l.mu.Lock()
 		err = l.commitVaultSigned(persist, vaultID, digest, vaultPSBT)
+		l.mu.Unlock()
 		cancel()
 		if err != nil {
 			return "", false, err
@@ -932,7 +1014,9 @@ func (l *Ledger) issueSequential(
 	}
 
 	persist, cancel := context.WithTimeout(context.Background(), persistTimeout)
+	l.mu.Lock()
 	err = l.commitCompletion(persist, vaultID, digest, signed)
+	l.mu.Unlock()
 	cancel()
 	if err != nil {
 		return "", false, err
@@ -941,6 +1025,16 @@ func (l *Ledger) issueSequential(
 		return signed, false, err
 	}
 	return signed, false, nil
+}
+
+func issuanceFlightKey(vaultID string, digest []byte) string {
+	return vaultID + ":" + hex.EncodeToString(digest)
+}
+
+func (l *Ledger) endIssuanceFlight(key string) {
+	l.mu.Lock()
+	delete(l.signing, key)
+	l.mu.Unlock()
 }
 
 func (l *Ledger) commitReservation(
@@ -1034,6 +1128,9 @@ func (l *Ledger) commitReservation(
 		return issuanceStage{}, err
 	}
 	commit = true
+	if err := l.observeIssuanceLocked(); err != nil {
+		return issuanceStage{}, err
+	}
 	return issuanceStage{state: stateReserved, requestPSBT: requestPSBT, created: true}, nil
 }
 

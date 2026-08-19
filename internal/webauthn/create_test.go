@@ -37,6 +37,9 @@ func TestValidateCreateRequiresAttestedES256Key(t *testing.T) {
 	if _, err := ValidateCreate(cd, noAT, challenge, origin, rpID); err == nil {
 		t.Fatal("accepted create without attested credential data")
 	}
+	if _, err := ValidateCreate(bytes.Repeat([]byte("a"), maxClientDataJSON+1), auth, challenge, origin, rpID); err == nil {
+		t.Fatal("accepted oversized clientDataJSON")
+	}
 
 	get := []byte(`{"type":"webauthn.get","challenge":"` + EncodeChallenge(challenge) + `","origin":"` + origin + `","crossOrigin":false}`)
 	if _, err := ValidateCreate(get, auth, challenge, origin, rpID); err == nil {

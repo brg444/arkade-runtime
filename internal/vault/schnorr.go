@@ -8,8 +8,9 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 )
 
-// VerifySchnorrOnSubmittedTx hashes only the submitted packet's prevout and
-// leaf. A hostile response packet's WitnessUtxo is ignored.
+// VerifySchnorrOnSubmittedTx hashes the submitted packet's WitnessUtxo
+// amount/script and leaf. Callers must bind that prevout with
+// RequireVerifiedPrevout before treating a successful verify as authorization.
 func VerifySchnorrOnSubmittedTx(ptx *psbt.Packet, sig, wantXOnly, leafScript []byte) error {
 	if ptx == nil || ptx.UnsignedTx == nil || len(ptx.Inputs) != 1 || len(ptx.UnsignedTx.TxIn) != 1 {
 		return fmt.Errorf("exactly one submitted input required")

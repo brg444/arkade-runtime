@@ -95,7 +95,7 @@ func TestVeteranIssuanceMACDoesNotVerifyCrossTenant(t *testing.T) {
 
 func TestVeteranPublicStatusDoesNotLeakTenant(t *testing.T) {
 	svc, _, _, tenantB := twoTenantEnv(t)
-	h := AuthorizerHandler(svc)
+	h := testAuthorizer(svc)
 	rec := httptest.NewRecorder()
 	_ = rec
 	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)

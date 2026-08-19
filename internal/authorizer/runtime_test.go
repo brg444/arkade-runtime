@@ -154,6 +154,7 @@ func negatePub(t *testing.T, pub *btcec.PublicKey) *btcec.PublicKey {
 }
 
 func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
+	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
 	dir := t.TempDir()
 	vaultCosignerKey, err := btcec.NewPrivateKey()
 	if err != nil {
@@ -261,6 +262,38 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 	if _, err := openWithDialers(context.Background(), cfg, dial, emulatorDial); err == nil ||
 		!strings.Contains(err.Error(), "already advanced") {
 		t.Fatalf("singleton restart without pre-v5: %v", err)
+	}
+}
+
+func TestRuntimeRequiresGatewaySecret(t *testing.T) {
+	t.Setenv("VAULT_GATEWAY_SECRET", "")
+	dir := t.TempDir()
+	vaultCosignerKey, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	vaultCosignerPath := filepath.Join(dir, "vault-cosigner-key")
+	if err := os.WriteFile(vaultCosignerPath, []byte(hex.EncodeToString(vaultCosignerKey.Serialize())+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Deployment: deployment.Config{
+			ClientOrigin: "https://vault.example.com", RPID: "vault.example.com",
+			Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
+		},
+		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
+		VaultCosignerKeyFile: vaultCosignerPath,
+		EnrollmentTokenFile:  filepath.Join(dir, "enrollment-token"),
+		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
+	}
+	_, err = openWithDialers(context.Background(), cfg,
+		func(context.Context, string, string) (application.Broadcaster, error) { return stubPublisher{}, nil },
+		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (application.Signer, application.PublicEmulatorIdentity, error) {
+			return stubEmulatorSigner{}, application.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "VAULT_GATEWAY_SECRET") {
+		t.Fatalf("missing gateway secret: %v", err)
 	}
 }
 

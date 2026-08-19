@@ -91,7 +91,7 @@ func TestHTTPTenantBInstallRecoverDoesNotTouchA(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := AuthorizerHandler(svc)
+	h := testAuthorizer(svc)
 	nonce := strings.Repeat("11", 12)
 	ciphertext := strings.Repeat("22", 48)
 	binding, err := svc.BuildRecoveryBindingFor(tenantB, RecoveryBindingRequest{
@@ -164,7 +164,7 @@ func TestHTTPTenantBInstallRecoverDoesNotTouchA(t *testing.T) {
 	if restarted.snapshot(fixture.VaultID).Operational.Address != addrA {
 		t.Fatal("restart changed tenant A descriptor")
 	}
-	h = AuthorizerHandler(restarted)
+	h = testAuthorizer(restarted)
 	recovIssued := httpJSON(t, h, http.MethodPost, "/v1/passkey/challenge", map[string]string{
 		"purpose": passkeyPurposeRecover, "vaultId": tenantB,
 	})

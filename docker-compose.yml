@@ -19,13 +19,14 @@ services:
       VAULT_SAVINGS_CSV_BLOCKS: ${VAULT_SAVINGS_CSV_BLOCKS:-6}
       VAULT_ESPLORA_URL: ${VAULT_ESPLORA_URL:-https://mempool.mutinynet.arkade.sh/api}
       VAULT_MULTI_TENANT_ENROLLMENT: ${VAULT_MULTI_TENANT_ENROLLMENT:-1}
+      VAULT_GATEWAY_SECRET: ${VAULT_GATEWAY_SECRET:?set VAULT_GATEWAY_SECRET}
     secrets:
       - vault_cosigner_key
       - vault_enrollment_token
     volumes:
       - vault-data:/app/data
     ports:
-      - "8788:8788"
+      - "127.0.0.1:8788:8788"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m

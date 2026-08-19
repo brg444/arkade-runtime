@@ -47,8 +47,8 @@ func TestEmptyBootSealedIssuanceLandsOnSchemaV5(t *testing.T) {
 		t.Fatal(err)
 	}
 	ver, err := schemaVersion(led.db)
-	if err != nil || ver != schemaVersionSessions {
-		t.Fatalf("empty boot schema = %d, %v want %d", ver, err, schemaVersionSessions)
+	if err != nil || ver != schemaVersionCurrent {
+		t.Fatalf("empty boot schema = %d, %v want %d", ver, err, schemaVersionCurrent)
 	}
 	cols, err := tableColumns(led.db, "issuance")
 	if err != nil || !sameColumns(cols, issuanceColumns) {

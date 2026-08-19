@@ -114,7 +114,7 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 		Schema:          Schema,
 		Network:         strings.ToLower(in.Network),
 		VaultID:         in.VaultID,
-		TemplateVersion: Template,
+		TemplateVersion: in.template(),
 		PolicyVersion:   PolicyVersion,
 		Keys: PublicKeys{
 			PhoneRoutineBip340: hex.EncodeToString(in.Phone.SerializeCompressed()),

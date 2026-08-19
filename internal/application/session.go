@@ -22,6 +22,8 @@ import (
 const (
 	passkeyPurposeRecover        = "recover"
 	passkeyPurposeInstall        = "install-envelope"
+	passkeyPurposeTransition     = "transition"
+	passkeyPurposeMapWrite       = "map-write"
 	passkeyChallengeTTL          = 2 * time.Minute
 	maxPasskeyChallengesPerVault = 16
 	recoveryBindingDomain        = "arkade-2fa-vault/recovery-binding/v1"
@@ -155,7 +157,8 @@ func (s *Service) IssuePasskeyChallengeFor(ctx context.Context, vaultID, purpose
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if purpose != passkeyPurposeRecover && purpose != passkeyPurposeInstall {
+	if purpose != passkeyPurposeRecover && purpose != passkeyPurposeInstall &&
+		purpose != passkeyPurposeTransition && purpose != passkeyPurposeMapWrite {
 		return nil, fmt.Errorf("invalid passkey challenge purpose")
 	}
 	vaultID, err := s.routePasskeyVaultID(vaultID)
@@ -228,10 +231,17 @@ func (s *Service) consumePasskeyChallenge(vaultID, id, purpose string) ([]byte, 
 	defer s.sessionMu.Unlock()
 	key := passkeyChallengeKey(vaultID, id)
 	pending, ok := s.sessionChallenges[key]
-	delete(s.sessionChallenges, key)
-	if !ok || pending.VaultID != vaultID || pending.Purpose != purpose || !s.sessionNow().Before(pending.ExpiresAt) {
+	if !ok {
 		return nil, fmt.Errorf("passkey authentication failed")
 	}
+	if !s.sessionNow().Before(pending.ExpiresAt) {
+		delete(s.sessionChallenges, key)
+		return nil, fmt.Errorf("passkey authentication failed")
+	}
+	if pending.VaultID != vaultID || pending.Purpose != purpose {
+		return nil, fmt.Errorf("passkey authentication failed")
+	}
+	delete(s.sessionChallenges, key)
 	return append([]byte(nil), pending.Challenge...), nil
 }
 
@@ -266,11 +276,15 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 	if err := rejectPRF(assertion.ClientDataJSON); err != nil {
 		return nil, failPasskeyAuth("prf", err)
 	}
-	if _, err := webauthn.Validate(assertion, webauthn.Expected{
+	verified, err := webauthn.Validate(assertion, webauthn.Expected{
 		CredentialID: cred.ID, WebAuthnP256: cred.WebAuthnP256, Challenge: challenge,
 		Origin: cred.Origin, RPID: cred.RPID,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, failPasskeyAuth("webauthn", err)
+	}
+	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
+		return nil, failPasskeyAuth("sign-count", err)
 	}
 	directProof, err := decodeFixedHex(req.DirectProof, 64, "direct proof")
 	if err != nil {

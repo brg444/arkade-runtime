@@ -2,6 +2,9 @@ package policy
 
 import "testing"
 
+// TestFrozenProtocolDomains pins each HMAC/HKDF string as its own
+// contract. The suffix is not a release. credential-record/v3 and
+// schema 7 and template …-v5 are independent axes — see docs/versions.md.
 func TestFrozenProtocolDomains(t *testing.T) {
 	pairs := []struct {
 		got, want string
@@ -11,7 +14,7 @@ func TestFrozenProtocolDomains(t *testing.T) {
 		{issuanceMACSalt, "arkade-2fa-vault/issuance-mac/v3"},
 		{vaultRecordMACDomain, "arkade-2fa-vault/vault-record/v4"},
 		{vaultCredentialMACDomain, "arkade-2fa-vault/vault-credential/v1"},
-		{sessionMACDomain, "arkade-2fa-vault/recovery-session/v1"},
+		{sessionMACDomain, "arkade-2fa-vault/recovery-session/v2"},
 		{credentialEnvelopeDomain, "arkade-2fa-vault/credential-envelope/v1"},
 		{vaultEnvelopeDomain, "arkade-2fa-vault/vault-envelope/v4"},
 		{vaultEnvelopeMACSalt, "arkade-2fa-vault/vault-envelope-mac/v4"},

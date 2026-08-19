@@ -37,6 +37,9 @@ func ValidateCreate(clientDataJSON, authenticatorData, challenge []byte, origin,
 	if len(authenticatorData) < 37 {
 		return CreateResult{}, fmt.Errorf("authenticatorData too short")
 	}
+	if len(clientDataJSON) == 0 || len(clientDataJSON) > maxClientDataJSON {
+		return CreateResult{}, fmt.Errorf("clientDataJSON too large")
+	}
 	var cd ClientData
 	if err := json.Unmarshal(clientDataJSON, &cd); err != nil {
 		return CreateResult{}, fmt.Errorf("clientDataJSON: %w", err)

@@ -10,10 +10,15 @@ const (
 	schemaVersionMultiTenant = 4
 	schemaVersionIssuanceMAC = 5
 	schemaVersionSessions    = 6
-	schemaVersionCurrent     = schemaVersionSessions
+	schemaVersionSessionMAC    = 7
+	schemaVersionAuthzHardening = 8
+	schemaVersionCurrent        = schemaVersionAuthzHardening
 	vaultRecordMACDomain     = "arkade-2fa-vault/vault-record/v4"
 	vaultCredentialMACDomain = "arkade-2fa-vault/vault-credential/v1"
-	sessionMACDomain         = "arkade-2fa-vault/recovery-session/v1"
+	sessionMACDomain         = "arkade-2fa-vault/recovery-session/v2"
+	signCountMACDomain       = "arkade-2fa-vault/webauthn-sign-count/v1"
+	vaultMapMACDomain        = "arkade-2fa-vault/vault-map/v1"
+	monotonicMACDomain       = "arkade-2fa-vault/issuance-monotonic/v1"
 )
 
 var schemaMetaColumns = []string{"version"}
@@ -127,6 +132,21 @@ CREATE TABLE IF NOT EXISTS recovery_session (
   updated_at TEXT NOT NULL,
   integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
   PRIMARY KEY (vault_id, input_txid, input_vout, purpose)
+);
+CREATE TABLE IF NOT EXISTS webauthn_sign_count (
+  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
+  credential_id BLOB NOT NULL,
+  sign_count INTEGER NOT NULL CHECK (sign_count >= 0),
+  updated_at TEXT NOT NULL,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
+  PRIMARY KEY (vault_id, credential_id)
+);
+CREATE TABLE IF NOT EXISTS vault_map (
+  vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),
+  kit_hash TEXT NOT NULL CHECK (length(kit_hash) = 64),
+  payload TEXT NOT NULL CHECK (length(payload) > 0 AND length(payload) <= 98304),
+  updated_at TEXT NOT NULL,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)
 );
 `
 

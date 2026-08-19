@@ -15,7 +15,11 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-const defaultFundSats int64 = 100_000
+const (
+	defaultFundSats int64 = 100_000
+	maxFundSats     int64 = 21_000_000_00 // 21 BTC, a sane regtest ceiling
+	maxMineBlocks         = 100
+)
 
 // Chain is the demo Bitcoin control surface.
 type Chain interface {
@@ -150,6 +154,9 @@ func (d *Demo) fund(ctx context.Context, amount int64) (*fundResult, error) {
 	if amount <= 0 {
 		amount = defaultFundSats
 	}
+	if amount > maxFundSats {
+		return nil, fmt.Errorf("demo fund amount exceeds cap")
+	}
 	sinkAddr, err := d.chain.GetNewAddress(ctx)
 	if err != nil {
 		return nil, err
@@ -212,6 +219,9 @@ func (d *Demo) mine(ctx context.Context, blocks int) error {
 	}
 	if blocks <= 0 {
 		blocks = 1
+	}
+	if blocks > maxMineBlocks {
+		return fmt.Errorf("demo mine block count exceeds cap")
 	}
 	addr, err := d.chain.GetNewAddress(ctx)
 	if err != nil {

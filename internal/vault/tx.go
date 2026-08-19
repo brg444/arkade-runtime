@@ -77,6 +77,8 @@ func BuildRoutineSpend(p SpendParams) (*BuiltSpend, error) {
 	seq := p.Sequence
 	if seq == 0 {
 		seq = wire.MaxTxInSequenceNum
+	} else if seq != wire.MaxTxInSequenceNum {
+		return nil, fmt.Errorf("routine sequence must be final")
 	}
 	tx.AddTxIn(&wire.TxIn{
 		PreviousOutPoint: p.PrevOutPoint,
@@ -275,6 +277,16 @@ func AddPartialSig(ptx *psbt.Packet, pub *btcec.PublicKey, leafHash, sig []byte)
 // It fail-closes on nil inputs, a preexisting final script, the wrong leaf,
 // duplicate/extra keys, a non-default sighash, or an invalid signature.
 func FinalizeRoutine(ptx *psbt.Packet, v *Built) error {
+	prevTx, err := RequireVerifiedPrevout(ptx)
+	if err != nil {
+		return fmt.Errorf("routine prevout: %w", err)
+	}
+	if ptx.UnsignedTx == nil || len(ptx.UnsignedTx.TxIn) != 1 {
+		return fmt.Errorf("exactly one input required")
+	}
+	if _, err := checkedPrevout(v, prevTx, ptx.UnsignedTx.TxIn[0].PreviousOutPoint); err != nil {
+		return fmt.Errorf("routine prevout: %w", err)
+	}
 	if err := verifyRoutinePartials(ptx, v); err != nil {
 		return err
 	}
@@ -557,7 +569,7 @@ func AdminSpend(v *Built, prevTx *wire.MsgTx, op wire.OutPoint, dest []byte, des
 	switch {
 	case change == 0:
 		// fully consumed
-	case change >= program.DustSats && !bytes.Equal(dest, v.PkScript):
+	case change >= program.DustSats:
 		tx.AddTxOut(&wire.TxOut{Value: change, PkScript: v.PkScript})
 	default:
 		return nil, fmt.Errorf("owner spend does not balance")

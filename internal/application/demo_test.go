@@ -93,6 +93,17 @@ func TestDemoOwnerRoutesAbsentWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestDemoMineRejectsHugeBlockCount(t *testing.T) {
+	svc := &Service{VaultSigner: demoRemoteSigner()}
+	d, err := NewDemo(svc, &fakeChain{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.mine(context.Background(), maxMineBlocks+1); err == nil {
+		t.Fatal("unbounded mine accepted")
+	}
+}
+
 func TestNewDemoRejectsLocalSignerOrNil(t *testing.T) {
 	chain := &fakeChain{}
 	if _, err := NewDemo(nil, chain); err == nil {

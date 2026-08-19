@@ -49,10 +49,11 @@ func (s *Service) previewV5Descriptor(vaultID string, req RegisterRequest) (*Pro
 		return nil, err
 	}
 	// Recovery is optional. Skip it and the family is phone+hardware only.
-	in, err := s.v5FamilyInput(vaultID, parsed, child.PubKey())
+	in, err := s.v5FamilyInput(vaultID, parsed, child.PubKey(), s.ArkadeCosignerPub)
 	if err != nil {
 		return nil, err
 	}
+	applyStagedProgram(&in, v5.TemplateV6)
 	origin, version := s.arkadeIdentity()
 	desc, _, err := v5.BuildPublicDescriptor(in, origin, version)
 	if err != nil {
@@ -65,8 +66,8 @@ func (s *Service) previewV5Descriptor(vaultID string, req RegisterRequest) (*Pro
 	return &ProposedEnrollment{VaultID: vaultID, DescriptorHash: hash, Descriptor: desc}, nil
 }
 
-func (s *Service) v5FamilyInput(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey) (v5.FamilyInput, error) {
-	if s.ArkadeCosignerPub == nil || parsed.phoneRoutine == nil || parsed.externalOwner == nil {
+func (s *Service) v5FamilyInput(vaultID string, parsed parsedRegisterRequest, vaultBase, arkadeBase *btcec.PublicKey) (v5.FamilyInput, error) {
+	if arkadeBase == nil || parsed.phoneRoutine == nil || parsed.externalOwner == nil {
 		return v5.FamilyInput{}, fmt.Errorf("v5 keys required")
 	}
 	auth, err := vault.AuthorizationScript(parsed.phoneDirectP256, configuredAuthorizationPolicy())
@@ -74,7 +75,7 @@ func (s *Service) v5FamilyInput(vaultID string, parsed parsedRegisterRequest, va
 		return v5.FamilyInput{}, err
 	}
 	routineVault := arkade.ComputeArkadeScriptPublicKey(vaultBase, arkade.ArkadeScriptHash(auth))
-	routineArkade := arkade.ComputeArkadeScriptPublicKey(s.ArkadeCosignerPub, arkade.ArkadeScriptHash(auth))
+	routineArkade := arkade.ComputeArkadeScriptPublicKey(arkadeBase, arkade.ArkadeScriptHash(auth))
 	if routineVault == nil || routineArkade == nil {
 		return v5.FamilyInput{}, fmt.Errorf("routine tweak is degenerate")
 	}
@@ -86,17 +87,18 @@ func (s *Service) v5FamilyInput(vaultID string, parsed parsedRegisterRequest, va
 		Recovery:           parsed.recovery,
 		PhoneDirectP256:    parsed.phoneDirectP256,
 		VaultCosignerBase:  vaultBase,
-		ArkadeCosignerBase: s.ArkadeCosignerPub,
+		ArkadeCosignerBase: arkadeBase,
 		RoutineVault:       routineVault,
 		RoutineArkade:      routineArkade,
 	}, nil
 }
 
 func (s *Service) mintV5Credential(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey) (policy.Credential, *vault.Built, *vault.Built, error) {
-	in, err := s.v5FamilyInput(vaultID, parsed, vaultBase)
+	in, err := s.v5FamilyInput(vaultID, parsed, vaultBase, s.ArkadeCosignerPub)
 	if err != nil {
 		return policy.Credential{}, nil, nil, err
 	}
+	applyStagedProgram(&in, v5.TemplateV6)
 	origin, version := s.arkadeIdentity()
 	_, fam, err := v5.BuildPublicDescriptor(in, origin, version)
 	if err != nil {
@@ -123,7 +125,7 @@ func (s *Service) mintV5Credential(vaultID string, parsed parsedRegisterRequest,
 		ArkadeCosignerBase:    s.ArkadeCosignerPub.SerializeCompressed(),
 		ArkadeCosignerOrigin:  origin,
 		ArkadeCosignerVersion: version,
-		TemplateVersion:       v5.Template,
+		TemplateVersion:       v5.TemplateV6,
 		PolicyVersion:         program.PolicyVersion,
 		Network:               cfg.Network,
 		VaultID:               vaultID,
@@ -169,7 +171,7 @@ func wrapV5Family(cred policy.Credential, fam *v5.Family, in v5.FamilyInput) (*v
 	if err != nil {
 		return nil, nil, err
 	}
-	ctrl, err := controlForScript(in.VaultID, "daily", "", scripts, fam.DailyRoutine)
+	ctrl, err := controlForScript(in.VaultID, "daily", "", in.ProgramTemplate(), scripts, fam.DailyRoutine)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -251,8 +253,8 @@ func routineLeaf(script, control []byte, closure arkscript.Closure) *vault.Leaf 
 	}
 }
 
-func controlForScript(vaultID, kind, claimant string, scripts [][]byte, want []byte) ([]byte, error) {
-	internal, err := v5.ContextInternalKey(vaultID, kind, claimant)
+func controlForScript(vaultID, kind, claimant, template string, scripts [][]byte, want []byte) ([]byte, error) {
+	internal, err := v5.ContextInternalKeyTemplate(vaultID, kind, claimant, template)
 	if err != nil {
 		return nil, err
 	}
@@ -315,14 +317,12 @@ func (s *Service) rebuildV5(cred *policy.Credential) (
 		id: cred.ID, webauthnP256: cred.WebAuthnP256, phoneDirectP256: cred.PhoneDirectP256,
 		phoneRoutine: phoneRoutine, externalOwner: externalOwner, recovery: recovery,
 	}
-	prev := s.ArkadeCosignerPub
-	s.ArkadeCosignerPub = arkadeBase
-	in, inErr := s.v5FamilyInput(cred.VaultID, parsed, vaultBase)
-	s.ArkadeCosignerPub = prev
+	in, inErr := s.v5FamilyInput(cred.VaultID, parsed, vaultBase, arkadeBase)
 	if inErr != nil {
 		err = inErr
 		return
 	}
+	applyStagedProgram(&in, cred.TemplateVersion)
 	_, fam, bErr := v5.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)
 	if bErr != nil {
 		err = bErr
@@ -345,8 +345,23 @@ func (s *Service) rebuildV5(cred *policy.Credential) (
 	return
 }
 
+func applyStagedProgram(in *v5.FamilyInput, template string) {
+	if in == nil {
+		return
+	}
+	if template == "" {
+		template = v5.TemplateV6
+	}
+	in.TemplateVersion = template
+	in.ServerFreeClawback = template == v5.TemplateV6
+}
+
 func knownTemplate(template string) bool {
-	return template == program.LeftoverV4Template || template == v5.Template
+	return template == program.LeftoverV4Template || isStagedTemplate(template)
+}
+
+func isStagedTemplate(template string) bool {
+	return template == v5.Template || template == v5.TemplateV6
 }
 
 func xOnlyHexOf(pub *btcec.PublicKey) string {
@@ -357,9 +372,9 @@ func xOnlyHexOf(pub *btcec.PublicKey) string {
 }
 
 func isV5Template(template string) bool {
-	return template == v5.Template
+	return isStagedTemplate(template)
 }
 
 func publicEnrollTemplate(s *Service) string {
-	return v5.Template
+	return v5.TemplateV6
 }

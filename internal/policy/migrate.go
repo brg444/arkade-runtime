@@ -303,7 +303,9 @@ func (l *Ledger) MigrateIssuanceIntegrity(integrityKey []byte) error {
 	return nil
 }
 
-// MigrateRecoverySessions is the schema 5→6 step. Adds MAC'd initiate/clawback rows.
+// MigrateRecoverySessions is the schema 5→6 table create, then the 6→7
+// bump. 6→7 requires every session row to already verify as v2, or the
+// table to be empty. There is no v1 reseal.
 func (l *Ledger) MigrateRecoverySessions() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -329,6 +331,95 @@ func (l *Ledger) MigrateRecoverySessions() error {
 	if n == 1 && ver == schemaVersionIssuanceMAC {
 		if _, err := l.db.Exec(`UPDATE schema_meta SET version = ? WHERE version = ?`, schemaVersionSessions, schemaVersionIssuanceMAC); err != nil {
 			return fmt.Errorf("session schema version: %w", err)
+		}
+		ver = schemaVersionSessions
+	}
+	if n == 1 && ver == schemaVersionSessions {
+		if err := resealRecoverySessionMACs(l.db, l.integrityKey); err != nil {
+			return err
+		}
+		if _, err := l.db.Exec(`UPDATE schema_meta SET version = ? WHERE version = ?`, schemaVersionSessionMAC, schemaVersionSessions); err != nil {
+			return fmt.Errorf("session MAC schema version: %w", err)
+		}
+	}
+	return l.migrateAuthzHardeningLocked()
+}
+
+// MigrateAuthzHardening is schema 7→8: sign-count table and authenticated map.
+func (l *Ledger) MigrateAuthzHardening() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.migrateAuthzHardeningLocked()
+}
+
+func (l *Ledger) migrateAuthzHardeningLocked() error {
+	if _, err := l.db.Exec(`CREATE TABLE IF NOT EXISTS webauthn_sign_count (
+  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
+  credential_id BLOB NOT NULL,
+  sign_count INTEGER NOT NULL CHECK (sign_count >= 0),
+  updated_at TEXT NOT NULL,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
+  PRIMARY KEY (vault_id, credential_id)
+)`); err != nil {
+		return fmt.Errorf("webauthn sign count table: %w", err)
+	}
+	if _, err := l.db.Exec(`CREATE TABLE IF NOT EXISTS vault_map (
+  vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),
+  kit_hash TEXT NOT NULL CHECK (length(kit_hash) = 64),
+  payload TEXT NOT NULL CHECK (length(payload) > 0 AND length(payload) <= 98304),
+  updated_at TEXT NOT NULL,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)
+)`); err != nil {
+		return fmt.Errorf("vault map table: %w", err)
+	}
+	ver, n, err := schemaMetaState(l.db)
+	if err != nil {
+		return err
+	}
+	if n == 1 && ver == schemaVersionSessionMAC {
+		if _, err := l.db.Exec(`UPDATE schema_meta SET version = ? WHERE version = ?`, schemaVersionAuthzHardening, schemaVersionSessionMAC); err != nil {
+			return fmt.Errorf("authz hardening schema version: %w", err)
+		}
+	}
+	return nil
+}
+
+// resealRecoverySessionMACs accepts only the live v2 preimage. Rows that
+// already verify stay. Anything else fails closed — there is no v1
+// fallback. An empty table (live Railway, 2026-08-19) is a no-op so
+// schema 6 can still advance to 7.
+func resealRecoverySessionMACs(db *sql.DB, integrityKey []byte) error {
+	rows, err := db.Query(`
+SELECT vault_id, purpose, input_txid, input_vout, dest_script, IFNULL(last_sighash,''), signature, created_at, updated_at, integrity_mac
+  FROM recovery_session`)
+	if err != nil {
+		return fmt.Errorf("recovery session reseal: %w", err)
+	}
+	defer rows.Close()
+	var pending []RecoverySession
+	for rows.Next() {
+		var rec RecoverySession
+		if err := rows.Scan(
+			&rec.VaultID, &rec.Purpose, &rec.InputTxid, &rec.InputVout, &rec.DestScript,
+			&rec.LastSighash, &rec.Signature, &rec.CreatedAt, &rec.UpdatedAt, &rec.IntegrityMAC,
+		); err != nil {
+			return err
+		}
+		pending = append(pending, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	if len(integrityKey) != sha256.Size {
+		return fmt.Errorf("recovery session reseal requires the integrity key")
+	}
+	for i := range pending {
+		rec := pending[i]
+		if err := verifySession(&rec, integrityKey); err != nil {
+			return fmt.Errorf("recovery session MAC mismatch")
 		}
 	}
 	return nil

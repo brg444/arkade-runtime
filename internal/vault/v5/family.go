@@ -66,12 +66,27 @@ type FamilyInput struct {
 	ArkadeCosignerBase *btcec.PublicKey
 	RoutineVault       *btcec.PublicKey
 	RoutineArkade      *btcec.PublicKey
+	TemplateVersion    string
+	ServerFreeClawback bool
 }
+
+func (in FamilyInput) ProgramTemplate() string {
+	if in.TemplateVersion != "" {
+		return in.TemplateVersion
+	}
+	return Template
+}
+
+func (in FamilyInput) template() string { return in.ProgramTemplate() }
 
 // BuildNormal is Daily (routine+admin+initiates) or Savings (admin+initiates).
 // Initiate count is 2 without recovery and 3 with it.
 func BuildNormal(vaultID, kind, network string, phone, hardware, recovery *btcec.PublicKey, initiate map[string]TweakPair, routineVault, routineArkade *btcec.PublicKey) (addr string, pkScript []byte, routine []byte, err error) {
-	internal, err := ContextInternalKey(vaultID, kind, "")
+	return BuildNormalTemplate(vaultID, kind, network, Template, phone, hardware, recovery, initiate, routineVault, routineArkade)
+}
+
+func BuildNormalTemplate(vaultID, kind, network, template string, phone, hardware, recovery *btcec.PublicKey, initiate map[string]TweakPair, routineVault, routineArkade *btcec.PublicKey) (addr string, pkScript []byte, routine []byte, err error) {
+	internal, err := ContextInternalKeyTemplate(vaultID, kind, "", template)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -145,15 +160,20 @@ func BuildFamily(in FamilyInput) (*Family, error) {
 		PendingTweaks: map[string]TweakPair{},
 	}
 	roles := familyClaimants(in.Recovery != nil)
+	template := in.template()
+	clawWitness := ClawbackWitnessBytes()
+	if in.ServerFreeClawback {
+		clawWitness = clawbackWitnessForServerFree(in.Recovery != nil)
+	}
 	for _, kind := range kinds {
 		for _, claimant := range roles {
 			key := FamilyKey(kind, claimant)
-			qAddr, qScript, err := BuildQuarantine(in.VaultID, kind, claimant, in.Network, in.Phone, in.Hardware, in.Recovery)
+			qAddr, qScript, err := BuildQuarantineTemplate(in.VaultID, kind, claimant, in.Network, template, in.Phone, in.Hardware, in.Recovery)
 			if err != nil {
 				return nil, fmt.Errorf("quarantine %s: %w", key, err)
 			}
 			fam.Quarantine[key] = Tree{Address: qAddr, PkScript: qScript}
-			claw, err := BuildTransitionScript(qScript, nil, ClawbackWitnessBytes())
+			claw, err := BuildTransitionScript(qScript, nil, clawWitness)
 			if err != nil {
 				return nil, fmt.Errorf("clawback auth %s: %w", key, err)
 			}
@@ -163,7 +183,7 @@ func BuildFamily(in FamilyInput) (*Family, error) {
 				return nil, fmt.Errorf("pending tweak %s: %w", key, err)
 			}
 			fam.PendingTweaks[key] = TweakPair{Vault: pv, Arkade: pa}
-			pAddr, pScript, err := BuildPending(in.VaultID, kind, claimant, in.Network, in.Phone, in.Hardware, in.Recovery, pv, pa)
+			pAddr, pScript, err := BuildPendingTemplate(in.VaultID, kind, claimant, in.Network, template, in.ServerFreeClawback, in.Phone, in.Hardware, in.Recovery, pv, pa)
 			if err != nil {
 				return nil, fmt.Errorf("pending %s: %w", key, err)
 			}
@@ -191,11 +211,11 @@ func BuildFamily(in FamilyInput) (*Family, error) {
 		}
 		fam.InitiateSave[claimant] = TweakPair{Vault: sv, Arkade: sa}
 	}
-	dAddr, dScript, routine, err := BuildNormal(in.VaultID, "daily", in.Network, in.Phone, in.Hardware, in.Recovery, fam.InitiateDaily, in.RoutineVault, in.RoutineArkade)
+	dAddr, dScript, routine, err := BuildNormalTemplate(in.VaultID, "daily", in.Network, template, in.Phone, in.Hardware, in.Recovery, fam.InitiateDaily, in.RoutineVault, in.RoutineArkade)
 	if err != nil {
 		return nil, fmt.Errorf("daily: %w", err)
 	}
-	sAddr, sScript, _, err := BuildNormal(in.VaultID, "savings", in.Network, in.Phone, in.Hardware, in.Recovery, fam.InitiateSave, nil, nil)
+	sAddr, sScript, _, err := BuildNormalTemplate(in.VaultID, "savings", in.Network, template, in.Phone, in.Hardware, in.Recovery, fam.InitiateSave, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("savings: %w", err)
 	}

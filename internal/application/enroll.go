@@ -355,8 +355,8 @@ func verifyEnrollmentPoP(vaultID string, owner *btcec.PublicKey, req RegisterReq
 	if owner == nil {
 		return fmt.Errorf("tenant owner pub required")
 	}
-	if strings.TrimSpace(req.ExternalOwnerProof) == "" && strings.TrimSpace(req.RecoveryProof) == "" {
-		return nil
+	if strings.TrimSpace(req.ExternalOwnerProof) == "" {
+		return fmt.Errorf("externalOwnerProof required")
 	}
 	if req.DescriptorHash == "" {
 		return fmt.Errorf("enrollment descriptor hash required")

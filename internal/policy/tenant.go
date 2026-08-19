@@ -510,6 +510,16 @@ func (l *Ledger) StoreVaultEnvelopeIfAbsent(vaultID string, envelope CredentialE
 		return err
 	}
 	defer tx.Rollback()
+	cred, err := getVaultCredentialTx(tx, vaultID)
+	if err != nil {
+		return err
+	}
+	if cred == nil {
+		return fmt.Errorf("vault credential required")
+	}
+	if err := VerifyVaultEnvelope(&envelope, vaultID, cred.CredentialID, l.integrityKey); err != nil {
+		return err
+	}
 	existing, err := getVaultEnvelopeTx(tx, vaultID)
 	if err != nil {
 		return err

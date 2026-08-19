@@ -450,11 +450,11 @@ func sealVaultCredentialForService(cred *policy.VaultCredential, s *Service) err
 }
 
 func (s *Service) validateEnrollmentBootstrap(bootstrap string) error {
+	if !s.EnrollmentDeadline.IsZero() && !s.currentEnrollmentTime().Before(s.EnrollmentDeadline) {
+		return fmt.Errorf("enrollment window is closed")
+	}
 	if s.runtimeConfig().Network == deployment.NetworkRegtest && len(s.EnrollmentTokenHash) == 0 {
 		return nil
-	}
-	if s.EnrollmentDeadline.IsZero() || !s.currentEnrollmentTime().Before(s.EnrollmentDeadline) {
-		return fmt.Errorf("enrollment window is closed")
 	}
 	if s.OpenEnrollment {
 		if bootstrap != "" {
@@ -1061,6 +1061,27 @@ type Status struct {
 	PhoneDirectP256                 string `json:"phoneDirectP256,omitempty"`
 	TweakedVaultCosignerXOnly       string `json:"tweakedVaultCosignerXOnly,omitempty"`
 	TweakedArkadeCosignerXOnly      string `json:"tweakedArkadeCosignerXOnly,omitempty"`
+	Warnings                        []string `json:"warnings,omitempty"`
+}
+
+func statusWarnings(cred *policy.Credential) []string {
+	if cred == nil {
+		return nil
+	}
+	var out []string
+	if cred.TemplateVersion == program.LeftoverV4Template {
+		out = append(out, "This leftover vault has a phone-only delay exit. A stolen phone can take Spending and Savings after 144 blocks without hardware.")
+	}
+	if isStagedTemplate(cred.TemplateVersion) {
+		out = append(out, "A recovery already in flight cannot be cancelled if both cosigners are gone.")
+		if cred.TemplateVersion == v5.Template {
+			out = append(out, "This vault still needs both cosigners to cancel a pending recovery. New vaults add a hardware-only cancel path.")
+		}
+	}
+	if cred.Network == deployment.NetworkMutinynet {
+		out = append(out, "Mutinynet blocks are much faster than mainnet. Delays are block counts, not days.")
+	}
+	return out
 }
 
 func (s *Service) publishEnrollment(phoneRoutine *btcec.PublicKey, op, sv *vault.Built) {
@@ -1378,6 +1399,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 			return Status{}, envelopeErr
 		}
 		st.PasskeyLoginAvailable = envelope != nil
+		st.Warnings = statusWarnings(cred)
 	}
 	if snap.Operational != nil {
 		st.OperationalAddr = snap.Operational.Address
@@ -1455,6 +1477,9 @@ func (s *Service) DraftContext(ctx context.Context, req DraftRequest) (string, e
 	if err != nil {
 		return "", err
 	}
+	if req.RecipientAmount <= 0 || req.Fee < 0 {
+		return "", fmt.Errorf("invalid amount")
+	}
 	built, err := vault.BuildRoutineSpend(vault.SpendParams{
 		Vault:           op,
 		PrevTx:          prev,
@@ -1529,10 +1554,14 @@ func (s *Service) BindContext(ctx context.Context, req BindRequest) (string, err
 	if cred == nil {
 		return "", fmt.Errorf("not enrolled")
 	}
-	if _, err := webauthn.Validate(assertion, webauthn.Expected{
+	verified, err := webauthn.Validate(assertion, webauthn.Expected{
 		CredentialID: cred.ID, WebAuthnP256: cred.WebAuthnP256, Challenge: ch,
 		Origin: cred.Origin, RPID: cred.RPID,
-	}); err != nil {
+	})
+	if err != nil {
+		return "", err
+	}
+	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
 		return "", err
 	}
 	directSig, err := decodeHex(req.DirectSig)
@@ -1635,7 +1664,7 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 		return "", false, err
 	}
 	allowance := periodAllowanceSats(rec, nil)
-	return s.Ledger.IssueSequential(
+	signed, replay, err := s.Ledger.IssueSequential(
 		ctx, vaultID, challenge, requestPSBT,
 		cl.Recipient.Value, cl.Fee, allowance,
 		func(issueCtx context.Context, storedRequest string) (string, error) {
@@ -1687,6 +1716,17 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 			return completed, nil
 		},
 	)
+	if err != nil {
+		return "", false, mapLedgerBusy(err)
+	}
+	return signed, replay, nil
+}
+
+func mapLedgerBusy(err error) error {
+	if errors.Is(err, policy.ErrIssuanceBusy) || errors.Is(err, policy.ErrRecoveryBusy) {
+		return apperr.ErrBusy
+	}
+	return err
 }
 
 func (s *Service) verifyAuthorizeRequest(ctx context.Context, req AuthorizeRequest, op *vault.Built, vaultID string) (*psbt.Packet, *Classified, []byte, error) {
@@ -1734,13 +1774,17 @@ func (s *Service) verifyAuthorization(req AuthorizeRequest, ptx *psbt.Packet, op
 	if err != nil {
 		return nil, err
 	}
-	if _, err := webauthn.Validate(assertion, webauthn.Expected{
+	verified, err := webauthn.Validate(assertion, webauthn.Expected{
 		CredentialID: cred.ID,
 		WebAuthnP256: cred.WebAuthnP256,
 		Challenge:    challenge,
 		Origin:       cred.Origin,
 		RPID:         cred.RPID,
-	}); err != nil {
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
 		return nil, err
 	}
 
@@ -1970,6 +2014,16 @@ func verifyDirectAuth(directPub, digest, compact []byte) error {
 		return fmt.Errorf("direct auth: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) advanceSignCount(vaultID string, credID []byte, count uint32) error {
+	if s == nil || s.Ledger == nil {
+		return nil
+	}
+	if err := s.attachLedgerIntegrity(); err != nil {
+		return err
+	}
+	return s.Ledger.AdvanceSignCount(vaultID, credID, count)
 }
 
 func rejectPRF(clientDataJSON []byte) error {

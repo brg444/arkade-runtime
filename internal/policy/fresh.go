@@ -7,8 +7,10 @@ import (
 )
 
 // RefuseLegacyDatabase fails before OpenLedger when path already holds
-// singleton-credential or legacy-direct custody state. Missing or unused
-// files are allowed so a new service can initialize.
+// a singleton credential row or a legacy-direct-v0 cosigner. It does
+// not inspect template_version. A multi-tenant daily-program vault on
+// hkdf-sha256-v1 is not “legacy” here. Missing or unused files are
+// allowed so a new service can initialize.
 func RefuseLegacyDatabase(path string) error {
 	if path == "" {
 		return fmt.Errorf("database path required")

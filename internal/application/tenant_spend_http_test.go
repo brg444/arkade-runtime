@@ -110,7 +110,7 @@ func TestHTTPTenantBDraftBindAuthorizePublishLeavesAUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := AuthorizerHandler(svc)
+	h := testAuthorizer(svc)
 	draftRaw := httpJSON(t, h, http.MethodPost, "/v1/draft", map[string]any{
 		"vaultId": tenantB, "prevTxHex": hex.EncodeToString(prevRaw.Bytes()), "vout": 0,
 		"recipientScript": hex.EncodeToString(dest), "recipientAmount": 20_000, "fee": 500,
@@ -212,7 +212,7 @@ func TestHTTPTenantBDraftBindAuthorizePublishLeavesAUntouched(t *testing.T) {
 
 func TestPublicStatusIsRedactedWhileVaultQueryKeepsFirstVaultKiosk(t *testing.T) {
 	e := newEnv(t)
-	h := AuthorizerHandler(e.svc)
+	h := testAuthorizer(e.svc)
 	rec := boundaryHTTPCall(t, h, http.MethodGet, "/v1/status", "", fixture.Origin, "")
 	if rec.Code != http.StatusOK {
 		t.Fatal(rec.Body.String())

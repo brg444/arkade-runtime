@@ -231,6 +231,16 @@ func (l *Ledger) StoreCredentialEnvelopeIfAbsent(envelope CredentialEnvelope) er
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	cred, err := loadCredential(l.db)
+	if err != nil {
+		return err
+	}
+	if cred == nil {
+		return fmt.Errorf("not enrolled")
+	}
+	if err := VerifyCredentialEnvelope(&envelope, cred.ID, l.integrityKey); err != nil {
+		return err
+	}
 	tx, err := l.db.Begin()
 	if err != nil {
 		return err

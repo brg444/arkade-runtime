@@ -53,6 +53,30 @@ func TestValidateAcceptsCryptographicallyValidES256AssertionFixture(t *testing.T
 	}
 }
 
+func TestValidateRejectsOversizedClientDataJSON(t *testing.T) {
+	t.Parallel()
+	priv, err := NewP256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentialID := []byte("cred")
+	challenge := sha256.Sum256([]byte("issued transaction"))
+	assertion, err := Synth(priv, credentialID, challenge[:], testOrigin, testRPID, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertion.ClientDataJSON = bytes.Repeat([]byte("a"), maxClientDataJSON+1)
+	if _, err := Validate(assertion, Expected{
+		CredentialID: credentialID,
+		WebAuthnP256: CompressedP256(priv),
+		Challenge:    challenge[:],
+		Origin:       testOrigin,
+		RPID:         testRPID,
+	}); err == nil {
+		t.Fatal("oversized clientDataJSON accepted")
+	}
+}
+
 func TestValidateRejectsSignatureFromDifferentCredentialKey(t *testing.T) {
 	t.Parallel()
 

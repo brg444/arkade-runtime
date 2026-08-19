@@ -43,6 +43,36 @@ func TestAdminSpendUsesOwnerLeafAndReturnsCanonicalChange(t *testing.T) {
 	assertSecurityNoEmulatorPacket(t, packet)
 }
 
+func TestAdminSpendAllowsPartialSelfSendWithChange(t *testing.T) {
+	t.Parallel()
+
+	f := newSecurityVaultFixture(t)
+	packet, err := AdminSpend(
+		f.operational, f.prevTx, f.prevOutPoint, f.operational.PkScript,
+		securityRecipientSats, securityFeeSats, 0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packet.UnsignedTx.TxOut) != 2 {
+		t.Fatalf("self-send output count = %d, want dest + change", len(packet.UnsignedTx.TxOut))
+	}
+	if !bytes.Equal(packet.UnsignedTx.TxOut[0].PkScript, f.operational.PkScript) ||
+		!bytes.Equal(packet.UnsignedTx.TxOut[1].PkScript, f.operational.PkScript) {
+		t.Fatal("self-send dest or change left the vault script")
+	}
+}
+
+func TestBuildRoutineSpendRejectsNonFinalSequence(t *testing.T) {
+	t.Parallel()
+	f := newSecurityVaultFixture(t)
+	p := f.routineParams()
+	p.Sequence = 1
+	if _, err := BuildRoutineSpend(p); err == nil {
+		t.Fatal("non-final routine sequence accepted")
+	}
+}
+
 func TestOwnerFullSweepCanTargetCanonicalVaultWithoutPhantomChange(t *testing.T) {
 	t.Parallel()
 

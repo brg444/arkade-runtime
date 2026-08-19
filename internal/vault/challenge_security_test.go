@@ -61,7 +61,6 @@ func TestArkadeChallengeCommitsToEveryTransactionMutation(t *testing.T) {
 		}},
 		{name: "recipient amount", mutate: func(p *SpendParams) { p.RecipientAmount++ }},
 		{name: "fee and change", mutate: func(p *SpendParams) { p.Fee++ }},
-		{name: "sequence", mutate: func(p *SpendParams) { p.Sequence = 1 }},
 		{name: "prevout", mutate: func(p *SpendParams) {
 			p.PrevTx = cloneSecurityTx(p.PrevTx)
 			p.PrevTx.TxOut[0].Value++
@@ -81,6 +80,18 @@ func TestArkadeChallengeCommitsToEveryTransactionMutation(t *testing.T) {
 				t.Fatalf("%s mutation did not change Arkade challenge %x", tc.name, baseline.Challenge)
 			}
 		})
+	}
+
+	// Sequence is pinned to 0xffffffff by the builder. Mutate the assembled
+	// transaction to prove the challenge still commits to that field.
+	seq := clonePSBT(t, baseline.Packet)
+	seq.UnsignedTx.TxIn[0].Sequence = 1
+	seqChallenge, err := Challenge(seq, f.operational)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(seqChallenge, baseline.Challenge) {
+		t.Fatal("sequence mutation did not change Arkade challenge")
 	}
 }
 

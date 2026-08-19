@@ -4,6 +4,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -36,6 +38,10 @@ const (
 	ReplayResign ReplayAction = "resign"
 )
 
+// ErrRecoveryBusy is a second worker hitting a pending unsigned session
+// for the same outpoint. The first worker still owns the cosign.
+var ErrRecoveryBusy = errors.New("recovery session already in progress")
+
 func requireSessionPurpose(purpose string) error {
 	if purpose != sessionPurposeInitiate && purpose != sessionPurposeClawback {
 		return fmt.Errorf("purpose must be initiate or clawback")
@@ -43,29 +49,45 @@ func requireSessionPurpose(purpose string) error {
 	return nil
 }
 
-func canonicalSession(rec RecoverySession) []byte {
-	var b []byte
-	b = append(b, []byte(sessionMACDomain)...)
-	b = append(b, 0)
-	b = append(b, []byte(rec.VaultID)...)
-	b = append(b, 0)
-	b = append(b, []byte(rec.Purpose)...)
-	b = append(b, 0)
-	b = append(b, []byte(rec.InputTxid)...)
-	b = append(b, 0)
-	b = append(b, []byte(fmt.Sprintf("%d", rec.InputVout))...)
-	b = append(b, 0)
-	b = append(b, []byte(rec.DestScript)...)
-	return b
+func canonicalSession(rec RecoverySession) ([]byte, error) {
+	out := make([]byte, 0, 256)
+	var err error
+	out, err = appendCredentialField(out, []byte(sessionMACDomain))
+	if err != nil {
+		return nil, err
+	}
+	for _, field := range [][]byte{
+		[]byte(rec.VaultID), []byte(rec.Purpose), []byte(rec.InputTxid),
+		[]byte(rec.DestScript), []byte(rec.LastSighash), rec.Signature,
+		[]byte(rec.CreatedAt), []byte(rec.UpdatedAt),
+	} {
+		out, err = appendCredentialField(out, field)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if rec.InputVout < 0 {
+		return nil, fmt.Errorf("recovery session vout")
+	}
+	out = binary.LittleEndian.AppendUint32(out, uint32(rec.InputVout))
+	return out, nil
+}
+
+func sessionMAC(integrityKey, payload []byte) []byte {
+	mac := hmac.New(sha256.New, integrityKey)
+	_, _ = mac.Write(payload)
+	return mac.Sum(nil)
 }
 
 func sealSession(rec *RecoverySession, integrityKey []byte) error {
 	if rec == nil || len(integrityKey) != sha256.Size {
 		return fmt.Errorf("recovery session seal required")
 	}
-	mac := hmac.New(sha256.New, integrityKey)
-	_, _ = mac.Write(canonicalSession(*rec))
-	rec.IntegrityMAC = mac.Sum(nil)
+	payload, err := canonicalSession(*rec)
+	if err != nil {
+		return err
+	}
+	rec.IntegrityMAC = sessionMAC(integrityKey, payload)
 	return nil
 }
 
@@ -73,14 +95,14 @@ func verifySession(rec *RecoverySession, integrityKey []byte) error {
 	if rec == nil || len(rec.IntegrityMAC) != sha256.Size {
 		return fmt.Errorf("recovery session MAC missing")
 	}
-	var tmp RecoverySession = *rec
-	if err := sealSession(&tmp, integrityKey); err != nil {
+	payload, err := canonicalSession(*rec)
+	if err != nil {
 		return err
 	}
-	if !hmac.Equal(rec.IntegrityMAC, tmp.IntegrityMAC) {
-		return fmt.Errorf("recovery session MAC mismatch")
+	if hmac.Equal(rec.IntegrityMAC, sessionMAC(integrityKey, payload)) {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("recovery session MAC mismatch")
 }
 
 // DecideReplay matches the wallet oracle: same dest may fee-bump; second dest or input set is refused.
@@ -101,6 +123,9 @@ func DecideReplay(existing *RecoverySession, next RecoverySession) (ReplayAction
 	}
 	if existing.InputTxid != next.InputTxid || existing.InputVout != next.InputVout {
 		return "", fmt.Errorf("overlapping input set for this outpoint")
+	}
+	if len(existing.Signature) == 0 && len(next.Signature) == 0 {
+		return "", ErrRecoveryBusy
 	}
 	if next.LastSighash != "" && existing.LastSighash == next.LastSighash && len(existing.Signature) > 0 {
 		return ReplayReplay, nil
@@ -159,6 +184,8 @@ func (l *Ledger) PutRecoverySession(rec RecoverySession) error {
 }
 
 func (l *Ledger) ApplyRecoveryReplay(next RecoverySession) (ReplayAction, *RecoverySession, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	existing, err := l.GetRecoverySession(next.VaultID, next.InputTxid, next.InputVout, next.Purpose)
 	if err != nil {
 		return "", nil, err
