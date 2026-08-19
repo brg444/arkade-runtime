@@ -19,3 +19,22 @@ type Broadcaster interface {
 	Broadcast(ctx context.Context, rawTx []byte) (txid string, err error)
 	Lookup(ctx context.Context, txid string) (confirmations int64, found bool, err error)
 }
+
+// ResolvedVtxo is one spendable VTXO as reported by the pinned indexer.
+type ResolvedVtxo struct {
+	Txid      string // 64-char lowercase hex
+	Vout      uint32
+	ValueSats uint64
+	Script    []byte // raw pkScript
+}
+
+// ArkResolver is the application-owned indexer surface. Policy consumes
+// resolved amounts and never sees HTTP.
+type ArkResolver interface {
+	// SpendableVtxos returns currently spendable VTXOs whose pkScript matches.
+	// Amounts come from the pinned indexer. Never from a client PSBT.
+	SpendableVtxos(ctx context.Context, pkScript []byte) ([]ResolvedVtxo, error)
+	// CheckpointTapscript is the arkd-advertised unroll script from GetInfo.
+	CheckpointTapscript() []byte
+	Network() string
+}

@@ -31,6 +31,10 @@ const (
 	MutinynetArkadeCosignerOrigin  = "https://emulator.mutinynet.arkade.sh"
 	MutinynetArkadeCosignerPubHex  = "03f823b9b2febc81f4af967e77aed2f541cbd3397c6d8f5a72e32eb7b471af889a"
 	MutinynetArkadeCosignerVersion = "v0.0.7-rc.1"
+
+	// MutinynetArkIndexerOrigin is the public Mutinynet arkd HTTPS gateway.
+	// There is no environment override.
+	MutinynetArkIndexerOrigin = "https://mutinynet.arkade.sh"
 )
 
 // Config is persisted into the vault descriptor at enrollment. Changing any
