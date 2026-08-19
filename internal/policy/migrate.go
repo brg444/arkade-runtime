@@ -381,6 +381,64 @@ func (l *Ledger) migrateAuthzHardeningLocked() error {
 			return fmt.Errorf("authz hardening schema version: %w", err)
 		}
 	}
+	return l.migrateVtxoOperationLocked()
+}
+
+// MigrateVtxoOperation is schema 8→9: vtxo_operation tables. Expand-only;
+// issuance is unchanged.
+func (l *Ledger) MigrateVtxoOperation() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.migrateVtxoOperationLocked()
+}
+
+func (l *Ledger) migrateVtxoOperationLocked() error {
+	if _, err := l.db.Exec(`CREATE TABLE IF NOT EXISTS vtxo_operation (
+  operation_id TEXT PRIMARY KEY,
+  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
+  purpose TEXT NOT NULL CHECK (purpose IN ('spend', 'board')),
+  bundle_digest BLOB NOT NULL CHECK (length(bundle_digest) = 32),
+  state TEXT NOT NULL CHECK (state IN ('reserved', 'signed', 'submitted', 'finalized', 'aborted', 'unresolved')),
+  amount_sats INTEGER NOT NULL CHECK (amount_sats >= 0),
+  fee_sats INTEGER NOT NULL CHECK (fee_sats >= 0),
+  dest_script BLOB,
+  change_script BLOB,
+  unsigned_psbt TEXT,
+  authorized_psbt TEXT,
+  checkpoint_psbts TEXT,
+  commitment_psbt TEXT,
+  checkpoint_tapscript BLOB,
+  ark_txid TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL,
+  last_dest_script BLOB,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)
+)`); err != nil {
+		return fmt.Errorf("vtxo operation table: %w", err)
+	}
+	if _, err := l.db.Exec(`CREATE TABLE IF NOT EXISTS vtxo_operation_input (
+  operation_id TEXT NOT NULL REFERENCES vtxo_operation(operation_id),
+  txid BLOB NOT NULL CHECK (length(txid) = 32),
+  vout INTEGER NOT NULL CHECK (vout >= 0),
+  value_sats INTEGER NOT NULL CHECK (value_sats >= 0),
+  script BLOB,
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
+  PRIMARY KEY (operation_id, txid, vout)
+)`); err != nil {
+		return fmt.Errorf("vtxo operation input table: %w", err)
+	}
+	if _, err := l.db.Exec(`CREATE INDEX IF NOT EXISTS vtxo_operation_vault ON vtxo_operation(vault_id)`); err != nil {
+		return fmt.Errorf("vtxo operation vault index: %w", err)
+	}
+	ver, n, err := schemaMetaState(l.db)
+	if err != nil {
+		return err
+	}
+	if n == 1 && ver == schemaVersionAuthzHardening {
+		if _, err := l.db.Exec(`UPDATE schema_meta SET version = ? WHERE version = ?`, schemaVersionVtxoOperation, schemaVersionAuthzHardening); err != nil {
+			return fmt.Errorf("vtxo operation schema version: %w", err)
+		}
+	}
 	return nil
 }
 
