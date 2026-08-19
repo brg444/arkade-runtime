@@ -109,8 +109,8 @@ Queried Railway `authorizer-next` `/app/data/vault.sqlite` on
 | Fact | Value |
 | --- | --- |
 | `schema_meta.version` | live integer; this binary migrates forward |
-| vaults | **4**, all `hkdf-sha256-v1` |
-| enroll program | `phone-hww-recovery-staged-v6` |
+| vaults | **4**, all `hkdf-sha256-v1` (1 leftover v3, 1 leftover v4, 2 leftover v5) |
+| enroll program | `phone-hww-recovery-staged-v6` (no v6 rows yet) |
 | `recovery_session` | 0 |
 | singleton `credential` | 0 |
 

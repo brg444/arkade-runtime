@@ -10,7 +10,7 @@ import (
 )
 
 func (l *Ledger) AdvanceSignCount(vaultID string, credentialID []byte, incoming uint32) error {
-	if l == nil || len(l.integrityKey) != sha256.Size {
+	if l == nil {
 		return fmt.Errorf("sign count ledger required")
 	}
 	if vaultID == "" || len(credentialID) == 0 {
@@ -18,6 +18,9 @@ func (l *Ledger) AdvanceSignCount(vaultID string, credentialID []byte, incoming 
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if len(l.integrityKey) != sha256.Size {
+		return fmt.Errorf("sign count ledger required")
+	}
 	if !hasTable(l.db, "webauthn_sign_count") {
 		return nil
 	}

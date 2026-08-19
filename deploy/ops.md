@@ -27,6 +27,11 @@ VAULT_DATABASE_PATH=./vault.backup.sqlite ./vault-authorizer
 
 The copy must migrate forward. If boot refuses, do not deploy.
 
+Checked against a copy of Railway `authorizer-next` `/app/data/vault.sqlite` on
+2026-08-19: schema 8, four leftover vaults (1 v3, 1 v4, 2 v5), no v6 rows yet.
+`VAULT_LEDGER_COPY=<copy> go test ./internal/policy -run TestOpenCopiedLiveLedger`
+opened that copy and confirmed schema 8. Do not paste vault ids here.
+
 ## Release checklist
 
 1. Wallet first: merge `vault-mode`, Vercel production, alias `arkade-vault-demo.vercel.app`.

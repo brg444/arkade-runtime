@@ -1,9 +1,14 @@
 package v5
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 type stagedVectorFile struct {
@@ -19,14 +24,17 @@ type stagedVectorFile struct {
 		ClawbackServerFreeWithRecovery           int64 `json:"clawbackServerFreeWithRecovery"`
 	} `json:"witnessBytes"`
 	Vectors []struct {
-		Name            string            `json:"name"`
-		Template        string            `json:"template"`
-		Recovery        bool              `json:"recovery"`
-		Daily           string            `json:"daily"`
-		Savings         string            `json:"savings"`
-		DescriptorHash  string            `json:"descriptorHash"`
-		Pending         map[string]string `json:"pending"`
-		Quarantine      map[string]string `json:"quarantine"`
+		Name           string            `json:"name"`
+		Template       string            `json:"template"`
+		Recovery       bool              `json:"recovery"`
+		Daily          string            `json:"daily"`
+		Savings        string            `json:"savings"`
+		DescriptorHash string            `json:"descriptorHash"`
+		Pending        map[string]string `json:"pending"`
+		Quarantine     map[string]string `json:"quarantine"`
+		InitiateAuth   map[string]string `json:"initiateAuth"`
+		ClawbackAuth   map[string]string `json:"clawbackAuth"`
+		GuardianExit   map[string]string `json:"guardianExit"`
 	} `json:"vectors"`
 }
 
@@ -89,7 +97,47 @@ func TestFrozenStagedVectors(t *testing.T) {
 				t.Fatalf("%s quarantine %s = %s want %s", vec.Name, key, fam.Quarantine[key].Address, want)
 			}
 		}
+		for key, want := range vec.InitiateAuth {
+			got := hex.EncodeToString(fam.InitiateAuth[key])
+			if got != want {
+				t.Fatalf("%s initiateAuth %s drifted", vec.Name, key)
+			}
+		}
+		for key, want := range vec.ClawbackAuth {
+			got := hex.EncodeToString(fam.ClawbackAuth[key])
+			if got != want {
+				t.Fatalf("%s clawbackAuth %s drifted", vec.Name, key)
+			}
+		}
+		if vec.Template == Template {
+			for key, want := range vec.GuardianExit {
+				got, err := guardianExitScript(in, key)
+				if err != nil {
+					t.Fatalf("%s guardianExit %s: %v", vec.Name, key, err)
+				}
+				if hex.EncodeToString(got) != want {
+					t.Fatalf("%s guardianExit %s drifted", vec.Name, key)
+				}
+			}
+		}
 	}
+}
+
+func guardianExitScript(in FamilyInput, key string) ([]byte, error) {
+	parts := strings.Split(key, "-")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("family key %q", key)
+	}
+	claimant := parts[1]
+	roles := map[string]*btcec.PublicKey{"phone": in.Phone, "hardware": in.Hardware, "recovery": in.Recovery}
+	var pubs []*btcec.PublicKey
+	for _, g := range familyClaimants(in.Recovery != nil) {
+		if g == claimant {
+			continue
+		}
+		pubs = append(pubs, roles[g])
+	}
+	return checksig(pubs...)
 }
 
 func equalStrings(got, want []string) bool {

@@ -80,6 +80,38 @@ func authorizerSurface(svc *Service) http.Handler {
 	})
 }
 
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	if w.status == 0 {
+		w.status = code
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func safeVaultID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || len(id) > 80 {
+		return ""
+	}
+	for _, c := range id {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
+			return ""
+		}
+	}
+	return id
+}
+
 func withRequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSpace(r.Header.Get("X-Request-Id"))
@@ -87,8 +119,21 @@ func withRequestLog(next http.Handler) http.Handler {
 			id = fmt.Sprintf("%d", time.Now().UnixNano())
 		}
 		w.Header().Set("X-Request-Id", id)
-		log.Printf("request id=%s op=%s %s", id, r.Method, r.URL.Path)
-		next.ServeHTTP(w, r)
+		rec := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
+		vault := safeVaultID(r.URL.Query().Get("vault"))
+		if vault == "" {
+			vault = "-"
+		}
+		code := strings.TrimSpace(rec.Header().Get("X-Vault-Error-Code"))
+		if code == "" {
+			code = "ok"
+		}
+		status := rec.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		log.Printf("request id=%s op=%s path=%s vault=%s status=%d code=%s", id, r.Method, r.URL.Path, vault, status, code)
 	})
 }
 
@@ -436,6 +481,7 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 				code = e.Code
 			}
 		}
+		w.Header().Set("X-Vault-Error-Code", string(code))
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": publicErrorMessage(err), "code": string(code)})
 		return

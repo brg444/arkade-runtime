@@ -1,21 +1,19 @@
 package application
 
 import (
-	"fmt"
-
 	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
 )
 
 // ReadyStatus is the unauthenticated readiness body. It never includes keys,
 // tokens, PSBTs, or credential envelopes.
 type ReadyStatus struct {
-	Ok              bool   `json:"ok"`
-	Schema          int    `json:"schema"`
-	Network         string `json:"network"`
-	EnrollTemplate  string `json:"enrollTemplate"`
-	ArkadeOrigin    string `json:"arkadeOrigin"`
-	ArkadeVersion   string `json:"arkadeVersion"`
-	Error           string `json:"error,omitempty"`
+	Ok             bool   `json:"ok"`
+	Schema         int    `json:"schema"`
+	Network        string `json:"network"`
+	EnrollTemplate string `json:"enrollTemplate"`
+	ArkadeOrigin   string `json:"arkadeOrigin"`
+	ArkadeVersion  string `json:"arkadeVersion"`
+	Error          string `json:"error,omitempty"`
 }
 
 // Ready checks ledger access and the pinned Arkade identity.
@@ -51,12 +49,4 @@ func (s *Service) Ready() ReadyStatus {
 	}
 	st.Ok = true
 	return st
-}
-
-func (s *Service) readyError() error {
-	st := s.Ready()
-	if st.Ok {
-		return nil
-	}
-	return fmt.Errorf("%s", st.Error)
 }
