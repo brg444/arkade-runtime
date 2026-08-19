@@ -33,7 +33,18 @@
         "feerateSatVb": 10,
         "dustSats": 330
       },
-      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. Exit object omitted until leaf PR (mapping decided: Key Decision 13)."
+      "exit": {
+        "delay": "2048",
+        "delayUnit": "seconds",
+        "twoGuardian": "device-and-hardware-after-exitDelay",
+        "threeGuardian": "hardware-and-recovery-after-exitDelay"
+      },
+      "tunnel": {
+        "opcode": "OP_TUNNEL",
+        "leaf": "tweaked-tunnel-emulator-and-arkd",
+        "note": "Different ArkScript tweak from spend. Kernel is the delegate. No vault HTTP."
+      },
+      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. Exit delay frozen from Spike 0 UnilateralExitDelay=2048 seconds."
     }
   },
   "domains": {

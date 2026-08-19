@@ -15,6 +15,9 @@ func TestPinsMatchPublishedNames(t *testing.T) {
 	if VaultPolicyV1Template != "vault-policy-v1-collaborative-4pub" {
 		t.Fatal(VaultPolicyV1Template)
 	}
+	if VaultPolicyV1ExitDelay != 2048 || VaultPolicyV1ExitDelayUnit != "seconds" {
+		t.Fatal("vault-policy-v1 exit hatch pin drifted")
+	}
 	if NetworkMutinynet != "mutinynet" {
 		t.Fatal(NetworkMutinynet)
 	}
