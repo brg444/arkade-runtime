@@ -42,6 +42,9 @@ const (
 	VaultPolicyV1         = "vault-policy-v1"
 	VaultPolicyV1Schema   = "arkade-vault/vtxo-policy-v1"
 	VaultPolicyV1Template = "vault-policy-v1-collaborative-4pub"
+	// Spike 0 frozen hatch. Do not read live arkd at runtime.
+	VaultPolicyV1ExitDelay     = uint32(2048)
+	VaultPolicyV1ExitDelayUnit = "seconds"
 )
 
 func OperationalCSV() arklib.RelativeLocktime {

@@ -37,7 +37,7 @@ func TestContractPackMatchesLiveEnroll(t *testing.T) {
 	}
 }
 
-func TestContractPackListsVaultPolicyV1WithoutExit(t *testing.T) {
+func TestContractPackListsVaultPolicyV1WithExitAndTunnel(t *testing.T) {
 	raw, err := os.ReadFile("contract-pack.json")
 	if err != nil {
 		t.Fatal(err)
@@ -63,11 +63,28 @@ func TestContractPackListsVaultPolicyV1WithoutExit(t *testing.T) {
 	if listed["schema"] != "arkade-vault/vtxo-policy-v1" || listed["template"] != "vault-policy-v1-collaborative-4pub" {
 		t.Fatalf("vault-policy-v1 identity: %+v", listed)
 	}
-	if _, hasExit := listed["exit"]; hasExit {
-		t.Fatal("vault-policy-v1 must omit exit until the leaf PR")
+	exit, ok := listed["exit"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 must declare exit")
 	}
-	if _, hasTunnel := listed["tunnel"]; hasTunnel {
-		t.Fatal("vault-policy-v1 must omit tunnel until the leaf PR")
+	if exit["delay"] != "2048" || exit["delayUnit"] != "seconds" {
+		t.Fatalf("vault-policy-v1 exit delay: %+v", exit)
+	}
+	if exit["twoGuardian"] != "device-and-hardware-after-exitDelay" || exit["threeGuardian"] != "hardware-and-recovery-after-exitDelay" {
+		t.Fatalf("vault-policy-v1 exit guardians: %+v", exit)
+	}
+	tunnel, ok := listed["tunnel"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 must declare tunnel")
+	}
+	if tunnel["opcode"] != "OP_TUNNEL" || tunnel["leaf"] != "tweaked-tunnel-emulator-and-arkd" {
+		t.Fatalf("vault-policy-v1 tunnel: %+v", tunnel)
+	}
+	if tunnel["note"] != "Different ArkScript tweak from spend. Kernel is the delegate. No vault HTTP." {
+		t.Fatalf("vault-policy-v1 tunnel note: %+v", tunnel)
+	}
+	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. Exit delay frozen from Spike 0 UnilateralExitDelay=2048 seconds." {
+		t.Fatalf("vault-policy-v1 notes: %v", listed["notes"])
 	}
 	caps, ok := listed["caps"].(map[string]any)
 	if !ok {
