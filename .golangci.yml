@@ -4,6 +4,7 @@ run:
   go: "1.24"
 
 linters:
-  default: standard
-  disable:
-    - errcheck
+  default: none
+  enable:
+    - govet
+    - unused
