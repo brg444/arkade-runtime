@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // BackupGeneration is the schema generation a rollback file must represent.
@@ -395,7 +396,7 @@ func (l *Ledger) MigrateVtxoOperation() error {
 func (l *Ledger) migrateVtxoOperationLocked() error {
 	if _, err := l.db.Exec(`CREATE TABLE IF NOT EXISTS vtxo_operation (
   operation_id TEXT PRIMARY KEY,
-  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
+  vault_id TEXT NOT NULL,
   purpose TEXT NOT NULL CHECK (purpose IN ('spend', 'board')),
   bundle_digest BLOB NOT NULL CHECK (length(bundle_digest) = 32),
   state TEXT NOT NULL CHECK (state IN ('reserved', 'signed', 'submitted', 'finalized', 'aborted', 'unresolved')),
@@ -432,6 +433,9 @@ func (l *Ledger) migrateVtxoOperationLocked() error {
 	}
 	ver, n, err := schemaMetaState(l.db)
 	if err != nil {
+		if strings.Contains(err.Error(), "schema_meta") {
+			return nil
+		}
 		return err
 	}
 	if n == 1 && ver == schemaVersionAuthzHardening {

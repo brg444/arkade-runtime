@@ -1,0 +1,286 @@
+package application
+
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/ports"
+	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg"
+)
+
+type stubArkResolver struct {
+	vtxos      []ports.ResolvedVtxo
+	checkpoint []byte
+	signer     []byte
+	spentBy    string
+	spentErr   error
+}
+
+func (s stubArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.ResolvedVtxo, error) {
+	return append([]ports.ResolvedVtxo(nil), s.vtxos...), nil
+}
+
+func (s stubArkResolver) ReservedSpentByArkTxid(_ context.Context, _ []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
+	if s.spentErr != nil {
+		return s.spentErr
+	}
+	if len(reserved) == 0 {
+		return fmt.Errorf("reserved outpoints required")
+	}
+	if s.spentBy == "" || !strings.EqualFold(s.spentBy, arkTxid) {
+		return fmt.Errorf("reserved outpoint not spent by ark txid")
+	}
+	return nil
+}
+
+func (s stubArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), s.checkpoint...) }
+func (s stubArkResolver) AdvertisedSignerPub() []byte { return append([]byte(nil), s.signer...) }
+func (s stubArkResolver) Network() string             { return program.NetworkRegtest }
+
+func vtxoTestEnv(t *testing.T) (*env, *stubArkResolver, *btcec.PrivateKey) {
+	t.Helper()
+	e := newEnv(t)
+	if err := e.svc.Ledger.MigrateVtxoOperation(); err != nil {
+		t.Fatal(err)
+	}
+	arkd, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := &stubArkResolver{
+		checkpoint: []byte{0xc0, 0x01},
+		signer:     arkd.PubKey().SerializeCompressed(),
+	}
+	e.svc.ArkResolver = resolver
+	return e, resolver, arkd
+}
+
+func mustTaprootDest(t *testing.T) string {
+	t.Helper()
+	k, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, err := btcutil.NewAddressTaproot(schnorr.SerializePubKey(k.PubKey()), &chaincfg.RegressionNetParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr.EncodeAddress()
+}
+
+func TestReserveSpendWithoutPackExitRejected(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	falseVal := false
+	e.svc.vaultPolicyHasExit = &falseVal
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.vtxos = []ports.ResolvedVtxo{{
+		Txid: strings.Repeat("ab", 32), Vout: 0, ValueSats: 40_000, Script: tree.PkScript,
+	}}
+	h := testAuthorizer(e.svc)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"spend","destAddress":"`+mustTaprootDest(t)+`","amountSats":10000}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "REJECTED") {
+		t.Fatalf("pack without exit = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReserveRejectsBoardPurpose(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	h := testAuthorizer(e.svc)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"board","destAddress":"`+mustTaprootDest(t)+`","amountSats":10000}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "spend") {
+		t.Fatalf("board purpose = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBoardAuthorizeRouteRemoved(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	h := testAuthorizer(e.svc)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/board/authorize", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`"}`)
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("board route still present = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	low := strings.Repeat("01", 32)
+	high := strings.Repeat("02", 32)
+	resolver.vtxos = []ports.ResolvedVtxo{
+		{Txid: high, Vout: 2, ValueSats: 20_000, Script: tree.PkScript},
+		{Txid: low, Vout: 1, ValueSats: 25_000, Script: tree.PkScript},
+	}
+	h := testAuthorizer(e.svc)
+	dest := mustTaprootDest(t)
+	raw := httpJSON(t, h, http.MethodPost, "/v1/vtxo/reserve", map[string]any{
+		"vaultId": fixture.VaultID, "purpose": "spend", "destAddress": dest, "amountSats": 30_000,
+	})
+	var out VtxoReserveResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.OperationID == "" || len(out.BundleDigest) != 64 {
+		t.Fatalf("reserve = %+v", out)
+	}
+	if _, err := hex.DecodeString(out.BundleDigest); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "unsigned") || strings.Contains(strings.ToLower(string(raw)), "psbt") {
+		t.Fatal("reserve must not return an unsigned PSBT")
+	}
+	if out.CheckpointTapscript == "" {
+		t.Fatal("spend reserve missing checkpoint tapscript")
+	}
+	digest, err := hex.DecodeString(out.BundleDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destScript, err := hex.DecodeString(out.DestScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changeScript, err := hex.DecodeString(out.ChangeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(changeScript, tree.PkScript) {
+		t.Fatal("change must be vault-policy-v1")
+	}
+	op, err := e.svc.Ledger.GetVtxoOperation(context.Background(), out.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	swapped := []policy.VtxoBundleInput{
+		{Txid: []byte(strings.ToUpper(high)), Vout: 2, ValueSats: 20_000},
+		{Txid: []byte(low), Vout: 1, ValueSats: 25_000},
+	}
+	again, err := policy.ComputeVtxoBundleDigest(policy.VtxoPurposeSpend, fixture.VaultID, destScript, changeScript, 30_000, out.FeeSats, swapped, op.CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(digest, again) {
+		t.Fatal("bundle digest depends on input order")
+	}
+}
+
+func TestReserveRejectsDuplicateOutpoints(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	txid := strings.Repeat("cd", 32)
+	resolver.vtxos = []ports.ResolvedVtxo{
+		{Txid: txid, Vout: 1, ValueSats: 20_000, Script: tree.PkScript},
+		{Txid: strings.ToUpper(txid), Vout: 1, ValueSats: 21_000, Script: tree.PkScript},
+	}
+	h := testAuthorizer(e.svc)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"spend","destAddress":"`+mustTaprootDest(t)+`","amountSats":10000}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "duplicate") {
+		t.Fatalf("duplicate outpoints = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthorizeSpendRejectsUnknownFieldsAndMissingGatewaySecret(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	h := testAuthorizer(e.svc)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/authorize", "application/json", fixture.Origin, `{"vaultId":"x","extra":true}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field = %d %s", rec.Code, rec.Body.String())
+	}
+
+	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
+	locked := AuthorizerHandler(e.svc)
+	denied := httptest.NewRequest(http.MethodPost, "/v1/vtxo/authorize", strings.NewReader(`{"vaultId":"x"}`))
+	denied.Header.Set("Content-Type", "application/json")
+	denied.Header.Set("Origin", fixture.Origin)
+	out := httptest.NewRecorder()
+	locked.ServeHTTP(out, denied)
+	if out.Code != http.StatusUnauthorized {
+		t.Fatalf("missing gateway secret = %d %s", out.Code, out.Body.String())
+	}
+}
+
+func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := e.svc.vtxoNow().Format(timeRFC3339)
+	digest := bytes.Repeat([]byte{0x33}, 32)
+	arkTxid := strings.Repeat("ab", 32)
+	op := policy.VtxoOperation{
+		OperationID:  "spend-final",
+		VaultID:      fixture.VaultID,
+		Purpose:      policy.VtxoPurposeSpend,
+		BundleDigest: digest,
+		State:        policy.VtxoStateSigned,
+		AmountSats:   10_000,
+		DestScript:   bytes.Repeat([]byte{0x51}, 34),
+		ChangeScript: bytes.Clone(tree.PkScript),
+		ArkTxid:      arkTxid,
+		ExpiresAt:    e.svc.vtxoNow().Add(vtxoReserveAuthorizeTimeout).Format(timeRFC3339),
+		CreatedAt:    now,
+	}
+	in := policy.VtxoOperationInput{
+		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(tree.PkScript),
+	}
+	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
+		OperationID: op.OperationID, VaultID: op.VaultID, Purpose: op.Purpose, BundleDigest: op.BundleDigest,
+		State: policy.VtxoStateReserved, AmountSats: op.AmountSats, DestScript: op.DestScript, ChangeScript: op.ChangeScript,
+		ExpiresAt: op.ExpiresAt, CreatedAt: op.CreatedAt,
+	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), op.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.State = policy.VtxoStateSigned
+	stored.ArkTxid = arkTxid
+	if err := e.svc.Ledger.PutVtxoOperation(context.Background(), stored); err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.svc.FinalizeVtxo(context.Background(), VtxoFinalizeRequest{
+		VaultID: fixture.VaultID, OperationID: op.OperationID, BundleDigest: hex.EncodeToString(digest), ArkTxid: arkTxid,
+	})
+	if err == nil || !strings.Contains(err.Error(), "spent by ark txid") {
+		t.Fatalf("disappearance-only finalize = %v", err)
+	}
+	resolver.spentBy = arkTxid
+	out, err := e.svc.FinalizeVtxo(context.Background(), VtxoFinalizeRequest{
+		VaultID: fixture.VaultID, OperationID: op.OperationID, BundleDigest: hex.EncodeToString(digest), ArkTxid: arkTxid,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.State != policy.VtxoStateFinalized {
+		t.Fatalf("finalize = %+v", out)
+	}
+}
+
+const timeRFC3339 = "2006-01-02T15:04:05Z"
