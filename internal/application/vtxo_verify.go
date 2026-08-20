@@ -108,35 +108,47 @@ func requireVerifiedUserSignature(ptx *psbt.Packet, idx int, user, leaf []byte) 
 }
 
 func requireVerifiedUserSignatureWithSighash(ptx *psbt.Packet, idx int, user, leaf []byte, wantSigHash txscript.SigHashType) error {
+	return requireVerifiedSignersWithSighash(ptx, idx, [][]byte{user}, leaf, wantSigHash)
+}
+
+func requireVerifiedSignersWithSighash(ptx *psbt.Packet, idx int, signers [][]byte, leaf []byte, wantSigHash txscript.SigHashType) error {
 	if ptx == nil || idx < 0 || idx >= len(ptx.Inputs) {
-		return fmt.Errorf("user signature required")
+		return fmt.Errorf("required signatures missing")
 	}
-	if len(user) != 32 {
-		return fmt.Errorf("user pubkey")
+	want := make(map[string]struct{}, len(signers))
+	for _, signer := range signers {
+		if len(signer) != 32 {
+			return fmt.Errorf("signer pubkey")
+		}
+		want[string(signer)] = struct{}{}
 	}
 	in := ptx.Inputs[idx]
 	if len(in.TaprootLeafScript) != 1 || in.TaprootLeafScript[0] == nil {
-		return fmt.Errorf("user signature required")
+		return fmt.Errorf("required signatures missing")
 	}
 	leafHash := txscript.NewBaseTapLeaf(leaf).TapHash()
-	found := 0
+	found := make(map[string]struct{}, len(signers))
 	for _, sig := range in.TaprootScriptSpendSig {
 		if sig == nil {
 			return fmt.Errorf("nil signature")
 		}
-		if !bytes.Equal(sig.XOnlyPubKey, user) {
+		key := string(sig.XOnlyPubKey)
+		if _, ok := want[key]; !ok {
 			return fmt.Errorf("unexpected signature")
+		}
+		if _, duplicate := found[key]; duplicate {
+			return fmt.Errorf("duplicate signature")
 		}
 		if sig.SigHash != wantSigHash || !bytes.Equal(sig.LeafHash, leafHash[:]) {
 			return fmt.Errorf("unexpected sighash")
 		}
-		if err := verifySchnorrOnInputWithSighash(ptx, idx, sig.Signature, user, leaf, wantSigHash); err != nil {
-			return fmt.Errorf("user signature invalid")
+		if err := verifySchnorrOnInputWithSighash(ptx, idx, sig.Signature, sig.XOnlyPubKey, leaf, wantSigHash); err != nil {
+			return fmt.Errorf("signature invalid")
 		}
-		found++
+		found[key] = struct{}{}
 	}
-	if found != 1 {
-		return fmt.Errorf("user signature required")
+	if len(found) != len(want) {
+		return fmt.Errorf("required signatures missing")
 	}
 	return nil
 }
@@ -166,7 +178,7 @@ func checkpointDestScript(unroll, spendLeaf []byte) ([]byte, []byte, error) {
 	return pk, proof.ControlBlock, nil
 }
 
-func verifyCheckpointPSBT(ptx *psbt.Packet, in policy.VtxoOperationInput, op policy.VtxoOperation, tree *vtxoPolicyTree) error {
+func verifyUnsignedCheckpointPSBT(ptx *psbt.Packet, in policy.VtxoOperationInput, op policy.VtxoOperation, tree *vtxoPolicyTree) error {
 	if ptx == nil || ptx.UnsignedTx == nil || tree == nil {
 		return fmt.Errorf("checkpoint psbt")
 	}
@@ -198,8 +210,8 @@ func verifyCheckpointPSBT(ptx *psbt.Packet, in policy.VtxoOperationInput, op pol
 	if err := requireExactLeaf(ptx.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{user}); err != nil {
 		return err
 	}
-	if err := requireVerifiedUserSignature(ptx, 0, user, tree.SpendLeaf); err != nil {
-		return err
+	if len(ptx.Inputs[0].TaprootScriptSpendSig) != 0 {
+		return fmt.Errorf("checkpoint must be unsigned before submit")
 	}
 	dest, _, err := checkpointDestScript(op.CheckpointTapscript, tree.SpendLeaf)
 	if err != nil {
@@ -215,6 +227,54 @@ func verifyCheckpointPSBT(ptx *psbt.Packet, in policy.VtxoOperationInput, op pol
 		return fmt.Errorf("checkpoint p2a")
 	}
 	return nil
+}
+
+func verifySubmittedCheckpointPSBT(ptx *psbt.Packet, in policy.VtxoOperationInput, op policy.VtxoOperation, tree *vtxoPolicyTree) error {
+	if err := verifyCheckpointShape(ptx, in, op, tree); err != nil {
+		return err
+	}
+	if tree.ArkdPub == nil {
+		return fmt.Errorf("Operator pubkey required")
+	}
+	user := firstLeafPub(tree.SpendLeaf)
+	operator := schnorr.SerializePubKey(tree.ArkdPub)
+	if err := requireExactLeaf(ptx.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{user, operator}); err != nil {
+		return err
+	}
+	return requireVerifiedSignersWithSighash(ptx, 0, [][]byte{user, operator}, tree.SpendLeaf, txscript.SigHashDefault)
+}
+
+func verifyCheckpointShape(ptx *psbt.Packet, in policy.VtxoOperationInput, op policy.VtxoOperation, tree *vtxoPolicyTree) error {
+	if ptx == nil || ptx.UnsignedTx == nil || tree == nil || len(ptx.Inputs) != 1 {
+		return fmt.Errorf("checkpoint psbt")
+	}
+	clone, err := clonePacket(ptx)
+	if err != nil {
+		return fmt.Errorf("checkpoint psbt")
+	}
+	clone.Inputs[0].TaprootScriptSpendSig = nil
+	return verifyUnsignedCheckpointPSBT(clone, in, op, tree)
+}
+
+func sameUnsignedPSBT(a, b *psbt.Packet) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	ac, err := clonePacket(a)
+	if err != nil {
+		return false
+	}
+	bc, err := clonePacket(b)
+	if err != nil {
+		return false
+	}
+	for i := range ac.Inputs {
+		ac.Inputs[i].TaprootScriptSpendSig = nil
+	}
+	for i := range bc.Inputs {
+		bc.Inputs[i].TaprootScriptSpendSig = nil
+	}
+	return unsignedPSBTEqual(ac, bc)
 }
 
 func verifySpendPSBT(ptx *psbt.Packet, op policy.VtxoOperation, inputs []policy.VtxoOperationInput, tree *vtxoPolicyTree, checkpoints []*psbt.Packet) error {

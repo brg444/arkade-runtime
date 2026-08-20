@@ -17,10 +17,9 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/psbt"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
 
@@ -69,12 +68,32 @@ type VtxoAuthorizeRequest struct {
 	DirectSig               string   `json:"directSig"`
 }
 
-// VtxoAuthorizeResponse returns the server-signed PSBT stages.
+// VtxoAuthorizeResponse returns the VaultCosigner-authorized Ark PSBT. The
+// Operator-returned checkpoints use the separate post-submit endpoint.
 type VtxoAuthorizeResponse struct {
+	OperationID    string `json:"operationId"`
+	BundleDigest   string `json:"bundleDigest"`
+	AuthorizedPsbt string `json:"authorizedPsbt"`
+	ArkTxid        string `json:"arkTxid"`
+}
+
+// VtxoCheckpointAuthorizeRequest is the post-submit signing stage. The
+// Operator rebuilds and signs checkpoint PSBTs during submit, so the user and
+// VaultCosigner signatures must be added to that returned stage, not to the
+// pre-submit checkpoints.
+type VtxoCheckpointAuthorizeRequest struct {
+	VaultID         string   `json:"vaultId"`
 	OperationID     string   `json:"operationId"`
 	BundleDigest    string   `json:"bundleDigest"`
-	AuthorizedPsbt  string   `json:"authorizedPsbt"`
-	CheckpointPsbts []string `json:"checkpointPsbts,omitempty"`
+	CheckpointPsbts []string `json:"checkpointPsbts"`
+}
+
+// VtxoCheckpointAuthorizeResponse returns checkpoints ready for Operator
+// finalization.
+type VtxoCheckpointAuthorizeResponse struct {
+	OperationID     string   `json:"operationId"`
+	BundleDigest    string   `json:"bundleDigest"`
+	CheckpointPsbts []string `json:"checkpointPsbts"`
 	ArkTxid         string   `json:"arkTxid"`
 }
 
@@ -323,28 +342,21 @@ func (s *Service) decodeVtxoDest(addr string) ([]byte, string, error) {
 		return nil, "", apperr.New(apperr.CodeRejected, "destAddress required")
 	}
 	if decoded, err := arklib.DecodeAddressV0(addr); err == nil {
+		if decoded.HRP != arklib.BitcoinTestNet.Addr {
+			return nil, "", apperr.New(apperr.CodeRejected, "destAddress network")
+		}
+		operator, err := btcec.ParsePubKey(s.advertisedArkdPub())
+		if err != nil || decoded.Signer == nil ||
+			!bytes.Equal(schnorr.SerializePubKey(decoded.Signer), schnorr.SerializePubKey(operator)) {
+			return nil, "", apperr.New(apperr.CodeRejected, "destAddress Operator")
+		}
 		script, err := decoded.GetPkScript()
 		if err != nil {
 			return nil, "", apperr.New(apperr.CodeRejected, "destAddress")
 		}
 		return script, addr, nil
 	}
-	params, err := vtxoNetworkParams(s.runtimeConfig().Network)
-	if err != nil {
-		return nil, "", err
-	}
-	a, err := btcutil.DecodeAddress(addr, params)
-	if err != nil {
-		return nil, "", apperr.New(apperr.CodeRejected, "destAddress")
-	}
-	script, err := txscript.PayToAddrScript(a)
-	if err != nil {
-		return nil, "", apperr.New(apperr.CodeRejected, "destAddress")
-	}
-	if !txscript.IsWitnessProgram(script) {
-		return nil, "", apperr.New(apperr.CodeRejected, "destAddress must be native segwit")
-	}
-	return script, a.EncodeAddress(), nil
+	return nil, "", apperr.New(apperr.CodeRejected, "destAddress must be a pinned-Operator Arkade address")
 }
 
 func (s *Service) loadLiveVtxo(ctx context.Context, vaultID, operationID, wantPurpose string) (policy.VtxoOperation, []policy.VtxoOperationInput, error) {
@@ -393,6 +405,14 @@ func requireBundleDigest(got string, want []byte) error {
 	return nil
 }
 
+func vtxoCheckpointAuthorizableState(state string) bool {
+	return state == policy.VtxoStateSigned || state == policy.VtxoStateSubmitted
+}
+
+func vtxoFinalizableState(state string) bool {
+	return state == policy.VtxoStateSubmitted
+}
+
 func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeRequest) (*VtxoAuthorizeResponse, error) {
 	if err := s.attachLedgerIntegrity(); err != nil {
 		return nil, err
@@ -434,7 +454,7 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 		if err != nil {
 			return nil, apperr.New(apperr.CodeRejected, "checkpoint psbt")
 		}
-		if err := verifyCheckpointPSBT(cp, inputs[i], op, tree); err != nil {
+		if err := verifyUnsignedCheckpointPSBT(cp, inputs[i], op, tree); err != nil {
 			return nil, apperr.New(apperr.CodeRejected, err.Error())
 		}
 		checkpoints[i] = cp
@@ -454,11 +474,10 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 			return nil, apperr.New(apperr.CodeRejected, "changed psbt")
 		}
 		return &VtxoAuthorizeResponse{
-			OperationID:     op.OperationID,
-			BundleDigest:    hex.EncodeToString(op.BundleDigest),
-			AuthorizedPsbt:  op.AuthorizedPSBT,
-			CheckpointPsbts: decodeJSONStringSlice(op.CheckpointPSBTs),
-			ArkTxid:         op.ArkTxid,
+			OperationID:    op.OperationID,
+			BundleDigest:   hex.EncodeToString(op.BundleDigest),
+			AuthorizedPsbt: op.AuthorizedPSBT,
+			ArkTxid:        op.ArkTxid,
 		}, nil
 	}
 	arkTxid := arkPkt.UnsignedTx.TxHash().String()
@@ -480,26 +499,102 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	if err != nil {
 		return nil, err
 	}
-	signedCheckpoints := make([]string, len(req.UnsignedCheckpointPsbts))
-	for i, raw := range req.UnsignedCheckpointPsbts {
-		signed, err := signExactArkStage(signCtx, raw, cosigner, expected, tree.SpendLeaf)
-		if err != nil {
-			return nil, err
-		}
-		signedCheckpoints[i] = signed
-	}
 	op.AuthorizedPSBT = signedArk
-	op.CheckpointPSBTs = encodeJSONStringSlice(signedCheckpoints)
+	// Persist the exact unsigned stage. The Operator reconstructs checkpoints
+	// during submit, so signing these now would only create signatures that are
+	// discarded before finalization.
+	op.CheckpointPSBTs = encodeJSONStringSlice(req.UnsignedCheckpointPsbts)
 	op.State = policy.VtxoStateSigned
 	if err := s.Ledger.PutVtxoOperation(ctx, op); err != nil {
 		return nil, err
 	}
 	return &VtxoAuthorizeResponse{
-		OperationID:     op.OperationID,
-		BundleDigest:    hex.EncodeToString(op.BundleDigest),
-		AuthorizedPsbt:  signedArk,
-		CheckpointPsbts: signedCheckpoints,
-		ArkTxid:         arkTxid,
+		OperationID:    op.OperationID,
+		BundleDigest:   hex.EncodeToString(op.BundleDigest),
+		AuthorizedPsbt: signedArk,
+		ArkTxid:        arkTxid,
+	}, nil
+}
+
+func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpointAuthorizeRequest) (*VtxoCheckpointAuthorizeResponse, error) {
+	if err := s.attachLedgerIntegrity(); err != nil {
+		return nil, err
+	}
+	if err := s.requireVaultPolicyV1Exit(); err != nil {
+		return nil, err
+	}
+	vaultID, snap, _, err := s.resolveSpendVaultRecord(req.VaultID)
+	if err != nil {
+		return nil, err
+	}
+	op, inputs, err := s.loadLiveVtxo(ctx, vaultID, req.OperationID, policy.VtxoPurposeSpend)
+	if err != nil {
+		return nil, err
+	}
+	if !vtxoCheckpointAuthorizableState(op.State) {
+		return nil, apperr.New(apperr.CodeRejected, "vtxo operation state")
+	}
+	if err := requireBundleDigest(req.BundleDigest, op.BundleDigest); err != nil {
+		return nil, err
+	}
+	if len(req.CheckpointPsbts) != len(inputs) {
+		return nil, apperr.New(apperr.CodeRejected, "checkpoint count")
+	}
+	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeRejected, "vault-policy-v1 spend unavailable")
+	}
+	storedRaw := decodeJSONStringSlice(op.CheckpointPSBTs)
+	if len(storedRaw) != len(req.CheckpointPsbts) {
+		return nil, apperr.New(apperr.CodeRejected, "stored checkpoint count")
+	}
+	for i, raw := range req.CheckpointPsbts {
+		candidate, err := parsePSBT(raw)
+		if err != nil {
+			return nil, apperr.New(apperr.CodeRejected, "checkpoint psbt")
+		}
+		stored, err := parsePSBT(storedRaw[i])
+		if err != nil || !sameUnsignedPSBT(stored, candidate) {
+			return nil, apperr.New(apperr.CodeRejected, "changed checkpoint")
+		}
+		if err := verifySubmittedCheckpointPSBT(candidate, inputs[i], op, tree); err != nil {
+			return nil, apperr.New(apperr.CodeRejected, err.Error())
+		}
+	}
+	digestHex := hex.EncodeToString(op.BundleDigest)
+	if op.State == policy.VtxoStateSubmitted {
+		return &VtxoCheckpointAuthorizeResponse{
+			OperationID: op.OperationID, BundleDigest: digestHex,
+			CheckpointPsbts: storedRaw, ArkTxid: op.ArkTxid,
+		}, nil
+	}
+	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
+	if err != nil {
+		return nil, err
+	}
+	expected := schnorr.SerializePubKey(cosigner.PubKey())
+	timeout := s.SignTimeout
+	if timeout == 0 {
+		timeout = 15 * time.Second
+	}
+	signCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	authorized := make([]string, len(req.CheckpointPsbts))
+	for i, raw := range req.CheckpointPsbts {
+		signed, err := signExactArkStage(signCtx, raw, cosigner, expected, tree.SpendLeaf)
+		if err != nil {
+			return nil, err
+		}
+		authorized[i] = signed
+	}
+	op.CheckpointPSBTs = encodeJSONStringSlice(authorized)
+	op.State = policy.VtxoStateSubmitted
+	if err := s.Ledger.PutVtxoOperation(ctx, op); err != nil {
+		return nil, err
+	}
+	return &VtxoCheckpointAuthorizeResponse{
+		OperationID: op.OperationID, BundleDigest: digestHex,
+		CheckpointPsbts: authorized, ArkTxid: op.ArkTxid,
 	}, nil
 }
 
@@ -538,7 +633,7 @@ func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*V
 	if op.State == policy.VtxoStateFinalized && strings.EqualFold(op.ArkTxid, arkTxid) {
 		return &VtxoFinalizeResponse{OperationID: op.OperationID, BundleDigest: digestHex, State: op.State, ArkTxid: op.ArkTxid}, nil
 	}
-	if op.State != policy.VtxoStateSigned && op.State != policy.VtxoStateSubmitted {
+	if !vtxoFinalizableState(op.State) {
 		return nil, apperr.New(apperr.CodeRejected, "vtxo operation state")
 	}
 	if !strings.EqualFold(op.ArkTxid, arkTxid) {

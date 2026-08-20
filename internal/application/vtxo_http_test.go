@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
@@ -81,6 +82,43 @@ func mustTaprootDest(t *testing.T) string {
 	return addr.EncodeAddress()
 }
 
+func mustArkadeDest(t *testing.T, operator *btcec.PrivateKey) string {
+	t.Helper()
+	destination, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, err := (&arklib.Address{
+		Version: 0, HRP: arklib.BitcoinRegTest.Addr,
+		Signer: operator.PubKey(), VtxoTapKey: destination.PubKey(),
+	}).EncodeV0()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func mustOddYPrivateKey(t *testing.T) *btcec.PrivateKey {
+	t.Helper()
+	for scalar := byte(1); scalar != 0; scalar++ {
+		priv, _ := btcec.PrivKeyFromBytes([]byte{scalar})
+		if priv.PubKey().SerializeCompressed()[0] == 0x03 {
+			return priv
+		}
+	}
+	t.Fatal("odd-Y private key not found")
+	return nil
+}
+
+func TestDecodeVtxoDestAcceptsXOnlyOperatorWithOddY(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	operator := mustOddYPrivateKey(t)
+	resolver.signer = operator.PubKey().SerializeCompressed()
+	if _, _, err := e.svc.decodeVtxoDest(mustArkadeDest(t, operator)); err != nil {
+		t.Fatalf("x-only Operator identity rejected: %v", err)
+	}
+}
+
 func TestReserveSpendWithoutPackExitRejected(t *testing.T) {
 	e, resolver, _ := vtxoTestEnv(t)
 	falseVal := false
@@ -119,7 +157,7 @@ func TestBoardAuthorizeRouteRemoved(t *testing.T) {
 }
 
 func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
-	e, resolver, _ := vtxoTestEnv(t)
+	e, resolver, arkd := vtxoTestEnv(t)
 	snap := e.svc.snapshot(fixture.VaultID)
 	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
 	if err != nil {
@@ -130,7 +168,7 @@ func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
 		{Txid: low, Vout: 1, ValueSats: 45_000, Script: tree.PkScript},
 	}
 	h := testAuthorizer(e.svc)
-	dest := mustTaprootDest(t)
+	dest := mustArkadeDest(t, arkd)
 	raw := httpJSON(t, h, http.MethodPost, "/v1/vtxo/reserve", map[string]any{
 		"vaultId": fixture.VaultID, "purpose": "spend", "destAddress": dest, "amountSats": 30_000,
 	})
@@ -182,7 +220,7 @@ func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
 }
 
 func TestReserveRejectsDuplicateOutpoints(t *testing.T) {
-	e, resolver, _ := vtxoTestEnv(t)
+	e, resolver, arkd := vtxoTestEnv(t)
 	snap := e.svc.snapshot(fixture.VaultID)
 	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
 	if err != nil {
@@ -194,9 +232,42 @@ func TestReserveRejectsDuplicateOutpoints(t *testing.T) {
 		{Txid: strings.ToUpper(txid), Vout: 1, ValueSats: 21_000, Script: tree.PkScript},
 	}
 	h := testAuthorizer(e.svc)
-	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"spend","destAddress":"`+mustTaprootDest(t)+`","amountSats":10000}`)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"spend","destAddress":"`+mustArkadeDest(t, arkd)+`","amountSats":10000}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "duplicate") {
 		t.Fatalf("duplicate outpoints = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReserveRejectsBitcoinDestinationInRegularVtxoSlice(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	h := testAuthorizer(e.svc)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"spend","destAddress":"`+mustTaprootDest(t)+`","amountSats":10000}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Arkade address") {
+		t.Fatalf("Bitcoin VTXO destination = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReserveRejectsArkadeDestinationForAnotherOperator(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	wrongOperator, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, err := (&arklib.Address{
+		Version: 0, HRP: arklib.BitcoinRegTest.Addr,
+		Signer: wrongOperator.PubKey(), VtxoTapKey: destination.PubKey(),
+	}).EncodeV0()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := testAuthorizer(e.svc)
+	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"spend","destAddress":"`+addr+`","amountSats":10000}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Operator") {
+		t.Fatalf("another Operator = %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -267,7 +338,7 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored.State = policy.VtxoStateSigned
+	stored.State = policy.VtxoStateSubmitted
 	stored.ArkTxid = arkTxid
 	if err := e.svc.Ledger.PutVtxoOperation(context.Background(), stored); err != nil {
 		t.Fatal(err)

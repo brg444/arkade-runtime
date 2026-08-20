@@ -62,3 +62,18 @@ func TestRequireVerifiedUserSignatureRejectsMissingWrongSighashAndDuplicate(t *t
 		t.Fatal("duplicate user signature must be rejected")
 	}
 }
+
+func TestVtxoPostSubmitStateMachine(t *testing.T) {
+	if !vtxoCheckpointAuthorizableState("signed") || !vtxoCheckpointAuthorizableState("submitted") {
+		t.Fatal("checkpoint authorization must accept the first request and its replay")
+	}
+	if vtxoCheckpointAuthorizableState("reserved") || vtxoCheckpointAuthorizableState("finalized") {
+		t.Fatal("checkpoint authorization accepted an invalid state")
+	}
+	if !vtxoFinalizableState("submitted") {
+		t.Fatal("Operator finalization must follow checkpoint authorization")
+	}
+	if vtxoFinalizableState("signed") || vtxoFinalizableState("reserved") {
+		t.Fatal("finalization accepted a pre-checkpoint state")
+	}
+}
