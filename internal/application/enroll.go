@@ -3,18 +3,14 @@ package application
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
-	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
 // ErrEnrollmentClosed is returned when multi-tenant enrollment is not armed.
@@ -315,66 +311,6 @@ func randomBytes(n int) ([]byte, error) {
 		return nil, err
 	}
 	return out, nil
-}
-
-const enrollmentPoPDomain = "arkade-2fa-vault/enrollment-pop/v3"
-
-// EnrollmentPoPDigest binds the client enrollment tuple and the hashed v4
-// public descriptor. There is no recovery key.
-func EnrollmentPoPDigest(vaultID string, req RegisterRequest) []byte {
-	h := sha256.New()
-	_, _ = h.Write([]byte(enrollmentPoPDomain))
-	writePoPField(h, []byte(vaultID))
-	writePoPField(h, decodePoPHex(req.CredentialID))
-	writePoPField(h, decodePoPHex(req.WebAuthnP256))
-	writePoPField(h, decodePoPHex(req.PhoneDirectP256))
-	writePoPField(h, decodePoPHex(req.PhoneRoutineBIP340Pub))
-	writePoPField(h, decodePoPHex(req.ExternalOwnerWalletXOnly))
-	writePoPField(h, decodePoPHex(req.DescriptorHash))
-	return h.Sum(nil)
-}
-
-func writePoPField(h sha256Hash, field []byte) {
-	_, _ = h.Write([]byte{0})
-	_, _ = h.Write(field)
-}
-
-type sha256Hash interface {
-	Write(p []byte) (int, error)
-}
-
-func decodePoPHex(encoded string) []byte {
-	raw, err := hex.DecodeString(encoded)
-	if err != nil {
-		return nil
-	}
-	return raw
-}
-
-func verifyEnrollmentPoP(vaultID string, owner *btcec.PublicKey, req RegisterRequest) error {
-	if owner == nil {
-		return fmt.Errorf("tenant owner pub required")
-	}
-	if strings.TrimSpace(req.ExternalOwnerProof) == "" {
-		return fmt.Errorf("externalOwnerProof required")
-	}
-	if req.DescriptorHash == "" {
-		return fmt.Errorf("enrollment descriptor hash required")
-	}
-	digest := EnrollmentPoPDigest(vaultID, req)
-	return verifySchnorrHex(owner, digest, req.ExternalOwnerProof, "externalOwnerProof")
-}
-
-func verifySchnorrHex(pub *btcec.PublicKey, digest []byte, encoded, name string) error {
-	raw, err := decodeHex(encoded)
-	if err != nil || len(raw) != 64 {
-		return fmt.Errorf("%s must be a 64-byte BIP340 signature", name)
-	}
-	sig, err := schnorr.ParseSignature(raw)
-	if err != nil || !sig.Verify(digest, pub) {
-		return fmt.Errorf("%s invalid", name)
-	}
-	return nil
 }
 
 func bytesEqualConst(a, b []byte) bool {

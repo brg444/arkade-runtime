@@ -16,8 +16,7 @@
       "csv": { "hardware": 6, "phone": 144, "recovery": 288 },
       "recovery": "optional",
       "serverFreeClawback": true,
-      "internalTag": "arkade-vault/v5/internal",
-      "recoveryPopTag": "arkade-vault/v5/recovery-pop"
+      "internalTag": "arkade-vault/v5/internal"
     },
     "vault-policy-v1": {
       "status": "listed",
@@ -60,7 +59,6 @@
     "prf": "arkade-2fa-vault/prf/v1",
     "kek": "arkade-2fa-vault/kek/v1",
     "directP256": "arkade-2fa-vault/direct-p256/v1",
-    "enrollmentPop": "arkade-2fa-vault/enrollment-pop/v3",
     "credentialRecord": "arkade-2fa-vault/credential-record/v3",
     "issuanceRecord": "arkade-2fa-vault/issuance-record/v3",
     "vaultRecord": "arkade-2fa-vault/vault-record/v4",

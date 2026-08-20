@@ -74,14 +74,12 @@ func TestHTTPTenantBDraftBindAuthorizePublishLeavesAUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	ownerB, _ := btcec.NewPrivateKey()
-	recB, _ := btcec.NewPrivateKey()
-	_ = recB
 	hotB, _ := btcec.NewPrivateKey()
 	passB, _ := webauthn.NewP256()
 	dirB, _ := webauthn.NewP256()
 	credB := []byte("cred-b-spend")
 	const tenantB = "tenant-spend-b"
-	if err := svc.CreateTenantVault(tenantB, token, proposedPoP(t, svc, tenantB, ownerB, recB, RegisterRequest{
+	if err := svc.CreateTenantVault(tenantB, token, proposedDescriptor(t, svc, tenantB, RegisterRequest{
 		CredentialID:             hex.EncodeToString(credB),
 		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passB)),
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(dirB)),

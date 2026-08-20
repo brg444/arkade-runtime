@@ -19,7 +19,6 @@ const (
 	Schema      = "arkade-vault/v5"
 	Template    = "phone-hww-recovery-staged-v6"
 	InternalTag = "arkade-vault/v5/internal"
-	PopTag      = "arkade-vault/v5/recovery-pop"
 
 	// PriorTemplate is a frozen ledger id. New enrolls never mint it.
 	PriorTemplate = "phone-hww-recovery-staged-v5"
