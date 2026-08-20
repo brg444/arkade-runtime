@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -143,8 +144,9 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err := s.refuseDefaultVtxoChange(snap, destScript); err != nil {
 		return nil, apperr.New(apperr.CodeRejected, err.Error())
 	}
-	if len(tree.SpendArkadeScript) == 0 {
-		return nil, apperr.New(apperr.CodeRejected, "emulator-backed spend unavailable")
+	feeSats := uint64(0)
+	if err := enforceVtxoAmount(req.AmountSats, feeSats, rec, snap); err != nil {
+		return nil, err
 	}
 	selected, err := s.selectSpendVtxos(ctx, tree.PkScript, req.AmountSats)
 	if err != nil {
@@ -155,10 +157,6 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	}
 	if selected[0].ValueSats < req.AmountSats+uint64(program.DustSats) {
 		return nil, apperr.New(apperr.CodeRejected, "change below dust")
-	}
-	feeSats := uint64(0)
-	if err := enforceVtxoAmount(req.AmountSats, feeSats, rec, snap); err != nil {
-		return nil, err
 	}
 	checkpoint := s.ArkResolver.CheckpointTapscript()
 	if len(checkpoint) == 0 {
@@ -231,6 +229,9 @@ type reservedCoin struct {
 }
 
 func (s *Service) selectSpendVtxos(ctx context.Context, pkScript []byte, amountSats uint64) ([]reservedCoin, error) {
+	if amountSats > math.MaxUint64-uint64(program.DustSats) {
+		return nil, apperr.New(apperr.CodeRejected, "amount overflow")
+	}
 	vtxos, err := s.ArkResolver.SpendableVtxos(ctx, pkScript)
 	if err != nil {
 		return nil, apperr.New(apperr.CodeRejected, "ark indexer")
@@ -304,10 +305,10 @@ func enforceVtxoAmount(amount, fee uint64, rec *policy.VaultRecord, snap enrolle
 		capSats = snap.Operational.Record.AuthorizationPolicy.RecipientCapSats
 		feeCap = snap.Operational.Record.AuthorizationPolicy.AbsoluteFeeCeilingSats
 	}
-	if int64(amount) > capSats {
+	if amount > math.MaxInt64 || capSats < 0 || amount > uint64(capSats) {
 		return apperr.New(apperr.CodeRejected, "recipient exceeds transaction cap")
 	}
-	if int64(fee) > feeCap {
+	if fee > math.MaxInt64 || feeCap < 0 || fee > uint64(feeCap) {
 		return apperr.New(apperr.CodeRejected, "fee exceeds ceiling")
 	}
 	if amount < uint64(program.DustSats) {
@@ -417,8 +418,8 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 		return nil, err
 	}
 	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
-	if err != nil || len(tree.SpendArkadeScript) == 0 {
-		return nil, apperr.New(apperr.CodeRejected, "emulator-backed spend unavailable")
+	if err != nil {
+		return nil, apperr.New(apperr.CodeRejected, "vault-policy-v1 spend unavailable")
 	}
 	arkPkt, err := parsePSBT(req.UnsignedArkPsbt)
 	if err != nil {
@@ -615,8 +616,6 @@ func (s *Service) bindVtxoAuthorization(ctx context.Context, vaultID string, dig
 	}
 	return verifyDirectAuth(cred.PhoneDirectP256, digest, directSig)
 }
-
-
 
 func matchReservedOutpoint(seen map[string]policy.VtxoOperationInput, op wire.OutPoint) (policy.VtxoOperationInput, bool) {
 	internal := make([]byte, 32)

@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
-	"github.com/arkade-os/emulator/pkg/arkade"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -51,6 +49,10 @@ func firstLeafPub(leaf []byte) []byte {
 }
 
 func requireExactLeaf(in psbt.PInput, pkScript, wantLeaf, wantControl []byte, allowed [][]byte) error {
+	return requireExactLeafWithSighash(in, pkScript, wantLeaf, wantControl, allowed, txscript.SigHashDefault)
+}
+
+func requireExactLeafWithSighash(in psbt.PInput, pkScript, wantLeaf, wantControl []byte, allowed [][]byte, wantSigHash txscript.SigHashType) error {
 	if in.WitnessUtxo == nil {
 		return fmt.Errorf("witness utxo required")
 	}
@@ -59,6 +61,9 @@ func requireExactLeaf(in psbt.PInput, pkScript, wantLeaf, wantControl []byte, al
 	}
 	if len(in.TaprootLeafScript) != 1 || in.TaprootLeafScript[0] == nil {
 		return fmt.Errorf("exactly one tapleaf required")
+	}
+	if in.SighashType != wantSigHash {
+		return fmt.Errorf("unexpected input sighash")
 	}
 	leaf := in.TaprootLeafScript[0]
 	if leaf.LeafVersion != txscript.BaseLeafVersion {
@@ -78,7 +83,7 @@ func requireExactLeaf(in psbt.PInput, pkScript, wantLeaf, wantControl []byte, al
 		if sig == nil {
 			return fmt.Errorf("nil signature")
 		}
-		if sig.SigHash != txscript.SigHashDefault {
+		if sig.SigHash != wantSigHash {
 			return fmt.Errorf("unexpected sighash")
 		}
 		if !bytes.Equal(sig.LeafHash, leafHash[:]) {
@@ -99,6 +104,10 @@ func requireExactLeaf(in psbt.PInput, pkScript, wantLeaf, wantControl []byte, al
 }
 
 func requireVerifiedUserSignature(ptx *psbt.Packet, idx int, user, leaf []byte) error {
+	return requireVerifiedUserSignatureWithSighash(ptx, idx, user, leaf, txscript.SigHashDefault)
+}
+
+func requireVerifiedUserSignatureWithSighash(ptx *psbt.Packet, idx int, user, leaf []byte, wantSigHash txscript.SigHashType) error {
 	if ptx == nil || idx < 0 || idx >= len(ptx.Inputs) {
 		return fmt.Errorf("user signature required")
 	}
@@ -118,71 +127,16 @@ func requireVerifiedUserSignature(ptx *psbt.Packet, idx int, user, leaf []byte) 
 		if !bytes.Equal(sig.XOnlyPubKey, user) {
 			return fmt.Errorf("unexpected signature")
 		}
-		if sig.SigHash != txscript.SigHashDefault || !bytes.Equal(sig.LeafHash, leafHash[:]) {
+		if sig.SigHash != wantSigHash || !bytes.Equal(sig.LeafHash, leafHash[:]) {
 			return fmt.Errorf("unexpected sighash")
 		}
-		if err := verifySchnorrOnInput(ptx, idx, sig.Signature, user, leaf); err != nil {
+		if err := verifySchnorrOnInputWithSighash(ptx, idx, sig.Signature, user, leaf, wantSigHash); err != nil {
 			return fmt.Errorf("user signature invalid")
 		}
 		found++
 	}
 	if found != 1 {
 		return fmt.Errorf("user signature required")
-	}
-	return nil
-}
-
-func requireExactSpendPacket(ptx *psbt.Packet, tree *vtxoPolicyTree) error {
-	if tree == nil || len(tree.SpendArkadeScript) == 0 {
-		return fmt.Errorf("exact spend arkade script unavailable")
-	}
-	if ptx == nil || ptx.UnsignedTx == nil {
-		return fmt.Errorf("emulator packet required")
-	}
-	extCount := 0
-	extIdx := -1
-	for i, out := range ptx.UnsignedTx.TxOut {
-		if extension.IsExtension(out.PkScript) {
-			extCount++
-			extIdx = i
-		}
-	}
-	if extCount != 1 {
-		return fmt.Errorf("emulator packet")
-	}
-	last := len(ptx.UnsignedTx.TxOut) - 1
-	if extIdx != last-1 {
-		return fmt.Errorf("emulator packet must sit immediately before p2a")
-	}
-	if !bytes.Equal(ptx.UnsignedTx.TxOut[last].PkScript, txutils.ANCHOR_PKSCRIPT) || ptx.UnsignedTx.TxOut[last].Value != 0 {
-		return fmt.Errorf("p2a output")
-	}
-	if ptx.UnsignedTx.TxOut[extIdx].Value != 0 {
-		return fmt.Errorf("packet value")
-	}
-	ext, err := extension.NewExtensionFromBytes(ptx.UnsignedTx.TxOut[extIdx].PkScript)
-	if err != nil {
-		return fmt.Errorf("emulator packet")
-	}
-	if len(ext) != 1 || ext[0] == nil || ext[0].Type() != arkade.PacketType {
-		return fmt.Errorf("emulator packet")
-	}
-	unknown, ok := ext[0].(extension.UnknownPacket)
-	if !ok {
-		return fmt.Errorf("emulator packet")
-	}
-	pkt, err := arkade.DeserializeEmulatorPacket(unknown.Data)
-	if err != nil {
-		return fmt.Errorf("emulator packet")
-	}
-	if len(pkt) != 1 || pkt[0].Vin != 0 {
-		return fmt.Errorf("emulator packet entries")
-	}
-	if !bytes.Equal(pkt[0].Script, tree.SpendArkadeScript) {
-		return fmt.Errorf("emulator packet script")
-	}
-	if len(pkt[0].Witness) != 0 {
-		return fmt.Errorf("emulator packet witness")
 	}
 	return nil
 }
@@ -302,16 +256,12 @@ func verifySpendPSBT(ptx *psbt.Packet, op policy.VtxoOperation, inputs []policy.
 	if err := requireVerifiedUserSignature(ptx, 0, user, tree.SpendLeaf); err != nil {
 		return err
 	}
-	if err := requireExactSpendPacket(ptx, tree); err != nil {
-		return err
-	}
-	if len(ptx.UnsignedTx.TxOut) != 4 {
+	if len(ptx.UnsignedTx.TxOut) != 3 {
 		return fmt.Errorf("ark output count")
 	}
 	dest := ptx.UnsignedTx.TxOut[0]
 	change := ptx.UnsignedTx.TxOut[1]
-	packet := ptx.UnsignedTx.TxOut[2]
-	anchor := ptx.UnsignedTx.TxOut[3]
+	anchor := ptx.UnsignedTx.TxOut[2]
 	if uint64(dest.Value) != uint64(op.AmountSats) || !bytes.Equal(dest.PkScript, op.DestScript) {
 		return fmt.Errorf("dest")
 	}
@@ -324,22 +274,15 @@ func verifySpendPSBT(ptx *psbt.Packet, op policy.VtxoOperation, inputs []policy.
 	if change.Value < program.DustSats {
 		return fmt.Errorf("change below dust")
 	}
-	if packet.Value != 0 {
-		return fmt.Errorf("packet value")
-	}
 	if !bytes.Equal(anchor.PkScript, txutils.ANCHOR_PKSCRIPT) || anchor.Value != 0 {
 		return fmt.Errorf("p2a output")
 	}
 	inSum := uint64(wu.Value)
-	outSum := uint64(dest.Value + change.Value + packet.Value + anchor.Value)
+	outSum := uint64(dest.Value + change.Value + anchor.Value)
 	if inSum != outSum {
 		return fmt.Errorf("input/output conservation")
 	}
-	fee := inSum - outSum
-	if int64(fee) > program.AbsoluteFeeCeiling {
-		return fmt.Errorf("fee exceeds ceiling")
-	}
-	if uint64(op.FeeSats) != fee {
+	if op.FeeSats != 0 {
 		return fmt.Errorf("fee mismatch")
 	}
 	return nil
@@ -362,6 +305,9 @@ func unsignedPSBTEqual(a, b *psbt.Packet) bool {
 		if a.UnsignedTx.TxIn[i].Sequence != b.UnsignedTx.TxIn[i].Sequence {
 			return false
 		}
+		if a.Inputs[i].SighashType != b.Inputs[i].SighashType {
+			return false
+		}
 		aw, bw := a.Inputs[i].WitnessUtxo, b.Inputs[i].WitnessUtxo
 		if aw == nil || bw == nil || aw.Value != bw.Value || !bytes.Equal(aw.PkScript, bw.PkScript) {
 			return false
@@ -380,7 +326,8 @@ func unsignedPSBTEqual(a, b *psbt.Packet) bool {
 		for j := range a.Inputs[i].TaprootScriptSpendSig {
 			as, bs := a.Inputs[i].TaprootScriptSpendSig[j], b.Inputs[i].TaprootScriptSpendSig[j]
 			if as == nil || bs == nil || as.SigHash != bs.SigHash ||
-				!bytes.Equal(as.XOnlyPubKey, bs.XOnlyPubKey) || !bytes.Equal(as.LeafHash, bs.LeafHash) {
+				!bytes.Equal(as.XOnlyPubKey, bs.XOnlyPubKey) || !bytes.Equal(as.LeafHash, bs.LeafHash) ||
+				!bytes.Equal(as.Signature, bs.Signature) {
 				return false
 			}
 		}

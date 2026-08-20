@@ -7,7 +7,6 @@ import (
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
-	"github.com/arkade-os/emulator/pkg/arkade"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -17,19 +16,17 @@ import (
 )
 
 type vtxoPolicyTree struct {
-	CosignerPub          *btcec.PublicKey
-	TweakedEmulator      *btcec.PublicKey
-	DelegatePub          *btcec.PublicKey
-	TapKey               *btcec.PublicKey
-	PkScript             []byte
-	SpendLeaf            []byte
-	DelegateLeaf         []byte
-	SpendControl         []byte
-	DelegateControl      []byte
-	RevealedScripts      []string
-	SpendArkadeScript    []byte
-	ArkAddress           string
-	OnchainAddress       string
+	CosignerPub     *btcec.PublicKey
+	DelegatePub     *btcec.PublicKey
+	TapKey          *btcec.PublicKey
+	PkScript        []byte
+	SpendLeaf       []byte
+	DelegateLeaf    []byte
+	SpendControl    []byte
+	DelegateControl []byte
+	RevealedScripts []string
+	ArkAddress      string
+	OnchainAddress  string
 }
 
 func (s *Service) advertisedArkdPub() []byte {
@@ -56,9 +53,6 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if snap.PhoneRoutineBIP340 == nil || snap.ExternalOwnerWallet == nil {
 		return nil, fmt.Errorf("enrolled keys required")
 	}
-	if snap.ArkadeCosignerBase == nil {
-		return nil, fmt.Errorf("arkade emulator pub required")
-	}
 	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
 	if err != nil {
 		return nil, err
@@ -72,19 +66,9 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if err != nil {
 		return nil, fmt.Errorf("pinned public delegate")
 	}
-	spendScript, err := policy.VaultPolicyV1SpendArkadeScript()
-	if err != nil {
-		return nil, fmt.Errorf("vault-policy-v1 spend arkade script: %w", err)
-	}
-	spendHash := arkade.ArkadeScriptHash(spendScript)
-	tweakedEmu := arkade.ComputeArkadeScriptPublicKey(snap.ArkadeCosignerBase, spendHash)
-	if tweakedEmu == nil {
-		return nil, fmt.Errorf("vtxo emulator tweak is degenerate")
-	}
 	params := policy.VaultPolicyV1Params{
 		UserPub:              schnorr.SerializePubKey(snap.PhoneRoutineBIP340),
 		VtxoVaultCosignerPub: schnorr.SerializePubKey(cosigner.PubKey()),
-		TweakedEmulatorPub:   schnorr.SerializePubKey(tweakedEmu),
 		ArkdServerPub:        schnorr.SerializePubKey(arkd),
 		DelegatePub:          schnorr.SerializePubKey(delegate),
 		ExitDevicePub:        schnorr.SerializePubKey(snap.PhoneRoutineBIP340),
@@ -119,19 +103,17 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		return nil, err
 	}
 	return &vtxoPolicyTree{
-		CosignerPub:       cosigner.PubKey(),
-		TweakedEmulator:   tweakedEmu,
-		DelegatePub:       delegate,
-		TapKey:            tapKey,
-		PkScript:          encoded.PkScript,
-		SpendLeaf:         encoded.SpendScript,
-		DelegateLeaf:      encoded.DelegateScript,
-		SpendControl:      encoded.SpendControlBlock,
-		DelegateControl:   encoded.DelegateControlBlock,
-		RevealedScripts:   encoded.RevealedScripts,
-		SpendArkadeScript: spendScript,
-		ArkAddress:        addr,
-		OnchainAddress:    onchain.EncodeAddress(),
+		CosignerPub:     cosigner.PubKey(),
+		DelegatePub:     delegate,
+		TapKey:          tapKey,
+		PkScript:        encoded.PkScript,
+		SpendLeaf:       encoded.SpendScript,
+		DelegateLeaf:    encoded.DelegateScript,
+		SpendControl:    encoded.SpendControlBlock,
+		DelegateControl: encoded.DelegateControlBlock,
+		RevealedScripts: encoded.RevealedScripts,
+		ArkAddress:      addr,
+		OnchainAddress:  onchain.EncodeAddress(),
 	}, nil
 }
 
