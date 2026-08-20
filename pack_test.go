@@ -37,7 +37,7 @@ func TestContractPackMatchesLiveEnroll(t *testing.T) {
 	}
 }
 
-func TestContractPackListsVaultPolicyV1WithExitAndTunnel(t *testing.T) {
+func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	raw, err := os.ReadFile("contract-pack.json")
 	if err != nil {
 		t.Fatal(err)
@@ -67,23 +67,35 @@ func TestContractPackListsVaultPolicyV1WithExitAndTunnel(t *testing.T) {
 	if !ok {
 		t.Fatal("vault-policy-v1 must declare exit")
 	}
-	if exit["delay"] != "2048" || exit["delayUnit"] != "seconds" {
+	if exit["delay"] != "4608" || exit["delayUnit"] != "seconds" {
 		t.Fatalf("vault-policy-v1 exit delay: %+v", exit)
+	}
+	if exit["arkdMinimum"] != "2048" || exit["bip68SecondsMod"] != "512" {
+		t.Fatalf("vault-policy-v1 exit validation pins: %+v", exit)
 	}
 	if exit["twoGuardian"] != "device-and-hardware-after-exitDelay" || exit["threeGuardian"] != "hardware-and-recovery-after-exitDelay" {
 		t.Fatalf("vault-policy-v1 exit guardians: %+v", exit)
 	}
-	tunnel, ok := listed["tunnel"].(map[string]any)
+	if _, ok := listed["tunnel"]; ok {
+		t.Fatal("vault-policy-v1 must not declare tunnel or OP_TUNNEL")
+	}
+	delegate, ok := listed["delegate"].(map[string]any)
 	if !ok {
-		t.Fatal("vault-policy-v1 must declare tunnel")
+		t.Fatal("vault-policy-v1 must declare delegate")
 	}
-	if tunnel["opcode"] != "OP_TUNNEL" || tunnel["leaf"] != "tweaked-tunnel-emulator-and-arkd" {
-		t.Fatalf("vault-policy-v1 tunnel: %+v", tunnel)
+	if delegate["leaf"] != "user-and-vtxo-vault-cosigner-and-pinned-public-delegate-and-arkd" {
+		t.Fatalf("vault-policy-v1 delegate leaf: %+v", delegate)
 	}
-	if tunnel["note"] != "Different ArkScript tweak from spend. Kernel is the delegate. No vault HTTP." {
-		t.Fatalf("vault-policy-v1 tunnel note: %+v", tunnel)
+	if delegate["pinnedPublicDelegate"] != "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a" {
+		t.Fatalf("vault-policy-v1 pinned delegate: %+v", delegate)
 	}
-	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. Exit delay frozen from Spike 0 UnilateralExitDelay=2048 seconds." {
+	if delegate["origin"] != "https://delegator.mutinynet.arkade.sh" {
+		t.Fatalf("vault-policy-v1 delegate origin: %+v", delegate)
+	}
+	if delegate["capability"] != "multi-presigned-signature" {
+		t.Fatalf("vault-policy-v1 delegate capability: %+v", delegate)
+	}
+	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf." {
 		t.Fatalf("vault-policy-v1 notes: %v", listed["notes"])
 	}
 	caps, ok := listed["caps"].(map[string]any)

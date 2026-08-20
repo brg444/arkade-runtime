@@ -34,17 +34,22 @@
         "dustSats": 330
       },
       "exit": {
-        "delay": "2048",
+        "delay": "4608",
         "delayUnit": "seconds",
+        "arkdMinimum": "2048",
+        "bip68SecondsMod": "512",
+        "reason": "Product-chosen BIP68 seconds (9*512). Meets arkd Validate (CSV >= GetInfo.unilateralExitDelay 2048) and the 144-block floor at Mutinynet ~30s/block (4320s). Not the live 2048s hatch.",
         "twoGuardian": "device-and-hardware-after-exitDelay",
         "threeGuardian": "hardware-and-recovery-after-exitDelay"
       },
-      "tunnel": {
-        "opcode": "OP_TUNNEL",
-        "leaf": "tweaked-tunnel-emulator-and-arkd",
-        "note": "Different ArkScript tweak from spend. Kernel is the delegate. No vault HTTP."
+      "delegate": {
+        "leaf": "user-and-vtxo-vault-cosigner-and-pinned-public-delegate-and-arkd",
+        "pinnedPublicDelegate": "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a",
+        "origin": "https://delegator.mutinynet.arkade.sh",
+        "capability": "multi-presigned-signature",
+        "note": "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised."
       },
-      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. Exit delay frozen from Spike 0 UnilateralExitDelay=2048 seconds."
+      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf."
     }
   },
   "domains": {
