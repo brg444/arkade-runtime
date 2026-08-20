@@ -5,14 +5,16 @@ not exactly one spendable policy VTXO covering `amount + dust`. The wallet
 must coin-select a single VTXO; it must not imply general multi-input
 spending.
 
-The Arkade script matches emulator `recursive_covenant_test.go`: one input,
-dest bounds, change taproot equals the input VTXO script, change value
-equals input minus dest. The SDK builds a v3 checkpoint
-`[checkpoint output, P2A]` and an ark tx that spends the checkpoint and
-appends P2A after caller outputs. The client inserts one
-`EmulatorEntry{Vin:0, Script: exactScript}` with an empty witness
-immediately before P2A, the same way emulator `addEmulatorPacket` does.
+The SDK builds a version-3 checkpoint with `[checkpoint output, P2A]` and
+a version-3 Arkade transaction with `[destination, vault-policy-v1 change,
+P2A]`. Both transactions spend the three-key collaborative leaf
+`[user, VTXO VaultCosigner, Arkade Operator]` with `SIGHASH_DEFAULT`.
+There is no Emulator Packet and the emulator is not a VTXO tree signer.
 
-Version, locktime, sequence, P2A, and the packet are enforced by the
-server. They are not encoded as script-number equals against LE32 inspect
-pushes.
+The server independently enforces the reserved outpoint, exact tapleaf and
+control block, user signature, version, locktime, sequence, output order,
+P2A, destination, mandatory change, and input/output conservation. This
+slice permits zero virtual fee only.
+
+Deploy this regular VTXO spend path and validate it on Mutinynet before
+enabling delegation or beginning Lightning integration.

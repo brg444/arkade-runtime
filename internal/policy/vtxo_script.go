@@ -2,6 +2,7 @@ package policy
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
@@ -11,8 +12,6 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/txscript"
 )
-
-
 
 // VaultPolicyV1Params is the vault-policy-v1 tap tree. Exactly three leaves:
 // 3-key collaborative spend/intent, one guardian CSV exit, 4-key delegate-forfeit.
@@ -28,16 +27,29 @@ type VaultPolicyV1Params struct {
 	ExitRecoveryPub      []byte // optional; when set, exit is hardware+recovery
 }
 
+// PinnedDelegateXOnly returns the x-only key committed by vault-policy-v1.
+func PinnedDelegateXOnly() ([]byte, error) {
+	raw, err := hex.DecodeString(program.VaultPolicyV1PinnedDelegate)
+	if err != nil || len(raw) != 33 {
+		return nil, fmt.Errorf("pinned public delegate")
+	}
+	pub, err := btcec.ParsePubKey(raw)
+	if err != nil {
+		return nil, fmt.Errorf("pinned public delegate: %w", err)
+	}
+	return schnorr.SerializePubKey(pub), nil
+}
+
 // VaultPolicyV1Tree is the encoded policy tree. Leaf order is spend, exit, delegate.
 type VaultPolicyV1Tree struct {
-	SpendScript           []byte
-	ExitScript            []byte
-	DelegateScript        []byte
-	SpendControlBlock     []byte
-	DelegateControlBlock  []byte
-	RevealedScripts       []string
-	TapKey                []byte
-	PkScript              []byte
+	SpendScript          []byte
+	ExitScript           []byte
+	DelegateScript       []byte
+	SpendControlBlock    []byte
+	DelegateControlBlock []byte
+	RevealedScripts      []string
+	TapKey               []byte
+	PkScript             []byte
 }
 
 // BuildVaultPolicyV1Tree encodes the 3-key collaborative spend/intent leaf

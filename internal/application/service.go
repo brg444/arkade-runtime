@@ -1076,15 +1076,14 @@ type Status struct {
 	TweakedVaultCosignerXOnly       string   `json:"tweakedVaultCosignerXOnly,omitempty"`
 	TweakedArkadeCosignerXOnly      string   `json:"tweakedArkadeCosignerXOnly,omitempty"`
 	Warnings                        []string `json:"warnings,omitempty"`
-	VtxoVaultCosignerPub     string `json:"vtxoVaultCosignerPub"`
-	VtxoExitDelay            uint32 `json:"vtxoExitDelay"`
-	VtxoExitDelayUnit        string `json:"vtxoExitDelayUnit"`
-	SpendingArkAddress       string `json:"spendingArkAddress"`
-	SpendingArkScript        string `json:"spendingArkScript"`
-	SpendingOnchainAddress   string `json:"spendingOnchainAddress"`
-	SpendingOnchainScript    string `json:"spendingOnchainScript"`
-	VtxoTweakedEmulatorPub   string `json:"vtxoTweakedEmulatorPub"`
-	VtxoDelegatePub          string `json:"vtxoDelegatePub"`
+	VtxoVaultCosignerPub            string   `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay                   uint32   `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit               string   `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress              string   `json:"spendingArkAddress"`
+	SpendingArkScript               string   `json:"spendingArkScript"`
+	SpendingOnchainAddress          string   `json:"spendingOnchainAddress"`
+	SpendingOnchainScript           string   `json:"spendingOnchainScript"`
+	VtxoDelegatePub                 string   `json:"vtxoDelegatePub"`
 }
 
 func statusWarnings(cred *policy.Credential) []string {
@@ -1478,9 +1477,6 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	st.SpendingArkScript = hex.EncodeToString(tree.PkScript)
 	st.SpendingOnchainAddress = tree.OnchainAddress
 	st.SpendingOnchainScript = hex.EncodeToString(tree.PkScript)
-	if tree.TweakedEmulator != nil {
-		st.VtxoTweakedEmulatorPub = hex.EncodeToString(tree.TweakedEmulator.SerializeCompressed())
-	}
 	if tree.DelegatePub != nil {
 		st.VtxoDelegatePub = hex.EncodeToString(tree.DelegatePub.SerializeCompressed())
 	}

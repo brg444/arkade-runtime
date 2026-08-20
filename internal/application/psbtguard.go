@@ -84,13 +84,24 @@ func signExactStage(
 // signExactArkStage adds exactly one TaprootScriptSpendSig for expectedXOnly
 // on every input whose collaborative leaf commits that key. It does not call
 // parseAndVerifyPrevout / RequireVerifiedPrevout and does not assume a
-// single input. User/arkd/emulator signatures are left untouched.
+// single input. Existing signatures are left untouched.
 func signExactArkStage(
 	ctx context.Context,
 	stored string,
 	priv *btcec.PrivateKey,
 	expectedXOnly []byte,
 	expectedLeaf []byte,
+) (string, error) {
+	return signExactArkStageWithSighash(ctx, stored, priv, expectedXOnly, expectedLeaf, txscript.SigHashDefault)
+}
+
+func signExactArkStageWithSighash(
+	ctx context.Context,
+	stored string,
+	priv *btcec.PrivateKey,
+	expectedXOnly []byte,
+	expectedLeaf []byte,
+	wantSigHash txscript.SigHashType,
 ) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -132,11 +143,14 @@ func signExactArkStage(
 		if !bytes.Equal(leaf.Script, expectedLeaf) {
 			return "", fmt.Errorf("unexpected tapleaf")
 		}
-		added, err := signTapLeafAt(work, i, priv, expectedLeaf)
+		if in.SighashType != wantSigHash {
+			return "", fmt.Errorf("unexpected input sighash")
+		}
+		added, err := signTapLeafAtWithSighash(work, i, priv, expectedLeaf, wantSigHash)
 		if err != nil {
 			return "", err
 		}
-		if err := verifySchnorrOnInput(submitted, i, added.Signature, expectedXOnly, expectedLeaf); err != nil {
+		if err := verifySchnorrOnInputWithSighash(submitted, i, added.Signature, expectedXOnly, expectedLeaf, wantSigHash); err != nil {
 			return "", fmt.Errorf("vtxo vault signature invalid")
 		}
 		out.Inputs[i].TaprootScriptSpendSig = append(out.Inputs[i].TaprootScriptSpendSig, added)
@@ -253,6 +267,10 @@ func decodeArkMultisig(script []byte) (*txscriptMultisig, error) {
 }
 
 func signTapLeafAt(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey, leafScript []byte) (*psbt.TaprootScriptSpendSig, error) {
+	return signTapLeafAtWithSighash(ptx, idx, priv, leafScript, txscript.SigHashDefault)
+}
+
+func signTapLeafAtWithSighash(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey, leafScript []byte, sigHash txscript.SigHashType) (*psbt.TaprootScriptSpendSig, error) {
 	if ptx == nil || idx < 0 || idx >= len(ptx.Inputs) || idx >= len(ptx.UnsignedTx.TxIn) {
 		return nil, fmt.Errorf("input index")
 	}
@@ -264,7 +282,7 @@ func signTapLeafAt(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey, leafScript
 	leaf := txscript.NewBaseTapLeaf(leafScript)
 	sig, err := txscript.RawTxInTapscriptSignature(
 		ptx.UnsignedTx, txscript.NewTxSigHashes(ptx.UnsignedTx, fetcher),
-		idx, prev.Value, prev.PkScript, leaf, txscript.SigHashDefault, priv,
+		idx, prev.Value, prev.PkScript, leaf, sigHash, priv,
 	)
 	if err != nil {
 		return nil, err
@@ -277,11 +295,15 @@ func signTapLeafAt(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey, leafScript
 		XOnlyPubKey: schnorr.SerializePubKey(priv.PubKey()),
 		LeafHash:    h[:],
 		Signature:   sig,
-		SigHash:     txscript.SigHashDefault,
+		SigHash:     sigHash,
 	}, nil
 }
 
 func verifySchnorrOnInput(ptx *psbt.Packet, idx int, sig, wantXOnly, leafScript []byte) error {
+	return verifySchnorrOnInputWithSighash(ptx, idx, sig, wantXOnly, leafScript, txscript.SigHashDefault)
+}
+
+func verifySchnorrOnInputWithSighash(ptx *psbt.Packet, idx int, sig, wantXOnly, leafScript []byte, sigHash txscript.SigHashType) error {
 	if ptx == nil || ptx.UnsignedTx == nil || idx < 0 || idx >= len(ptx.Inputs) || idx >= len(ptx.UnsignedTx.TxIn) {
 		return fmt.Errorf("input index")
 	}
@@ -295,7 +317,7 @@ func verifySchnorrOnInput(ptx *psbt.Packet, idx int, sig, wantXOnly, leafScript 
 	fetcher := multiWitnessFetcher(ptx)
 	digest, err := txscript.CalcTapscriptSignaturehash(
 		txscript.NewTxSigHashes(ptx.UnsignedTx, fetcher),
-		txscript.SigHashDefault, ptx.UnsignedTx, idx, fetcher, txscript.NewBaseTapLeaf(leafScript),
+		sigHash, ptx.UnsignedTx, idx, fetcher, txscript.NewBaseTapLeaf(leafScript),
 	)
 	if err != nil {
 		return err
