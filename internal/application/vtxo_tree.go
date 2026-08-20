@@ -18,6 +18,7 @@ import (
 type vtxoPolicyTree struct {
 	CosignerPub     *btcec.PublicKey
 	DelegatePub     *btcec.PublicKey
+	ArkdPub         *btcec.PublicKey
 	TapKey          *btcec.PublicKey
 	PkScript        []byte
 	SpendLeaf       []byte
@@ -105,6 +106,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	return &vtxoPolicyTree{
 		CosignerPub:     cosigner.PubKey(),
 		DelegatePub:     delegate,
+		ArkdPub:         arkd,
 		TapKey:          tapKey,
 		PkScript:        encoded.PkScript,
 		SpendLeaf:       encoded.SpendScript,

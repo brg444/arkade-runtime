@@ -19,6 +19,7 @@ import (
 
 type sdkSpendFixture struct {
 	user       *btcec.PrivateKey
+	arkd       *btcec.PrivateKey
 	tree       *vtxoPolicyTree
 	operation  policy.VtxoOperation
 	input      policy.VtxoOperationInput
@@ -49,6 +50,7 @@ func newSDKSpendFixture(t *testing.T) sdkSpendFixture {
 	}
 	tree := &vtxoPolicyTree{
 		CosignerPub:     vault.PubKey(),
+		ArkdPub:         arkd.PubKey(),
 		PkScript:        encoded.PkScript,
 		SpendLeaf:       encoded.SpendScript,
 		SpendControl:    encoded.SpendControlBlock,
@@ -112,6 +114,7 @@ func newSDKSpendFixture(t *testing.T) sdkSpendFixture {
 
 	return sdkSpendFixture{
 		user: user,
+		arkd: arkd,
 		tree: tree,
 		operation: policy.VtxoOperation{
 			AmountSats: 10_000, FeeSats: 0, DestScript: destScript,
@@ -128,7 +131,12 @@ func newSDKSpendFixture(t *testing.T) sdkSpendFixture {
 
 func TestVerifySDKNativeSpendShape(t *testing.T) {
 	f := newSDKSpendFixture(t)
-	if err := verifyCheckpointPSBT(f.checkpoint, f.input, f.operation, f.tree); err != nil {
+	unsigned, err := clonePacket(f.checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsigned.Inputs[0].TaprootScriptSpendSig = nil
+	if err := verifyUnsignedCheckpointPSBT(unsigned, f.input, f.operation, f.tree); err != nil {
 		t.Fatalf("checkpoint: %v", err)
 	}
 	if err := verifySpendPSBT(f.arkTx, f.operation, []policy.VtxoOperationInput{f.input}, f.tree, []*psbt.Packet{f.checkpoint}); err != nil {
@@ -136,6 +144,31 @@ func TestVerifySDKNativeSpendShape(t *testing.T) {
 	}
 	if len(f.checkpoint.UnsignedTx.TxOut) != 2 || len(f.arkTx.UnsignedTx.TxOut) != 3 {
 		t.Fatal("SDK-native output shape changed")
+	}
+}
+
+func TestVerifySubmittedCheckpointRequiresExactUserAndOperatorStage(t *testing.T) {
+	f := newSDKSpendFixture(t)
+	operatorSig, err := signTapLeafAt(f.checkpoint, 0, f.arkd, f.tree.SpendLeaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.checkpoint.Inputs[0].TaprootScriptSpendSig = append(f.checkpoint.Inputs[0].TaprootScriptSpendSig, operatorSig)
+	if err := verifySubmittedCheckpointPSBT(f.checkpoint, f.input, f.operation, f.tree); err != nil {
+		t.Fatalf("submitted checkpoint: %v", err)
+	}
+
+	missing, err := clonePacket(f.checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing.Inputs[0].TaprootScriptSpendSig = missing.Inputs[0].TaprootScriptSpendSig[:1]
+	if err := verifySubmittedCheckpointPSBT(missing, f.input, f.operation, f.tree); err == nil {
+		t.Fatal("checkpoint without Operator signature accepted")
+	}
+
+	if err := verifyUnsignedCheckpointPSBT(f.checkpoint, f.input, f.operation, f.tree); err == nil {
+		t.Fatal("pre-signed checkpoint accepted before submit")
 	}
 }
 
