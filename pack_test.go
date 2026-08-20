@@ -109,8 +109,16 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if delegate["note"] != "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised." {
 		t.Fatalf("vault-policy-v1 delegate note: %+v", delegate)
 	}
-	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
+	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
 		t.Fatalf("vault-policy-v1 notes: %v", listed["notes"])
+	}
+	board, ok := programs["vault-board-v1"].(map[string]any)
+	if !ok || board["status"] != "live" || board["destination"] != "vault-policy-v1" {
+		t.Fatalf("vault-board-v1: %#v", programs["vault-board-v1"])
+	}
+	exit, ok = board["exit"].(map[string]any)
+	if !ok || exit["delay"] != "604672" || exit["delayUnit"] != "seconds" {
+		t.Fatalf("vault-board-v1 exit: %#v", board["exit"])
 	}
 	caps, ok := listed["caps"].(map[string]any)
 	if !ok {

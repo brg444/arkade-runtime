@@ -46,6 +46,9 @@ const (
 	VaultPolicyV1         = "vault-policy-v1"
 	VaultPolicyV1Schema   = "arkade-vault/vtxo-policy-v1"
 	VaultPolicyV1Template = "vault-policy-v1-collaborative-3key"
+	VaultBoardV1          = "vault-board-v1"
+	VaultBoardV1Schema    = "arkade-vault/board-v1"
+	VaultBoardV1Template  = "vault-board-v1-phone-and-arkd"
 
 	// Product-chosen guardian CSV. arkd Validate requires the smallest exit
 	// delay >= GetInfo.unilateralExitDelay (live Mutinynet 2048 seconds) and
@@ -56,11 +59,34 @@ const (
 	VaultPolicyV1ArkdMinExitDelay = uint32(2048)
 	VaultPolicyV1BIP68SecondsMod  = uint32(512)
 
+	// vault-board-v1 uses arkd's standard boarding contract: the phone and
+	// Operator cooperate before expiry, while the phone can recover alone
+	// after the Operator-advertised boarding delay. This is deliberately a
+	// different program from the already-funded L1 Spending tree.
+	VaultBoardV1ExitDelay     = uint32(604672)
+	VaultBoardV1ExitDelayUnit = "seconds"
+
 	// Pinned public Fulmine delegator (compressed). The tapleaf stores x-only.
 	VaultPolicyV1PinnedDelegate     = "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a"
 	VaultPolicyV1DelegateOrigin     = "https://delegator.mutinynet.arkade.sh"
 	VaultPolicyV1DelegateCapability = "multi-presigned-signature"
 )
+
+// ValidateVaultBoardV1ExitDelay rejects an Operator whose boarding contract
+// no longer matches the release. Existing outputs cannot be safely
+// reinterpreted with a different CSV.
+func ValidateVaultBoardV1ExitDelay(delay uint32, unit string) error {
+	if unit != VaultBoardV1ExitDelayUnit {
+		return fmt.Errorf("vault-board-v1 exit delay unit must be %s", VaultBoardV1ExitDelayUnit)
+	}
+	if delay%VaultPolicyV1BIP68SecondsMod != 0 {
+		return fmt.Errorf("vault-board-v1 exit delay must be a BIP68 seconds multiple of %d", VaultPolicyV1BIP68SecondsMod)
+	}
+	if delay != VaultBoardV1ExitDelay {
+		return fmt.Errorf("vault-board-v1 exit delay is frozen at %d seconds", VaultBoardV1ExitDelay)
+	}
+	return nil
+}
 
 // ValidateVaultPolicyV1ExitDelay rejects any hatch other than the product pin.
 func ValidateVaultPolicyV1ExitDelay(delay uint32, unit string) error {
