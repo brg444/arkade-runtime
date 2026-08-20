@@ -1229,6 +1229,18 @@ func (s *Service) vaultCosignerSigner(rec *policy.VaultRecord) (Signer, error) {
 	return LocalSigner{Priv: child}, nil
 }
 
+func (s *Service) routineSigners(rec *policy.VaultRecord, op *vault.Built) (Signer, Signer, error) {
+	vaultSigner, err := s.vaultCosignerSigner(rec)
+	if err != nil {
+		return nil, nil, err
+	}
+	if isNilInterface(vaultSigner) || isNilInterface(s.ArkadeCosignerSigner) ||
+		op == nil || op.TweakedVaultCosigner == nil || op.TweakedArkadeCosigner == nil {
+		return nil, nil, fmt.Errorf("both VaultCosigner and ArkadeCosigner signers are required")
+	}
+	return vaultSigner, s.ArkadeCosignerSigner, nil
+}
+
 func (s *Service) rejectCrossVaultCredential(vaultID string, credID []byte) error {
 	idx := s.published.Load()
 	if idx == nil || len(credID) == 0 {
@@ -1691,8 +1703,9 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 	if err != nil {
 		return "", false, err
 	}
-	if s.VaultSigner == nil || s.ArkadeCosignerSigner == nil || op.TweakedVaultCosigner == nil || op.TweakedArkadeCosigner == nil {
-		return "", false, fmt.Errorf("both VaultCosigner and ArkadeCosigner signers are required")
+	vaultSigner, arkadeSigner, err := s.routineSigners(rec, op)
+	if err != nil {
+		return "", false, err
 	}
 
 	timeout := s.SignTimeout
@@ -1700,10 +1713,6 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 		timeout = 15 * time.Second
 	}
 
-	vaultSigner, err := s.vaultCosignerSigner(rec)
-	if err != nil {
-		return "", false, err
-	}
 	allowance := periodAllowanceSats(rec, nil)
 	recipientDebit, err := s.routineRecipientDebit(snap, cl)
 	if err != nil {
@@ -1743,7 +1752,7 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 			signCtx, cancel := context.WithTimeout(issueCtx, timeout)
 			defer cancel()
 			completed, err := signExactStage(
-				signCtx, storedVaultPSBT, s.ArkadeCosignerSigner,
+				signCtx, storedVaultPSBT, arkadeSigner,
 				schnorr.SerializePubKey(op.TweakedArkadeCosigner), "ArkadeCosigner",
 			)
 			if err != nil {
