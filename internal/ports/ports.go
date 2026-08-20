@@ -34,7 +34,13 @@ type ArkResolver interface {
 	// SpendableVtxos returns currently spendable VTXOs whose pkScript matches.
 	// Amounts come from the pinned indexer. Never from a client PSBT.
 	SpendableVtxos(ctx context.Context, pkScript []byte) ([]ResolvedVtxo, error)
+	// ReservedSpentByArkTxid requires every reserved outpoint to be spent by
+	// the persisted ark txid (confirmed or virtual mempool). Disappearance
+	// alone is not enough.
+	ReservedSpentByArkTxid(ctx context.Context, pkScript []byte, reserved []ResolvedVtxo, arkTxid string) error
 	// CheckpointTapscript is the arkd-advertised unroll script from GetInfo.
 	CheckpointTapscript() []byte
+	// AdvertisedSignerPub is the 33-byte compressed arkd signer from GetInfo.
+	AdvertisedSignerPub() []byte
 	Network() string
 }

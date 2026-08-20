@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"strings"
 
+	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
 )
 
 // signExactStage gives one signer a clone of the exact stored stage, imports
@@ -26,6 +28,23 @@ func signWithExpected(ctx context.Context, signer Signer, ptx *psbt.Packet, expe
 		return es.SignExpected(ctx, ptx, expectedXOnly)
 	}
 	return signer.Sign(ctx, ptx)
+}
+
+func parsePSBT(raw string) (*psbt.Packet, error) {
+	if raw == "" {
+		return nil, fmt.Errorf("psbt required")
+	}
+	ptx, err := psbt.NewFromRawBytes(strings.NewReader(raw), true)
+	if err != nil {
+		return nil, fmt.Errorf("psbt: %w", err)
+	}
+	if ptx == nil || ptx.UnsignedTx == nil {
+		return nil, fmt.Errorf("psbt required")
+	}
+	if len(ptx.Inputs) != len(ptx.UnsignedTx.TxIn) {
+		return nil, fmt.Errorf("psbt input count")
+	}
+	return ptx, nil
 }
 
 func signExactStage(
@@ -60,6 +79,241 @@ func signExactStage(
 	}
 	out.Inputs[0].TaprootScriptSpendSig = append(out.Inputs[0].TaprootScriptSpendSig, added)
 	return out.B64Encode()
+}
+
+// signExactArkStage adds exactly one TaprootScriptSpendSig for expectedXOnly
+// on every input whose collaborative leaf commits that key. It does not call
+// parseAndVerifyPrevout / RequireVerifiedPrevout and does not assume a
+// single input. User/arkd/emulator signatures are left untouched.
+func signExactArkStage(
+	ctx context.Context,
+	stored string,
+	priv *btcec.PrivateKey,
+	expectedXOnly []byte,
+) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if priv == nil {
+		return "", fmt.Errorf("vtxo vault cosigner required")
+	}
+	if len(expectedXOnly) != 32 {
+		return "", fmt.Errorf("expected signer x-only key")
+	}
+	if !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), expectedXOnly) {
+		return "", fmt.Errorf("signer key mismatch")
+	}
+	submitted, err := parsePSBT(stored)
+	if err != nil {
+		return "", err
+	}
+	if len(submitted.UnsignedTx.TxIn) == 0 {
+		return "", fmt.Errorf("psbt input required")
+	}
+	work, err := clonePacket(submitted)
+	if err != nil {
+		return "", err
+	}
+	out, err := clonePacket(submitted)
+	if err != nil {
+		return "", err
+	}
+	signed := 0
+	for i := range work.Inputs {
+		leaf := collaborativeLeafAt(work, i, expectedXOnly)
+		if leaf == nil {
+			continue
+		}
+		added, err := signTapLeafAt(work, i, priv, leaf.Script)
+		if err != nil {
+			return "", err
+		}
+		if err := verifySchnorrOnInput(submitted, i, added.Signature, expectedXOnly, leaf.Script); err != nil {
+			return "", fmt.Errorf("vtxo vault signature invalid")
+		}
+		out.Inputs[i].TaprootScriptSpendSig = append(out.Inputs[i].TaprootScriptSpendSig, added)
+		signed++
+	}
+	if signed == 0 {
+		return "", fmt.Errorf("collaborative leaf missing")
+	}
+	return out.B64Encode()
+}
+
+// signExactStageAt inserts one expected Taproot script-spend signature at
+// inputIndex. It does not assume len(TxIn)==1 and does not call
+// parseAndVerifyPrevout.
+func signExactStageAt(
+	ctx context.Context,
+	stored string,
+	priv *btcec.PrivateKey,
+	expectedXOnly []byte,
+	inputIndex int,
+) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if priv == nil {
+		return "", fmt.Errorf("signer required")
+	}
+	if len(expectedXOnly) != 32 {
+		return "", fmt.Errorf("expected signer x-only key")
+	}
+	if !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), expectedXOnly) {
+		return "", fmt.Errorf("signer key mismatch")
+	}
+	submitted, err := parsePSBT(stored)
+	if err != nil {
+		return "", err
+	}
+	if inputIndex < 0 || inputIndex >= len(submitted.Inputs) {
+		return "", fmt.Errorf("input index")
+	}
+	in := submitted.Inputs[inputIndex]
+	if in.WitnessUtxo == nil || len(in.TaprootLeafScript) != 1 || in.TaprootLeafScript[0] == nil {
+		return "", fmt.Errorf("submitted input missing leaf commitment")
+	}
+	leafScript := in.TaprootLeafScript[0].Script
+	added, err := signTapLeafAt(submitted, inputIndex, priv, leafScript)
+	if err != nil {
+		return "", err
+	}
+	if err := verifySchnorrOnInput(submitted, inputIndex, added.Signature, expectedXOnly, leafScript); err != nil {
+		return "", fmt.Errorf("signer signature invalid")
+	}
+	out, err := clonePacket(submitted)
+	if err != nil {
+		return "", err
+	}
+	out.Inputs[inputIndex].TaprootScriptSpendSig = append(out.Inputs[inputIndex].TaprootScriptSpendSig, added)
+	return out.B64Encode()
+}
+
+func collaborativeLeafAt(ptx *psbt.Packet, idx int, expectedXOnly []byte) *psbt.TaprootTapLeafScript {
+	if ptx == nil || idx < 0 || idx >= len(ptx.Inputs) {
+		return nil
+	}
+	in := ptx.Inputs[idx]
+	if in.WitnessUtxo == nil {
+		return nil
+	}
+	for _, leaf := range in.TaprootLeafScript {
+		if leaf == nil {
+			continue
+		}
+		closure, err := decodeMultisigLeaf(leaf.Script)
+		if err != nil || closure == nil {
+			continue
+		}
+		for _, pub := range closure.PubKeys {
+			if pub != nil && bytes.Equal(schnorr.SerializePubKey(pub), expectedXOnly) {
+				return leaf
+			}
+		}
+	}
+	return nil
+}
+
+func decodeMultisigLeaf(script []byte) (*txscriptMultisig, error) {
+	if len(script) == 0 {
+		return nil, fmt.Errorf("leaf script")
+	}
+	// arkscript is imported by callers via vtxo_tree; keep this helper local
+	// by using the same DecodeClosure path through a thin wrapper below.
+	return decodeArkMultisig(script)
+}
+
+type txscriptMultisig struct {
+	PubKeys []*btcec.PublicKey
+}
+
+func decodeArkMultisig(script []byte) (*txscriptMultisig, error) {
+	closure, err := arkscript.DecodeClosure(script)
+	if err != nil {
+		return nil, err
+	}
+	switch c := closure.(type) {
+	case *arkscript.MultisigClosure:
+		return &txscriptMultisig{PubKeys: c.PubKeys}, nil
+	case *arkscript.CSVMultisigClosure:
+		return &txscriptMultisig{PubKeys: c.PubKeys}, nil
+	case *arkscript.CLTVMultisigClosure:
+		return &txscriptMultisig{PubKeys: c.PubKeys}, nil
+	default:
+		return nil, fmt.Errorf("not a collaborative leaf")
+	}
+}
+
+func signTapLeafAt(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey, leafScript []byte) (*psbt.TaprootScriptSpendSig, error) {
+	if ptx == nil || idx < 0 || idx >= len(ptx.Inputs) || idx >= len(ptx.UnsignedTx.TxIn) {
+		return nil, fmt.Errorf("input index")
+	}
+	prev := ptx.Inputs[idx].WitnessUtxo
+	if prev == nil {
+		return nil, fmt.Errorf("witness utxo required")
+	}
+	fetcher := multiWitnessFetcher(ptx)
+	leaf := txscript.NewBaseTapLeaf(leafScript)
+	sig, err := txscript.RawTxInTapscriptSignature(
+		ptx.UnsignedTx, txscript.NewTxSigHashes(ptx.UnsignedTx, fetcher),
+		idx, prev.Value, prev.PkScript, leaf, txscript.SigHashDefault, priv,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(sig) == 65 {
+		sig = sig[:64]
+	}
+	h := leaf.TapHash()
+	return &psbt.TaprootScriptSpendSig{
+		XOnlyPubKey: schnorr.SerializePubKey(priv.PubKey()),
+		LeafHash:    h[:],
+		Signature:   sig,
+		SigHash:     txscript.SigHashDefault,
+	}, nil
+}
+
+func verifySchnorrOnInput(ptx *psbt.Packet, idx int, sig, wantXOnly, leafScript []byte) error {
+	if ptx == nil || ptx.UnsignedTx == nil || idx < 0 || idx >= len(ptx.Inputs) || idx >= len(ptx.UnsignedTx.TxIn) {
+		return fmt.Errorf("input index")
+	}
+	if len(sig) != 64 {
+		return fmt.Errorf("signature length")
+	}
+	prev := ptx.Inputs[idx].WitnessUtxo
+	if prev == nil {
+		return fmt.Errorf("witness utxo required")
+	}
+	fetcher := multiWitnessFetcher(ptx)
+	digest, err := txscript.CalcTapscriptSignaturehash(
+		txscript.NewTxSigHashes(ptx.UnsignedTx, fetcher),
+		txscript.SigHashDefault, ptx.UnsignedTx, idx, fetcher, txscript.NewBaseTapLeaf(leafScript),
+	)
+	if err != nil {
+		return err
+	}
+	parsed, err := schnorr.ParseSignature(sig)
+	if err != nil {
+		return err
+	}
+	pub, err := schnorr.ParsePubKey(wantXOnly)
+	if err != nil {
+		return err
+	}
+	if !parsed.Verify(digest, pub) {
+		return fmt.Errorf("invalid")
+	}
+	return nil
+}
+
+func multiWitnessFetcher(ptx *psbt.Packet) txscript.PrevOutputFetcher {
+	prevs := make(map[wire.OutPoint]*wire.TxOut, len(ptx.Inputs))
+	for i, in := range ptx.UnsignedTx.TxIn {
+		if i < len(ptx.Inputs) && ptx.Inputs[i].WitnessUtxo != nil {
+			prevs[in.PreviousOutPoint] = ptx.Inputs[i].WitnessUtxo
+		}
+	}
+	return txscript.NewMultiPrevOutFetcher(prevs)
 }
 
 func verifyExactRoutineSignatures(ptx *psbt.Packet, op *vault.Built, pubs ...*btcec.PublicKey) error {

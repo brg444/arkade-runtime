@@ -29,6 +29,7 @@ type arkResolver struct {
 	hc         httpDoer
 	network    string
 	checkpoint []byte
+	signerPub  []byte
 }
 
 // DialArkResolver constructs the release-pinned Mutinynet ark indexer client.
@@ -81,6 +82,12 @@ func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer
 		return nil, fmt.Errorf("incomplete ark indexer GetInfo")
 	}
 	client.checkpoint = checkpoint
+	if pub := strings.TrimSpace(info.SignerPubkey); pub != "" {
+		raw, err := decodeHex(pub)
+		if err == nil && len(raw) == 33 && (raw[0] == 0x02 || raw[0] == 0x03) {
+			client.signerPub = raw
+		}
+	}
 	return client, nil
 }
 
@@ -98,24 +105,61 @@ func (r *arkResolver) CheckpointTapscript() []byte {
 	return bytes.Clone(r.checkpoint)
 }
 
+func (r *arkResolver) AdvertisedSignerPub() []byte {
+	if r == nil {
+		return nil
+	}
+	return bytes.Clone(r.signerPub)
+}
+
+func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
+	if len(reserved) == 0 {
+		return fmt.Errorf("reserved outpoints required")
+	}
+	if err := requireTxid(strings.ToLower(strings.TrimSpace(arkTxid))); err != nil {
+		return fmt.Errorf("arkTxid")
+	}
+	listed, err := r.listVtxos(ctx, pkScript, false)
+	if err != nil {
+		return err
+	}
+	byOut := make(map[string]indexerVtxo, len(listed))
+	for _, vtxo := range listed {
+		if vtxo.Outpoint.Vout == nil {
+			continue
+		}
+		if err := requireTxid(vtxo.Outpoint.Txid); err != nil {
+			continue
+		}
+		byOut[vtxo.Outpoint.Txid+":"+strconv.FormatUint(uint64(*vtxo.Outpoint.Vout), 10)] = vtxo
+	}
+	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
+	for _, want := range reserved {
+		got, ok := byOut[want.Txid+":"+strconv.FormatUint(uint64(want.Vout), 10)]
+		if !ok {
+			return fmt.Errorf("reserved outpoint missing from indexer")
+		}
+		if !got.IsSpent {
+			return fmt.Errorf("reserved outpoints not spent")
+		}
+		spentBy := strings.ToLower(strings.TrimSpace(got.SpentBy))
+		if spentBy == "" {
+			spentBy = strings.ToLower(strings.TrimSpace(got.ArkTxid))
+		}
+		if spentBy != wantTx {
+			return fmt.Errorf("reserved outpoint not spent by ark txid")
+		}
+	}
+	return nil
+}
+
 func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]ports.ResolvedVtxo, error) {
-	if r == nil || r.hc == nil || r.origin == "" {
-		return nil, fmt.Errorf("ark indexer not configured")
-	}
-	if len(pkScript) == 0 {
-		return nil, fmt.Errorf("pkScript is required")
-	}
-	query := url.Values{}
-	query.Set("scripts", hex.EncodeToString(pkScript))
-	query.Set("spendableOnly", "true")
-	var out struct {
-		Vtxos []indexerVtxo `json:"vtxos"`
-	}
-	if err := r.getJSON(ctx, "/v1/indexer/vtxos?"+query.Encode(), &out, arkResolverVtxosLimit); err != nil {
+	listed, err := r.listVtxos(ctx, pkScript, true)
+	if err != nil {
 		return nil, err
 	}
-	resolved := make([]ports.ResolvedVtxo, 0, len(out.Vtxos))
-	for i, vtxo := range out.Vtxos {
+	resolved := make([]ports.ResolvedVtxo, 0, len(listed))
+	for i, vtxo := range listed {
 		if vtxo.IsSpent {
 			continue
 		}
@@ -128,9 +172,31 @@ func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]po
 	return resolved, nil
 }
 
+func (r *arkResolver) listVtxos(ctx context.Context, pkScript []byte, spendableOnly bool) ([]indexerVtxo, error) {
+	if r == nil || r.hc == nil || r.origin == "" {
+		return nil, fmt.Errorf("ark indexer not configured")
+	}
+	if len(pkScript) == 0 {
+		return nil, fmt.Errorf("pkScript is required")
+	}
+	query := url.Values{}
+	query.Set("scripts", hex.EncodeToString(pkScript))
+	if spendableOnly {
+		query.Set("spendableOnly", "true")
+	}
+	var out struct {
+		Vtxos []indexerVtxo `json:"vtxos"`
+	}
+	if err := r.getJSON(ctx, "/v1/indexer/vtxos?"+query.Encode(), &out, arkResolverVtxosLimit); err != nil {
+		return nil, err
+	}
+	return out.Vtxos, nil
+}
+
 type arkIndexerInfo struct {
 	Network             string `json:"network"`
 	CheckpointTapscript string `json:"checkpointTapscript"`
+	SignerPubkey        string `json:"signerPubkey"`
 }
 
 type indexerOutpoint struct {
@@ -143,6 +209,8 @@ type indexerVtxo struct {
 	Amount   json.RawMessage `json:"amount"`
 	Script   string          `json:"script"`
 	IsSpent  bool            `json:"isSpent"`
+	SpentBy  string          `json:"spentBy"`
+	ArkTxid  string          `json:"arkTxid"`
 }
 
 func (r *arkResolver) getInfo(ctx context.Context) (arkIndexerInfo, error) {
