@@ -350,6 +350,10 @@ Everything is `POST` with `Content-Type: application/json` and an exact
 | `/v1/passkey/install` | Store the encrypted credential envelope. |
 | `/v1/passkey/recover` | Return it to an authenticated fresh device. |
 
+Enrollment verifies the passkey create ceremony and the server-built public
+descriptor. Hardware and optional recovery keys are public-key inputs; the
+enrollment API does not request or verify ownership signatures for them.
+
 There is no route that signs an arbitrary PSBT. Every signing route is bound
 to a specific rebuilt script and a specific policy.
 

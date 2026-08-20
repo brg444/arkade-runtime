@@ -237,20 +237,17 @@ func TestVeteranFixturePubsCannotRegisterMutinynetTenant(t *testing.T) {
 		ArkadeCosignerOrigin:   deployment.MutinynetArkadeCosignerOrigin,
 		ArkadeCosignerVersion:  deployment.MutinynetArkadeCosignerVersion,
 	}
-	owner, _ := btcec.NewPrivateKey()
-	rec, _ := btcec.NewPrivateKey()
-	_ = rec
 	hot, _ := btcec.NewPrivateKey()
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	fx := fixtureXOnly(t, fixture.ExternalOwnerWalletPubHex)
-	req := withPoP("tenant-g2g", owner, rec, RegisterRequest{
+	req := RegisterRequest{
 		CredentialID:             hex.EncodeToString([]byte("cred-g2g")),
 		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(pass)),
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
 		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: fx,
-	})
+	}
 	if err := svc.CreateTenantVault("tenant-g2g", bytes.Repeat([]byte{0x7a}, 32), req); err == nil {
 		t.Fatal("G/2G registered a Mutinynet tenant")
 	}
@@ -266,15 +263,13 @@ func TestVeteranFinishRequiresDurablePending(t *testing.T) {
 	direct, _ := webauthn.NewP256()
 	hot, _ := btcec.NewPrivateKey()
 	owner, _ := btcec.NewPrivateKey()
-	recovery, _ := btcec.NewPrivateKey()
-	_ = recovery
 	ghost := *start
 	ghost.Handle = strings.Repeat("ab", 16)
 	if _, err := svc.FinishEnrollment(context.Background(), token, attestedFinish(t, svc, &ghost, pass, []byte("no-pending"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
 		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
-	}, owner, recovery)); err == nil {
+	})); err == nil {
 		t.Fatal("finish registered without a durable pending row")
 	}
 }
@@ -335,13 +330,11 @@ func twoTenantEnvClock(t *testing.T, clock func() time.Time) (*Service, *policy.
 		t.Fatal(err)
 	}
 	ownerB, _ := btcec.NewPrivateKey()
-	recB, _ := btcec.NewPrivateKey()
-	_ = recB
 	hotB, _ := btcec.NewPrivateKey()
 	passB, _ := webauthn.NewP256()
 	dirB, _ := webauthn.NewP256()
 	const tenantB = "tenant-b"
-	if err := svc.CreateTenantVault(tenantB, token, proposedPoP(t, svc, tenantB, ownerB, recB, RegisterRequest{
+	if err := svc.CreateTenantVault(tenantB, token, proposedDescriptor(t, svc, tenantB, RegisterRequest{
 		CredentialID:             hex.EncodeToString([]byte("cred-b")),
 		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passB)),
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(dirB)),

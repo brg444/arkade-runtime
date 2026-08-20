@@ -24,13 +24,6 @@ func recoveryField(req RegisterRequest) string {
 	return req.RecoveryKeyXOnly
 }
 
-func recoveryProofField(req RegisterRequest) string {
-	if strings.TrimSpace(req.RecoveryPoP) != "" {
-		return req.RecoveryPoP
-	}
-	return req.RecoveryProof
-}
-
 func (s *Service) previewV5Descriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
 	if vaultID == "" || vaultID == program.LeftoverVaultID {
 		return nil, fmt.Errorf("tenant vault id required")
