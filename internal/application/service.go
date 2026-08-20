@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -80,9 +79,6 @@ type Service struct {
 	ArkResolver                ports.ArkResolver
 	contractPackJSON           []byte
 	vaultPolicyHasExit         *bool
-	fulmineHTTP                *http.Client
-	fulmineInfoFn              func(context.Context) (fulmineInfo, error)
-	fulmineForwardFn           func(context.Context, IntentWire, []string) error
 	mu                         sync.Mutex
 	published                  atomic.Pointer[publishedIndex]
 	verificationOnce           sync.Once

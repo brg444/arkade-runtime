@@ -170,11 +170,10 @@ func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
 		"/v1/passkey/binding":   {http.MethodOptions, http.MethodPost},
 		"/v1/passkey/install":   {http.MethodOptions, http.MethodPost},
 		"/v1/passkey/recover":   {http.MethodOptions, http.MethodPost},
-		"/v1/map":            {http.MethodGet, http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/reserve":   {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/authorize": {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/finalize":  {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/delegate":  {http.MethodOptions, http.MethodPost},
+		"/v1/map":               {http.MethodGet, http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/reserve":      {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/authorize":    {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/finalize":     {http.MethodOptions, http.MethodPost},
 	}
 	got := make(map[string][]string, len(authorizerRouteMethods))
 	for path, methods := range authorizerRouteMethods {
