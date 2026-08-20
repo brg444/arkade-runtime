@@ -1,0 +1,32 @@
+{
+  "name": "vault-policy-v1-tree-v1",
+  "exit": {
+    "delay": "4608",
+    "delayUnit": "seconds",
+    "arkdMinimum": "2048",
+    "bip68SecondsMod": "512"
+  },
+  "fixtures": {
+    "userPub": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "vtxoVaultCosignerPub": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "arkdServerPub": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+    "delegatePub": "2903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a",
+    "exitDevicePub": "fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556",
+    "exitHardwarePub": "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc",
+    "exitRecoveryPub": "2f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01"
+  },
+  "leaves": {
+    "spend": "2079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ad20c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5ad20e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13ac",
+    "exitTwoGuardian": "03090040b27520fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ad205cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bcac",
+    "exitThreeGuardian": "03090040b275205cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bcad202f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01ac",
+    "delegate": "2079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ad20c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5ad202903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6aad20e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13ac"
+  },
+  "twoGuardian": {
+    "tapKey": "b0690afd85871e3f06b166eae572bdd51b8ead237101a82c535ef7f41a60e389",
+    "pkScript": "5120b0690afd85871e3f06b166eae572bdd51b8ead237101a82c535ef7f41a60e389"
+  },
+  "threeGuardian": {
+    "tapKey": "bdcdfbe05ad14c63896c22ebdae83c8da764eca614b8055f3286b1e912f969d8",
+    "pkScript": "5120bdcdfbe05ad14c63896c22ebdae83c8da764eca614b8055f3286b1e912f969d8"
+  }
+}

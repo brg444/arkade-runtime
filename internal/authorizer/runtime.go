@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net/http"
 	"os"
@@ -80,9 +81,19 @@ type arkadeSignerDialer func(context.Context, string, *btcec.PublicKey, []string
 
 // Open constructs the Mutinynet authorizer and checkpoint-pins its publisher.
 func Open(ctx context.Context, cfg Config) (*Runtime, error) {
-	return openWithDialers(ctx, cfg, func(ctx context.Context, baseURL, network string) (application.Broadcaster, error) {
+	rt, err := openWithDialers(ctx, cfg, func(ctx context.Context, baseURL, network string) (application.Broadcaster, error) {
 		return application.DialEsplora(ctx, baseURL, network)
 	}, application.DialPublicEmulator)
+	if err != nil {
+		return nil, err
+	}
+	resolver, err := application.DialArkResolver(ctx, cfg.Deployment.Network)
+	if err != nil {
+		log.Printf("ark indexer unavailable; vtxo routes fail-closed: %v", err)
+		return rt, nil
+	}
+	rt.service.ArkResolver = resolver
+	return rt, nil
 }
 
 func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dialArkade arkadeSignerDialer) (*Runtime, error) {

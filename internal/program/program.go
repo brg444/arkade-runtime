@@ -3,7 +3,11 @@
 // different axis — see docs/versions.md.
 package program
 
-import arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+import (
+	"fmt"
+
+	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+)
 
 const (
 	LeftoverVaultID = "operational-vault-v1"
@@ -41,8 +45,39 @@ const (
 
 	VaultPolicyV1         = "vault-policy-v1"
 	VaultPolicyV1Schema   = "arkade-vault/vtxo-policy-v1"
-	VaultPolicyV1Template = "vault-policy-v1-collaborative-4pub"
+	VaultPolicyV1Template = "vault-policy-v1-collaborative-3key"
+
+	// Product-chosen guardian CSV. arkd Validate requires the smallest exit
+	// delay >= GetInfo.unilateralExitDelay (live Mutinynet 2048 seconds) and
+	// BIP68 seconds must be a multiple of 512. 4608 = 9*512, which is >= 2048
+	// and >= 144 Mutinynet blocks at ~30s (4320s). Do not ship 2048s.
+	VaultPolicyV1ExitDelay        = uint32(4608)
+	VaultPolicyV1ExitDelayUnit    = "seconds"
+	VaultPolicyV1ArkdMinExitDelay = uint32(2048)
+	VaultPolicyV1BIP68SecondsMod  = uint32(512)
+
+	// Pinned public Fulmine delegator (compressed). The tapleaf stores x-only.
+	VaultPolicyV1PinnedDelegate     = "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a"
+	VaultPolicyV1DelegateOrigin     = "https://delegator.mutinynet.arkade.sh"
+	VaultPolicyV1DelegateCapability = "multi-presigned-signature"
 )
+
+// ValidateVaultPolicyV1ExitDelay rejects any hatch other than the product pin.
+func ValidateVaultPolicyV1ExitDelay(delay uint32, unit string) error {
+	if unit != VaultPolicyV1ExitDelayUnit {
+		return fmt.Errorf("vault-policy-v1 exit delay unit must be %s", VaultPolicyV1ExitDelayUnit)
+	}
+	if delay%VaultPolicyV1BIP68SecondsMod != 0 {
+		return fmt.Errorf("vault-policy-v1 exit delay must be a BIP68 seconds multiple of %d", VaultPolicyV1BIP68SecondsMod)
+	}
+	if delay < VaultPolicyV1ArkdMinExitDelay {
+		return fmt.Errorf("vault-policy-v1 exit delay %d is below arkd minimum %d", delay, VaultPolicyV1ArkdMinExitDelay)
+	}
+	if delay != VaultPolicyV1ExitDelay {
+		return fmt.Errorf("vault-policy-v1 exit delay is frozen at %d seconds", VaultPolicyV1ExitDelay)
+	}
+	return nil
+}
 
 func OperationalCSV() arklib.RelativeLocktime {
 	return arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: OperationalCSVBlocks}
