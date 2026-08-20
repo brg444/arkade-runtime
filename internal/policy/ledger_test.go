@@ -1199,6 +1199,29 @@ func TestIssueRejectsInvalidLedgerInputsBeforeCallingSigner(t *testing.T) {
 	}
 }
 
+func TestIssueSequentialAllowsZeroInternalTransferDebit(t *testing.T) {
+	led := openTestLedger(t, nil)
+	signed, replay, err := led.IssueSequential(
+		context.Background(), "vault-a", digest(0x88), "exact-request",
+		0, 7, 100,
+		func(context.Context, string) (string, error) { return "vault-signed", nil },
+		func(context.Context, string) (string, error) { return "fully-signed", nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay || signed != "fully-signed" {
+		t.Fatalf("issue = %q replay=%v", signed, replay)
+	}
+	spent, err := led.SpentInPeriod(context.Background(), "vault-a", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spent != 7 {
+		t.Fatalf("internal transfer spent = %d", spent)
+	}
+}
+
 func TestAllowanceAdditionCannotOverflow(t *testing.T) {
 	led := openTestLedger(t, nil)
 	ctx := context.Background()

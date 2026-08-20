@@ -1705,9 +1705,13 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 		return "", false, err
 	}
 	allowance := periodAllowanceSats(rec, nil)
+	recipientDebit, err := s.routineRecipientDebit(snap, cl)
+	if err != nil {
+		return "", false, err
+	}
 	signed, replay, err := s.Ledger.IssueSequential(
 		ctx, vaultID, challenge, requestPSBT,
-		cl.Recipient.Value, cl.Fee, allowance,
+		recipientDebit, cl.Fee, allowance,
 		func(issueCtx context.Context, storedRequest string) (string, error) {
 			if err := issueCtx.Err(); err != nil {
 				return "", err
@@ -1761,6 +1765,20 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 		return "", false, mapLedgerBusy(err)
 	}
 	return signed, replay, nil
+}
+
+// routineRecipientDebit keeps a structurally verified internal boarding
+// transfer from consuming the principal allowance. Its L1 fee still counts,
+// and the eventual VTXO payment debits its recipient amount normally.
+func (s *Service) routineRecipientDebit(snap enrolledSnapshot, cl *Classified) (int64, error) {
+	if cl == nil || cl.Recipient == nil {
+		return 0, fmt.Errorf("classified spend required")
+	}
+	board, err := s.buildVtxoBoardTree(snap)
+	if err == nil && board != nil && bytes.Equal(cl.Recipient.PkScript, board.PkScript) {
+		return 0, nil
+	}
+	return cl.Recipient.Value, nil
 }
 
 func mapLedgerBusy(err error) error {
