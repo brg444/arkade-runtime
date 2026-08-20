@@ -2,6 +2,10 @@
 
 Date: **2026-08-19**. Public pins only. Throwaway probe code is not product.
 
+Later PR5 tree (not this spike): collaborative spend/intent is 3-key
+`[user, VTXO VaultCosigner, Arkade Operator]`. The emulator is not a
+VTXO tree signer. Row 4's 4-pub was a spike result, not the shipped tree.
+
 | Pin | Value recorded this run |
 | --- | --- |
 | Emulator | `https://emulator.mutinynet.arkade.sh` |
@@ -191,4 +195,9 @@ Pinned `0.3.33` `sendLightningPayment` is `this.wallet.send({ address: lockup, a
 
 ## Gate (PR 5–10)
 
-Board-blocker **no** on this run: **3** (daily UTXO not a boarding input), **8** (`UnilateralExitDelay` 2048 seconds out of range), **9** (`OP_TUNNEL` absent on `v0.0.7-rc.1`), **12** (neither (a) nor (b) for unmodified-commitment 3-of-3). **PR 5–10 must not proceed.** Do not board, do not ship spend or Lightning, do not freeze `exit` / tunnel bytes. **PR 2 (KDF + pack listing without `exit`) may still land.** Re-run this table when the public emulator ships `OP_TUNNEL` and arkd boarding/exitDelay constraints are revisited; do not treat this file as a standing yes.
+This 2026-08-19 gate is for the superseded OP_TUNNEL / boarding design
+this spike evaluated. It does not block the later SDK DelegatorManager
+design. Fulmine `multi-presigned-signature` capability remains fail-closed;
+do not treat delegation forwarding as production-ready.
+
+Board-blocker **no** on this run: **3** (daily UTXO not a boarding input), **8** (`UnilateralExitDelay` 2048 seconds out of range), **9** (`OP_TUNNEL` absent on `v0.0.7-rc.1`), **12** (neither (a) nor (b) for unmodified-commitment 3-of-3). **That OP_TUNNEL / boarding design must not proceed.** Do not board, do not ship spend or Lightning, do not freeze `exit` / tunnel bytes. **PR 2 (KDF + pack listing without `exit`) may still land.** Re-run this table when the public emulator ships `OP_TUNNEL` and arkd boarding/exitDelay constraints are revisited; do not treat this file as a standing yes.

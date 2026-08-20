@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/brg444/arkade-vault-server/internal/contractpack"
 	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
 )
 
@@ -37,7 +38,7 @@ func TestContractPackMatchesLiveEnroll(t *testing.T) {
 	}
 }
 
-func TestContractPackListsVaultPolicyV1WithoutExit(t *testing.T) {
+func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	raw, err := os.ReadFile("contract-pack.json")
 	if err != nil {
 		t.Fatal(err)
@@ -60,14 +61,56 @@ func TestContractPackListsVaultPolicyV1WithoutExit(t *testing.T) {
 	if listed["status"] != "listed" || listed["module"] != "vtxo" {
 		t.Fatalf("vault-policy-v1 listing: %+v", listed)
 	}
-	if listed["schema"] != "arkade-vault/vtxo-policy-v1" || listed["template"] != "vault-policy-v1-collaborative-4pub" {
+	if listed["schema"] != "arkade-vault/vtxo-policy-v1" || listed["template"] != "vault-policy-v1-collaborative-3key" {
 		t.Fatalf("vault-policy-v1 identity: %+v", listed)
 	}
-	if _, hasExit := listed["exit"]; hasExit {
-		t.Fatal("vault-policy-v1 must omit exit until the leaf PR")
+	spend, ok := listed["spend"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 must declare 3-key collaborative spend")
 	}
-	if _, hasTunnel := listed["tunnel"]; hasTunnel {
-		t.Fatal("vault-policy-v1 must omit tunnel until the leaf PR")
+	if spend["leaf"] != "user-and-vtxo-vault-cosigner-and-arkd" {
+		t.Fatalf("vault-policy-v1 spend leaf: %+v", spend)
+	}
+	if spend["note"] != "3-key collaborative spend/intent [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
+		t.Fatalf("vault-policy-v1 spend note: %+v", spend)
+	}
+	exit, ok := listed["exit"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 must declare exit")
+	}
+	if exit["delay"] != "4608" || exit["delayUnit"] != "seconds" {
+		t.Fatalf("vault-policy-v1 exit delay: %+v", exit)
+	}
+	if exit["arkdMinimum"] != "2048" || exit["bip68SecondsMod"] != "512" {
+		t.Fatalf("vault-policy-v1 exit validation pins: %+v", exit)
+	}
+	if exit["twoGuardian"] != "device-and-hardware-after-exitDelay" || exit["threeGuardian"] != "hardware-and-recovery-after-exitDelay" {
+		t.Fatalf("vault-policy-v1 exit guardians: %+v", exit)
+	}
+	if _, ok := listed["tunnel"]; ok {
+		t.Fatal("vault-policy-v1 must not declare tunnel or OP_TUNNEL")
+	}
+	delegate, ok := listed["delegate"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 must declare delegate")
+	}
+	if delegate["leaf"] != "user-and-vtxo-vault-cosigner-and-pinned-public-delegate-and-arkd" {
+		t.Fatalf("vault-policy-v1 delegate leaf: %+v", delegate)
+	}
+	if delegate["pinnedPublicDelegate"] != "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a" {
+		t.Fatalf("vault-policy-v1 pinned delegate: %+v", delegate)
+	}
+	if delegate["origin"] != "https://delegator.mutinynet.arkade.sh" {
+		t.Fatalf("vault-policy-v1 delegate origin: %+v", delegate)
+	}
+	if delegate["capability"] != "multi-presigned-signature" {
+		t.Fatalf("vault-policy-v1 delegate capability: %+v", delegate)
+	}
+	if delegate["note"] != "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised." {
+		t.Fatalf("vault-policy-v1 delegate note: %+v", delegate)
+	}
+	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
+		t.Fatalf("vault-policy-v1 notes: %v", listed["notes"])
 	}
 	caps, ok := listed["caps"].(map[string]any)
 	if !ok {
@@ -75,5 +118,15 @@ func TestContractPackListsVaultPolicyV1WithoutExit(t *testing.T) {
 	}
 	if caps["txRecipientSats"] != float64(50000) || caps["periodAllowanceSats"] != float64(100000) {
 		t.Fatalf("vault-policy-v1 caps: %+v", caps)
+	}
+}
+
+func TestEmbeddedContractPackMatchesRootFile(t *testing.T) {
+	raw, err := os.ReadFile("contract-pack.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != string(contractpack.JSON) {
+		t.Fatal("embedded contract pack drifted from repo root")
 	}
 }

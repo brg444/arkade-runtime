@@ -22,6 +22,18 @@ const (
 	vtxoStateAborted    = "aborted"
 	vtxoStateUnresolved = "unresolved"
 
+	VtxoPurposeSpend = vtxoPurposeSpend
+	// VtxoPurposeBoard remains a digest/MAC token for schema 9 rows. HTTP
+	// spend routes must not accept it.
+	VtxoPurposeBoard = vtxoPurposeBoard
+
+	VtxoStateReserved   = vtxoStateReserved
+	VtxoStateSigned     = vtxoStateSigned
+	VtxoStateSubmitted  = vtxoStateSubmitted
+	VtxoStateFinalized  = vtxoStateFinalized
+	VtxoStateAborted    = vtxoStateAborted
+	VtxoStateUnresolved = vtxoStateUnresolved
+
 	vtxoOperationCanonicalVer = 1
 	vtxoOperationInputKind    = "input"
 )

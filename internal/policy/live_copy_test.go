@@ -15,6 +15,18 @@ func TestOpenCopiedLiveLedger(t *testing.T) {
 		t.Fatalf("open live copy: %v", err)
 	}
 	defer led.Close()
+	before, err := led.SchemaVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != schemaVersionAuthzHardening {
+		t.Fatalf("pre-migration schema %d want %d", before, schemaVersionAuthzHardening)
+	}
+	// OpenLedger validates existing schema but deliberately does not advance
+	// it. Rehearse the same expand-only step that authorizer.Open performs.
+	if err := led.MigrateVtxoOperation(); err != nil {
+		t.Fatalf("migrate live copy: %v", err)
+	}
 	ver, err := led.SchemaVersion()
 	if err != nil {
 		t.Fatal(err)

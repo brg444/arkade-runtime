@@ -8,6 +8,10 @@ Live volume is `/app/data` on Railway `authorizer-next`. The ledger file is `/ap
 
 Backup from a copy of the running files, not from a write in place:
 
+The Railway image includes the `sqlite3` CLI used by this procedure. Treat a
+missing CLI as an image/runbook mismatch and stop before copying live database
+files directly.
+
 ```bash
 railway ssh -s authorizer-next -e production -- sqlite3 /app/data/vault.sqlite ".backup /app/data/vault.backup.sqlite"
 railway ssh -s authorizer-next -e production -- cp /app/data/vault.sqlite.monotonic /app/data/vault.backup.monotonic

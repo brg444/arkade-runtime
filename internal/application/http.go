@@ -164,26 +164,30 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 }
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
-	"/health":               {http.MethodGet: {}},
-	"/ready":                {http.MethodGet: {}},
-	"/v1/status":            {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/invite":            {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/enroll/start":      {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/enroll/propose":    {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/enroll/finish":     {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/preflight":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/draft":             {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/bind":              {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/authorize":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/initiate":          {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/clawback":          {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/publish":           {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/tx":                {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/passkey/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/passkey/binding":   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/passkey/install":   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/passkey/recover":   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/map":               {http.MethodGet: {}, http.MethodPost: {}, http.MethodOptions: {}},
+	"/health":                        {http.MethodGet: {}},
+	"/ready":                         {http.MethodGet: {}},
+	"/v1/status":                     {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/invite":                     {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/enroll/start":               {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/enroll/propose":             {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/enroll/finish":              {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/preflight":                  {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/draft":                      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/bind":                       {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/authorize":                  {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/initiate":                   {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/clawback":                   {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/publish":                    {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/tx":                         {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/passkey/challenge":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/passkey/binding":            {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/passkey/install":            {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/passkey/recover":            {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/map":                        {http.MethodGet: {}, http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/reserve":               {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/authorize":             {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -405,6 +409,42 @@ func attachSpendRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		opCtx, cancel := context.WithTimeout(r.Context(), publishOperationTimeout)
 		defer cancel()
 		out, err := svc.PublicationStatusVault(opCtx, r.URL.Query().Get("vaultId"), r.URL.Query().Get("challenge"))
+		writeJSON(w, out, err)
+	})
+	mux.HandleFunc("POST /v1/vtxo/reserve", func(w http.ResponseWriter, r *http.Request) {
+		var req VtxoReserveRequest
+		if err := decodeMutation(r, &req, origin); err != nil {
+			writeMutationError(w, err)
+			return
+		}
+		out, err := svc.ReserveVtxo(r.Context(), req)
+		writeJSON(w, out, err)
+	})
+	mux.HandleFunc("POST /v1/vtxo/authorize", func(w http.ResponseWriter, r *http.Request) {
+		var req VtxoAuthorizeRequest
+		if err := decodeMutation(r, &req, origin); err != nil {
+			writeMutationError(w, err)
+			return
+		}
+		out, err := svc.AuthorizeVtxoSpend(r.Context(), req)
+		writeJSON(w, out, err)
+	})
+	mux.HandleFunc("POST /v1/vtxo/checkpoints/authorize", func(w http.ResponseWriter, r *http.Request) {
+		var req VtxoCheckpointAuthorizeRequest
+		if err := decodeMutation(r, &req, origin); err != nil {
+			writeMutationError(w, err)
+			return
+		}
+		out, err := svc.AuthorizeVtxoCheckpoints(r.Context(), req)
+		writeJSON(w, out, err)
+	})
+	mux.HandleFunc("POST /v1/vtxo/finalize", func(w http.ResponseWriter, r *http.Request) {
+		var req VtxoFinalizeRequest
+		if err := decodeMutation(r, &req, origin); err != nil {
+			writeMutationError(w, err)
+			return
+		}
+		out, err := svc.FinalizeVtxo(r.Context(), req)
 		writeJSON(w, out, err)
 	})
 }

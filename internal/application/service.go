@@ -20,6 +20,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
@@ -75,6 +76,9 @@ type Service struct {
 	// Schnorr verification stage. Zero uses the conservative default.
 	MaxConcurrentVerifications int
 	Broadcaster                Broadcaster
+	ArkResolver                ports.ArkResolver
+	contractPackJSON           []byte
+	vaultPolicyHasExit         *bool
 	mu                         sync.Mutex
 	published                  atomic.Pointer[publishedIndex]
 	verificationOnce           sync.Once
@@ -105,11 +109,12 @@ type Deps struct {
 	MultiTenantEnrollment bool
 	EnrollmentDeadline    time.Time
 	Broadcaster           Broadcaster
+	ArkResolver           ports.ArkResolver
 }
 
 // New builds the application service. VaultSigner is not the master scalar.
 func New(d Deps) *Service {
-	return &Service{
+	s := &Service{
 		Ledger:                 d.Ledger,
 		Deployment:             d.Deployment,
 		CredentialIntegrityKey: d.IntegrityKey,
@@ -124,8 +129,13 @@ func New(d Deps) *Service {
 		MultiTenantEnrollment:  d.MultiTenantEnrollment,
 		EnrollmentDeadline:     d.EnrollmentDeadline,
 		Broadcaster:            d.Broadcaster,
+		ArkResolver:            d.ArkResolver,
 		vaultIKM:               d.MasterIKM,
 	}
+	if raw, err := liveContractPackJSON(); err == nil {
+		s.contractPackJSON = raw
+	}
+	return s
 }
 
 // ClientOrigin is the pinned signing origin.
@@ -1062,6 +1072,14 @@ type Status struct {
 	TweakedVaultCosignerXOnly       string   `json:"tweakedVaultCosignerXOnly,omitempty"`
 	TweakedArkadeCosignerXOnly      string   `json:"tweakedArkadeCosignerXOnly,omitempty"`
 	Warnings                        []string `json:"warnings,omitempty"`
+	VtxoVaultCosignerPub            string   `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay                   uint32   `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit               string   `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress              string   `json:"spendingArkAddress"`
+	SpendingArkScript               string   `json:"spendingArkScript"`
+	SpendingOnchainAddress          string   `json:"spendingOnchainAddress"`
+	SpendingOnchainScript           string   `json:"spendingOnchainScript"`
+	VtxoDelegatePub                 string   `json:"vtxoDelegatePub"`
 }
 
 func statusWarnings(cred *policy.Credential) []string {
@@ -1428,7 +1446,36 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if cred != nil && len(cred.PhoneDirectP256) > 0 {
 		st.PhoneDirectP256 = hex.EncodeToString(cred.PhoneDirectP256)
 	}
+	s.fillVtxoStatus(&st, vaultID, snap)
 	return st, nil
+}
+
+func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapshot) {
+	if st == nil {
+		return
+	}
+	st.VtxoExitDelay = program.VaultPolicyV1ExitDelay
+	st.VtxoExitDelayUnit = program.VaultPolicyV1ExitDelayUnit
+	if vaultID == "" || snap.PhoneRoutineBIP340 == nil {
+		return
+	}
+	priv, err := s.deriveVtxoVaultCosigner(vaultID)
+	if err == nil && priv != nil {
+		st.VtxoVaultCosignerPub = hex.EncodeToString(priv.PubKey().SerializeCompressed())
+	}
+	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
+	if err != nil || tree == nil {
+		// Fail-closed: empty address fields stay present. Reserve still
+		// requires policy dest from the vault-policy-v1 tree.
+		return
+	}
+	st.SpendingArkAddress = tree.ArkAddress
+	st.SpendingArkScript = hex.EncodeToString(tree.PkScript)
+	st.SpendingOnchainAddress = tree.OnchainAddress
+	st.SpendingOnchainScript = hex.EncodeToString(tree.PkScript)
+	if tree.DelegatePub != nil {
+		st.VtxoDelegatePub = hex.EncodeToString(tree.DelegatePub.SerializeCompressed())
+	}
 }
 
 // DraftRequest builds an empty-witness routine PSBT the browser can bind.
