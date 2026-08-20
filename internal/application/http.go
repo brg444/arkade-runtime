@@ -183,11 +183,10 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/passkey/binding":   {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/passkey/install":   {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/passkey/recover":   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/map":              {http.MethodGet: {}, http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/reserve":     {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/authorize":   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/finalize":    {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/delegate":    {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/map":               {http.MethodGet: {}, http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/reserve":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/authorize":    {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/finalize":     {http.MethodPost: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -436,15 +435,6 @@ func attachSpendRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			return
 		}
 		out, err := svc.FinalizeVtxo(r.Context(), req)
-		writeJSON(w, out, err)
-	})
-	mux.HandleFunc("POST /v1/vtxo/delegate", func(w http.ResponseWriter, r *http.Request) {
-		var req VtxoDelegateRequest
-		if err := decodeMutation(r, &req, origin); err != nil {
-			writeMutationError(w, err)
-			return
-		}
-		out, err := svc.AuthorizeVtxoDelegate(r.Context(), req)
 		writeJSON(w, out, err)
 	})
 }
