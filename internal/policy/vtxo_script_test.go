@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -13,18 +14,18 @@ import (
 )
 
 type vaultPolicyV1Golden struct {
-	Name     string `json:"name"`
-	Exit     struct {
-		Delay    string `json:"delay"`
-		DelayUnit string `json:"delayUnit"`
+	Name string `json:"name"`
+	Exit struct {
+		Delay       string `json:"delay"`
+		DelayUnit   string `json:"delayUnit"`
 		ArkdMinimum string `json:"arkdMinimum"`
 	} `json:"exit"`
 	Fixtures map[string]string `json:"fixtures"`
 	Leaves   struct {
-		Spend           string `json:"spend"`
-		ExitTwoGuardian string `json:"exitTwoGuardian"`
+		Spend             string `json:"spend"`
+		ExitTwoGuardian   string `json:"exitTwoGuardian"`
 		ExitThreeGuardian string `json:"exitThreeGuardian"`
-		Delegate        string `json:"delegate"`
+		Delegate          string `json:"delegate"`
 	} `json:"leaves"`
 	TwoGuardian struct {
 		TapKey   string `json:"tapKey"`
@@ -66,10 +67,12 @@ func goldenXOnly(t *testing.T, g vaultPolicyV1Golden, name string) []byte {
 
 func twoGuardianParams(t *testing.T, g vaultPolicyV1Golden) VaultPolicyV1Params {
 	t.Helper()
+	if _, ok := g.Fixtures["tweakedEmulatorPub"]; ok {
+		t.Fatal("shared golden must not list tweakedEmulatorPub")
+	}
 	return VaultPolicyV1Params{
 		UserPub:              goldenXOnly(t, g, "userPub"),
 		VtxoVaultCosignerPub: goldenXOnly(t, g, "vtxoVaultCosignerPub"),
-		TweakedEmulatorPub:   goldenXOnly(t, g, "tweakedEmulatorPub"),
 		ArkdServerPub:        goldenXOnly(t, g, "arkdServerPub"),
 		DelegatePub:          goldenXOnly(t, g, "delegatePub"),
 		ExitDevicePub:        goldenXOnly(t, g, "exitDevicePub"),
@@ -126,6 +129,80 @@ func TestBuildVaultPolicyV1TreeMatchesSharedGolden(t *testing.T) {
 	if n := countCSVLeaves(three); n != 1 {
 		t.Fatalf("three-guardian exit leaves = %d", n)
 	}
+}
+
+func TestBuildVaultPolicyV1TreeSpendIsThreeKeyForfeit(t *testing.T) {
+	g := loadVaultPolicyV1Golden(t)
+	two, err := BuildVaultPolicyV1Tree(twoGuardianParams(t, g))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spend, err := arkscript.DecodeClosure(two.SpendScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, ok := spend.(*arkscript.MultisigClosure)
+	if !ok {
+		t.Fatalf("collaborative spend must be MultisigClosure, got %T", spend)
+	}
+	if len(ms.PubKeys) != 3 {
+		t.Fatalf("collaborative spend pubs = %d, want 3", len(ms.PubKeys))
+	}
+	want := [][]byte{
+		goldenXOnly(t, g, "userPub"),
+		goldenXOnly(t, g, "vtxoVaultCosignerPub"),
+		goldenXOnly(t, g, "arkdServerPub"),
+	}
+	for i, pub := range ms.PubKeys {
+		if hex.EncodeToString(schnorr.SerializePubKey(pub)) != hex.EncodeToString(want[i]) {
+			t.Fatalf("spend pub %d = %x want %x", i, schnorr.SerializePubKey(pub), want[i])
+		}
+	}
+	const retiredEmulatorXOnly = "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
+	if hex.EncodeToString(two.SpendScript) == g.Leaves.Delegate {
+		t.Fatal("collaborative spend must not be the 4-key delegate leaf")
+	}
+	if bytesContainHex(two.SpendScript, retiredEmulatorXOnly) {
+		t.Fatal("collaborative spend must not include the retired emulator pub")
+	}
+
+	del, err := arkscript.DecodeClosure(two.DelegateScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dms, ok := del.(*arkscript.MultisigClosure)
+	if !ok {
+		t.Fatalf("delegate must be MultisigClosure, got %T", del)
+	}
+	if len(dms.PubKeys) != 4 {
+		t.Fatalf("delegate pubs = %d, want 4", len(dms.PubKeys))
+	}
+	if hex.EncodeToString(schnorr.SerializePubKey(dms.PubKeys[2])) != g.Fixtures["delegatePub"] {
+		t.Fatalf("delegate pub = %x want %s", schnorr.SerializePubKey(dms.PubKeys[2]), g.Fixtures["delegatePub"])
+	}
+
+	exit, err := arkscript.DecodeClosure(two.ExitScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := exit.(*arkscript.CSVMultisigClosure); !ok {
+		t.Fatalf("exit must be CSVMultisigClosure, got %T", exit)
+	}
+	reconstructed := &arkscript.TapscriptsVtxoScript{Closures: []arkscript.Closure{spend, exit, del}}
+	if n := len(reconstructed.ForfeitClosures()); n != 2 {
+		t.Fatalf("forfeit closures = %d, want 2 (collaborative spend and delegate)", n)
+	}
+	if n := len(reconstructed.ExitClosures()); n != 1 {
+		t.Fatalf("exit closures = %d, want 1", n)
+	}
+}
+
+func bytesContainHex(raw []byte, needle string) bool {
+	n, err := hex.DecodeString(needle)
+	if err != nil {
+		return false
+	}
+	return bytes.Contains(raw, n)
 }
 
 func TestBuildVaultPolicyV1TreeUsesPinnedDelegateXOnly(t *testing.T) {

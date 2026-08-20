@@ -45,7 +45,7 @@ const (
 
 	VaultPolicyV1         = "vault-policy-v1"
 	VaultPolicyV1Schema   = "arkade-vault/vtxo-policy-v1"
-	VaultPolicyV1Template = "vault-policy-v1-collaborative-4pub"
+	VaultPolicyV1Template = "vault-policy-v1-collaborative-3key"
 
 	// Product-chosen guardian CSV. arkd Validate requires the smallest exit
 	// delay >= GetInfo.unilateralExitDelay (live Mutinynet 2048 seconds) and

@@ -60,8 +60,18 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if listed["status"] != "listed" || listed["module"] != "vtxo" {
 		t.Fatalf("vault-policy-v1 listing: %+v", listed)
 	}
-	if listed["schema"] != "arkade-vault/vtxo-policy-v1" || listed["template"] != "vault-policy-v1-collaborative-4pub" {
+	if listed["schema"] != "arkade-vault/vtxo-policy-v1" || listed["template"] != "vault-policy-v1-collaborative-3key" {
 		t.Fatalf("vault-policy-v1 identity: %+v", listed)
+	}
+	spend, ok := listed["spend"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 must declare 3-key collaborative spend")
+	}
+	if spend["leaf"] != "user-and-vtxo-vault-cosigner-and-arkd" {
+		t.Fatalf("vault-policy-v1 spend leaf: %+v", spend)
+	}
+	if spend["note"] != "3-key collaborative spend/intent [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
+		t.Fatalf("vault-policy-v1 spend note: %+v", spend)
 	}
 	exit, ok := listed["exit"].(map[string]any)
 	if !ok {
@@ -95,7 +105,10 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if delegate["capability"] != "multi-presigned-signature" {
 		t.Fatalf("vault-policy-v1 delegate capability: %+v", delegate)
 	}
-	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf." {
+	if delegate["note"] != "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised." {
+		t.Fatalf("vault-policy-v1 delegate note: %+v", delegate)
+	}
+	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
 		t.Fatalf("vault-policy-v1 notes: %v", listed["notes"])
 	}
 	caps, ok := listed["caps"].(map[string]any)

@@ -11,11 +11,12 @@ import (
 )
 
 // VaultPolicyV1Params is the vault-policy-v1 tap tree. Exactly three leaves:
-// 4-pub spend, one guardian CSV exit, 4-pub delegate.
+// 3-key collaborative spend/intent, one guardian CSV exit, 4-key delegate-forfeit.
+// There is no emulator pub. The required VaultCosigner independently enforces
+// the Vault Program.
 type VaultPolicyV1Params struct {
 	UserPub              []byte
 	VtxoVaultCosignerPub []byte
-	TweakedEmulatorPub   []byte
 	ArkdServerPub        []byte
 	DelegatePub          []byte
 	ExitDevicePub        []byte
@@ -32,9 +33,11 @@ type VaultPolicyV1Tree struct {
 	PkScript       []byte
 }
 
-// BuildVaultPolicyV1Tree encodes the custom 4-pub spend leaf, exactly one
-// guardian CSV exit, and the 4-pub delegate leaf. It refuses OP_TUNNEL and
-// DefaultVtxo / DelegateVtxo trees.
+// BuildVaultPolicyV1Tree encodes the 3-key collaborative spend/intent leaf
+// [user, VTXO VaultCosigner, Arkade Operator], exactly one guardian CSV exit,
+// and the 4-key delegate-forfeit leaf [user, VTXO VaultCosigner, pinned public
+// delegate, Arkade Operator]. It refuses OP_TUNNEL and DefaultVtxo /
+// DelegateVtxo trees. The emulator is not a tree signer.
 func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
 	if err := program.ValidateVaultPolicyV1ExitDelay(program.VaultPolicyV1ExitDelay, program.VaultPolicyV1ExitDelayUnit); err != nil {
 		return nil, err
@@ -44,10 +47,6 @@ func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
 		return nil, err
 	}
 	vtxoVault, err := parsePolicyPub(p.VtxoVaultCosignerPub, "vtxoVaultCosignerPub")
-	if err != nil {
-		return nil, err
-	}
-	tweakedEmu, err := parsePolicyPub(p.TweakedEmulatorPub, "tweakedEmulatorPub")
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +75,7 @@ func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
 		exitPubs = []*btcec.PublicKey{hardware, recovery}
 	}
 	exitDelay := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: program.VaultPolicyV1ExitDelay}
-	spend := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{user, vtxoVault, tweakedEmu, arkd}}
+	spend := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{user, vtxoVault, arkd}}
 	exit := &arkscript.CSVMultisigClosure{
 		MultisigClosure: arkscript.MultisigClosure{PubKeys: exitPubs},
 		Locktime:        exitDelay,

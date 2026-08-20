@@ -23,7 +23,7 @@
       "status": "listed",
       "module": "vtxo",
       "schema": "arkade-vault/vtxo-policy-v1",
-      "template": "vault-policy-v1-collaborative-4pub",
+      "template": "vault-policy-v1-collaborative-3key",
       "policy": "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3",
       "recovery": "optional",
       "caps": {
@@ -32,6 +32,10 @@
         "absoluteFeeSats": 5000,
         "feerateSatVb": 10,
         "dustSats": 330
+      },
+      "spend": {
+        "leaf": "user-and-vtxo-vault-cosigner-and-arkd",
+        "note": "3-key collaborative spend/intent [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
       },
       "exit": {
         "delay": "4608",
@@ -47,9 +51,9 @@
         "pinnedPublicDelegate": "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a",
         "origin": "https://delegator.mutinynet.arkade.sh",
         "capability": "multi-presigned-signature",
-        "note": "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised."
+        "note": "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised."
       },
-      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf."
+      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
     }
   },
   "domains": {
