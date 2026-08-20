@@ -167,6 +167,10 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 		zero(credentialIntegrityKey)
 		return nil, fmt.Errorf("authz hardening migration: %w", err)
 	}
+	if err := ledger.MigrateVtxoOperation(); err != nil {
+		zero(credentialIntegrityKey)
+		return nil, fmt.Errorf("vtxo operation migration: %w", err)
+	}
 	mono, err := policy.OpenMonotonic(cfg.DatabasePath+".monotonic", credentialIntegrityKey)
 	if err != nil {
 		zero(credentialIntegrityKey)

@@ -797,7 +797,89 @@ func (l *Ledger) spentInWindow(ctx context.Context, q queryContext, vaultID stri
 		}
 		total += need
 	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return l.addVtxoSpentInWindow(ctx, q, vaultID, key, now, total)
+}
+
+func (l *Ledger) addVtxoSpentInWindow(ctx context.Context, q queryContext, vaultID string, key []byte, now time.Time, total int64) (int64, error) {
+	exists, err := vtxoOperationTableExists(ctx, q)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return total, nil
+	}
+	rows, err := q.QueryContext(ctx,
+		`SELECT operation_id, vault_id, purpose, bundle_digest, state,
+		        amount_sats, fee_sats, dest_script, change_script,
+		        IFNULL(unsigned_psbt, ''), IFNULL(authorized_psbt, ''),
+		        IFNULL(checkpoint_psbts, ''), IFNULL(commitment_psbt, ''),
+		        checkpoint_tapscript, IFNULL(ark_txid, ''), IFNULL(expires_at, ''),
+		        created_at, last_dest_script, integrity_mac
+		   FROM vtxo_operation
+		  WHERE vault_id = ?`,
+		vaultID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		rec, err := scanVtxoOperation(rows)
+		if err != nil {
+			return 0, err
+		}
+		if err := VerifyVtxoOperation(&rec, key); err != nil {
+			return 0, fmt.Errorf("vtxo operation integrity: %w", err)
+		}
+		if !vtxoStateCountsTowardAllowance(rec.State) {
+			continue
+		}
+		inWindow, err := issuanceCreatedInWindow(rec.CreatedAt, now)
+		if err != nil {
+			return 0, err
+		}
+		if !inWindow {
+			continue
+		}
+		need, err := addOutflow(rec.AmountSats, rec.FeeSats)
+		if err != nil {
+			return 0, err
+		}
+		if total > (1<<63-1)-need {
+			return 0, fmt.Errorf("period spent overflow")
+		}
+		total += need
+	}
 	return total, rows.Err()
+}
+
+func vtxoOperationTableExists(ctx context.Context, q queryContext) (bool, error) {
+	var name string
+	err := q.QueryRowContext(ctx,
+		`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'vtxo_operation'`,
+	).Scan(&name)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return name == "vtxo_operation", nil
+}
+
+func scanVtxoOperation(row issuanceScanner) (VtxoOperation, error) {
+	var rec VtxoOperation
+	err := row.Scan(
+		&rec.OperationID, &rec.VaultID, &rec.Purpose, &rec.BundleDigest, &rec.State,
+		&rec.AmountSats, &rec.FeeSats, &rec.DestScript, &rec.ChangeScript,
+		&rec.UnsignedPSBT, &rec.AuthorizedPSBT, &rec.CheckpointPSBTs, &rec.CommitmentPSBT,
+		&rec.CheckpointTapscript, &rec.ArkTxid, &rec.ExpiresAt, &rec.CreatedAt,
+		&rec.LastDestScript, &rec.IntegrityMAC,
+	)
+	return rec, err
 }
 
 type issuanceScanner interface {
