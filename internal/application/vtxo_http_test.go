@@ -126,10 +126,8 @@ func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	low := strings.Repeat("01", 32)
-	high := strings.Repeat("02", 32)
 	resolver.vtxos = []ports.ResolvedVtxo{
-		{Txid: high, Vout: 2, ValueSats: 20_000, Script: tree.PkScript},
-		{Txid: low, Vout: 1, ValueSats: 25_000, Script: tree.PkScript},
+		{Txid: low, Vout: 1, ValueSats: 45_000, Script: tree.PkScript},
 	}
 	h := testAuthorizer(e.svc)
 	dest := mustTaprootDest(t)
@@ -172,8 +170,7 @@ func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	swapped := []policy.VtxoBundleInput{
-		{Txid: []byte(strings.ToUpper(high)), Vout: 2, ValueSats: 20_000},
-		{Txid: []byte(low), Vout: 1, ValueSats: 25_000},
+		{Txid: []byte(strings.ToUpper(low)), Vout: 1, ValueSats: 45_000},
 	}
 	again, err := policy.ComputeVtxoBundleDigest(policy.VtxoPurposeSpend, fixture.VaultID, destScript, changeScript, 30_000, out.FeeSats, swapped, op.CreatedAt)
 	if err != nil {
@@ -200,6 +197,16 @@ func TestReserveRejectsDuplicateOutpoints(t *testing.T) {
 	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`","purpose":"spend","destAddress":"`+mustTaprootDest(t)+`","amountSats":10000}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "duplicate") {
 		t.Fatalf("duplicate outpoints = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthorizeSpendReplayRequiresFreshAuth(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	_, err := e.svc.AuthorizeVtxoSpend(context.Background(), VtxoAuthorizeRequest{
+		VaultID: fixture.VaultID, OperationID: "missing", BundleDigest: strings.Repeat("00", 32),
+	})
+	if err == nil {
+		t.Fatal("unsigned replay without reservation must fail")
 	}
 }
 

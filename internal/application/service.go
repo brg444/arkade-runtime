@@ -118,7 +118,7 @@ type Deps struct {
 
 // New builds the application service. VaultSigner is not the master scalar.
 func New(d Deps) *Service {
-	return &Service{
+	s := &Service{
 		Ledger:                 d.Ledger,
 		Deployment:             d.Deployment,
 		CredentialIntegrityKey: d.IntegrityKey,
@@ -136,6 +136,10 @@ func New(d Deps) *Service {
 		ArkResolver:            d.ArkResolver,
 		vaultIKM:               d.MasterIKM,
 	}
+	if raw, err := liveContractPackJSON(); err == nil {
+		s.contractPackJSON = raw
+	}
+	return s
 }
 
 // ClientOrigin is the pinned signing origin.

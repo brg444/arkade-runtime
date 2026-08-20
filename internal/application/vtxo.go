@@ -11,7 +11,6 @@ import (
 	"time"
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
-	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
@@ -144,11 +143,21 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err := s.refuseDefaultVtxoChange(snap, destScript); err != nil {
 		return nil, apperr.New(apperr.CodeRejected, err.Error())
 	}
-	if err := enforceVtxoAmount(req.AmountSats, 0, rec, snap); err != nil {
-		return nil, err
+	if len(tree.SpendArkadeScript) == 0 {
+		return nil, apperr.New(apperr.CodeRejected, "emulator-backed spend unavailable")
 	}
 	selected, err := s.selectSpendVtxos(ctx, tree.PkScript, req.AmountSats)
 	if err != nil {
+		return nil, err
+	}
+	if len(selected) != 1 {
+		return nil, apperr.New(apperr.CodeRejected, "exact spend program requires one input")
+	}
+	if selected[0].ValueSats < req.AmountSats+uint64(program.DustSats) {
+		return nil, apperr.New(apperr.CodeRejected, "change below dust")
+	}
+	feeSats := uint64(0)
+	if err := enforceVtxoAmount(req.AmountSats, feeSats, rec, snap); err != nil {
 		return nil, err
 	}
 	checkpoint := s.ArkResolver.CheckpointTapscript()
@@ -174,7 +183,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	now := s.vtxoNow()
 	created := now.Format(time.RFC3339)
 	expires := now.Add(vtxoReserveAuthorizeTimeout).Format(time.RFC3339)
-	digest, err := policy.ComputeVtxoBundleDigest(purpose, vaultID, destScript, tree.PkScript, req.AmountSats, 0, ordered, created)
+	digest, err := policy.ComputeVtxoBundleDigest(purpose, vaultID, destScript, tree.PkScript, req.AmountSats, feeSats, ordered, created)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +198,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 		BundleDigest:        digest,
 		State:               policy.VtxoStateReserved,
 		AmountSats:          int64(req.AmountSats),
-		FeeSats:             0,
+		FeeSats:             int64(feeSats),
 		DestScript:          destScript,
 		ChangeScript:        bytes.Clone(tree.PkScript),
 		CheckpointTapscript: checkpoint,
@@ -209,7 +218,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 		ChangeAddress:       tree.ArkAddress,
 		ChangeScript:        hex.EncodeToString(tree.PkScript),
 		DestScript:          hex.EncodeToString(destScript),
-		FeeSats:             0,
+		FeeSats:             feeSats,
 		CheckpointTapscript: hex.EncodeToString(checkpoint),
 	}, nil
 }
@@ -235,7 +244,14 @@ func (s *Service) selectSpendVtxos(ctx context.Context, pkScript []byte, amountS
 		return nil, apperr.New(apperr.CodeRejected, err.Error())
 	}
 	need := amountSats + uint64(program.DustSats)
-	return pickCoins(coins, need)
+	picked, err := pickCoins(coins, need)
+	if err != nil {
+		return nil, err
+	}
+	if len(picked) != 1 {
+		return nil, apperr.New(apperr.CodeRejected, "exact spend program requires one input")
+	}
+	return picked, nil
 }
 
 func vtxosToCoins(vtxos []ports.ResolvedVtxo, pkScript []byte) []reservedCoin {
@@ -400,34 +416,49 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	if err := requireBundleDigest(req.BundleDigest, op.BundleDigest); err != nil {
 		return nil, err
 	}
+	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
+	if err != nil || len(tree.SpendArkadeScript) == 0 {
+		return nil, apperr.New(apperr.CodeRejected, "emulator-backed spend unavailable")
+	}
+	arkPkt, err := parsePSBT(req.UnsignedArkPsbt)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeRejected, err.Error())
+	}
+	if len(req.UnsignedCheckpointPsbts) != len(inputs) {
+		return nil, apperr.New(apperr.CodeRejected, "checkpoint count")
+	}
+	checkpoints := make([]*psbt.Packet, len(req.UnsignedCheckpointPsbts))
+	for i, raw := range req.UnsignedCheckpointPsbts {
+		cp, err := parsePSBT(raw)
+		if err != nil {
+			return nil, apperr.New(apperr.CodeRejected, "checkpoint psbt")
+		}
+		if err := verifyCheckpointPSBT(cp, inputs[i], op, tree); err != nil {
+			return nil, apperr.New(apperr.CodeRejected, err.Error())
+		}
+		checkpoints[i] = cp
+	}
+	if err := verifySpendPSBT(arkPkt, op, inputs, tree, checkpoints); err != nil {
+		return nil, apperr.New(apperr.CodeRejected, err.Error())
+	}
 	if err := s.bindVtxoAuthorization(ctx, vaultID, op.BundleDigest, AuthorizeRequest{
 		VaultID: vaultID, CredentialID: req.CredentialID, ClientDataJSON: req.ClientDataJSON,
 		AuthenticatorData: req.AuthenticatorData, Signature: req.Signature,
 	}, req.DirectSig); err != nil {
 		return nil, err
 	}
-	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
-	if err != nil {
-		return nil, apperr.New(apperr.CodeRejected, "vault-policy-v1 dest unavailable")
-	}
-	arkPkt, err := parsePSBT(req.UnsignedArkPsbt)
-	if err != nil {
-		return nil, apperr.New(apperr.CodeRejected, err.Error())
-	}
-	if err := verifySpendPSBT(arkPkt, op, inputs, tree); err != nil {
-		return nil, apperr.New(apperr.CodeRejected, err.Error())
-	}
-	if len(req.UnsignedCheckpointPsbts) != len(inputs) {
-		return nil, apperr.New(apperr.CodeRejected, "checkpoint count")
-	}
-	for i, raw := range req.UnsignedCheckpointPsbts {
-		cp, err := parsePSBT(raw)
-		if err != nil {
-			return nil, apperr.New(apperr.CodeRejected, "checkpoint psbt")
+	if op.State == policy.VtxoStateSigned {
+		prevArk, err := parsePSBT(op.UnsignedPSBT)
+		if err != nil || !unsignedPSBTEqual(prevArk, arkPkt) {
+			return nil, apperr.New(apperr.CodeRejected, "changed psbt")
 		}
-		if err := verifyCheckpointPSBT(cp, inputs[i], op); err != nil {
-			return nil, apperr.New(apperr.CodeRejected, err.Error())
-		}
+		return &VtxoAuthorizeResponse{
+			OperationID:     op.OperationID,
+			BundleDigest:    hex.EncodeToString(op.BundleDigest),
+			AuthorizedPsbt:  op.AuthorizedPSBT,
+			CheckpointPsbts: decodeJSONStringSlice(op.CheckpointPSBTs),
+			ArkTxid:         op.ArkTxid,
+		}, nil
 	}
 	arkTxid := arkPkt.UnsignedTx.TxHash().String()
 	op.UnsignedPSBT = req.UnsignedArkPsbt
@@ -444,21 +475,13 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	}
 	signCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	signedArk, err := signExactArkStage(signCtx, req.UnsignedArkPsbt, cosigner, expected)
+	signedArk, err := signExactArkStage(signCtx, req.UnsignedArkPsbt, cosigner, expected, tree.SpendLeaf)
 	if err != nil {
 		return nil, err
 	}
 	signedCheckpoints := make([]string, len(req.UnsignedCheckpointPsbts))
 	for i, raw := range req.UnsignedCheckpointPsbts {
-		cp, err := parsePSBT(raw)
-		if err != nil {
-			return nil, err
-		}
-		if collaborativeLeafAt(cp, 0, expected) == nil {
-			signedCheckpoints[i] = raw
-			continue
-		}
-		signed, err := signExactArkStage(signCtx, raw, cosigner, expected)
+		signed, err := signExactArkStage(signCtx, raw, cosigner, expected, tree.SpendLeaf)
 		if err != nil {
 			return nil, err
 		}
@@ -593,97 +616,7 @@ func (s *Service) bindVtxoAuthorization(ctx context.Context, vaultID string, dig
 	return verifyDirectAuth(cred.PhoneDirectP256, digest, directSig)
 }
 
-func verifySpendPSBT(ptx *psbt.Packet, op policy.VtxoOperation, inputs []policy.VtxoOperationInput, tree *vtxoPolicyTree) error {
-	if ptx == nil || ptx.UnsignedTx == nil {
-		return fmt.Errorf("psbt required")
-	}
-	if len(ptx.UnsignedTx.TxIn) != len(inputs) || len(ptx.Inputs) != len(inputs) {
-		return fmt.Errorf("reserved input count")
-	}
-	seen := make(map[string]policy.VtxoOperationInput, len(inputs))
-	for _, in := range inputs {
-		seen[outpointKey(in.Txid, uint32(in.Vout))] = in
-	}
-	for i, tin := range ptx.UnsignedTx.TxIn {
-		key := tin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", tin.PreviousOutPoint.Index)
-		want, ok := matchReservedOutpoint(seen, tin.PreviousOutPoint)
-		if !ok {
-			return fmt.Errorf("unexpected ark input %s", key)
-		}
-		wu := ptx.Inputs[i].WitnessUtxo
-		if wu == nil {
-			return fmt.Errorf("witness utxo required")
-		}
-		if uint64(wu.Value) != uint64(want.ValueSats) {
-			return fmt.Errorf("input value")
-		}
-		if len(want.Script) > 0 && !bytes.Equal(wu.PkScript, want.Script) {
-			return fmt.Errorf("input script")
-		}
-		if tree != nil && !bytes.Equal(wu.PkScript, tree.PkScript) {
-			return fmt.Errorf("input is not vault-policy-v1")
-		}
-		if tree != nil && !leafCommits(ptx.Inputs[i], tree.SpendLeaf) {
-			return fmt.Errorf("spend leaf required")
-		}
-		delete(seen, outpointKey(want.Txid, uint32(want.Vout)))
-	}
-	if len(seen) != 0 {
-		return fmt.Errorf("missing reserved input")
-	}
-	var dest, change, anchor *wire.TxOut
-	for _, out := range ptx.UnsignedTx.TxOut {
-		switch {
-		case bytes.Equal(out.PkScript, txutils.ANCHOR_PKSCRIPT):
-			if anchor != nil {
-				return fmt.Errorf("multiple p2a")
-			}
-			anchor = out
-		case bytes.Equal(out.PkScript, op.DestScript):
-			if dest == nil {
-				dest = out
-				continue
-			}
-			if bytes.Equal(op.DestScript, op.ChangeScript) && change == nil {
-				change = out
-				continue
-			}
-			return fmt.Errorf("multiple dest")
-		case bytes.Equal(out.PkScript, op.ChangeScript):
-			if change != nil {
-				return fmt.Errorf("multiple change")
-			}
-			change = out
-		default:
-			return fmt.Errorf("unexpected ark output")
-		}
-	}
-	if dest == nil {
-		return fmt.Errorf("dest output")
-	}
-	if change == nil {
-		return fmt.Errorf("change output")
-	}
-	if tree != nil && !bytes.Equal(change.PkScript, tree.PkScript) {
-		return fmt.Errorf("change must be vault-policy-v1")
-	}
-	if anchor == nil {
-		return fmt.Errorf("p2a output")
-	}
-	if uint64(dest.Value) != uint64(op.AmountSats) {
-		return fmt.Errorf("dest amount")
-	}
-	return nil
-}
 
-func leafCommits(in psbt.PInput, want []byte) bool {
-	for _, leaf := range in.TaprootLeafScript {
-		if leaf != nil && bytes.Equal(leaf.Script, want) {
-			return true
-		}
-	}
-	return false
-}
 
 func matchReservedOutpoint(seen map[string]policy.VtxoOperationInput, op wire.OutPoint) (policy.VtxoOperationInput, bool) {
 	internal := make([]byte, 32)
@@ -700,44 +633,6 @@ func matchReservedOutpoint(seen map[string]policy.VtxoOperationInput, op wire.Ou
 	return policy.VtxoOperationInput{}, false
 }
 
-func verifyCheckpointPSBT(ptx *psbt.Packet, in policy.VtxoOperationInput, op policy.VtxoOperation) error {
-	if ptx == nil || ptx.UnsignedTx == nil || len(ptx.UnsignedTx.TxIn) != 1 || len(ptx.Inputs) != 1 {
-		return fmt.Errorf("checkpoint must spend one reserved input")
-	}
-	if _, ok := matchReservedOutpoint(map[string]policy.VtxoOperationInput{
-		outpointKey(in.Txid, uint32(in.Vout)): in,
-	}, ptx.UnsignedTx.TxIn[0].PreviousOutPoint); !ok {
-		return fmt.Errorf("checkpoint outpoint")
-	}
-	wu := ptx.Inputs[0].WitnessUtxo
-	if wu == nil || uint64(wu.Value) != uint64(in.ValueSats) {
-		return fmt.Errorf("checkpoint value")
-	}
-	if len(in.Script) > 0 && !bytes.Equal(wu.PkScript, in.Script) {
-		return fmt.Errorf("checkpoint script")
-	}
-	if len(op.CheckpointTapscript) == 0 {
-		return fmt.Errorf("checkpoint tapscript required")
-	}
-	found := false
-	for _, out := range ptx.UnsignedTx.TxOut {
-		if bytes.Equal(out.PkScript, op.CheckpointTapscript) {
-			found = true
-			break
-		}
-		if leafCommits(ptx.Inputs[0], op.CheckpointTapscript) {
-			found = true
-			break
-		}
-	}
-	if !found && !leafCommits(ptx.Inputs[0], op.CheckpointTapscript) {
-		// Checkpoint dest is the unroll script advertised by arkd. Accept it as
-		// an output script or as the committed tapleaf.
-		return fmt.Errorf("checkpoint tapscript")
-	}
-	return nil
-}
-
 func encodeJSONStringSlice(v []string) string {
 	if len(v) == 0 {
 		return ""
@@ -747,6 +642,17 @@ func encodeJSONStringSlice(v []string) string {
 		return ""
 	}
 	return string(raw)
+}
+
+func decodeJSONStringSlice(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(v), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 func outpointKey(txid []byte, vout uint32) string {

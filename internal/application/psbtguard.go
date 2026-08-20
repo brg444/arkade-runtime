@@ -90,6 +90,7 @@ func signExactArkStage(
 	stored string,
 	priv *btcec.PrivateKey,
 	expectedXOnly []byte,
+	expectedLeaf []byte,
 ) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -118,17 +119,24 @@ func signExactArkStage(
 	if err != nil {
 		return "", err
 	}
+	if len(expectedLeaf) == 0 {
+		return "", fmt.Errorf("expected leaf required")
+	}
 	signed := 0
 	for i := range work.Inputs {
-		leaf := collaborativeLeafAt(work, i, expectedXOnly)
-		if leaf == nil {
-			continue
+		in := work.Inputs[i]
+		if len(in.TaprootLeafScript) != 1 || in.TaprootLeafScript[0] == nil {
+			return "", fmt.Errorf("exactly one tapleaf required")
 		}
-		added, err := signTapLeafAt(work, i, priv, leaf.Script)
+		leaf := in.TaprootLeafScript[0]
+		if !bytes.Equal(leaf.Script, expectedLeaf) {
+			return "", fmt.Errorf("unexpected tapleaf")
+		}
+		added, err := signTapLeafAt(work, i, priv, expectedLeaf)
 		if err != nil {
 			return "", err
 		}
-		if err := verifySchnorrOnInput(submitted, i, added.Signature, expectedXOnly, leaf.Script); err != nil {
+		if err := verifySchnorrOnInput(submitted, i, added.Signature, expectedXOnly, expectedLeaf); err != nil {
 			return "", fmt.Errorf("vtxo vault signature invalid")
 		}
 		out.Inputs[i].TaprootScriptSpendSig = append(out.Inputs[i].TaprootScriptSpendSig, added)
