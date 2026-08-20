@@ -4,10 +4,9 @@ Schema integer, program identity, and domain-separator literals are
 **not a shared generation ladder**. They share digits by coincidence.
 Bumping one does not bump the others.
 
-`credential-record/v3` and `enrollment-pop/v3` are two contracts that
-happen to end in `v3`. Schema 8 is a SQLite layout. Template
-`phone-hww-recovery-staged-v6` is an on-chain tree family. None of
-those is a release number.
+`credential-record/v3` is a sealed-record contract. Schema 9 is a
+SQLite layout. Template `phone-hww-recovery-staged-v6` is an on-chain
+tree family. None of those is a release number.
 
 | Axis | What it versions | Example | When it moves | What does not move |
 | --- | --- | --- | --- | --- |
@@ -56,7 +55,6 @@ and still proposing a new salt.
 | prf | `arkade-2fa-vault/prf/v1` | Client-side derivation changes; requires re-enrollment. |
 | kek | `arkade-2fa-vault/kek/v1` | Client-side derivation changes; requires re-enrollment. |
 | direct-p256 | `arkade-2fa-vault/direct-p256/v1` | Client-side derivation changes; requires re-enrollment. |
-| enrollment-pop | `arkade-2fa-vault/enrollment-pop/v3` | New enroll proofs only. Existing vaults stay. |
 | credential-record | `arkade-2fa-vault/credential-record/v3` | Re-seal or refuse the singleton credential row. No on-chain effect. |
 | issuance-record | `arkade-2fa-vault/issuance-record/v3` | Re-seal or reset the allowance ledger. No on-chain effect. |
 | vault-record | `arkade-2fa-vault/vault-record/v4` | Re-seal tenant descriptor rows. No on-chain effect. |

@@ -242,11 +242,8 @@ type RegisterRequest struct {
 	RecoveryKeyXOnly         string `json:"recoveryKeyXOnly,omitempty"`
 	// Optional tenant identity. Extra fields must not 400 under
 	// DisallowUnknownFields; new enrollments should send them.
-	VaultID            string `json:"vaultId,omitempty"`
-	ExternalOwnerProof string `json:"externalOwnerProof,omitempty"`
-	RecoveryPoP        string `json:"recoveryPoP,omitempty"`
-	RecoveryProof      string `json:"recoveryProof,omitempty"`
-	DescriptorHash     string `json:"descriptorHash,omitempty"`
+	VaultID        string `json:"vaultId,omitempty"`
+	DescriptorHash string `json:"descriptorHash,omitempty"`
 }
 
 type parsedRegisterRequest struct {
@@ -311,7 +308,7 @@ func (s *Service) RegisterWithBootstrap(req RegisterRequest, bootstrap string) e
 	if err != nil {
 		return err
 	}
-	if recoveryField(req) != "" || recoveryProofField(req) != "" || parsed.recovery != nil {
+	if recoveryField(req) != "" || parsed.recovery != nil {
 		return fmt.Errorf("recoveryKeyXOnly is retired")
 	}
 	op, sv, err := s.makeTrees(parsed.phoneRoutine, parsed.phoneDirectP256, parsed.externalOwner)
@@ -382,18 +379,6 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	}
 	if req.DescriptorHash == "" || req.DescriptorHash != proposed.DescriptorHash {
 		return fmt.Errorf("enrollment descriptor hash does not match the proposed vault")
-	}
-	if err := verifyEnrollmentPoP(vaultID, parsed.externalOwner, req); err != nil {
-		return err
-	}
-	if parsed.recovery != nil {
-		handle := ""
-		if pending != nil {
-			handle = pending.Handle
-		}
-		if err := v5.VerifyRecoveryPoP(parsed.recovery, vaultID, handle, proposed.DescriptorHash, recoveryProofField(req)); err != nil {
-			return err
-		}
 	}
 	descriptor, op, sv, err := s.mintV5Credential(vaultID, parsed, child.PubKey())
 	if err != nil {

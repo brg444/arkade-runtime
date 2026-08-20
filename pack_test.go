@@ -130,3 +130,23 @@ func TestEmbeddedContractPackMatchesRootFile(t *testing.T) {
 		t.Fatal("embedded contract pack drifted from repo root")
 	}
 }
+
+func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
+	raw, err := os.ReadFile("contract-pack.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pack struct {
+		Programs map[string]map[string]any `json:"programs"`
+		Domains  map[string]string         `json:"domains"`
+	}
+	if err := json.Unmarshal(raw, &pack); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := pack.Domains["enrollmentPop"]; ok {
+		t.Fatal("contract pack must not publish an enrollment proof domain")
+	}
+	if _, ok := pack.Programs["staged"]["recoveryPopTag"]; ok {
+		t.Fatal("staged program must not publish a recovery proof tag")
+	}
+}

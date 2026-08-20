@@ -62,12 +62,11 @@ func TestFreshOnlyReopenAfterEmptyBootAndTenantEnroll(t *testing.T) {
 	direct, _ := webauthn.NewP256()
 	hot, _ := btcec.NewPrivateKey()
 	owner, _ := btcec.NewPrivateKey()
-	recovery, _ := btcec.NewPrivateKey()
 	req := attestedFinish(t, svc, start, pass, []byte("fresh-reopen"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
 		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
-	}, owner, recovery)
+	})
 	if _, err := svc.FinishEnrollment(context.Background(), token, req); err != nil {
 		t.Fatal(err)
 	}
