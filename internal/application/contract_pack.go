@@ -3,20 +3,17 @@ package application
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/brg444/arkade-vault-server/internal/apperr"
+	"github.com/brg444/arkade-vault-server/internal/contractpack"
 	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 func liveContractPackJSON() ([]byte, error) {
-	for _, path := range []string{"contract-pack.json", "../../contract-pack.json"} {
-		raw, err := os.ReadFile(path)
-		if err == nil {
-			return raw, nil
-		}
+	if len(contractpack.JSON) == 0 {
+		return nil, fmt.Errorf("contract pack")
 	}
-	return nil, fmt.Errorf("contract pack")
+	return append([]byte(nil), contractpack.JSON...), nil
 }
 
 func (s *Service) requireVaultPolicyV1Exit() error {

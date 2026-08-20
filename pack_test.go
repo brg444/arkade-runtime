@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/brg444/arkade-vault-server/internal/contractpack"
 	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
 )
 
@@ -117,5 +118,15 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	}
 	if caps["txRecipientSats"] != float64(50000) || caps["periodAllowanceSats"] != float64(100000) {
 		t.Fatalf("vault-policy-v1 caps: %+v", caps)
+	}
+}
+
+func TestEmbeddedContractPackMatchesRootFile(t *testing.T) {
+	raw, err := os.ReadFile("contract-pack.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != string(contractpack.JSON) {
+		t.Fatal("embedded contract pack drifted from repo root")
 	}
 }
