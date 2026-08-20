@@ -63,6 +63,7 @@ and still proposing a new salt.
 | vault-credential | `arkade-2fa-vault/vault-credential/v1` | Re-seal passkey↔vault bindings. No on-chain effect. |
 | recovery-session | `arkade-2fa-vault/recovery-session/v2` | Re-seal server-side session rows. No on-chain effect. |
 | credential-envelope / vault-envelope | `…/credential-envelope/v1`, `…/vault-envelope/v4` | Re-seal PRF envelopes. No on-chain effect. |
+| vtxo-operation | `arkade-2fa-vault/vtxo-operation/v1` | Re-seal or reset VTXO operations. Shared daily cap via `spentInWindow`. No on-chain effect. Not a rotation of issuance-record/v3. |
 
 Do not bump a domain string unless you intend to rotate **that** key or
 MAC.
@@ -108,7 +109,7 @@ Queried Railway `authorizer-next` `/app/data/vault.sqlite` on
 
 | Fact | Value |
 | --- | --- |
-| `schema_meta.version` | live integer; this binary migrates forward |
+| `schema_meta.version` | live integer; this binary migrates expand-only through 9 (`vtxo_operation`) |
 | vaults | **4**, all `hkdf-sha256-v1` (1 leftover v3, 1 leftover v4, 2 leftover v5) |
 | enroll program | `phone-hww-recovery-staged-v6` (no v6 rows yet) |
 | `recovery_session` | 0 |
