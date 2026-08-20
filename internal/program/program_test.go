@@ -12,7 +12,7 @@ func TestPinsMatchPublishedNames(t *testing.T) {
 	if VaultPolicyV1 != "vault-policy-v1" || VaultPolicyV1Schema != "arkade-vault/vtxo-policy-v1" {
 		t.Fatal("vault-policy-v1 program pin drifted")
 	}
-	if VaultPolicyV1Template != "vault-policy-v1-collaborative-4pub" {
+	if VaultPolicyV1Template != "vault-policy-v1-collaborative-3key" {
 		t.Fatal(VaultPolicyV1Template)
 	}
 	if VaultPolicyV1ExitDelay != 4608 || VaultPolicyV1ExitDelayUnit != "seconds" {
