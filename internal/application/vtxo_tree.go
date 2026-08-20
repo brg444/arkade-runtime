@@ -30,6 +30,11 @@ type vtxoPolicyTree struct {
 	OnchainAddress  string
 }
 
+type vtxoBoardTree struct {
+	PkScript       []byte
+	OnchainAddress string
+}
+
 func (s *Service) advertisedArkdPub() []byte {
 	if s == nil || isNilInterface(s.ArkResolver) {
 		return nil
@@ -153,6 +158,47 @@ func defaultVtxoPkScript(user, arkd *btcec.PublicKey) []byte {
 		return nil
 	}
 	return pk
+}
+
+// buildVtxoBoardTree constructs the distinct vault-board-v1 intermediate.
+// It is arkd's standard two-party boarding contract, not the existing Daily
+// output and not the vault-policy-v1 VTXO tree.
+func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, error) {
+	if snap.PhoneRoutineBIP340 == nil {
+		return nil, fmt.Errorf("enrolled phone key required")
+	}
+	arkd, err := btcec.ParsePubKey(s.advertisedArkdPub())
+	if err != nil {
+		return nil, fmt.Errorf("advertised arkd pub")
+	}
+	exit := arklib.RelativeLocktime{
+		Type:  arklib.LocktimeTypeSecond,
+		Value: program.VaultBoardV1ExitDelay,
+	}
+	def := arkscript.NewDefaultVtxoScript(snap.PhoneRoutineBIP340, arkd, exit)
+	tap, _, err := def.TapTree()
+	if err != nil {
+		return nil, fmt.Errorf("vault-board-v1 tree: %w", err)
+	}
+	pkScript, err := arkscript.P2TRScript(tap)
+	if err != nil {
+		return nil, fmt.Errorf("vault-board-v1 script: %w", err)
+	}
+	if len(pkScript) != 34 || pkScript[0] != 0x51 || pkScript[1] != 0x20 {
+		return nil, fmt.Errorf("vault-board-v1 is not p2tr")
+	}
+	net, err := vtxoNetworkParams(s.runtimeConfig().Network)
+	if err != nil {
+		return nil, err
+	}
+	address, err := btcutil.NewAddressTaproot(pkScript[2:], net)
+	if err != nil {
+		return nil, err
+	}
+	return &vtxoBoardTree{
+		PkScript:       pkScript,
+		OnchainAddress: address.EncodeAddress(),
+	}, nil
 }
 
 func (s *Service) refuseDefaultVtxoChange(snap enrolledSnapshot, dest []byte) error {

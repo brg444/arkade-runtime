@@ -52,7 +52,22 @@
         "capability": "multi-presigned-signature",
         "note": "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised."
       },
-      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. L1 board remains inactive. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
+      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
+    },
+    "vault-board-v1": {
+      "status": "live",
+      "module": "boarding",
+      "schema": "arkade-vault/board-v1",
+      "template": "vault-board-v1-phone-and-arkd",
+      "source": "staged-routine-spending",
+      "destination": "vault-policy-v1",
+      "forfeit": "device-and-arkd",
+      "exit": {
+        "delay": "604672",
+        "delayUnit": "seconds",
+        "owner": "device-after-exitDelay"
+      },
+      "notes": "A distinct confirmed L1 intermediate. The app uses one routine authorization to create it, then the SDK settles it only to vault-policy-v1. If settlement never completes, the device can recover after the pinned boarding delay. Savings is never a source."
     }
   },
   "domains": {

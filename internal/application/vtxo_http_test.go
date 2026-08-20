@@ -13,6 +13,7 @@ import (
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/program"
@@ -153,6 +154,47 @@ func TestBoardAuthorizeRouteRemoved(t *testing.T) {
 	rec := boundaryHTTPCall(t, h, http.MethodPost, "/v1/vtxo/board/authorize", "application/json", fixture.Origin, `{"vaultId":"`+fixture.VaultID+`"}`)
 	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("board route still present = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestVaultBoardV1StatusUsesDistinctStandardBoardingTree(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	status, err := e.svc.StatusFor(context.Background(), fixture.VaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.VtxoBoardingActive || status.VtxoBoardingProgram != program.VaultBoardV1 {
+		t.Fatalf("boarding status = %+v", status)
+	}
+	if status.VtxoBoardingExitDelay != program.VaultBoardV1ExitDelay ||
+		status.VtxoBoardingExitDelayUnit != program.VaultBoardV1ExitDelayUnit {
+		t.Fatalf("boarding delay = %d %s", status.VtxoBoardingExitDelay, status.VtxoBoardingExitDelayUnit)
+	}
+	if !strings.HasPrefix(status.VtxoBoardingAddress, "bcrt1p") || len(status.VtxoBoardingScript) != 68 {
+		t.Fatalf("boarding descriptor = %s %s", status.VtxoBoardingAddress, status.VtxoBoardingScript)
+	}
+	if status.VtxoBoardingAddress == status.SpendingOnchainAddress ||
+		status.VtxoBoardingScript == status.SpendingOnchainScript {
+		t.Fatal("vault-board-v1 must be distinct from vault-policy-v1")
+	}
+}
+
+func TestVaultBoardV1MatchesSDKVector(t *testing.T) {
+	phone, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 1))
+	operator, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 4))
+	svc := &Service{
+		Deployment:  deployment.Config{Network: deployment.NetworkMutinynet},
+		ArkResolver: stubArkResolver{signer: operator.PubKey().SerializeCompressed()},
+	}
+	tree, err := svc.buildVtxoBoardTree(enrolledSnapshot{PhoneRoutineBIP340: phone.PubKey()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hex.EncodeToString(tree.PkScript); got != "5120a077fad544f052d9730fb622fc1e737ef932eb7db907d2f1ee3792ce9e5d4d2c" {
+		t.Fatalf("vault-board-v1 script = %s", got)
+	}
+	if tree.OnchainAddress != "tb1p5pml442y7pfdjuc0kc30c8nn0mun96mahyra9u0wx7fva8jaf5kqavcsgc" {
+		t.Fatalf("vault-board-v1 address = %s", tree.OnchainAddress)
 	}
 }
 

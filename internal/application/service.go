@@ -1065,6 +1065,12 @@ type Status struct {
 	SpendingOnchainAddress          string   `json:"spendingOnchainAddress"`
 	SpendingOnchainScript           string   `json:"spendingOnchainScript"`
 	VtxoDelegatePub                 string   `json:"vtxoDelegatePub"`
+	VtxoBoardingActive              bool     `json:"vtxoBoardingActive"`
+	VtxoBoardingProgram             string   `json:"vtxoBoardingProgram"`
+	VtxoBoardingAddress             string   `json:"vtxoBoardingAddress"`
+	VtxoBoardingScript              string   `json:"vtxoBoardingScript"`
+	VtxoBoardingExitDelay           uint32   `json:"vtxoBoardingExitDelay"`
+	VtxoBoardingExitDelayUnit       string   `json:"vtxoBoardingExitDelayUnit"`
 }
 
 func statusWarnings(cred *policy.Credential) []string {
@@ -1441,6 +1447,9 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	}
 	st.VtxoExitDelay = program.VaultPolicyV1ExitDelay
 	st.VtxoExitDelayUnit = program.VaultPolicyV1ExitDelayUnit
+	st.VtxoBoardingProgram = program.VaultBoardV1
+	st.VtxoBoardingExitDelay = program.VaultBoardV1ExitDelay
+	st.VtxoBoardingExitDelayUnit = program.VaultBoardV1ExitDelayUnit
 	if vaultID == "" || snap.PhoneRoutineBIP340 == nil {
 		return
 	}
@@ -1461,6 +1470,13 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	if tree.DelegatePub != nil {
 		st.VtxoDelegatePub = hex.EncodeToString(tree.DelegatePub.SerializeCompressed())
 	}
+	board, err := s.buildVtxoBoardTree(snap)
+	if err != nil || board == nil {
+		return
+	}
+	st.VtxoBoardingActive = true
+	st.VtxoBoardingAddress = board.OnchainAddress
+	st.VtxoBoardingScript = hex.EncodeToString(board.PkScript)
 }
 
 // DraftRequest builds an empty-witness routine PSBT the browser can bind.
