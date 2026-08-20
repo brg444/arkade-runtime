@@ -937,6 +937,9 @@ func (l *Ledger) IssueForTest(
 	if sign == nil {
 		return "", false, fmt.Errorf("signer required")
 	}
+	if recipient <= 0 {
+		return "", false, fmt.Errorf("recipient amount required")
+	}
 	request := "legacy-external-signer:" + hex.EncodeToString(digest)
 	return l.issueSequential(
 		ctx, vaultID, digest, request, recipient, fee, remainingCap, false,
@@ -946,7 +949,8 @@ func (l *Ledger) IssueForTest(
 }
 
 // IssueSequential durably binds an exact normalized client PSBT, reserves its
-// allowance, persists the private VaultCosigner signature, and only then
+// allowance debit (which may be zero for an application-verified internal
+// transfer), persists the private VaultCosigner signature, and only then
 // dispatches that stored PSBT to the public ArkadeCosigner. An exact retry may resume the
 // private in-process stage after a crash, or the public stage after any
 // ambiguous timeout, but it can never replace the bound request or spend a
@@ -1029,8 +1033,8 @@ func (l *Ledger) issueSequential(
 	if requestPSBT == "" {
 		return "", false, fmt.Errorf("exact request PSBT required")
 	}
-	if recipient <= 0 {
-		return "", false, fmt.Errorf("recipient amount required")
+	if recipient < 0 {
+		return "", false, fmt.Errorf("negative recipient allowance debit")
 	}
 	if fee < 0 {
 		return "", false, fmt.Errorf("negative fee")

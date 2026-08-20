@@ -21,6 +21,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/wire"
 )
 
 type stubArkResolver struct {
@@ -195,6 +196,32 @@ func TestVaultBoardV1MatchesSDKVector(t *testing.T) {
 	}
 	if tree.OnchainAddress != "tb1p5pml442y7pfdjuc0kc30c8nn0mun96mahyra9u0wx7fva8jaf5kqavcsgc" {
 		t.Fatalf("vault-board-v1 address = %s", tree.OnchainAddress)
+	}
+}
+
+func TestVaultBoardV1PrincipalIsAnInternalAllowanceTransfer(t *testing.T) {
+	phone, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 1))
+	operator, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 4))
+	svc := &Service{
+		Deployment:  deployment.Config{Network: deployment.NetworkMutinynet},
+		ArkResolver: stubArkResolver{signer: operator.PubKey().SerializeCompressed()},
+	}
+	snap := enrolledSnapshot{PhoneRoutineBIP340: phone.PubKey()}
+	tree, err := svc.buildVtxoBoardTree(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := &Classified{Recipient: &wire.TxOut{Value: 40_000, PkScript: tree.PkScript}, Fee: 1_500}
+	if got, err := svc.routineRecipientDebit(snap, cl); err != nil || got != 0 {
+		t.Fatalf("boarding principal debit = %d", got)
+	}
+	cl.Recipient.PkScript = append([]byte(nil), tree.PkScript...)
+	cl.Recipient.PkScript[len(cl.Recipient.PkScript)-1] ^= 1
+	if got, err := svc.routineRecipientDebit(snap, cl); err != nil || got != 40_000 {
+		t.Fatalf("external recipient debit = %d", got)
+	}
+	if _, err := svc.routineRecipientDebit(snap, nil); err == nil {
+		t.Fatal("missing classification did not fail closed")
 	}
 }
 
