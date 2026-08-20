@@ -72,12 +72,11 @@ func TestTwoTenantsHaveIsolatedDescriptorsCapsAndLoaders(t *testing.T) {
 	}
 
 	ownerB, _ := btcec.NewPrivateKey()
-	recB, _ := btcec.NewPrivateKey()
 	hotB, _ := btcec.NewPrivateKey()
 	passB, _ := webauthn.NewP256()
 	dirB, _ := webauthn.NewP256()
 	const tenantB = "tenant-b"
-	if err := svc.CreateTenantVault(tenantB, token, proposedPoP(t, svc, tenantB, ownerB, recB, RegisterRequest{
+	if err := svc.CreateTenantVault(tenantB, token, proposedDescriptor(t, svc, tenantB, RegisterRequest{
 		CredentialID:             hex.EncodeToString([]byte("cred-b")),
 		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passB)),
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(dirB)),
@@ -217,12 +216,11 @@ func TestRemoteSignerExpectedKeyIsPerCallNotSharedState(t *testing.T) {
 		t.Fatal(err)
 	}
 	ownerB, _ := btcec.NewPrivateKey()
-	recB, _ := btcec.NewPrivateKey()
 	hotB, _ := btcec.NewPrivateKey()
 	passB, _ := webauthn.NewP256()
 	dirB, _ := webauthn.NewP256()
 	const tenantB = "tenant-remote-b"
-	if err := svc.CreateTenantVault(tenantB, token, proposedPoP(t, svc, tenantB, ownerB, recB, RegisterRequest{
+	if err := svc.CreateTenantVault(tenantB, token, proposedDescriptor(t, svc, tenantB, RegisterRequest{
 		CredentialID:             hex.EncodeToString([]byte("cred-b")),
 		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passB)),
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(dirB)),

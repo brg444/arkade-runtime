@@ -10,9 +10,6 @@ func TestFrozenProviderProtocolDomains(t *testing.T) {
 	if publicDescriptorSchema != "arkade-vault/v4" {
 		t.Fatalf("public descriptor schema = %s", publicDescriptorSchema)
 	}
-	if enrollmentPoPDomain != "arkade-2fa-vault/enrollment-pop/v3" {
-		t.Fatalf("enrollment pop domain = %s", enrollmentPoPDomain)
-	}
 	if recoveryBindingDomain != "arkade-2fa-vault/recovery-binding/v1" {
 		t.Fatalf("passkey binding domain = %s", recoveryBindingDomain)
 	}

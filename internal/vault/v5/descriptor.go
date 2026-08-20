@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/brg444/arkade-vault-server/internal/program"
-	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
 const PolicyVersion = program.PolicyVersion
@@ -380,9 +378,4 @@ func concatParts(parts [][]byte) []byte {
 		out = append(out, p...)
 	}
 	return out
-}
-
-// RecoveryXOnly is the BIP340 x-only of the recovery pub.
-func RecoveryXOnly(pub *btcec.PublicKey) string {
-	return hex.EncodeToString(schnorr.SerializePubKey(pub))
 }
