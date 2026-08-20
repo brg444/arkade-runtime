@@ -2,7 +2,6 @@ package application
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 
@@ -17,18 +16,20 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 )
 
-const vtxoSpendArkScriptTag = "arkade-2fa-vault/vtxo-spend-arkscript/v1"
-
 type vtxoPolicyTree struct {
-	CosignerPub     *btcec.PublicKey
-	TweakedEmulator *btcec.PublicKey
-	DelegatePub     *btcec.PublicKey
-	TapKey          *btcec.PublicKey
-	PkScript        []byte
-	SpendLeaf       []byte
-	DelegateLeaf    []byte
-	ArkAddress      string
-	OnchainAddress  string
+	CosignerPub          *btcec.PublicKey
+	TweakedEmulator      *btcec.PublicKey
+	DelegatePub          *btcec.PublicKey
+	TapKey               *btcec.PublicKey
+	PkScript             []byte
+	SpendLeaf            []byte
+	DelegateLeaf         []byte
+	SpendControl         []byte
+	DelegateControl      []byte
+	RevealedScripts      []string
+	SpendArkadeScript    []byte
+	ArkAddress           string
+	OnchainAddress       string
 }
 
 func (s *Service) advertisedArkdPub() []byte {
@@ -71,7 +72,11 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if err != nil {
 		return nil, fmt.Errorf("pinned public delegate")
 	}
-	spendHash := taggedSHA25632(vtxoSpendArkScriptTag, []byte(vaultID))
+	spendScript, err := policy.VaultPolicyV1SpendArkadeScript()
+	if err != nil {
+		return nil, fmt.Errorf("vault-policy-v1 spend arkade script: %w", err)
+	}
+	spendHash := arkade.ArkadeScriptHash(spendScript)
 	tweakedEmu := arkade.ComputeArkadeScriptPublicKey(snap.ArkadeCosignerBase, spendHash)
 	if tweakedEmu == nil {
 		return nil, fmt.Errorf("vtxo emulator tweak is degenerate")
@@ -114,25 +119,20 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		return nil, err
 	}
 	return &vtxoPolicyTree{
-		CosignerPub:     cosigner.PubKey(),
-		TweakedEmulator: tweakedEmu,
-		DelegatePub:     delegate,
-		TapKey:          tapKey,
-		PkScript:        encoded.PkScript,
-		SpendLeaf:       encoded.SpendScript,
-		DelegateLeaf:    encoded.DelegateScript,
-		ArkAddress:      addr,
-		OnchainAddress:  onchain.EncodeAddress(),
+		CosignerPub:       cosigner.PubKey(),
+		TweakedEmulator:   tweakedEmu,
+		DelegatePub:       delegate,
+		TapKey:            tapKey,
+		PkScript:          encoded.PkScript,
+		SpendLeaf:         encoded.SpendScript,
+		DelegateLeaf:      encoded.DelegateScript,
+		SpendControl:      encoded.SpendControlBlock,
+		DelegateControl:   encoded.DelegateControlBlock,
+		RevealedScripts:   encoded.RevealedScripts,
+		SpendArkadeScript: spendScript,
+		ArkAddress:        addr,
+		OnchainAddress:    onchain.EncodeAddress(),
 	}, nil
-}
-
-func taggedSHA25632(tag string, msg []byte) []byte {
-	th := sha256.Sum256([]byte(tag))
-	h := sha256.New()
-	_, _ = h.Write(th[:])
-	_, _ = h.Write(th[:])
-	_, _ = h.Write(msg)
-	return h.Sum(nil)
 }
 
 func mustDecodeCompressed(hex33 string) []byte {

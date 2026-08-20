@@ -205,6 +205,15 @@ func bytesContainHex(raw []byte, needle string) bool {
 	return bytes.Contains(raw, n)
 }
 
+func TestBuildVaultPolicyV1TreeRejectsUnpinnedDelegate(t *testing.T) {
+	g := loadVaultPolicyV1Golden(t)
+	p := twoGuardianParams(t, g)
+	p.DelegatePub = goldenXOnly(t, g, "userPub")
+	if _, err := BuildVaultPolicyV1Tree(p); err == nil {
+		t.Fatal("unpinned delegate must be rejected")
+	}
+}
+
 func TestBuildVaultPolicyV1TreeUsesPinnedDelegateXOnly(t *testing.T) {
 	g := loadVaultPolicyV1Golden(t)
 	p := twoGuardianParams(t, g)

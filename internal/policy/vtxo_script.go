@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"bytes"
 	"fmt"
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
@@ -8,7 +9,10 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
+	"github.com/btcsuite/btcd/txscript"
 )
+
+
 
 // VaultPolicyV1Params is the vault-policy-v1 tap tree. Exactly three leaves:
 // 3-key collaborative spend/intent, one guardian CSV exit, 4-key delegate-forfeit.
@@ -26,11 +30,14 @@ type VaultPolicyV1Params struct {
 
 // VaultPolicyV1Tree is the encoded policy tree. Leaf order is spend, exit, delegate.
 type VaultPolicyV1Tree struct {
-	SpendScript    []byte
-	ExitScript     []byte
-	DelegateScript []byte
-	TapKey         []byte
-	PkScript       []byte
+	SpendScript           []byte
+	ExitScript            []byte
+	DelegateScript        []byte
+	SpendControlBlock     []byte
+	DelegateControlBlock  []byte
+	RevealedScripts       []string
+	TapKey                []byte
+	PkScript              []byte
 }
 
 // BuildVaultPolicyV1Tree encodes the 3-key collaborative spend/intent leaf
@@ -80,12 +87,19 @@ func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
 		MultisigClosure: arkscript.MultisigClosure{PubKeys: exitPubs},
 		Locktime:        exitDelay,
 	}
+	wantDelegate, err := PinnedDelegateXOnly()
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(schnorr.SerializePubKey(delegate), wantDelegate) {
+		return nil, fmt.Errorf("delegatePub must be the pinned public delegate")
+	}
 	del := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{user, vtxoVault, delegate, arkd}}
 	tree := &arkscript.TapscriptsVtxoScript{Closures: []arkscript.Closure{spend, exit, del}}
 	if got := tree.ExitClosures(); len(got) != 1 {
 		return nil, fmt.Errorf("vault-policy-v1 requires exactly one guardian exit, got %d", len(got))
 	}
-	tapKey, _, err := tree.TapTree()
+	tapKey, tapTree, err := tree.TapTree()
 	if err != nil {
 		return nil, err
 	}
@@ -105,12 +119,27 @@ func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
 	if err != nil {
 		return nil, err
 	}
+	spendProof, err := tapTree.GetTaprootMerkleProof(txscript.NewBaseTapLeaf(spendScript).TapHash())
+	if err != nil {
+		return nil, err
+	}
+	delProof, err := tapTree.GetTaprootMerkleProof(txscript.NewBaseTapLeaf(delegateScript).TapHash())
+	if err != nil {
+		return nil, err
+	}
+	revealed, err := tree.Encode()
+	if err != nil {
+		return nil, err
+	}
 	return &VaultPolicyV1Tree{
-		SpendScript:    spendScript,
-		ExitScript:     exitScript,
-		DelegateScript: delegateScript,
-		TapKey:         schnorr.SerializePubKey(tapKey),
-		PkScript:       pkScript,
+		SpendScript:          spendScript,
+		ExitScript:           exitScript,
+		DelegateScript:       delegateScript,
+		SpendControlBlock:    spendProof.ControlBlock,
+		DelegateControlBlock: delProof.ControlBlock,
+		RevealedScripts:      revealed,
+		TapKey:               schnorr.SerializePubKey(tapKey),
+		PkScript:             pkScript,
 	}, nil
 }
 
