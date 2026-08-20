@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -162,110 +161,6 @@ func signExactArkStageWithSighash(
 	return out.B64Encode()
 }
 
-// signExactStageAt inserts one expected Taproot script-spend signature at
-// inputIndex. It does not assume len(TxIn)==1 and does not call
-// parseAndVerifyPrevout.
-func signExactStageAt(
-	ctx context.Context,
-	stored string,
-	priv *btcec.PrivateKey,
-	expectedXOnly []byte,
-	inputIndex int,
-) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	if priv == nil {
-		return "", fmt.Errorf("signer required")
-	}
-	if len(expectedXOnly) != 32 {
-		return "", fmt.Errorf("expected signer x-only key")
-	}
-	if !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), expectedXOnly) {
-		return "", fmt.Errorf("signer key mismatch")
-	}
-	submitted, err := parsePSBT(stored)
-	if err != nil {
-		return "", err
-	}
-	if inputIndex < 0 || inputIndex >= len(submitted.Inputs) {
-		return "", fmt.Errorf("input index")
-	}
-	in := submitted.Inputs[inputIndex]
-	if in.WitnessUtxo == nil || len(in.TaprootLeafScript) != 1 || in.TaprootLeafScript[0] == nil {
-		return "", fmt.Errorf("submitted input missing leaf commitment")
-	}
-	leafScript := in.TaprootLeafScript[0].Script
-	added, err := signTapLeafAt(submitted, inputIndex, priv, leafScript)
-	if err != nil {
-		return "", err
-	}
-	if err := verifySchnorrOnInput(submitted, inputIndex, added.Signature, expectedXOnly, leafScript); err != nil {
-		return "", fmt.Errorf("signer signature invalid")
-	}
-	out, err := clonePacket(submitted)
-	if err != nil {
-		return "", err
-	}
-	out.Inputs[inputIndex].TaprootScriptSpendSig = append(out.Inputs[inputIndex].TaprootScriptSpendSig, added)
-	return out.B64Encode()
-}
-
-func collaborativeLeafAt(ptx *psbt.Packet, idx int, expectedXOnly []byte) *psbt.TaprootTapLeafScript {
-	if ptx == nil || idx < 0 || idx >= len(ptx.Inputs) {
-		return nil
-	}
-	in := ptx.Inputs[idx]
-	if in.WitnessUtxo == nil {
-		return nil
-	}
-	for _, leaf := range in.TaprootLeafScript {
-		if leaf == nil {
-			continue
-		}
-		closure, err := decodeMultisigLeaf(leaf.Script)
-		if err != nil || closure == nil {
-			continue
-		}
-		for _, pub := range closure.PubKeys {
-			if pub != nil && bytes.Equal(schnorr.SerializePubKey(pub), expectedXOnly) {
-				return leaf
-			}
-		}
-	}
-	return nil
-}
-
-func decodeMultisigLeaf(script []byte) (*txscriptMultisig, error) {
-	if len(script) == 0 {
-		return nil, fmt.Errorf("leaf script")
-	}
-	// arkscript is imported by callers via vtxo_tree; keep this helper local
-	// by using the same DecodeClosure path through a thin wrapper below.
-	return decodeArkMultisig(script)
-}
-
-type txscriptMultisig struct {
-	PubKeys []*btcec.PublicKey
-}
-
-func decodeArkMultisig(script []byte) (*txscriptMultisig, error) {
-	closure, err := arkscript.DecodeClosure(script)
-	if err != nil {
-		return nil, err
-	}
-	switch c := closure.(type) {
-	case *arkscript.MultisigClosure:
-		return &txscriptMultisig{PubKeys: c.PubKeys}, nil
-	case *arkscript.CSVMultisigClosure:
-		return &txscriptMultisig{PubKeys: c.PubKeys}, nil
-	case *arkscript.CLTVMultisigClosure:
-		return &txscriptMultisig{PubKeys: c.PubKeys}, nil
-	default:
-		return nil, fmt.Errorf("not a collaborative leaf")
-	}
-}
-
 func signTapLeafAt(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey, leafScript []byte) (*psbt.TaprootScriptSpendSig, error) {
 	return signTapLeafAtWithSighash(ptx, idx, priv, leafScript, txscript.SigHashDefault)
 }
@@ -297,10 +192,6 @@ func signTapLeafAtWithSighash(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey,
 		Signature:   sig,
 		SigHash:     sigHash,
 	}, nil
-}
-
-func verifySchnorrOnInput(ptx *psbt.Packet, idx int, sig, wantXOnly, leafScript []byte) error {
-	return verifySchnorrOnInputWithSighash(ptx, idx, sig, wantXOnly, leafScript, txscript.SigHashDefault)
 }
 
 func verifySchnorrOnInputWithSighash(ptx *psbt.Packet, idx int, sig, wantXOnly, leafScript []byte, sigHash txscript.SigHashType) error {
