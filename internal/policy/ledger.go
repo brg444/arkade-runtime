@@ -1134,7 +1134,12 @@ func (l *Ledger) commitReservation(
 	if err != nil {
 		return issuanceStage{}, err
 	}
-	defer conn.Close()
+	connClosed := false
+	defer func() {
+		if !connClosed {
+			_ = conn.Close()
+		}
+	}()
 	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
 		return issuanceStage{}, err
 	}
@@ -1214,6 +1219,15 @@ func (l *Ledger) commitReservation(
 		return issuanceStage{}, err
 	}
 	commit = true
+	// The ledger intentionally has one SQLite connection. Return this
+	// transaction connection before IssuanceRowCount asks the pool for it;
+	// otherwise the first issuance with a monotonic counter deadlocks while
+	// still holding l.mu, blocking every policy/status request behind it.
+	closeErr := conn.Close()
+	connClosed = true
+	if closeErr != nil {
+		return issuanceStage{}, closeErr
+	}
 	if err := l.observeIssuanceLocked(); err != nil {
 		return issuanceStage{}, err
 	}
