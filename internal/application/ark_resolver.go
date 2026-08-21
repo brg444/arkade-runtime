@@ -142,11 +142,11 @@ func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byt
 		if !got.IsSpent {
 			return fmt.Errorf("reserved outpoints not spent")
 		}
-		spentBy := strings.ToLower(strings.TrimSpace(got.SpentBy))
-		if spentBy == "" {
-			spentBy = strings.ToLower(strings.TrimSpace(got.ArkTxid))
-		}
-		if spentBy != wantTx {
+		// arkd records the checkpoint transaction ID in spentBy and the
+		// offchain transaction ID in arkTxid. Finalization is bound to the
+		// latter; comparing spentBy to an Arkade transaction ID rejects every
+		// otherwise valid collaborative spend.
+		if strings.ToLower(strings.TrimSpace(got.ArkTxid)) != wantTx {
 			return fmt.Errorf("reserved outpoint not spent by ark txid")
 		}
 	}
