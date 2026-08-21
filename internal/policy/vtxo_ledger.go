@@ -43,6 +43,37 @@ func (l *Ledger) GetVtxoOperationInputs(ctx context.Context, operationID string)
 	return l.loadVtxoOperationInputs(ctx, l.db, operationID)
 }
 
+// ListVtxoOperations returns MAC-verified operations for one vault.
+func (l *Ledger) ListVtxoOperations(ctx context.Context, vaultID string) ([]VtxoOperation, error) {
+	if vaultID == "" {
+		return nil, fmt.Errorf("vault id required")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key, err := l.issuanceKey()
+	if err != nil {
+		return nil, err
+	}
+	defer zeroBytes(key)
+	rows, err := l.db.QueryContext(ctx, `SELECT `+vtxoSelectColumns+` FROM vtxo_operation WHERE vault_id = ?`, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []VtxoOperation
+	for rows.Next() {
+		rec, err := scanVtxoOperation(rows)
+		if err != nil {
+			return nil, err
+		}
+		if err := VerifyVtxoOperation(&rec, key); err != nil {
+			return nil, fmt.Errorf("vtxo operation integrity: %w", err)
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
 // ReserveVtxoOperation inserts a reserved row and its inputs after checking
 // overlapping live outpoints and the rolling allowance.
 func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, inputs []VtxoOperationInput, remainingCap int64) error {
