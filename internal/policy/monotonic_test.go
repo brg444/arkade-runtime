@@ -1,8 +1,10 @@
 package policy
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestMonotonicRefusesRollback(t *testing.T) {
@@ -23,6 +25,45 @@ func TestMonotonicRefusesRollback(t *testing.T) {
 	}
 	if err := m.Observe(4); err == nil {
 		t.Fatal("accepted a rolled-back issuance count")
+	}
+}
+
+func TestFirstIssuanceWithMonotonicCounterDoesNotDeadlock(t *testing.T) {
+	dir := t.TempDir()
+	led, err := OpenLedger(filepath.Join(dir, "ledger.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := led.SetIntegrityKey(testIntegrityKey()); err != nil {
+		t.Fatal(err)
+	}
+	monotonic, err := OpenMonotonic(filepath.Join(dir, "count"), testIntegrityKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	led.SetMonotonic(monotonic)
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := led.IssueSequential(
+			context.Background(), "vault-a", digest(0x71), "request", 10, 1, 100,
+			func(context.Context, string) (string, error) { return "vault-signed", nil },
+			func(context.Context, string) (string, error) { return "fully-signed", nil },
+		)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := led.Close(); err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		// Do not close the ledger here: the regression holds its only
+		// connection forever, and Close would hide this failure by hanging.
+		t.Fatal("first issuance deadlocked while updating monotonic counter")
 	}
 }
 
