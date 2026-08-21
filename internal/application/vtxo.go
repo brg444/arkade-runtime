@@ -151,6 +151,9 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err != nil {
 		return nil, err
 	}
+	if err := s.reconcileSubmittedVtxos(ctx, vaultID); err != nil {
+		return nil, err
+	}
 	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
 	if err != nil {
 		return nil, apperr.New(apperr.CodeRejected, "vault-policy-v1 dest unavailable")
@@ -413,6 +416,59 @@ func vtxoFinalizableState(state string) bool {
 	return state == policy.VtxoStateSubmitted
 }
 
+func (s *Service) reconcileSubmittedVtxos(ctx context.Context, vaultID string) error {
+	if err := s.requireArkResolver(); err != nil {
+		return err
+	}
+	ops, err := s.Ledger.ListVtxoOperations(ctx, vaultID)
+	if err != nil {
+		return err
+	}
+	for _, op := range ops {
+		if op.State != policy.VtxoStateSubmitted {
+			continue
+		}
+		if err := s.promoteSubmittedVtxo(ctx, op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperation) error {
+	if op.State != policy.VtxoStateSubmitted {
+		return nil
+	}
+	inputs, err := s.Ledger.GetVtxoOperationInputs(ctx, op.OperationID)
+	if err != nil {
+		return err
+	}
+	reserved := make([]ports.ResolvedVtxo, 0, len(inputs))
+	for _, in := range inputs {
+		reserved = append(reserved, ports.ResolvedVtxo{
+			Txid: hex.EncodeToString(in.Txid), Vout: uint32(in.Vout), ValueSats: uint64(in.ValueSats), Script: bytes.Clone(in.Script),
+		})
+	}
+	pkScript := op.ChangeScript
+	if len(pkScript) == 0 && len(inputs) > 0 {
+		pkScript = inputs[0].Script
+	}
+	err = s.ArkResolver.ReservedSpentByArkTxid(ctx, pkScript, reserved, op.ArkTxid)
+	if err == nil {
+		op.State = policy.VtxoStateFinalized
+		return s.Ledger.PutVtxoOperation(ctx, op)
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "not spent by ark txid") {
+		op.State = policy.VtxoStateUnresolved
+		return s.Ledger.PutVtxoOperation(ctx, op)
+	}
+	if strings.Contains(msg, "reserved outpoints not spent") || strings.Contains(msg, "missing from indexer") {
+		return nil
+	}
+	return err
+}
+
 func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeRequest) (*VtxoAuthorizeResponse, error) {
 	if err := s.attachLedgerIntegrity(); err != nil {
 		return nil, err
@@ -642,26 +698,15 @@ func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*V
 	if err := s.requireArkResolver(); err != nil {
 		return nil, err
 	}
-	inputs, err := s.Ledger.GetVtxoOperationInputs(ctx, op.OperationID)
+	if err := s.promoteSubmittedVtxo(ctx, op); err != nil {
+		return nil, err
+	}
+	op, err = s.Ledger.GetVtxoOperation(ctx, req.OperationID)
 	if err != nil {
 		return nil, err
 	}
-	reserved := make([]ports.ResolvedVtxo, 0, len(inputs))
-	for _, in := range inputs {
-		reserved = append(reserved, ports.ResolvedVtxo{
-			Txid: hex.EncodeToString(in.Txid), Vout: uint32(in.Vout), ValueSats: uint64(in.ValueSats), Script: bytes.Clone(in.Script),
-		})
-	}
-	pkScript := op.ChangeScript
-	if len(pkScript) == 0 && len(inputs) > 0 {
-		pkScript = inputs[0].Script
-	}
-	if err := s.ArkResolver.ReservedSpentByArkTxid(ctx, pkScript, reserved, arkTxid); err != nil {
-		return nil, apperr.New(apperr.CodeRejected, err.Error())
-	}
-	op.State = policy.VtxoStateFinalized
-	if err := s.Ledger.PutVtxoOperation(ctx, op); err != nil {
-		return nil, err
+	if op.State != policy.VtxoStateFinalized {
+		return nil, apperr.New(apperr.CodeRejected, "reserved outpoint not spent by ark txid")
 	}
 	return &VtxoFinalizeResponse{OperationID: op.OperationID, BundleDigest: digestHex, State: op.State, ArkTxid: op.ArkTxid}, nil
 }

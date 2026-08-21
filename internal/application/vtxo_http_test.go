@@ -43,7 +43,10 @@ func (s stubArkResolver) ReservedSpentByArkTxid(_ context.Context, _ []byte, res
 	if len(reserved) == 0 {
 		return fmt.Errorf("reserved outpoints required")
 	}
-	if s.spentBy == "" || !strings.EqualFold(s.spentBy, arkTxid) {
+	if s.spentBy == "" {
+		return fmt.Errorf("reserved outpoints not spent")
+	}
+	if !strings.EqualFold(s.spentBy, arkTxid) {
 		return fmt.Errorf("reserved outpoint not spent by ark txid")
 	}
 	return nil
@@ -427,6 +430,83 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 	}
 	if out.State != policy.VtxoStateFinalized {
 		t.Fatalf("finalize = %+v", out)
+	}
+}
+
+func insertSubmittedSpend(t *testing.T, e *env, operationID, arkTxid string, treePkScript []byte) {
+	t.Helper()
+	now := e.svc.vtxoNow().Format(timeRFC3339)
+	digest := bytes.Repeat([]byte{0x33}, 32)
+	in := policy.VtxoOperationInput{
+		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(treePkScript),
+	}
+	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
+		OperationID: operationID, VaultID: fixture.VaultID, Purpose: policy.VtxoPurposeSpend, BundleDigest: digest,
+		State: policy.VtxoStateReserved, AmountSats: 10_000, DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: bytes.Clone(treePkScript),
+		ExpiresAt: e.svc.vtxoNow().Add(vtxoReserveAuthorizeTimeout).Format(timeRFC3339), CreatedAt: now,
+	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.State = policy.VtxoStateSubmitted
+	stored.ArkTxid = arkTxid
+	if err := e.svc.Ledger.PutVtxoOperation(context.Background(), stored); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReserveReconcilesSubmittedWhenIndexerShowsStoredArkTxid(t *testing.T) {
+	e, resolver, arkd := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arkTxid := strings.Repeat("ab", 32)
+	insertSubmittedSpend(t, e, "spend-submitted", arkTxid, tree.PkScript)
+	resolver.spentBy = arkTxid
+	if err := e.svc.reconcileSubmittedVtxos(context.Background(), fixture.VaultID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-submitted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != policy.VtxoStateFinalized {
+		t.Fatalf("submitted was not reconciled: %s", got.State)
+	}
+	_ = arkd
+}
+
+func TestReconcileDoesNotTrustADifferentArkTxid(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedTxid := strings.Repeat("ab", 32)
+	insertSubmittedSpend(t, e, "spend-foreign", storedTxid, tree.PkScript)
+	resolver.spentBy = strings.Repeat("cd", 32)
+	if err := e.svc.reconcileSubmittedVtxos(context.Background(), fixture.VaultID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-foreign")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != policy.VtxoStateUnresolved {
+		t.Fatalf("foreign spend was not quarantined: %s", got.State)
+	}
+	spent, err := e.svc.Ledger.SpentInPeriod(context.Background(), fixture.VaultID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spent < 10_000 {
+		t.Fatalf("unresolved spend released allowance: %d", spent)
 	}
 }
 
