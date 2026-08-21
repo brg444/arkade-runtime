@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -1241,6 +1242,55 @@ func (s *Service) routineSigners(rec *policy.VaultRecord, op *vault.Built) (Sign
 	return vaultSigner, s.ArkadeCosignerSigner, nil
 }
 
+// boundAuthorizeRequest preserves the first integrity-protected PSBT for a
+// digest while allowing a browser that reloaded after an ambiguous response
+// to prove the same transaction again with fresh authenticator/signature
+// bytes. The new request is fully verified before this function is called;
+// only the already-verified, MAC-protected first request reaches the signers.
+func (s *Service) boundAuthorizeRequest(
+	ctx context.Context,
+	vaultID string,
+	challenge []byte,
+	requestPSBT string,
+	op *vault.Built,
+) (string, error) {
+	issuance, err := s.Ledger.GetIssuance(ctx, vaultID, challenge)
+	if errors.Is(err, sql.ErrNoRows) {
+		return requestPSBT, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if issuance.RequestPSBT == requestPSBT {
+		return requestPSBT, nil
+	}
+	stored, _, err := parseAndVerifyPrevout(issuance.RequestPSBT)
+	if err != nil {
+		return "", fmt.Errorf("stored issuance request: %w", err)
+	}
+	storedChallenge, err := vault.Challenge(stored, op)
+	if err != nil {
+		return "", fmt.Errorf("stored issuance request: %w", err)
+	}
+	if subtle.ConstantTimeCompare(storedChallenge, challenge) != 1 {
+		return "", fmt.Errorf("stored issuance request challenge mismatch")
+	}
+	if _, err := classifySpend(stored, op); err != nil {
+		return "", fmt.Errorf("stored issuance request: %w", err)
+	}
+	cred, err := s.loadVerifiedCredentialFor(vaultID)
+	if err != nil {
+		return "", err
+	}
+	if cred == nil {
+		return "", fmt.Errorf("not enrolled")
+	}
+	if err := verifyRoutineRequestAuthentication(stored, op, cred.PhoneDirectP256, challenge); err != nil {
+		return "", fmt.Errorf("stored issuance request: %w", err)
+	}
+	return issuance.RequestPSBT, nil
+}
+
 func (s *Service) rejectCrossVaultCredential(vaultID string, credID []byte) error {
 	idx := s.published.Load()
 	if idx == nil || len(credID) == 0 {
@@ -1703,6 +1753,10 @@ func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPS
 	if err != nil {
 		return "", false, err
 	}
+	requestPSBT, err = s.boundAuthorizeRequest(ctx, vaultID, challenge, requestPSBT, op)
+	if err != nil {
+		return "", false, err
+	}
 	vaultSigner, arkadeSigner, err := s.routineSigners(rec, op)
 	if err != nil {
 		return "", false, err
@@ -1856,23 +1910,35 @@ func (s *Service) verifyAuthorization(req AuthorizeRequest, ptx *psbt.Packet, op
 		return nil, err
 	}
 
-	packet, err := arkade.FindEmulatorPacket(ptx.UnsignedTx)
-	if err != nil {
-		return nil, err
-	}
-	if len(packet) != 1 {
-		return nil, fmt.Errorf("emulator packet")
-	}
-	if len(packet[0].Witness) != 1 || len(packet[0].Witness[0]) != 64 {
-		return nil, fmt.Errorf("packet witness must be the one-item 64-byte direct signature")
-	}
-	if err := verifyDirectAuth(cred.PhoneDirectP256, challenge, packet[0].Witness[0]); err != nil {
-		return nil, err
-	}
-	if err := verifyPhoneRoutineSignature(ptx, op); err != nil {
+	if err := verifyRoutineRequestAuthentication(ptx, op, cred.PhoneDirectP256, challenge); err != nil {
 		return nil, err
 	}
 	return challenge, nil
+}
+
+func verifyRoutineRequestAuthentication(
+	ptx *psbt.Packet,
+	op *vault.Built,
+	phoneDirectP256 []byte,
+	challenge []byte,
+) error {
+	packet, err := arkade.FindEmulatorPacket(ptx.UnsignedTx)
+	if err != nil {
+		return err
+	}
+	if len(packet) != 1 {
+		return fmt.Errorf("emulator packet")
+	}
+	if len(packet[0].Witness) != 1 || len(packet[0].Witness[0]) != 64 {
+		return fmt.Errorf("packet witness must be the one-item 64-byte direct signature")
+	}
+	if err := verifyDirectAuth(phoneDirectP256, challenge, packet[0].Witness[0]); err != nil {
+		return err
+	}
+	if err := verifyPhoneRoutineSignature(ptx, op); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) acquireVerification(ctx context.Context) (func(), error) {
