@@ -536,4 +536,22 @@ func TestReconcileDoesNotTrustADifferentArkTxid(t *testing.T) {
 	}
 }
 
+func TestGetVtxoOperationViewIsReadOnly(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arkTxid := strings.Repeat("ab", 32)
+	insertSubmittedSpend(t, e, "spend-status", arkTxid, tree.PkScript)
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != policy.VtxoStateSubmitted || view.ArkTxid != arkTxid {
+		t.Fatalf("view = %+v", view)
+	}
+}
+
 const timeRFC3339 = "2006-01-02T15:04:05Z"

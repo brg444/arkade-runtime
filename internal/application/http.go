@@ -188,6 +188,7 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/vtxo/authorize":             {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/operation":             {http.MethodGet: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -445,6 +446,10 @@ func attachSpendRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			return
 		}
 		out, err := svc.FinalizeVtxo(r.Context(), req)
+		writeJSON(w, out, err)
+	})
+	mux.HandleFunc("GET /v1/vtxo/operation", func(w http.ResponseWriter, r *http.Request) {
+		out, err := svc.GetVtxoOperationView(r.Context(), r.URL.Query().Get("vaultId"), r.URL.Query().Get("operationId"))
 		writeJSON(w, out, err)
 	})
 }

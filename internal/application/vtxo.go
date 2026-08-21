@@ -416,6 +416,43 @@ func vtxoFinalizableState(state string) bool {
 	return state == policy.VtxoStateSubmitted
 }
 
+// VtxoOperationView is the idempotent status of one spend. No client mutation.
+type VtxoOperationView struct {
+	OperationID  string `json:"operationId"`
+	BundleDigest string `json:"bundleDigest"`
+	State        string `json:"state"`
+	ArkTxid      string `json:"arkTxid,omitempty"`
+	ExpiresAt    string `json:"expiresAt,omitempty"`
+}
+
+func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID string) (*VtxoOperationView, error) {
+	if err := s.attachLedgerIntegrity(); err != nil {
+		return nil, err
+	}
+	id, _, _, err := s.resolveSpendVaultRecord(vaultID)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.reconcileSubmittedVtxos(ctx, id)
+	op, err := s.Ledger.GetVtxoOperation(ctx, operationID)
+	if err == sql.ErrNoRows {
+		return nil, apperr.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if op.VaultID != id {
+		return nil, apperr.New(apperr.CodeRejected, "operation does not belong to this vault")
+	}
+	return &VtxoOperationView{
+		OperationID:  op.OperationID,
+		BundleDigest: hex.EncodeToString(op.BundleDigest),
+		State:        op.State,
+		ArkTxid:      op.ArkTxid,
+		ExpiresAt:    op.ExpiresAt,
+	}, nil
+}
+
 func (s *Service) reconcileSubmittedVtxos(ctx context.Context, vaultID string) error {
 	if err := s.requireArkResolver(); err != nil {
 		return err
