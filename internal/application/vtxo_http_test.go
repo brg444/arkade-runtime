@@ -25,11 +25,12 @@ import (
 )
 
 type stubArkResolver struct {
-	vtxos      []ports.ResolvedVtxo
-	checkpoint []byte
-	signer     []byte
-	spentBy    string
-	spentErr   error
+	vtxos        []ports.ResolvedVtxo
+	checkpoint   []byte
+	signer       []byte
+	spentBy      string
+	spentErr     error
+	changeExists bool
 }
 
 func (s stubArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.ResolvedVtxo, error) {
@@ -48,6 +49,13 @@ func (s stubArkResolver) ReservedSpentByArkTxid(_ context.Context, _ []byte, res
 	}
 	if !strings.EqualFold(s.spentBy, arkTxid) {
 		return fmt.Errorf("reserved outpoint not spent by ark txid")
+	}
+	return nil
+}
+
+func (s stubArkResolver) ChangeVtxoFromArkTx(_ context.Context, _ []byte, arkTxid string, vout uint32, _ uint64) error {
+	if !s.changeExists || vout != 1 || !strings.EqualFold(s.spentBy, arkTxid) {
+		return fmt.Errorf("change vtxo not yet projected")
 	}
 	return nil
 }
@@ -422,6 +430,13 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 		t.Fatalf("disappearance-only finalize = %v", err)
 	}
 	resolver.spentBy = arkTxid
+	_, err = e.svc.FinalizeVtxo(context.Background(), VtxoFinalizeRequest{
+		VaultID: fixture.VaultID, OperationID: op.OperationID, BundleDigest: hex.EncodeToString(digest), ArkTxid: arkTxid,
+	})
+	if err == nil || !strings.Contains(err.Error(), "spent by ark txid") {
+		t.Fatalf("accept-only spend treated as finalized: %v", err)
+	}
+	resolver.changeExists = true
 	out, err := e.svc.FinalizeVtxo(context.Background(), VtxoFinalizeRequest{
 		VaultID: fixture.VaultID, OperationID: op.OperationID, BundleDigest: hex.EncodeToString(digest), ArkTxid: arkTxid,
 	})
@@ -472,6 +487,17 @@ func TestReserveReconcilesSubmittedWhenIndexerShowsStoredArkTxid(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-submitted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != policy.VtxoStateSubmitted {
+		t.Fatalf("accept-only spend was finalized: %s", got.State)
+	}
+	resolver.changeExists = true
+	if err := e.svc.reconcileSubmittedVtxos(context.Background(), fixture.VaultID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-submitted")
 	if err != nil {
 		t.Fatal(err)
 	}

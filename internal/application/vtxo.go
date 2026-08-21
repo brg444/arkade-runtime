@@ -454,19 +454,29 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 		pkScript = inputs[0].Script
 	}
 	err = s.ArkResolver.ReservedSpentByArkTxid(ctx, pkScript, reserved, op.ArkTxid)
-	if err == nil {
-		op.State = policy.VtxoStateFinalized
-		return s.Ledger.PutVtxoOperation(ctx, op)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "not spent by ark txid") {
+			op.State = policy.VtxoStateUnresolved
+			return s.Ledger.PutVtxoOperation(ctx, op)
+		}
+		if strings.Contains(msg, "reserved outpoints not spent") || strings.Contains(msg, "missing from indexer") {
+			return nil
+		}
+		return err
 	}
-	msg := err.Error()
-	if strings.Contains(msg, "not spent by ark txid") {
-		op.State = policy.VtxoStateUnresolved
-		return s.Ledger.PutVtxoOperation(ctx, op)
+	if len(inputs) != 1 {
+		return fmt.Errorf("exact spend program requires one input")
 	}
-	if strings.Contains(msg, "reserved outpoints not spent") || strings.Contains(msg, "missing from indexer") {
-		return nil
+	changeSats := uint64(inputs[0].ValueSats) - uint64(op.AmountSats) - uint64(op.FeeSats)
+	if err := s.ArkResolver.ChangeVtxoFromArkTx(ctx, op.ChangeScript, op.ArkTxid, 1, changeSats); err != nil {
+		if strings.Contains(err.Error(), "change vtxo not yet projected") {
+			return nil
+		}
+		return err
 	}
-	return err
+	op.State = policy.VtxoStateFinalized
+	return s.Ledger.PutVtxoOperation(ctx, op)
 }
 
 func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeRequest) (*VtxoAuthorizeResponse, error) {

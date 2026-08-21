@@ -153,6 +153,34 @@ func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byt
 	return nil
 }
 
+func (r *arkResolver) ChangeVtxoFromArkTx(ctx context.Context, changeScript []byte, arkTxid string, vout uint32, valueSats uint64) error {
+	if err := requireTxid(strings.ToLower(strings.TrimSpace(arkTxid))); err != nil {
+		return fmt.Errorf("arkTxid")
+	}
+	listed, err := r.listVtxos(ctx, changeScript, true)
+	if err != nil {
+		return err
+	}
+	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
+	for _, vtxo := range listed {
+		if vtxo.Outpoint.Vout == nil || vtxo.IsSpent {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(vtxo.Outpoint.Txid)) != wantTx || *vtxo.Outpoint.Vout != vout {
+			continue
+		}
+		item, err := parseResolvedVtxo(vtxo, changeScript)
+		if err != nil {
+			return err
+		}
+		if item.ValueSats != valueSats {
+			return fmt.Errorf("change vtxo amount")
+		}
+		return nil
+	}
+	return fmt.Errorf("change vtxo not yet projected")
+}
+
 func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]ports.ResolvedVtxo, error) {
 	listed, err := r.listVtxos(ctx, pkScript, true)
 	if err != nil {
