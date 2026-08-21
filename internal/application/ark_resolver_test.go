@@ -147,11 +147,11 @@ func TestArkResolverRequiresChangeVtxoAfterFinalize(t *testing.T) {
 		case "/v1/info":
 			return jsonResponse(http.StatusOK, happyIndexerInfo()), nil
 		case "/v1/indexer/vtxos":
-			if req.URL.Query().Get("spendableOnly") != "true" {
-				t.Fatalf("change lookup must request spendableOnly: %s", req.URL)
+			if req.URL.Query().Get("spendableOnly") == "true" {
+				t.Fatalf("change lookup must include later-spent outputs: %s", req.URL)
 			}
 			body := fmt.Sprintf(
-				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"8766","script":%q,"isSpent":false}]}`,
+				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"8766","script":%q,"isSpent":true}]}`,
 				arkTxid, hex.EncodeToString(pkScript),
 			)
 			return jsonResponse(http.StatusOK, body), nil

@@ -157,13 +157,13 @@ func (r *arkResolver) ChangeVtxoFromArkTx(ctx context.Context, changeScript []by
 	if err := requireTxid(strings.ToLower(strings.TrimSpace(arkTxid))); err != nil {
 		return fmt.Errorf("arkTxid")
 	}
-	listed, err := r.listVtxos(ctx, changeScript, true)
+	listed, err := r.listVtxos(ctx, changeScript, false)
 	if err != nil {
 		return err
 	}
 	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
 	for _, vtxo := range listed {
-		if vtxo.Outpoint.Vout == nil || vtxo.IsSpent {
+		if vtxo.Outpoint.Vout == nil {
 			continue
 		}
 		if strings.ToLower(strings.TrimSpace(vtxo.Outpoint.Txid)) != wantTx || *vtxo.Outpoint.Vout != vout {
