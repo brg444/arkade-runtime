@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/brg444/arkade-vault-server/fixture"
@@ -551,6 +552,71 @@ func TestGetVtxoOperationViewIsReadOnly(t *testing.T) {
 	}
 	if view.State != policy.VtxoStateSubmitted || view.ArkTxid != arkTxid {
 		t.Fatalf("view = %+v", view)
+	}
+}
+
+func TestGetVtxoOperationViewReturnsSignedPsbt(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arkTxid := strings.Repeat("cd", 32)
+	insertSubmittedSpend(t, e, "spend-signed", arkTxid, tree.PkScript)
+	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-signed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.State = policy.VtxoStateSigned
+	stored.AuthorizedPSBT = "cHNidP9signed"
+	if err := e.svc.Ledger.PutVtxoOperation(context.Background(), stored); err != nil {
+		t.Fatal(err)
+	}
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-signed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != policy.VtxoStateSigned || view.AuthorizedPsbt != "cHNidP9signed" || view.ArkTxid != arkTxid {
+		t.Fatalf("signed view = %+v", view)
+	}
+	if len(view.CheckpointPsbts) != 0 {
+		t.Fatalf("signed view leaked checkpoints: %+v", view.CheckpointPsbts)
+	}
+}
+
+func TestGetVtxoOperationViewAbortsExpiredReservation(t *testing.T) {
+	e, _, _ := vtxoTestEnv(t)
+	snap := e.svc.snapshot(fixture.VaultID)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := e.svc.vtxoNow()
+	digest := bytes.Repeat([]byte{0x33}, 32)
+	in := policy.VtxoOperationInput{
+		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(tree.PkScript),
+	}
+	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
+		OperationID: "spend-expired", VaultID: fixture.VaultID, Purpose: policy.VtxoPurposeSpend, BundleDigest: digest,
+		State: policy.VtxoStateReserved, AmountSats: 10_000, DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: bytes.Clone(tree.PkScript),
+		ExpiresAt: now.Add(-time.Second).Format(timeRFC3339), CreatedAt: now.Add(-2 * time.Minute).Format(timeRFC3339),
+	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
+		t.Fatal(err)
+	}
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-expired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != policy.VtxoStateAborted {
+		t.Fatalf("expired reservation = %+v", view)
+	}
+	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-expired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != policy.VtxoStateAborted {
+		t.Fatalf("expired reservation was not persisted aborted: %s", stored.State)
 	}
 }
 

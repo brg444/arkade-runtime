@@ -417,12 +417,34 @@ func vtxoFinalizableState(state string) bool {
 }
 
 // VtxoOperationView is the idempotent status of one spend. No client mutation.
+// Signed and submitted rows include the PSBT material needed to resume a lost
+// authorize or checkpoint-authorize response.
 type VtxoOperationView struct {
-	OperationID  string `json:"operationId"`
-	BundleDigest string `json:"bundleDigest"`
-	State        string `json:"state"`
-	ArkTxid      string `json:"arkTxid,omitempty"`
-	ExpiresAt    string `json:"expiresAt,omitempty"`
+	OperationID     string   `json:"operationId"`
+	BundleDigest    string   `json:"bundleDigest"`
+	State           string   `json:"state"`
+	ArkTxid         string   `json:"arkTxid,omitempty"`
+	ExpiresAt       string   `json:"expiresAt,omitempty"`
+	AuthorizedPsbt  string   `json:"authorizedPsbt,omitempty"`
+	CheckpointPsbts []string `json:"checkpointPsbts,omitempty"`
+}
+
+func (s *Service) expireReservedVtxo(ctx context.Context, op policy.VtxoOperation) (policy.VtxoOperation, error) {
+	if op.State != policy.VtxoStateReserved || op.ExpiresAt == "" {
+		return op, nil
+	}
+	exp, err := time.Parse(time.RFC3339, op.ExpiresAt)
+	if err != nil {
+		return op, apperr.New(apperr.CodeRejected, "reservation expiry")
+	}
+	if s.vtxoNow().Before(exp) {
+		return op, nil
+	}
+	op.State = policy.VtxoStateAborted
+	if err := s.Ledger.PutVtxoOperation(ctx, op); err != nil {
+		return op, err
+	}
+	return op, nil
 }
 
 func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID string) (*VtxoOperationView, error) {
@@ -444,13 +466,25 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 	if op.VaultID != id {
 		return nil, apperr.New(apperr.CodeRejected, "operation does not belong to this vault")
 	}
-	return &VtxoOperationView{
+	op, err = s.expireReservedVtxo(ctx, op)
+	if err != nil {
+		return nil, err
+	}
+	view := &VtxoOperationView{
 		OperationID:  op.OperationID,
 		BundleDigest: hex.EncodeToString(op.BundleDigest),
 		State:        op.State,
 		ArkTxid:      op.ArkTxid,
 		ExpiresAt:    op.ExpiresAt,
-	}, nil
+	}
+	switch op.State {
+	case policy.VtxoStateSigned:
+		view.AuthorizedPsbt = op.AuthorizedPSBT
+	case policy.VtxoStateSubmitted:
+		view.AuthorizedPsbt = op.AuthorizedPSBT
+		view.CheckpointPsbts = decodeJSONStringSlice(op.CheckpointPSBTs)
+	}
+	return view, nil
 }
 
 func (s *Service) reconcileSubmittedVtxos(ctx context.Context, vaultID string) error {
