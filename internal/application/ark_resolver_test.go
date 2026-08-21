@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/arkade-vault-server/internal/ports"
 )
 
 const testCheckpointTapscript = "aabb"
@@ -97,6 +98,43 @@ func TestArkResolverSpendableVtxosParsesPinnedAmounts(t *testing.T) {
 	}
 	if hex.EncodeToString(got[0].Script) != hex.EncodeToString(pkScript) {
 		t.Fatalf("script = %x", got[0].Script)
+	}
+}
+
+func TestArkResolverMatchesArkTxidInsteadOfCheckpointSpentBy(t *testing.T) {
+	pkScript := []byte{0x51}
+	inputTxid := strings.Repeat("ab", 32)
+	arkTxid := strings.Repeat("cd", 32)
+	checkpointTxid := strings.Repeat("ef", 32)
+	origin := deployment.MutinynetArkIndexerOrigin
+	doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/v1/info":
+			return jsonResponse(http.StatusOK, happyIndexerInfo()), nil
+		case "/v1/indexer/vtxos":
+			if req.URL.Query().Get("scripts") != hex.EncodeToString(pkScript) || req.URL.Query().Has("spendableOnly") {
+				t.Fatalf("unexpected vtxos query: %s", req.URL)
+			}
+			body := fmt.Sprintf(
+				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"1234","script":%q,"isSpent":true,"spentBy":%q,"arkTxid":%q}]}`,
+				inputTxid, hex.EncodeToString(pkScript), checkpointTxid, arkTxid,
+			)
+			return jsonResponse(http.StatusOK, body), nil
+		default:
+			t.Fatalf("unexpected request %s %s", req.Method, req.URL)
+			return nil, nil
+		}
+	})
+	resolver, err := dialArkResolver(context.Background(), origin, deployment.NetworkMutinynet, doer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserved := []ports.ResolvedVtxo{{Txid: inputTxid, Vout: 1, ValueSats: 1234, Script: pkScript}}
+	if err := resolver.ReservedSpentByArkTxid(context.Background(), pkScript, reserved, arkTxid); err != nil {
+		t.Fatalf("valid Arkade transaction rejected: %v", err)
+	}
+	if err := resolver.ReservedSpentByArkTxid(context.Background(), pkScript, reserved, strings.Repeat("01", 32)); err == nil {
+		t.Fatal("unrelated Arkade transaction accepted")
 	}
 }
 

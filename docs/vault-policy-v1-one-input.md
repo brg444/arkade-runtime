@@ -36,6 +36,11 @@ sequence follows the SDK and Operator protocol exactly:
 5. The wallet finalizes with the Operator, then `finalize` verifies that the
    reserved VTXO was spent by the authorized Ark transaction.
 
+The indexer uses two identifiers for that final check. `spentBy` is the
+checkpoint transaction ID; `arkTxid` is the Arkade transaction ID that created
+the spend. The vault service must compare the authorized Arkade transaction ID
+to `arkTxid`, not to `spentBy`.
+
 Signing checkpoints before Operator submission is invalid because the
 Operator intentionally rebuilds that stage. This slice permits zero virtual
 fee only.
