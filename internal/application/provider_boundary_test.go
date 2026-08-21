@@ -623,33 +623,20 @@ func TestProviderBoundaryHappyPathAndExactRetry(t *testing.T) {
 		t.Fatalf("signer calls after first authorization: got %d, want 1", got)
 	}
 
-	// A retry may carry a fresh off-chain WebAuthn assertion, but must name the
-	// exact originally reserved PSBT. The Arkade sighash masks the packet
-	// witness, so a fresh PhoneDirectP256 signature could otherwise share a digest
-	// while naming different transaction bytes and txid.
+	// A retry may carry fresh WebAuthn, PhoneDirectP256 and phone-routine
+	// signatures for the same challenge. The service verifies the fresh request
+	// and then reuses the first integrity-protected exact PSBT; newly generated
+	// signature bytes never replace the transaction presented to the signers.
 	retryRequest, retryDigest := e.requestFor(t, draft, e.passkeyPriv)
 	if !bytes.Equal(firstDigest, retryDigest) {
 		t.Fatalf("masked digest changed across assertion retry: %x != %x", firstDigest, retryDigest)
 	}
-	if _, _, err := e.service.Authorize(context.Background(), retryRequest); err == nil || !strings.Contains(err.Error(), "different exact request") {
-		t.Fatalf("same challenge with fresh PhoneDirectP256/hot bytes was not rejected: %v", err)
-	}
-	if got := e.countingSigner.callCount(); got != 1 {
-		t.Fatalf("changed same-digest request reached private signer: %d calls", got)
-	}
-	retryRequest.PSBT = firstRequest.PSBT
 	retryResponse, replay, err := e.service.Authorize(context.Background(), retryRequest)
-	if err != nil {
-		t.Fatalf("exact retry: %v", err)
-	}
-	if !replay {
-		t.Fatal("exact retry was not reported as replay")
-	}
-	if retryResponse != firstResponse {
-		t.Fatal("retry did not return the committed first response")
+	if err != nil || !replay || retryResponse != firstResponse {
+		t.Fatalf("fresh same-challenge retry: replay=%v response_bytes=%d err=%v", replay, len(retryResponse), err)
 	}
 	if got := e.countingSigner.callCount(); got != 1 {
-		t.Fatalf("exact retry called signer again: got %d calls, want 1", got)
+		t.Fatalf("fresh same-challenge retry called signer: got %d calls, want 1", got)
 	}
 	spent, err := e.ledger.SpentInPeriod(
 		context.Background(), fixture.VaultID, e.ledger.PeriodStart(),
