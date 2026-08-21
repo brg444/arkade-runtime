@@ -631,9 +631,12 @@ func TestProviderBoundaryHappyPathAndExactRetry(t *testing.T) {
 	if !bytes.Equal(firstDigest, retryDigest) {
 		t.Fatalf("masked digest changed across assertion retry: %x != %x", firstDigest, retryDigest)
 	}
-	retryResponse, replay, err := e.service.Authorize(context.Background(), retryRequest)
+	retryResponse, boundRequest, replay, err := e.service.AuthorizeWithBoundRequest(context.Background(), retryRequest)
 	if err != nil || !replay || retryResponse != firstResponse {
 		t.Fatalf("fresh same-challenge retry: replay=%v response_bytes=%d err=%v", replay, len(retryResponse), err)
+	}
+	if boundRequest != firstRequest.PSBT {
+		t.Fatal("fresh same-challenge retry did not return the first exact request")
 	}
 	if got := e.countingSigner.callCount(); got != 1 {
 		t.Fatalf("fresh same-challenge retry called signer: got %d calls, want 1", got)

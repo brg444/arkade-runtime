@@ -173,9 +173,10 @@ func TestHTTPTenantBDraftBindAuthorizePublishLeavesAUntouched(t *testing.T) {
 		"signature":         hex.EncodeToString(assertion.DERSignature),
 	})
 	var authOut struct {
-		SignedPSBT string `json:"signedPsbt"`
+		RequestPSBT string `json:"requestPsbt"`
+		SignedPSBT  string `json:"signedPsbt"`
 	}
-	if err := json.Unmarshal(authRaw, &authOut); err != nil || authOut.SignedPSBT == "" {
+	if err := json.Unmarshal(authRaw, &authOut); err != nil || authOut.RequestPSBT == "" || authOut.SignedPSBT == "" {
 		t.Fatalf("authorize: %s", authRaw)
 	}
 	pubRaw := httpJSON(t, h, http.MethodPost, "/v1/publish", map[string]any{

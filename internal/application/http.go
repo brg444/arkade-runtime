@@ -316,8 +316,8 @@ func attachSpendRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			writeMutationError(w, err)
 			return
 		}
-		signed, replay, err := svc.Authorize(r.Context(), req)
-		writeJSON(w, map[string]any{"signedPsbt": signed, "replay": replay}, err)
+		signed, requestPSBT, replay, err := svc.AuthorizeWithBoundRequest(r.Context(), req)
+		writeJSON(w, map[string]any{"requestPsbt": requestPSBT, "signedPsbt": signed, "replay": replay}, err)
 	})
 	mux.HandleFunc("POST /v1/initiate", func(w http.ResponseWriter, r *http.Request) {
 		var req TransitionRequest
