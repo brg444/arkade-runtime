@@ -36,8 +36,13 @@ type ArkResolver interface {
 	SpendableVtxos(ctx context.Context, pkScript []byte) ([]ResolvedVtxo, error)
 	// ReservedSpentByArkTxid requires every reserved outpoint to be spent by
 	// the persisted ark txid (confirmed or virtual mempool). Disappearance
-	// alone is not enough.
+	// alone is not enough. arkd writes this at Operator accept, before
+	// finalizeTx projects the new VTXOs.
 	ReservedSpentByArkTxid(ctx context.Context, pkScript []byte, reserved []ResolvedVtxo, arkTxid string) error
+	// ChangeVtxoFromArkTx requires the mandatory change output of the Arkade
+	// transaction to exist as an unspent vault-policy-v1 VTXO. That appears
+	// only after Operator finalizeTx, not after accept.
+	ChangeVtxoFromArkTx(ctx context.Context, changeScript []byte, arkTxid string, vout uint32, valueSats uint64) error
 	// CheckpointTapscript is the arkd-advertised unroll script from GetInfo.
 	CheckpointTapscript() []byte
 	// AdvertisedSignerPub is the 33-byte compressed arkd signer from GetInfo.

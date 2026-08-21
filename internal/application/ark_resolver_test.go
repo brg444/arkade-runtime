@@ -138,6 +138,40 @@ func TestArkResolverMatchesArkTxidInsteadOfCheckpointSpentBy(t *testing.T) {
 	}
 }
 
+func TestArkResolverRequiresChangeVtxoAfterFinalize(t *testing.T) {
+	pkScript := []byte{0x51, 0x20}
+	arkTxid := strings.Repeat("cd", 32)
+	origin := deployment.MutinynetArkIndexerOrigin
+	doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/v1/info":
+			return jsonResponse(http.StatusOK, happyIndexerInfo()), nil
+		case "/v1/indexer/vtxos":
+			if req.URL.Query().Get("spendableOnly") != "true" {
+				t.Fatalf("change lookup must request spendableOnly: %s", req.URL)
+			}
+			body := fmt.Sprintf(
+				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"8766","script":%q,"isSpent":false}]}`,
+				arkTxid, hex.EncodeToString(pkScript),
+			)
+			return jsonResponse(http.StatusOK, body), nil
+		default:
+			t.Fatalf("unexpected request %s %s", req.Method, req.URL)
+			return nil, nil
+		}
+	})
+	resolver, err := dialArkResolver(context.Background(), origin, deployment.NetworkMutinynet, doer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resolver.ChangeVtxoFromArkTx(context.Background(), pkScript, arkTxid, 1, 8766); err != nil {
+		t.Fatalf("finalized change rejected: %v", err)
+	}
+	if err := resolver.ChangeVtxoFromArkTx(context.Background(), pkScript, arkTxid, 1, 1); err == nil {
+		t.Fatal("wrong change amount accepted")
+	}
+}
+
 func TestDialArkResolverRejectsOriginsWithoutNetwork(t *testing.T) {
 	fatalDoer := rpcDoerFunc(func(*http.Request) (*http.Response, error) {
 		t.Fatal("invalid origin reached the network")
