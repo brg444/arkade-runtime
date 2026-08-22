@@ -43,9 +43,9 @@ type ArkResolver interface {
 	// transaction to exist as an unspent vault-policy-v1 VTXO. That appears
 	// only after Operator finalizeTx, not after accept.
 	ChangeVtxoFromArkTx(ctx context.Context, changeScript []byte, arkTxid string, vout uint32, valueSats uint64) error
-	// CheckpointTapscript is the arkd-advertised unroll script from GetInfo.
+	// CheckpointTapscript is the release-pinned Operator unroll script.
 	CheckpointTapscript() []byte
-	// AdvertisedSignerPub is the 33-byte compressed arkd signer from GetInfo.
-	AdvertisedSignerPub() []byte
+	// OperatorSignerPub is the release-pinned compressed Operator signer.
+	OperatorSignerPub() []byte
 	Network() string
 }

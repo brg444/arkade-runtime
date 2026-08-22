@@ -62,7 +62,7 @@ func (s stubArkResolver) ChangeVtxoFromArkTx(_ context.Context, _ []byte, arkTxi
 }
 
 func (s stubArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), s.checkpoint...) }
-func (s stubArkResolver) AdvertisedSignerPub() []byte { return append([]byte(nil), s.signer...) }
+func (s stubArkResolver) OperatorSignerPub() []byte   { return append([]byte(nil), s.signer...) }
 func (s stubArkResolver) Network() string             { return program.NetworkRegtest }
 
 func vtxoTestEnv(t *testing.T) (*env, *stubArkResolver, *btcec.PrivateKey) {

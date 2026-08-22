@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -8,11 +9,14 @@ import (
 	"strings"
 	"testing"
 
+	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/ports"
+	"github.com/btcsuite/btcd/btcec/v2"
 )
 
-const testCheckpointTapscript = "aabb"
+const testCheckpointTapscript = deployment.MutinynetCheckpointTapscriptHex
 
 func TestMutinynetArkIndexerOriginPin(t *testing.T) {
 	if deployment.MutinynetArkIndexerOrigin != "https://mutinynet.arkade.sh" {
@@ -28,8 +32,9 @@ func TestDialArkResolverPinsMutinynet(t *testing.T) {
 
 	origin := deployment.MutinynetArkIndexerOrigin
 	info := fmt.Sprintf(
-		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":"03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a","unilateralExitDelay":"2048"}`,
+		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"unilateralExitDelay":"2048"}`,
 		deployment.NetworkMutinynet, testCheckpointTapscript,
+		deployment.MutinynetOperatorSignerPubHex,
 	)
 	doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host != "mutinynet.arkade.sh" {
@@ -53,6 +58,55 @@ func TestDialArkResolverPinsMutinynet(t *testing.T) {
 	got := hex.EncodeToString(resolver.CheckpointTapscript())
 	if got != testCheckpointTapscript {
 		t.Fatalf("CheckpointTapscript() = %q", got)
+	}
+}
+
+func TestDialArkResolverRejectsCheckpointPolicySubstitution(t *testing.T) {
+	_, attacker := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{0x71}, 32))
+	wantForfeit, err := hex.DecodeString(deployment.MutinynetCheckpointForfeitPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forfeit, err := btcec.ParsePubKey(wantForfeit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		closure *arkscript.CSVMultisigClosure
+	}{
+		{
+			name: "attacker-only key",
+			closure: &arkscript.CSVMultisigClosure{
+				MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{attacker}, Type: arkscript.MultisigTypeChecksig},
+				Locktime:        arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: deployment.MutinynetCheckpointDelaySeconds},
+			},
+		},
+		{
+			name: "weaker delay",
+			closure: &arkscript.CSVMultisigClosure{
+				MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{forfeit}, Type: arkscript.MultisigTypeChecksig},
+				Locktime:        arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: 2048},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			script, err := test.closure.Script()
+			if err != nil {
+				t.Fatal(err)
+			}
+			info := fmt.Sprintf(
+				`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q}`,
+				deployment.NetworkMutinynet, hex.EncodeToString(script), deployment.MutinynetOperatorSignerPubHex,
+			)
+			doer := rpcDoerFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, info), nil
+			})
+			if err := mustDialErr(t, doer); err == nil || !strings.Contains(err.Error(), "release policy") {
+				t.Fatalf("substituted checkpoint policy was accepted: %v", err)
+			}
+		})
 	}
 }
 
@@ -296,7 +350,10 @@ func TestSpendableVtxosRejectsEmptyScriptAndSpent(t *testing.T) {
 }
 
 func happyIndexerInfo() string {
-	return fmt.Sprintf(`{"network":%q,"checkpointTapscript":%q}`, deployment.NetworkMutinynet, testCheckpointTapscript)
+	return fmt.Sprintf(
+		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q}`,
+		deployment.NetworkMutinynet, testCheckpointTapscript, deployment.MutinynetOperatorSignerPubHex,
+	)
 }
 
 func mustDialErr(t *testing.T, doer httpDoer) error {

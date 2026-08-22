@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/ports"
 )
@@ -81,14 +83,48 @@ func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer
 	if err != nil || len(checkpoint) == 0 {
 		return nil, fmt.Errorf("incomplete ark indexer GetInfo")
 	}
-	client.checkpoint = checkpoint
-	if pub := strings.TrimSpace(info.SignerPubkey); pub != "" {
-		raw, err := decodeHex(pub)
-		if err == nil && len(raw) == 33 && (raw[0] == 0x02 || raw[0] == 0x03) {
-			client.signerPub = raw
-		}
+	signerPub, err := decodeHex(strings.TrimSpace(info.SignerPubkey))
+	if err != nil {
+		return nil, fmt.Errorf("incomplete ark indexer GetInfo")
 	}
+	if err := validateArkResolverPolicy(network, checkpoint, signerPub); err != nil {
+		return nil, err
+	}
+	client.checkpoint = checkpoint
+	client.signerPub = signerPub
 	return client, nil
+}
+
+// validateArkResolverPolicy prevents a remote Operator from redefining the
+// checkpoint fallback that the VaultCosigner will authorize.
+func validateArkResolverPolicy(network string, checkpoint, signerPub []byte) error {
+	if network != deployment.NetworkMutinynet {
+		return fmt.Errorf("unsupported Operator policy network %q", network)
+	}
+	wantSigner, err := hex.DecodeString(deployment.MutinynetOperatorSignerPubHex)
+	if err != nil || !bytes.Equal(signerPub, wantSigner) {
+		return fmt.Errorf("Operator signer does not match the release policy")
+	}
+	wantCheckpoint, err := hex.DecodeString(deployment.MutinynetCheckpointTapscriptHex)
+	if err != nil || !bytes.Equal(checkpoint, wantCheckpoint) {
+		return fmt.Errorf("checkpoint tapscript does not match the release policy")
+	}
+	closure, err := arkscript.DecodeClosure(checkpoint)
+	if err != nil {
+		return fmt.Errorf("checkpoint tapscript: %w", err)
+	}
+	csv, ok := closure.(*arkscript.CSVMultisigClosure)
+	if !ok || csv.Type != arkscript.MultisigTypeChecksig || len(csv.PubKeys) != 1 {
+		return fmt.Errorf("checkpoint closure does not match the release policy")
+	}
+	if csv.Locktime.Type != arklib.LocktimeTypeSecond || csv.Locktime.Value != deployment.MutinynetCheckpointDelaySeconds {
+		return fmt.Errorf("checkpoint delay does not match the release policy")
+	}
+	wantForfeit, err := hex.DecodeString(deployment.MutinynetCheckpointForfeitPubHex)
+	if err != nil || !bytes.Equal(csv.PubKeys[0].SerializeCompressed(), wantForfeit) {
+		return fmt.Errorf("checkpoint key does not match the release policy")
+	}
+	return nil
 }
 
 func (r *arkResolver) Network() string {
@@ -105,7 +141,7 @@ func (r *arkResolver) CheckpointTapscript() []byte {
 	return bytes.Clone(r.checkpoint)
 }
 
-func (r *arkResolver) AdvertisedSignerPub() []byte {
+func (r *arkResolver) OperatorSignerPub() []byte {
 	if r == nil {
 		return nil
 	}
