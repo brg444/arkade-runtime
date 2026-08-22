@@ -24,7 +24,7 @@ The service is organized around four product workflows:
 | Workflow | Server responsibility | Wallet responsibility |
 | --- | --- | --- |
 | Enrollment | Consume an invitation, verify the passkey ceremony, derive the tenant VaultCosigner, and persist the immutable descriptor. | Create the device credential and keys, verify the proposed descriptor, and retain encrypted recovery material. |
-| Spending | Authenticate and reserve one policy VTXO, enforce the rolling allowance, validate the complete Arkade transaction and checkpoints, sign, and reconcile an ambiguous response by operation ID. | Persist the operation, phone-sign the reservation, obtain device authorization, coordinate the Operator exchange, finalize, and post the receipt. |
+| Spending | Authenticate and reserve policy VTXOs, enforce the rolling allowance and fee cap, validate the complete Arkade transaction and checkpoints, sign, and reconcile an ambiguous response by operation ID. | Persist the operation, phone-sign the reservation, confirm the quoted fee, obtain device authorization, coordinate the Operator exchange, finalize, and post the receipt. |
 | Savings | Rebuild and verify the L1 Savings program when authorizing a recovery transition. | Construct and sign Savings transfers with the device and hardware keys. The server does not publish them. |
 | Recovery | Authorize `initiate` and `clawback` transitions, verify passkey sessions, and store authenticated encrypted map data. | Hold claimant and guardian keys, broadcast transitions, and claim after the committed delay. |
 
@@ -44,23 +44,24 @@ requests:
 1. The wallet persists a client-generated operation ID, signs the canonical
    operation ID, vault, purpose, destination script, and amount with the phone
    key, then calls `reserve`. The server verifies that proof before selecting
-   or locking a VTXO. An exact retry returns the original reservation.
+   and locking VTXOs and debiting the rolling allowance. An exact retry returns
+   the original reservation.
 2. `authorize` validates the unsigned checkpoints and user-signed Arkade PSBT,
-   reserves allowance, and adds the VaultCosigner signature to the Arkade
-   transaction.
+   then adds the VaultCosigner signature to the Arkade transaction.
 3. The wallet submits the operation to the Operator. The Operator rebuilds and
    signs the checkpoints.
 4. `checkpoints/authorize` requires those checkpoints to match the stored
    operation and adds the VaultCosigner checkpoint signatures.
 5. `finalize` verifies that the authorized Arkade transaction spent the
-   reserved VTXO. `GET /v1/vtxo/operation` lets the wallet resume after any
+   reserved VTXOs. `GET /v1/vtxo/operation` lets the wallet resume after any
    ambiguous response.
 
-The current Mutinynet slice accepts exactly one input and a `tark` destination for the
-same release-pinned Operator. It does not silently fall back to an onchain
-send, general multi-input selection, VTXO offboarding, or the retired
+The current Mutinynet slice accepts between one and 50 canonical inputs and a
+`tark` destination for the same release-pinned Operator. It supports exact
+no-change sends and the Operator's bounded intent fee policy. It does not
+silently fall back to an onchain send, VTXO offboarding, or the retired
 `/v1/draft` pipeline. See
-[the one-input contract](docs/vault-policy-v1-one-input.md).
+[the Spending contract](docs/vault-policy-v1-spend.md).
 
 ## Boarding boundary
 
@@ -158,7 +159,7 @@ server.
 The complete gate and operations posture are recorded in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md) and
 [deploy/ops.md](deploy/ops.md). The release remains blocked by the boarding
-trust window, ordinary-send fragmentation and fee support, a mainnet-specific
+trust window, live ordinary-send qualification, a mainnet-specific
 guardian delay, upstream arkd/SDK intent lifecycle defects, independent
 rollback-control storage, shared durable edge rate limiting, and the
 authenticated ledger performance bound.
