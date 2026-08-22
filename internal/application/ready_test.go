@@ -22,6 +22,10 @@ func (r readyArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.Resol
 	return nil, nil
 }
 
+func (r readyArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy, error) {
+	return ports.IntentFeePolicy{}, nil
+}
+
 func (r readyArkResolver) ReservedSpentByArkTxid(context.Context, []byte, []ports.ResolvedVtxo, string) error {
 	return nil
 }

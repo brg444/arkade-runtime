@@ -118,7 +118,8 @@ func newSDKSpendFixture(t *testing.T) sdkSpendFixture {
 		tree: tree,
 		operation: policy.VtxoOperation{
 			AmountSats: 10_000, FeeSats: 0, DestScript: destScript,
-			ChangeScript: tree.PkScript, CheckpointTapscript: unroll,
+			ChangeScript: tree.PkScript, ChangeSats: 10_000, ChangeVout: func() *uint32 { v := uint32(1); return &v }(),
+			FeePolicyDigest: bytes.Repeat([]byte{0x44}, 32), CheckpointTapscript: unroll,
 		},
 		input: policy.VtxoOperationInput{
 			Txid: bytes.Clone(original.Hash[:]), Vout: int(original.Index),
@@ -145,6 +146,101 @@ func TestVerifySDKNativeSpendShape(t *testing.T) {
 	if len(f.checkpoint.UnsignedTx.TxOut) != 2 || len(f.arkTx.UnsignedTx.TxOut) != 3 {
 		t.Fatal("SDK-native output shape changed")
 	}
+}
+
+func TestVerifyMultiInputSpendRequiresCanonicalCheckpointAlignment(t *testing.T) {
+	f := newSDKSpendFixture(t)
+	secondCheckpoint, err := clonePacket(f.checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondCheckpoint.UnsignedTx.TxIn[0].PreviousOutPoint.Hash[0]++
+	secondCheckpoint.Inputs[0].TaprootScriptSpendSig = nil
+	secondInput := f.input
+	secondInput.Txid = bytes.Clone(secondCheckpoint.UnsignedTx.TxIn[0].PreviousOutPoint.Hash[:])
+
+	checkpointScript, arkControl, err := checkpointDestScript(f.operation.CheckpointTapscript, f.tree.SpendLeaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := wire.NewMsgTx(3)
+	for _, checkpoint := range []*psbt.Packet{f.checkpoint, secondCheckpoint} {
+		tx.AddTxIn(&wire.TxIn{
+			PreviousOutPoint: wire.OutPoint{Hash: checkpoint.UnsignedTx.TxHash(), Index: 0},
+			Sequence:         wire.MaxTxInSequenceNum,
+		})
+	}
+	tx.AddTxOut(&wire.TxOut{Value: 10_000, PkScript: f.operation.DestScript})
+	tx.AddTxOut(&wire.TxOut{Value: 30_000, PkScript: f.tree.PkScript})
+	tx.AddTxOut(txutils.AnchorOutput())
+	packet, err := psbt.NewFromUnsignedTx(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range packet.Inputs {
+		packet.Inputs[i].WitnessUtxo = &wire.TxOut{Value: 20_000, PkScript: checkpointScript}
+		packet.Inputs[i].TaprootLeafScript = []*psbt.TaprootTapLeafScript{{
+			Script: f.tree.SpendLeaf, ControlBlock: arkControl, LeafVersion: txscript.BaseLeafVersion,
+		}}
+	}
+	for i := range packet.Inputs {
+		sig, err := signTapLeafAt(packet, i, f.user, f.tree.SpendLeaf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet.Inputs[i].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{sig}
+	}
+	f.operation.ChangeSats = 30_000
+	inputs := []policy.VtxoOperationInput{f.input, secondInput}
+	checkpoints := []*psbt.Packet{f.checkpoint, secondCheckpoint}
+	if err := verifySpendPSBT(packet, f.operation, inputs, f.tree, checkpoints); err != nil {
+		t.Fatalf("multi-input spend: %v", err)
+	}
+	if err := verifySpendPSBT(packet, f.operation, inputs, f.tree, []*psbt.Packet{secondCheckpoint, f.checkpoint}); err == nil || !bytes.Contains([]byte(err.Error()), []byte("checkpoint")) {
+		t.Fatalf("swapped checkpoints = %v", err)
+	}
+	if err := verifySpendPSBT(packet, f.operation, inputs, f.tree, checkpoints[:1]); err == nil {
+		t.Fatal("checkpoint count mismatch accepted")
+	}
+}
+
+func TestVerifySpendAllowsNoChangeAndNonzeroFee(t *testing.T) {
+	t.Run("no change", func(t *testing.T) {
+		f := newSDKSpendFixture(t)
+		f.operation.FeeSats = 10_000
+		f.operation.ChangeScript = nil
+		f.operation.ChangeSats = 0
+		f.operation.ChangeVout = nil
+		f.arkTx.UnsignedTx.TxOut = []*wire.TxOut{
+			f.arkTx.UnsignedTx.TxOut[0],
+			f.arkTx.UnsignedTx.TxOut[2],
+		}
+		f.arkTx.Inputs[0].TaprootScriptSpendSig = nil
+		sig, err := signTapLeafAt(f.arkTx, 0, f.user, f.tree.SpendLeaf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.arkTx.Inputs[0].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{sig}
+		if err := verifySpendPSBT(f.arkTx, f.operation, []policy.VtxoOperationInput{f.input}, f.tree, []*psbt.Packet{f.checkpoint}); err != nil {
+			t.Fatalf("no-change spend: %v", err)
+		}
+	})
+
+	t.Run("change", func(t *testing.T) {
+		f := newSDKSpendFixture(t)
+		f.operation.FeeSats = 500
+		f.operation.ChangeSats = 9_500
+		f.arkTx.UnsignedTx.TxOut[1].Value = 9_500
+		f.arkTx.Inputs[0].TaprootScriptSpendSig = nil
+		sig, err := signTapLeafAt(f.arkTx, 0, f.user, f.tree.SpendLeaf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.arkTx.Inputs[0].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{sig}
+		if err := verifySpendPSBT(f.arkTx, f.operation, []policy.VtxoOperationInput{f.input}, f.tree, []*psbt.Packet{f.checkpoint}); err != nil {
+			t.Fatalf("fee spend: %v", err)
+		}
+	})
 }
 
 func TestVerifySubmittedCheckpointRequiresExactUserAndOperatorStage(t *testing.T) {

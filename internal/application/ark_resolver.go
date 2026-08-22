@@ -15,6 +15,7 @@ import (
 	"time"
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+	"github.com/arkade-os/arkd/pkg/ark-lib/arkfee"
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/ports"
@@ -90,6 +91,9 @@ func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer
 	if err := validateArkResolverPolicy(network, checkpoint, signerPub); err != nil {
 		return nil, err
 	}
+	if _, err := validatedIntentFeePolicy(info); err != nil {
+		return nil, fmt.Errorf("ark indexer fee policy: %w", err)
+	}
 	client.checkpoint = checkpoint
 	client.signerPub = signerPub
 	return client, nil
@@ -146,6 +150,28 @@ func (r *arkResolver) OperatorSignerPub() []byte {
 		return nil
 	}
 	return bytes.Clone(r.signerPub)
+}
+
+func (r *arkResolver) IntentFeePolicy(ctx context.Context) (ports.IntentFeePolicy, error) {
+	info, err := r.getInfo(ctx)
+	if err != nil {
+		return ports.IntentFeePolicy{}, err
+	}
+	if strings.TrimSpace(info.Network) != r.network {
+		return ports.IntentFeePolicy{}, fmt.Errorf("ark indexer network changed")
+	}
+	checkpoint, err := decodeHex(strings.TrimSpace(info.CheckpointTapscript))
+	if err != nil {
+		return ports.IntentFeePolicy{}, fmt.Errorf("checkpoint tapscript")
+	}
+	signerPub, err := decodeHex(strings.TrimSpace(info.SignerPubkey))
+	if err != nil {
+		return ports.IntentFeePolicy{}, fmt.Errorf("Operator signer")
+	}
+	if err := validateArkResolverPolicy(r.network, checkpoint, signerPub); err != nil {
+		return ports.IntentFeePolicy{}, err
+	}
+	return validatedIntentFeePolicy(info)
 }
 
 func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
@@ -261,6 +287,14 @@ type arkIndexerInfo struct {
 	Network             string `json:"network"`
 	CheckpointTapscript string `json:"checkpointTapscript"`
 	SignerPubkey        string `json:"signerPubkey"`
+	Fees                *struct {
+		IntentFee *struct {
+			OffchainInput  *string `json:"offchainInput"`
+			OffchainOutput *string `json:"offchainOutput"`
+			OnchainInput   *string `json:"onchainInput"`
+			OnchainOutput  *string `json:"onchainOutput"`
+		} `json:"intentFee"`
+	} `json:"fees"`
 }
 
 type indexerOutpoint struct {
@@ -269,12 +303,35 @@ type indexerOutpoint struct {
 }
 
 type indexerVtxo struct {
-	Outpoint indexerOutpoint `json:"outpoint"`
-	Amount   json.RawMessage `json:"amount"`
-	Script   string          `json:"script"`
-	IsSpent  bool            `json:"isSpent"`
-	SpentBy  string          `json:"spentBy"`
-	ArkTxid  string          `json:"arkTxid"`
+	Outpoint        indexerOutpoint `json:"outpoint"`
+	Amount          json.RawMessage `json:"amount"`
+	Script          string          `json:"script"`
+	CreatedAt       json.RawMessage `json:"createdAt"`
+	ExpiresAt       json.RawMessage `json:"expiresAt"`
+	IsSwept         *bool           `json:"isSwept"`
+	CommitmentTxids *[]string       `json:"commitmentTxids"`
+	IsSpent         bool            `json:"isSpent"`
+	SpentBy         string          `json:"spentBy"`
+	ArkTxid         string          `json:"arkTxid"`
+}
+
+func validatedIntentFeePolicy(info arkIndexerInfo) (ports.IntentFeePolicy, error) {
+	if info.Fees == nil || info.Fees.IntentFee == nil {
+		return ports.IntentFeePolicy{}, fmt.Errorf("fees.intentFee missing")
+	}
+	fee := info.Fees.IntentFee
+	if fee.OffchainInput == nil || fee.OffchainOutput == nil || fee.OnchainInput == nil || fee.OnchainOutput == nil {
+		return ports.IntentFeePolicy{}, fmt.Errorf("fees.intentFee must contain four string programs")
+	}
+	out := ports.IntentFeePolicy{
+		OffchainInput: *fee.OffchainInput, OffchainOutput: *fee.OffchainOutput,
+		OnchainInput: *fee.OnchainInput, OnchainOutput: *fee.OnchainOutput,
+	}
+	_, err := arkfee.New(intentFeeEstimatorConfig(out))
+	if err != nil {
+		return ports.IntentFeePolicy{}, fmt.Errorf("invalid fees.intentFee: %w", err)
+	}
+	return out, nil
 }
 
 func (r *arkResolver) getInfo(ctx context.Context) (arkIndexerInfo, error) {
@@ -346,12 +403,63 @@ func parseResolvedVtxo(vtxo indexerVtxo, pkScript []byte) (ports.ResolvedVtxo, e
 	if err != nil {
 		return ports.ResolvedVtxo{}, err
 	}
+	createdAt, err := parseRequiredInt64(vtxo.CreatedAt, "createdAt")
+	if err != nil {
+		return ports.ResolvedVtxo{}, err
+	}
+	expiresAt, err := parseNullableInt64(vtxo.ExpiresAt, "expiresAt")
+	if err != nil {
+		return ports.ResolvedVtxo{}, err
+	}
+	if vtxo.IsSwept == nil {
+		return ports.ResolvedVtxo{}, fmt.Errorf("isSwept is missing")
+	}
+	if vtxo.CommitmentTxids == nil {
+		return ports.ResolvedVtxo{}, fmt.Errorf("commitmentTxids is missing")
+	}
 	return ports.ResolvedVtxo{
-		Txid:      vtxo.Outpoint.Txid,
-		Vout:      *vtxo.Outpoint.Vout,
-		ValueSats: amount,
-		Script:    bytes.Clone(script),
+		Txid: vtxo.Outpoint.Txid, Vout: *vtxo.Outpoint.Vout, ValueSats: amount,
+		Script: bytes.Clone(script), CreatedAt: createdAt, ExpiresAt: expiresAt,
+		IsSwept: *vtxo.IsSwept, CommitmentTxids: append([]string(nil), (*vtxo.CommitmentTxids)...),
 	}, nil
+}
+
+func parseRequiredInt64(raw json.RawMessage, name string) (int64, error) {
+	value, err := parseNullableInt64(raw, name)
+	if err != nil {
+		return 0, err
+	}
+	if value == nil {
+		return 0, fmt.Errorf("%s is missing", name)
+	}
+	return *value, nil
+}
+
+func parseNullableInt64(raw json.RawMessage, name string) (*int64, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("%s is missing", name)
+	}
+	if bytes.Equal(raw, []byte("null")) {
+		return nil, nil
+	}
+	var asString string
+	if err := json.Unmarshal(raw, &asString); err == nil {
+		value, err := strconv.ParseInt(asString, 10, 64)
+		if err != nil || strconv.FormatInt(value, 10) != asString {
+			return nil, fmt.Errorf("%s", name)
+		}
+		return &value, nil
+	}
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err != nil {
+		return nil, fmt.Errorf("%s", name)
+	}
+	value, err := strconv.ParseInt(string(number), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("%s", name)
+	}
+	return &value, nil
 }
 
 func parseUint64Sats(raw json.RawMessage) (uint64, error) {

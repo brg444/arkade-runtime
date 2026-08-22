@@ -33,8 +33,11 @@ CREATE TABLE vtxo_operation (
   state TEXT NOT NULL CHECK (state IN ('reserved', 'signed', 'submitted', 'finalized', 'aborted', 'unresolved')),
   amount_sats INTEGER NOT NULL CHECK (amount_sats >= 0),
   fee_sats INTEGER NOT NULL CHECK (fee_sats >= 0),
+  fee_policy_digest BLOB NOT NULL CHECK (length(fee_policy_digest) = 32),
   dest_script BLOB,
   change_script BLOB,
+  change_sats INTEGER NOT NULL CHECK (change_sats >= 0),
+  change_vout INTEGER CHECK (change_vout >= 0),
   unsigned_psbt TEXT,
   authorized_psbt TEXT,
   checkpoint_psbts TEXT,
@@ -44,7 +47,11 @@ CREATE TABLE vtxo_operation (
   expires_at TEXT,
   created_at TEXT NOT NULL,
   last_dest_script BLOB,
-  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
+  CHECK (
+    (change_sats = 0 AND change_vout IS NULL AND (change_script IS NULL OR length(change_script) = 0))
+    OR (change_sats >= 330 AND change_vout = 1 AND change_script IS NOT NULL AND length(change_script) > 0)
+  )
 );
 CREATE TABLE vtxo_operation_input (
   operation_id TEXT NOT NULL REFERENCES vtxo_operation(operation_id),

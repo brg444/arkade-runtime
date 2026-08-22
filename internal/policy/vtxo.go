@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const (
@@ -21,7 +23,9 @@ const (
 	vtxoStateAborted    = "aborted"
 	vtxoStateUnresolved = "unresolved"
 
-	VtxoPurposeSpend = vtxoPurposeSpend
+	VtxoPurposeSpend       = vtxoPurposeSpend
+	VtxoFeePolicyDigestTag = "arkade-vault/arkade-intent-fee-policy/v1"
+	MaxVtxoOperationInputs = 50
 
 	VtxoStateReserved   = vtxoStateReserved
 	VtxoStateSigned     = vtxoStateSigned
@@ -43,8 +47,11 @@ type VtxoOperation struct {
 	State                  string
 	AmountSats             int64
 	FeeSats                int64
+	FeePolicyDigest        []byte
 	DestScript             []byte
 	ChangeScript           []byte
+	ChangeSats             int64
+	ChangeVout             *uint32
 	UnsignedPSBT           string
 	AuthorizedPSBT         string
 	CheckpointPSBTs        string
@@ -193,16 +200,29 @@ func canonicalVtxoTxid(txid []byte) (string, []byte, error) {
 // ComputeVtxoBundleDigest binds purpose and length-prefixes variable fields so
 // dest/change scripts cannot be split at an embedded 0x00. Inputs are sorted
 // internally; caller order is not trusted.
-func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript []byte, amountSats, feeSats uint64, inputs []VtxoBundleInput, createdAt string) ([]byte, error) {
+func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript []byte, amountSats, feeSats, changeSats uint64, changeVout *uint32, feePolicyDigest []byte, inputs []VtxoBundleInput, createdAt string) ([]byte, error) {
 	if purpose != vtxoPurposeSpend {
 		return nil, fmt.Errorf("vtxo purpose must be spend")
 	}
 	if vaultID == "" {
 		return nil, fmt.Errorf("vault id required")
 	}
+	if len(feePolicyDigest) != sha256.Size {
+		return nil, fmt.Errorf("fee policy digest must be 32 bytes")
+	}
+	if changeSats == 0 {
+		if changeVout != nil || len(changeScript) != 0 {
+			return nil, fmt.Errorf("invalid no-change shape")
+		}
+	} else if changeSats < uint64(program.DustSats) || changeVout == nil || *changeVout != 1 || len(changeScript) == 0 {
+		return nil, fmt.Errorf("invalid change shape")
+	}
 	ordered, err := CanonicalVtxoBundleInputs(inputs)
 	if err != nil {
 		return nil, err
+	}
+	if len(ordered) == 0 || len(ordered) > MaxVtxoOperationInputs {
+		return nil, fmt.Errorf("vtxo input count must be 1..%d", MaxVtxoOperationInputs)
 	}
 	payload := make([]byte, 0, 256)
 	payload, err = appendCredentialField(payload, []byte(purpose))
@@ -226,6 +246,18 @@ func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript [
 		return nil, err
 	}
 	payload = binary.LittleEndian.AppendUint64(payload, feeSats)
+	payload = binary.LittleEndian.AppendUint64(payload, changeSats)
+	if changeVout == nil {
+		payload = append(payload, 0)
+	} else {
+		payload = append(payload, 1)
+		payload = binary.LittleEndian.AppendUint32(payload, *changeVout)
+	}
+	payload, err = appendCredentialField(payload, feePolicyDigest)
+	if err != nil {
+		zeroBytes(payload)
+		return nil, err
+	}
 	payload = binary.LittleEndian.AppendUint16(payload, uint16(len(ordered)))
 	for _, in := range ordered {
 		payload = append(payload, in.Txid...)
@@ -240,6 +272,19 @@ func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript [
 	sum := taggedSHA256(vtxoBundleDigestTag, payload)
 	zeroBytes(payload)
 	return sum, nil
+}
+
+// ComputeIntentFeePolicyDigest is shared with the wallet. It binds all four
+// CEL strings, including explicitly empty programs, in the frozen field order.
+func ComputeIntentFeePolicyDigest(offchainInput, offchainOutput, onchainInput, onchainOutput string) []byte {
+	payload := make([]byte, 0, len(offchainInput)+len(offchainOutput)+len(onchainInput)+len(onchainOutput)+16)
+	for _, program := range []string{offchainInput, offchainOutput, onchainInput, onchainOutput} {
+		payload = binary.LittleEndian.AppendUint32(payload, uint32(len(program)))
+		payload = append(payload, program...)
+	}
+	digest := taggedSHA256(VtxoFeePolicyDigestTag, payload)
+	zeroBytes(payload)
+	return digest
 }
 
 // ComputeVtxoReserveDigest authenticates the mutation that creates a durable
@@ -327,8 +372,18 @@ func canonicalVtxoOperation(rec VtxoOperation) ([]byte, error) {
 	if len(rec.BundleDigest) != 32 {
 		return nil, fmt.Errorf("bundle digest must be 32 bytes")
 	}
-	if rec.AmountSats < 0 || rec.FeeSats < 0 {
+	if rec.AmountSats < 0 || rec.FeeSats < 0 || rec.ChangeSats < 0 {
 		return nil, fmt.Errorf("negative vtxo outflow")
+	}
+	if len(rec.FeePolicyDigest) != sha256.Size {
+		return nil, fmt.Errorf("fee policy digest must be 32 bytes")
+	}
+	if rec.ChangeSats == 0 {
+		if rec.ChangeVout != nil || len(rec.ChangeScript) != 0 {
+			return nil, fmt.Errorf("invalid no-change shape")
+		}
+	} else if rec.ChangeSats < program.DustSats || rec.ChangeVout == nil || *rec.ChangeVout != 1 || len(rec.ChangeScript) == 0 {
+		return nil, fmt.Errorf("invalid change shape")
 	}
 	out := make([]byte, 0, 512)
 	var err error
@@ -339,7 +394,7 @@ func canonicalVtxoOperation(rec VtxoOperation) ([]byte, error) {
 	out = binary.LittleEndian.AppendUint32(out, vtxoOperationCanonicalVer)
 	for _, field := range [][]byte{
 		[]byte(rec.OperationID), []byte(rec.VaultID), []byte(rec.Purpose),
-		rec.BundleDigest, []byte(rec.State), rec.DestScript, rec.ChangeScript,
+		rec.BundleDigest, []byte(rec.State), rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript,
 		[]byte(rec.UnsignedPSBT), []byte(rec.AuthorizedPSBT),
 		[]byte(rec.CheckpointPSBTs), []byte(rec.CheckpointRequestPSBTs), rec.CheckpointTapscript,
 		[]byte(rec.ArkTxid), []byte(rec.ExpiresAt), []byte(rec.CreatedAt), rec.LastDestScript,
@@ -352,6 +407,13 @@ func canonicalVtxoOperation(rec VtxoOperation) ([]byte, error) {
 	}
 	out = binary.LittleEndian.AppendUint64(out, uint64(rec.AmountSats))
 	out = binary.LittleEndian.AppendUint64(out, uint64(rec.FeeSats))
+	out = binary.LittleEndian.AppendUint64(out, uint64(rec.ChangeSats))
+	if rec.ChangeVout == nil {
+		out = append(out, 0)
+	} else {
+		out = append(out, 1)
+		out = binary.LittleEndian.AppendUint32(out, *rec.ChangeVout)
+	}
 	return out, nil
 }
 

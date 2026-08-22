@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+	"github.com/arkade-os/arkd/pkg/ark-lib/arkfee"
 	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
@@ -53,6 +55,9 @@ type VtxoReserveResponse struct {
 	ChangeScript        string          `json:"changeScript"`
 	DestScript          string          `json:"destScript"`
 	FeeSats             uint64          `json:"feeSats"`
+	FeePolicyDigest     string          `json:"feePolicyDigest"`
+	ChangeSats          uint64          `json:"changeSats"`
+	ChangeVout          *uint32         `json:"changeVout,omitempty"`
 	CheckpointTapscript string          `json:"checkpointTapscript,omitempty"`
 }
 
@@ -172,28 +177,43 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err := s.refuseDefaultVtxoChange(snap, destScript); err != nil {
 		return nil, apperr.New(apperr.CodeRejected, err.Error())
 	}
-	feeSats := uint64(0)
-	if err := enforceVtxoAmount(req.AmountSats, feeSats, rec); err != nil {
-		return nil, err
-	}
-	if existing, err := s.Ledger.GetVtxoOperation(ctx, opID); err == nil {
-		return s.replayVtxoReservation(ctx, existing, vaultID, purpose, req.AmountSats, feeSats, destScript, tree)
-	} else if err != sql.ErrNoRows {
-		return nil, err
-	}
-	selected, err := s.selectSpendVtxos(ctx, tree.PkScript, req.AmountSats)
+	feeCap, err := vtxoFeeCap(rec)
 	if err != nil {
 		return nil, err
 	}
-	if len(selected) != 1 {
-		return nil, apperr.New(apperr.CodeRejected, "exact spend program requires one input")
+	if err := enforceVtxoAmount(req.AmountSats, 0, rec); err != nil {
+		return nil, err
 	}
-	if selected[0].ValueSats < req.AmountSats+uint64(program.DustSats) {
-		return nil, apperr.New(apperr.CodeRejected, "change below dust")
+	if existing, err := s.Ledger.GetVtxoOperation(ctx, opID); err == nil {
+		return s.replayVtxoReservation(ctx, existing, vaultID, purpose, req.AmountSats, destScript, tree)
+	} else if err != sql.ErrNoRows {
+		return nil, err
+	}
+	feePolicy, err := s.ArkResolver.IntentFeePolicy(ctx)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeRejected, "Operator fee policy unavailable")
+	}
+	estimator, feePolicyDigest, err := newVtxoFeeEstimator(feePolicy)
+	if err != nil {
+		return nil, err
+	}
+	selected, feeSats, changeSats, err := s.selectSpendVtxos(ctx, tree.PkScript, destScript, req.AmountSats, feeCap, estimator)
+	if err != nil {
+		return nil, err
+	}
+	if err := enforceVtxoAmount(req.AmountSats, feeSats, rec); err != nil {
+		return nil, err
 	}
 	checkpoint := s.ArkResolver.CheckpointTapscript()
 	if len(checkpoint) == 0 {
 		return nil, apperr.New(apperr.CodeRejected, "checkpoint tapscript required")
+	}
+	var changeScript []byte
+	var changeVout *uint32
+	if changeSats > 0 {
+		changeScript = bytes.Clone(tree.PkScript)
+		vout := uint32(1)
+		changeVout = &vout
 	}
 	inputs := make([]policy.VtxoBundleInput, len(selected))
 	opInputs := make([]policy.VtxoOperationInput, len(selected))
@@ -203,14 +223,13 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 			Txid: bytes.Clone(coin.Txid), Vout: int(coin.Vout), ValueSats: int64(coin.ValueSats), Script: bytes.Clone(coin.Script),
 		}
 	}
-	ordered, err := policy.CanonicalVtxoBundleInputs(inputs)
-	if err != nil {
-		return nil, apperr.New(apperr.CodeRejected, err.Error())
-	}
 	now := s.vtxoNow()
 	created := now.Format(time.RFC3339)
 	expires := now.Add(vtxoReserveAuthorizeTimeout).Format(time.RFC3339)
-	digest, err := policy.ComputeVtxoBundleDigest(purpose, vaultID, destScript, tree.PkScript, req.AmountSats, feeSats, ordered, created)
+	digest, err := policy.ComputeVtxoBundleDigest(
+		purpose, vaultID, destScript, changeScript, req.AmountSats, feeSats,
+		changeSats, changeVout, feePolicyDigest, inputs, created,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -222,8 +241,11 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 		State:               policy.VtxoStateReserved,
 		AmountSats:          int64(req.AmountSats),
 		FeeSats:             int64(feeSats),
+		FeePolicyDigest:     feePolicyDigest,
 		DestScript:          destScript,
-		ChangeScript:        bytes.Clone(tree.PkScript),
+		ChangeScript:        changeScript,
+		ChangeSats:          int64(changeSats),
+		ChangeVout:          changeVout,
 		CheckpointTapscript: checkpoint,
 		ExpiresAt:           expires,
 		CreatedAt:           created,
@@ -235,7 +257,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 		// serializes their inserts. Re-read by the caller's durable identifier;
 		// only the exact original request may recover the winning reservation.
 		if existing, loadErr := s.Ledger.GetVtxoOperation(ctx, opID); loadErr == nil {
-			return s.replayVtxoReservation(ctx, existing, vaultID, purpose, req.AmountSats, feeSats, destScript, tree)
+			return s.replayVtxoReservation(ctx, existing, vaultID, purpose, req.AmountSats, destScript, tree)
 		}
 		return nil, mapLedgerBusy(err)
 	}
@@ -274,13 +296,13 @@ func (s *Service) replayVtxoReservation(
 	ctx context.Context,
 	op policy.VtxoOperation,
 	vaultID, purpose string,
-	amount, fee uint64,
+	amount uint64,
 	destScript []byte,
 	tree *vtxoPolicyTree,
 ) (*VtxoReserveResponse, error) {
-	if op.VaultID != vaultID || op.Purpose != purpose || op.AmountSats < 0 || op.FeeSats < 0 ||
-		uint64(op.AmountSats) != amount || uint64(op.FeeSats) != fee ||
-		!bytes.Equal(op.DestScript, destScript) || !bytes.Equal(op.ChangeScript, tree.PkScript) {
+	if op.VaultID != vaultID || op.Purpose != purpose || op.AmountSats < 0 || op.FeeSats < 0 || op.ChangeSats < 0 ||
+		uint64(op.AmountSats) != amount || !bytes.Equal(op.DestScript, destScript) ||
+		len(op.FeePolicyDigest) != 32 || !validStoredVtxoChange(op, tree.PkScript) {
 		return nil, apperr.New(apperr.CodeRejected, "operationId is already bound to a different reserve request")
 	}
 	if op.State == policy.VtxoStateAborted || op.State == policy.VtxoStateUnresolved {
@@ -307,6 +329,9 @@ func vtxoReserveResponse(op policy.VtxoOperation, inputs []policy.VtxoOperationI
 			Txid: hex.EncodeToString(in.Txid), Vout: uint32(in.Vout), ValueSats: uint64(in.ValueSats), ScriptHex: hex.EncodeToString(in.Script),
 		}
 	}
+	if op.ChangeSats == 0 {
+		changeAddress = ""
+	}
 	return &VtxoReserveResponse{
 		OperationID:         op.OperationID,
 		BundleDigest:        hex.EncodeToString(op.BundleDigest),
@@ -316,6 +341,9 @@ func vtxoReserveResponse(op policy.VtxoOperation, inputs []policy.VtxoOperationI
 		ChangeScript:        hex.EncodeToString(op.ChangeScript),
 		DestScript:          hex.EncodeToString(op.DestScript),
 		FeeSats:             uint64(op.FeeSats),
+		FeePolicyDigest:     hex.EncodeToString(op.FeePolicyDigest),
+		ChangeSats:          uint64(op.ChangeSats),
+		ChangeVout:          cloneVout(op.ChangeVout),
 		CheckpointTapscript: hex.EncodeToString(op.CheckpointTapscript),
 	}
 }
@@ -325,69 +353,234 @@ type reservedCoin struct {
 	Vout      uint32
 	ValueSats uint64
 	Script    []byte
+	FeeInput  arkfee.OffchainInput
+	Effective uint64
 }
 
-func (s *Service) selectSpendVtxos(ctx context.Context, pkScript []byte, amountSats uint64) ([]reservedCoin, error) {
-	if amountSats > math.MaxUint64-uint64(program.DustSats) {
-		return nil, apperr.New(apperr.CodeRejected, "amount overflow")
-	}
+func (s *Service) selectSpendVtxos(ctx context.Context, pkScript, destScript []byte, amountSats, feeCap uint64, estimator *arkfee.Estimator) ([]reservedCoin, uint64, uint64, error) {
 	vtxos, err := s.ArkResolver.SpendableVtxos(ctx, pkScript)
 	if err != nil {
-		return nil, apperr.New(apperr.CodeRejected, "ark indexer")
+		return nil, 0, 0, apperr.New(apperr.CodeRejected, "ark indexer")
 	}
-	coins := vtxosToCoins(vtxos, pkScript)
+	coins, err := vtxosToCoins(vtxos, pkScript, estimator)
+	if err != nil {
+		return nil, 0, 0, err
+	}
 	listed := make([]policy.VtxoBundleInput, len(coins))
 	for i, coin := range coins {
 		listed[i] = policy.VtxoBundleInput{Txid: coin.Txid, Vout: coin.Vout, ValueSats: coin.ValueSats}
 	}
 	if _, err := policy.CanonicalVtxoBundleInputs(listed); err != nil {
-		return nil, apperr.New(apperr.CodeRejected, err.Error())
+		return nil, 0, 0, apperr.New(apperr.CodeRejected, err.Error())
 	}
-	need := amountSats + uint64(program.DustSats)
-	picked, err := pickCoins(coins, need)
-	if err != nil {
-		return nil, err
+	sort.Slice(coins, func(i, j int) bool {
+		if coins[i].Effective != coins[j].Effective {
+			return coins[i].Effective > coins[j].Effective
+		}
+		if cmp := bytes.Compare(coins[i].Txid, coins[j].Txid); cmp != 0 {
+			return cmp < 0
+		}
+		return coins[i].Vout < coins[j].Vout
+	})
+	limit := len(coins)
+	if limit > maxVtxoSpendInputs {
+		limit = maxVtxoSpendInputs
 	}
-	if len(picked) != 1 {
-		return nil, apperr.New(apperr.CodeRejected, "exact spend program requires one input")
+	for count := 1; count <= limit; count++ {
+		fee, change, ok, solveErr := solveVtxoSpend(coins[:count], destScript, pkScript, amountSats, feeCap, estimator)
+		if solveErr != nil {
+			return nil, 0, 0, solveErr
+		}
+		if !ok {
+			continue
+		}
+		picked := append([]reservedCoin(nil), coins[:count]...)
+		sort.Slice(picked, func(i, j int) bool {
+			if cmp := bytes.Compare(picked[i].Txid, picked[j].Txid); cmp != 0 {
+				return cmp < 0
+			}
+			return picked[i].Vout < picked[j].Vout
+		})
+		return picked, fee, change, nil
 	}
-	return picked, nil
+	return nil, 0, 0, apperr.New(apperr.CodeRejected, "insufficient economic vtxo funds")
 }
 
-func vtxosToCoins(vtxos []ports.ResolvedVtxo, pkScript []byte) []reservedCoin {
+const maxVtxoSpendInputs = policy.MaxVtxoOperationInputs
+
+func vtxosToCoins(vtxos []ports.ResolvedVtxo, pkScript []byte, estimator *arkfee.Estimator) ([]reservedCoin, error) {
 	out := make([]reservedCoin, 0, len(vtxos))
 	for _, v := range vtxos {
 		raw, err := hex.DecodeString(v.Txid)
-		if err != nil || len(raw) != 32 {
+		if err != nil || len(raw) != 32 || v.Txid != strings.ToLower(v.Txid) || !bytes.Equal(v.Script, pkScript) || v.ValueSats > math.MaxInt64 {
+			return nil, apperr.New(apperr.CodeRejected, "invalid indexed vtxo")
+		}
+		feeInput := resolvedArkFeeInput(v)
+		inputFee, err := estimator.EvalOffchainInput(feeInput)
+		if err != nil {
+			return nil, apperr.New(apperr.CodeRejected, "Operator input fee evaluation")
+		}
+		feeSats, err := exactFeeSats(inputFee)
+		if err != nil {
+			return nil, err
+		}
+		if feeSats >= v.ValueSats {
 			continue
 		}
-		out = append(out, reservedCoin{Txid: raw, Vout: v.Vout, ValueSats: v.ValueSats, Script: bytes.Clone(pkScript)})
+		out = append(out, reservedCoin{
+			Txid: raw, Vout: v.Vout, ValueSats: v.ValueSats, Script: bytes.Clone(pkScript),
+			FeeInput: feeInput, Effective: v.ValueSats - feeSats,
+		})
 	}
-	return out
+	return out, nil
 }
 
-func pickCoins(coins []reservedCoin, need uint64) ([]reservedCoin, error) {
-	if need == 0 {
-		return nil, apperr.New(apperr.CodeRejected, "amount required")
+func newVtxoFeeEstimator(fee ports.IntentFeePolicy) (*arkfee.Estimator, []byte, error) {
+	// Hash the exact Operator strings below. Normalization exists only because
+	// an explicitly empty program is the protocol's zero-fee program, while the
+	// estimator API otherwise treats absence as an implementation detail.
+	estimator, err := arkfee.New(intentFeeEstimatorConfig(fee))
+	if err != nil {
+		return nil, nil, apperr.New(apperr.CodeRejected, "Operator fee policy invalid")
 	}
-	sorted := append([]reservedCoin(nil), coins...)
-	for i := 0; i < len(sorted); i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			if sorted[j].ValueSats > sorted[i].ValueSats {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
+	digest := policy.ComputeIntentFeePolicyDigest(fee.OffchainInput, fee.OffchainOutput, fee.OnchainInput, fee.OnchainOutput)
+	return estimator, digest, nil
+}
+
+func intentFeeEstimatorConfig(fee ports.IntentFeePolicy) arkfee.Config {
+	normalize := func(program string) string {
+		if program == "" {
+			return "0.0"
+		}
+		return program
+	}
+	return arkfee.Config{
+		IntentOffchainInputProgram:  normalize(fee.OffchainInput),
+		IntentOffchainOutputProgram: normalize(fee.OffchainOutput),
+		IntentOnchainInputProgram:   normalize(fee.OnchainInput),
+		IntentOnchainOutputProgram:  normalize(fee.OnchainOutput),
+	}
+}
+
+func resolvedArkFeeInput(v ports.ResolvedVtxo) arkfee.OffchainInput {
+	kind := arkfee.VtxoTypeVtxo
+	if v.IsSwept {
+		kind = arkfee.VtxoTypeRecoverable
+	} else if len(v.CommitmentTxids) == 0 {
+		kind = arkfee.VtxoTypeNote
+	}
+	input := arkfee.OffchainInput{
+		Amount: v.ValueSats, Birth: time.Unix(v.CreatedAt, 0), Type: kind, Weight: 0,
+	}
+	if v.ExpiresAt != nil {
+		input.Expiry = time.Unix(*v.ExpiresAt, 0)
+	}
+	return input
+}
+
+func exactFeeSats(fee arkfee.FeeAmount) (uint64, error) {
+	value := float64(fee)
+	rounded := math.Ceil(value)
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || rounded >= float64(uint64(1)<<63) {
+		return 0, apperr.New(apperr.CodeRejected, "Operator fee result invalid")
+	}
+	return uint64(rounded), nil
+}
+
+func solveVtxoSpend(coins []reservedCoin, destScript, changeScript []byte, amount, feeCap uint64, estimator *arkfee.Estimator) (fee, change uint64, ok bool, err error) {
+	var total uint64
+	feeInputs := make([]arkfee.OffchainInput, len(coins))
+	for i, coin := range coins {
+		if coin.ValueSats > math.MaxUint64-total {
+			return 0, 0, false, apperr.New(apperr.CodeRejected, "vtxo input amount overflow")
+		}
+		total += coin.ValueSats
+		feeInputs[i] = coin.FeeInput
+	}
+	if total < amount {
+		return 0, 0, false, nil
+	}
+	dest := arkfee.Output{Amount: amount, Script: hex.EncodeToString(destScript)}
+	withoutChange, evalErr := estimator.Eval(feeInputs, nil, []arkfee.Output{dest}, nil)
+	if evalErr != nil {
+		return 0, 0, false, apperr.New(apperr.CodeRejected, "Operator fee evaluation")
+	}
+	noChangeFee, evalErr := exactFeeSats(withoutChange)
+	if evalErr != nil {
+		return 0, 0, false, evalErr
+	}
+	if noChangeFee <= feeCap && total-amount == noChangeFee {
+		return noChangeFee, 0, true, nil
+	}
+	maxCandidate := feeCap
+	if available := total - amount; maxCandidate > available {
+		maxCandidate = available
+	}
+	for candidate := uint64(0); candidate <= maxCandidate; candidate++ {
+		candidateChange := total - amount - candidate
+		if candidateChange < uint64(program.DustSats) {
+			continue
+		}
+		withChange, evalErr := estimator.Eval(feeInputs, nil, []arkfee.Output{
+			dest,
+			{Amount: candidateChange, Script: hex.EncodeToString(changeScript)},
+		}, nil)
+		if evalErr != nil {
+			return 0, 0, false, apperr.New(apperr.CodeRejected, "Operator fee evaluation")
+		}
+		actual, evalErr := exactFeeSats(withChange)
+		if evalErr != nil {
+			return 0, 0, false, evalErr
+		}
+		if actual == candidate {
+			return candidate, candidateChange, true, nil
+		}
+		if candidate == math.MaxUint64 {
+			break
 		}
 	}
-	var picked []reservedCoin
-	var sum uint64
-	for _, c := range sorted {
-		picked = append(picked, c)
-		sum += c.ValueSats
-		if sum >= need {
-			return picked, nil
-		}
+	return 0, 0, false, nil
+}
+
+func validStoredVtxoChange(op policy.VtxoOperation, wantScript []byte) bool {
+	if op.ChangeSats == 0 {
+		return op.ChangeVout == nil && len(op.ChangeScript) == 0
 	}
-	return nil, apperr.New(apperr.CodeRejected, "insufficient vtxo funds")
+	return op.ChangeSats >= program.DustSats && op.ChangeVout != nil && *op.ChangeVout == 1 && bytes.Equal(op.ChangeScript, wantScript)
+}
+
+func cloneVout(vout *uint32) *uint32 {
+	if vout == nil {
+		return nil
+	}
+	copy := *vout
+	return &copy
+}
+
+func vtxoFeeCap(rec *policy.VaultRecord) (uint64, error) {
+	capSats := program.AbsoluteFeeCeiling
+	if rec != nil {
+		capSats = rec.AbsoluteFeeCapSats
+	}
+	if capSats < 0 {
+		return 0, apperr.New(apperr.CodeRejected, "fee ceiling invalid")
+	}
+	return uint64(capSats), nil
+}
+
+func (s *Service) requireCurrentVtxoFeePolicy(ctx context.Context, op policy.VtxoOperation) error {
+	fee, err := s.ArkResolver.IntentFeePolicy(ctx)
+	if err != nil {
+		return apperr.New(apperr.CodeRejected, "Operator fee policy unavailable")
+	}
+	_, digest, err := newVtxoFeeEstimator(fee)
+	if err != nil {
+		return err
+	}
+	if len(op.FeePolicyDigest) != 32 || !bytes.Equal(digest, op.FeePolicyDigest) {
+		return apperr.New(apperr.CodeRejected, "Operator fee policy changed after reservation")
+	}
+	return nil
 }
 
 func enforceVtxoAmount(amount, fee uint64, rec *policy.VaultRecord) error {
@@ -500,6 +693,11 @@ type VtxoOperationView struct {
 	State           string   `json:"state"`
 	ArkTxid         string   `json:"arkTxid,omitempty"`
 	ExpiresAt       string   `json:"expiresAt,omitempty"`
+	FeeSats         uint64   `json:"feeSats"`
+	FeePolicyDigest string   `json:"feePolicyDigest"`
+	ChangeSats      uint64   `json:"changeSats"`
+	ChangeVout      *uint32  `json:"changeVout,omitempty"`
+	ChangeScript    string   `json:"changeScript"`
 	AuthorizedPsbt  string   `json:"authorizedPsbt,omitempty"`
 	CheckpointPsbts []string `json:"checkpointPsbts,omitempty"`
 }
@@ -559,11 +757,11 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 		return nil, err
 	}
 	view := &VtxoOperationView{
-		OperationID:  op.OperationID,
-		BundleDigest: hex.EncodeToString(op.BundleDigest),
-		State:        op.State,
-		ArkTxid:      op.ArkTxid,
-		ExpiresAt:    op.ExpiresAt,
+		OperationID: op.OperationID, BundleDigest: hex.EncodeToString(op.BundleDigest),
+		State: op.State, ArkTxid: op.ArkTxid, ExpiresAt: op.ExpiresAt,
+		FeeSats: uint64(op.FeeSats), FeePolicyDigest: hex.EncodeToString(op.FeePolicyDigest),
+		ChangeSats: uint64(op.ChangeSats), ChangeVout: cloneVout(op.ChangeVout),
+		ChangeScript: hex.EncodeToString(op.ChangeScript),
 	}
 	switch op.State {
 	case policy.VtxoStateSigned:
@@ -589,10 +787,10 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 			Txid: hex.EncodeToString(in.Txid), Vout: uint32(in.Vout), ValueSats: uint64(in.ValueSats), Script: bytes.Clone(in.Script),
 		})
 	}
-	pkScript := op.ChangeScript
-	if len(pkScript) == 0 && len(inputs) > 0 {
-		pkScript = inputs[0].Script
+	if len(inputs) == 0 {
+		return fmt.Errorf("reserved inputs required")
 	}
+	pkScript := inputs[0].Script
 	err = s.ArkResolver.ReservedSpentByArkTxid(ctx, pkScript, reserved, op.ArkTxid)
 	if err != nil {
 		msg := err.Error()
@@ -613,15 +811,16 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 		}
 		return err
 	}
-	if len(inputs) != 1 {
-		return fmt.Errorf("exact spend program requires one input")
-	}
-	changeSats := uint64(inputs[0].ValueSats) - uint64(op.AmountSats) - uint64(op.FeeSats)
-	if err := s.ArkResolver.ChangeVtxoFromArkTx(ctx, op.ChangeScript, op.ArkTxid, 1, changeSats); err != nil {
-		if strings.Contains(err.Error(), "change vtxo not yet projected") {
-			return nil
+	if op.ChangeSats > 0 {
+		if op.ChangeVout == nil {
+			return fmt.Errorf("change vout missing")
 		}
-		return err
+		if err := s.ArkResolver.ChangeVtxoFromArkTx(ctx, op.ChangeScript, op.ArkTxid, *op.ChangeVout, uint64(op.ChangeSats)); err != nil {
+			if strings.Contains(err.Error(), "change vtxo not yet projected") {
+				return nil
+			}
+			return err
+		}
 	}
 	next := op
 	next.State = policy.VtxoStateFinalized
@@ -655,6 +854,9 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	}
 	if op.State != policy.VtxoStateReserved && op.State != policy.VtxoStateSigned {
 		return nil, apperr.New(apperr.CodeRejected, "vtxo operation state")
+	}
+	if err := s.requireCurrentVtxoFeePolicy(ctx, op); err != nil {
+		return nil, err
 	}
 	if err := requireBundleDigest(req.BundleDigest, op.BundleDigest); err != nil {
 		return nil, err
@@ -754,6 +956,9 @@ func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpoi
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
 		return nil, err
 	}
+	if err := s.requireArkResolver(); err != nil {
+		return nil, err
+	}
 	vaultID, snap, _, err := s.resolveSpendVaultRecord(req.VaultID)
 	if err != nil {
 		return nil, err
@@ -764,6 +969,9 @@ func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpoi
 	}
 	if !vtxoCheckpointAuthorizableState(op.State) {
 		return nil, apperr.New(apperr.CodeRejected, "vtxo operation state")
+	}
+	if err := s.requireCurrentVtxoFeePolicy(ctx, op); err != nil {
+		return nil, err
 	}
 	if err := requireBundleDigest(req.BundleDigest, op.BundleDigest); err != nil {
 		return nil, err

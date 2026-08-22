@@ -12,6 +12,7 @@ import (
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
@@ -32,7 +33,7 @@ func TestDialArkResolverPinsMutinynet(t *testing.T) {
 
 	origin := deployment.MutinynetArkIndexerOrigin
 	info := fmt.Sprintf(
-		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"unilateralExitDelay":"2048"}`,
+		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"unilateralExitDelay":"2048","fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
 		deployment.NetworkMutinynet, testCheckpointTapscript,
 		deployment.MutinynetOperatorSignerPubHex,
 	)
@@ -58,6 +59,45 @@ func TestDialArkResolverPinsMutinynet(t *testing.T) {
 	got := hex.EncodeToString(resolver.CheckpointTapscript())
 	if got != testCheckpointTapscript {
 		t.Fatalf("CheckpointTapscript() = %q", got)
+	}
+}
+
+func TestIntentFeePolicyRequiresAllStringProgramsAndAcceptsEmpty(t *testing.T) {
+	empty := ""
+	info := arkIndexerInfo{}
+	info.Fees = &struct {
+		IntentFee *struct {
+			OffchainInput  *string `json:"offchainInput"`
+			OffchainOutput *string `json:"offchainOutput"`
+			OnchainInput   *string `json:"onchainInput"`
+			OnchainOutput  *string `json:"onchainOutput"`
+		} `json:"intentFee"`
+	}{
+		IntentFee: &struct {
+			OffchainInput  *string `json:"offchainInput"`
+			OffchainOutput *string `json:"offchainOutput"`
+			OnchainInput   *string `json:"onchainInput"`
+			OnchainOutput  *string `json:"onchainOutput"`
+		}{OffchainInput: &empty, OffchainOutput: &empty, OnchainInput: &empty, OnchainOutput: &empty},
+	}
+	got, err := validatedIntentFeePolicy(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	estimator, digest, err := newVtxoFeeEstimator(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fee, err := estimator.Eval(nil, nil, nil, nil)
+	if err != nil || fee != 0 {
+		t.Fatalf("empty programs fee = %v err=%v", fee, err)
+	}
+	if !bytes.Equal(digest, policy.ComputeIntentFeePolicyDigest("", "", "", "")) {
+		t.Fatal("empty programs were normalized before hashing")
+	}
+	info.Fees.IntentFee.OnchainOutput = nil
+	if _, err := validatedIntentFeePolicy(info); err == nil || !strings.Contains(err.Error(), "four string programs") {
+		t.Fatalf("missing program = %v", err)
 	}
 }
 
@@ -130,7 +170,7 @@ func TestArkResolverSpendableVtxosParsesPinnedAmounts(t *testing.T) {
 				t.Fatalf("unexpected vtxos query: %s", req.URL)
 			}
 			body := fmt.Sprintf(
-				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"%d","script":%q,"isSpent":false,"isSwept":true,"isUnrolled":false,"isPreconfirmed":true}]}`,
+				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"%d","script":%q,"createdAt":"100","expiresAt":null,"isSpent":false,"isSwept":true,"commitmentTxids":[],"isUnrolled":false,"isPreconfirmed":true}]}`,
 				txid, amount, hex.EncodeToString(pkScript),
 			)
 			return jsonResponse(http.StatusOK, body), nil
@@ -205,8 +245,8 @@ func TestArkResolverRequiresChangeVtxoAfterFinalize(t *testing.T) {
 				t.Fatalf("change lookup must include later-spent outputs: %s", req.URL)
 			}
 			body := fmt.Sprintf(
-				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"8766","script":%q,"isSpent":true}]}`,
-				arkTxid, hex.EncodeToString(pkScript),
+				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"8766","script":%q,"createdAt":"100","expiresAt":null,"isSwept":false,"commitmentTxids":["%s"],"isSpent":true}]}`,
+				arkTxid, hex.EncodeToString(pkScript), strings.Repeat("ab", 32),
 			)
 			return jsonResponse(http.StatusOK, body), nil
 		default:
@@ -351,7 +391,7 @@ func TestSpendableVtxosRejectsEmptyScriptAndSpent(t *testing.T) {
 
 func happyIndexerInfo() string {
 	return fmt.Sprintf(
-		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q}`,
+		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
 		deployment.NetworkMutinynet, testCheckpointTapscript, deployment.MutinynetOperatorSignerPubHex,
 	)
 }
