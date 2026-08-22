@@ -619,6 +619,9 @@ func (s *Service) LoadVaults() error {
 		return err
 	}
 	if len(ids) == 0 {
+		if s.MultiTenantEnrollment {
+			return nil
+		}
 		cred, err := s.loadVerifiedCredential()
 		if err != nil {
 			return err

@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 )
@@ -153,22 +153,13 @@ func negatePub(t *testing.T, pub *btcec.PublicKey) *btcec.PublicKey {
 	return negated
 }
 
-func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
+func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
 	dir := t.TempDir()
 	vaultCosignerKey, err := btcec.NewPrivateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	externalOwnerKey, err := btcec.NewPrivateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	recoveryKey, err := btcec.NewPrivateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = recoveryKey
 	vaultCosignerPath := filepath.Join(dir, "vault-cosigner-key")
 	if err := os.WriteFile(vaultCosignerPath, []byte(hex.EncodeToString(vaultCosignerKey.Serialize())+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -183,10 +174,9 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 			ClientOrigin: "https://vault.example.com", RPID: "vault.example.com",
 			Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
 		},
-		DatabasePath:              filepath.Join(dir, "vault.sqlite"),
-		VaultCosignerKeyFile:      vaultCosignerPath,
-		ExternalOwnerWalletPubHex: hex.EncodeToString(externalOwnerKey.PubKey().SerializeCompressed()),
-		EsploraURL:                "https://mempool.mutinynet.arkade.sh/api",
+		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
+		VaultCosignerKeyFile: vaultCosignerPath,
+		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
 	}
 	dials := 0
 	dial := func(_ context.Context, baseURL, network string) (application.Broadcaster, error) {
@@ -204,8 +194,8 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 			len(versions) != 1 || versions[0] != deployment.MutinynetArkadeCosignerVersion {
 			t.Fatalf("public emulator pin = %q %x %v", origin, expected.SerializeCompressed(), versions)
 		}
-		if allowDeprecated != (emulatorDials > 1) {
-			t.Fatalf("public emulator deprecated-key allowance on dial %d = %v", emulatorDials, allowDeprecated)
+		if allowDeprecated {
+			t.Fatalf("public emulator accepted a deprecated key on dial %d", emulatorDials)
 		}
 		return stubEmulatorSigner{}, application.PublicEmulatorIdentity{
 			Origin: origin, Version: versions[0], BasePub: expected,
@@ -227,26 +217,22 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 	if runtime.service.HasVaultSigner() {
 		t.Fatal("protected runtime installed the master scalar as VaultSigner")
 	}
-	if runtime.service.EnrollmentTokenLen() != 32 {
-		t.Fatal("fresh runtime did not load the enrollment authorization hash")
+	if runtime.service.EnrollmentTokenLen() != 0 {
+		t.Fatal("initial invite secret leaked into the application service")
 	}
 	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
 	}
-	passkey, _ := webauthn.NewP256()
-	direct, _ := webauthn.NewP256()
-	hot, _ := btcec.NewPrivateKey()
-	err = runtime.service.RegisterWithBootstrap(application.RegisterRequest{
-		CredentialID:          hex.EncodeToString([]byte("mutinynet-credential")),
-		WebAuthnP256:          hex.EncodeToString(webauthn.CompressedP256(passkey)),
-		PhoneDirectP256:       hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub: hex.EncodeToString(hot.PubKey().SerializeCompressed()),
-	}, token)
+	tokenHash, err := application.HashEnrollmentToken(token)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.service.EnrollmentTokenLen() != 0 {
-		t.Fatal("successful enrollment retained the one-time authorization hash")
+	invite, err := runtime.ledger.GetInvite(tokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invite == nil || !invite.Usable(time.Now()) {
+		t.Fatal("fresh runtime did not persist a usable enrollment invite")
 	}
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
@@ -255,13 +241,12 @@ func TestRuntimeOwnsKeyAndLedgerAndDropsEnrollmentSecret(t *testing.T) {
 		t.Fatal("runtime close did not release credential integrity key")
 	}
 
-	// Empty boot seals issuance and now lands on schema 5 with no .pre-v5.
-	// Restarting a singleton credential without that snapshot must fail closed.
-	// Fresh-tenant reopen is TestFreshOnlyReopenAfterEmptyBootAndTenantEnroll.
+	// An empty deployment still requires the token file on every restart. The
+	// persisted row is authoritative, but startup never recovers the plaintext.
 	cfg.EnrollmentTokenFile = filepath.Join(dir, "already-removed-token")
 	if _, err := openWithDialers(context.Background(), cfg, dial, emulatorDial); err == nil ||
-		!strings.Contains(err.Error(), "already advanced") {
-		t.Fatalf("singleton restart without pre-v5: %v", err)
+		!strings.Contains(err.Error(), "enrollment token") {
+		t.Fatalf("empty restart without token: %v", err)
 	}
 }
 
@@ -294,36 +279,5 @@ func TestRuntimeRequiresGatewaySecret(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "VAULT_GATEWAY_SECRET") {
 		t.Fatalf("missing gateway secret: %v", err)
-	}
-}
-
-func TestMutinynetRejectsOpenEnrollment(t *testing.T) {
-	dir := t.TempDir()
-	vaultCosignerKey, err := btcec.NewPrivateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	vaultCosignerPath := filepath.Join(dir, "vault-cosigner-key")
-	if err := os.WriteFile(vaultCosignerPath, []byte(hex.EncodeToString(vaultCosignerKey.Serialize())+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg := Config{
-		Deployment: deployment.Config{
-			ClientOrigin: "https://portable.example.com", RPID: "portable.example.com",
-			Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
-		},
-		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
-		VaultCosignerKeyFile: vaultCosignerPath,
-		OpenEnrollment:       true,
-		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
-	}
-	_, err = openWithDialers(context.Background(), cfg,
-		func(context.Context, string, string) (application.Broadcaster, error) { return stubPublisher{}, nil },
-		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (application.Signer, application.PublicEmulatorIdentity, error) {
-			return stubEmulatorSigner{}, application.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
-		},
-	)
-	if err == nil || !strings.Contains(err.Error(), "invite-only") {
-		t.Fatalf("open enrollment: %v", err)
 	}
 }

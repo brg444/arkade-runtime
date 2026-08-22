@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -32,7 +31,6 @@ func main() {
 		addr       = flag.String("addr", envOr("VAULT_AUTHORIZER_ADDR", "127.0.0.1:8788"), "internal authorizer listen address")
 		dbPath     = flag.String("db", os.Getenv("VAULT_DB_PATH"), "absolute authoritative SQLite path")
 		keyFile    = flag.String("vault-cosigner-key-file", os.Getenv("VAULT_VAULT_COSIGNER_KEY_FILE"), "file containing the VaultCosigner private scalar")
-		ownerHex   = flag.String("external-owner-wallet", os.Getenv("VAULT_EXTERNAL_OWNER_WALLET_PUB"), "independent compressed ExternalOwnerWallet public key")
 		tokenFile  = flag.String("enrollment-token-file", os.Getenv("VAULT_ENROLLMENT_TOKEN_FILE"), "one-time first-enrollment token file")
 		esploraURL = flag.String("esplora-url", os.Getenv("VAULT_ESPLORA_URL"), "checkpoint-pinned Mutinynet Esplora base URL")
 		origin     = flag.String("client-origin", os.Getenv("VAULT_CLIENT_ORIGIN"), "exact HTTPS signing-client origin")
@@ -40,7 +38,6 @@ func main() {
 		network    = flag.String("network", envOr("VAULT_NETWORK", deployment.NetworkMutinynet), "must be mutinynet")
 		opCSV      = flag.Uint64("operational-csv-blocks", uint64(opDefault), "device-only CSV delay in blocks")
 		savingsCSV = flag.Uint64("savings-csv-blocks", uint64(savingsDefault), "hardware-only CSV delay in blocks")
-		freshOnly  = flag.Bool("fresh-only", !envTruthy("VAULT_ALLOW_LEGACY"), "refuse legacy credential/database files before any backup or migrate")
 	)
 	flag.Parse()
 	if *opCSV > uint64(deployment.MaxCSVBlockDelay) || *savingsCSV > uint64(deployment.MaxCSVBlockDelay) {
@@ -55,13 +52,10 @@ func main() {
 			OperationalCSVBlocks: uint32(*opCSV),
 			SavingsCSVBlocks:     uint32(*savingsCSV),
 		},
-		DatabasePath:              *dbPath,
-		VaultCosignerKeyFile:      *keyFile,
-		ExternalOwnerWalletPubHex: *ownerHex,
-		EnrollmentTokenFile:       *tokenFile,
-		MultiTenantEnrollment:     true,
-		FreshOnly:                 *freshOnly,
-		EsploraURL:                *esploraURL,
+		DatabasePath:         *dbPath,
+		VaultCosignerKeyFile: *keyFile,
+		EnrollmentTokenFile:  *tokenFile,
+		EsploraURL:           *esploraURL,
 	}
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 40*time.Second)
 	runtime, err := authorizer.Open(startupCtx, cfg)
@@ -111,13 +105,4 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
-}
-
-func envTruthy(key string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
-	case "1", "true", "yes":
-		return true
-	default:
-		return false
-	}
 }
