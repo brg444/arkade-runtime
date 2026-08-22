@@ -311,7 +311,7 @@ func overwriteSignedPSBT(t *testing.T, dbPath string, digest []byte, signed stri
 func TestHTTPPublishIsChallengeOnly(t *testing.T) {
 	e := newBoundaryEnv(t)
 	e.service.Broadcaster = &recordingBroadcast{}
-	handler := NewHandler(e.service, "", nil)
+	handler := testAuthorizer(e.service)
 	rec := postJSON(t, handler, "/v1/publish", `{"psbt":"cHNidP8BAH0="}`)
 	if rec.Code == 200 {
 		t.Fatal("publish accepted a PSBT body")
@@ -472,7 +472,7 @@ func TestPublicationStatusIsChallengeBased(t *testing.T) {
 func TestHTTPPublicationStatusIsChallengeOnly(t *testing.T) {
 	e := newBoundaryEnv(t)
 	e.service.Broadcaster = &recordingBroadcast{}
-	handler := NewHandler(e.service, "", nil)
+	handler := testAuthorizer(e.service)
 	ch := completeCanonical(t, e)
 	pubRec := postJSON(t, handler, "/v1/publish", `{"challenge":"`+hex.EncodeToString(ch)+`"}`)
 	if pubRec.Code != 200 {

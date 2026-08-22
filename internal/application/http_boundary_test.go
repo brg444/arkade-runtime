@@ -12,7 +12,7 @@ import (
 )
 
 func TestHTTPBoundaryDoesNotExposeRawEmulatorSigningRoute(t *testing.T) {
-	handler := Handler(nil, "")
+	handler := testAuthorizer(nil)
 	for _, path := range []string{
 		"/v1/onchain-tx",
 		"/v1/onchain-tx/",
@@ -33,7 +33,7 @@ func TestHTTPBoundaryDoesNotExposeRawEmulatorSigningRoute(t *testing.T) {
 
 func TestHTTPBoundaryRejectsUnknownAndTrailingJSON(t *testing.T) {
 	e := newBoundaryEnv(t)
-	handler := Handler(e.service, "")
+	handler := testAuthorizer(e.service)
 	draft := e.canonicalDraft(t, 90_000, 20_000, 500)
 	encoded, err := draft.B64Encode()
 	if err != nil {
@@ -70,7 +70,7 @@ func TestHTTPBoundaryRejectsUnknownAndTrailingJSON(t *testing.T) {
 
 func TestHTTPBoundaryCapsJSONRequestBodies(t *testing.T) {
 	e := newBoundaryEnv(t)
-	handler := Handler(e.service, "")
+	handler := testAuthorizer(e.service)
 	// Two MiB is intentionally far larger than any one-input POC PSBT or
 	// WebAuthn assertion. The handler must stop reading at its configured cap.
 	tooLarge := `{"psbt":"` + strings.Repeat("A", 2<<20) + `"}`
@@ -84,7 +84,7 @@ func TestHTTPBoundaryCapsJSONRequestBodies(t *testing.T) {
 
 func TestHTTPBoundaryRejectsCrossOriginMutation(t *testing.T) {
 	e := newBoundaryEnv(t)
-	handler := Handler(e.service, "")
+	handler := testAuthorizer(e.service)
 	draft := e.canonicalDraft(t, 90_000, 20_000, 500)
 	encoded, err := draft.B64Encode()
 	if err != nil {
@@ -113,12 +113,12 @@ func TestHTTPBoundaryRejectsCrossOriginMutation(t *testing.T) {
 
 func TestHTTPBoundaryRequiresJSONContentTypeForMutations(t *testing.T) {
 	e := newBoundaryEnv(t)
-	handler := Handler(e.service, "")
+	handler := testAuthorizer(e.service)
 	response := boundaryHTTPCall(
 		t,
 		handler,
 		http.MethodPost,
-		"/v1/register",
+		"/v1/preflight",
 		"text/plain",
 		"https://attacker.invalid",
 		`{"credentialId":"00","webauthnP256":"00"}`,
@@ -129,7 +129,7 @@ func TestHTTPBoundaryRequiresJSONContentTypeForMutations(t *testing.T) {
 }
 
 func TestHTTPBoundaryAllowsExpectedPreflight(t *testing.T) {
-	handler := Handler(nil, "")
+	handler := testAuthorizer(nil)
 	request := httptest.NewRequest(http.MethodOptions, "/v1/authorize", nil)
 	request.Header.Set("Origin", fixture.Origin)
 	request.Header.Set("Access-Control-Request-Method", http.MethodPost)

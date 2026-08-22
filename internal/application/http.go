@@ -48,12 +48,6 @@ func NewServer(addr string, h http.Handler) *http.Server {
 // PRF-unlocked PhoneRoutineBIP340 software key.
 const ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; worker-src 'none'"
 
-// Handler is the public POC HTTP API. It never proxies /v1/onchain-tx.
-// Demo routes are absent unless NewHandler is given a non-nil Demo.
-func Handler(svc *Service, webDir string) http.Handler {
-	return NewHandler(svc, webDir, nil)
-}
-
 // AuthorizerHandler is the protected software-box surface. It deliberately
 // has no static file handler, demo controller, or raw signing route.
 func AuthorizerHandler(svc *Service) http.Handler {
@@ -198,26 +192,6 @@ func sortedMethods(methods map[string]struct{}) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// NewHandler builds the public API. A nil demo is fail-closed: /v1/demo/*
-// is 404 and never reaches Bitcoin RPC.
-func NewHandler(svc *Service, webDir string, demo *Demo) http.Handler {
-	origin := serviceOrigin(svc)
-	mux := http.NewServeMux()
-	attachCoreRoutes(mux, svc, origin)
-	attachRegisterRoute(mux, svc, origin)
-	if demo != nil {
-		demo.attach(mux, origin)
-	} else {
-		mux.HandleFunc("/v1/demo/", func(w http.ResponseWriter, _ *http.Request) {
-			http.Error(w, "404 page not found", http.StatusNotFound)
-		})
-	}
-	if webDir != "" {
-		mux.Handle("/", http.FileServer(http.Dir(webDir)))
-	}
-	return withCORS(mux, origin)
 }
 
 func serviceOrigin(svc *Service) string {
