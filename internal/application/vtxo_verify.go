@@ -281,69 +281,87 @@ func verifySpendPSBT(ptx *psbt.Packet, op policy.VtxoOperation, inputs []policy.
 	if ptx == nil || ptx.UnsignedTx == nil || tree == nil {
 		return fmt.Errorf("psbt required")
 	}
-	if len(inputs) != 1 || len(checkpoints) != 1 {
-		return fmt.Errorf("exact spend program requires one input")
+	if len(inputs) == 0 || len(inputs) > maxVtxoSpendInputs || len(checkpoints) != len(inputs) {
+		return fmt.Errorf("ark input count")
 	}
 	if ptx.UnsignedTx.Version != 3 || ptx.UnsignedTx.LockTime != 0 {
 		return fmt.Errorf("ark tx version/locktime")
 	}
-	if len(ptx.UnsignedTx.TxIn) != 1 || len(ptx.Inputs) != 1 {
+	if len(ptx.UnsignedTx.TxIn) != len(inputs) || len(ptx.Inputs) != len(inputs) {
 		return fmt.Errorf("ark input count")
-	}
-	if ptx.UnsignedTx.TxIn[0].Sequence != wire.MaxTxInSequenceNum {
-		return fmt.Errorf("ark input sequence")
-	}
-	cp := checkpoints[0]
-	if cp == nil || cp.UnsignedTx == nil {
-		return fmt.Errorf("checkpoint psbt")
-	}
-	wantOutpoint := wire.OutPoint{Hash: cp.UnsignedTx.TxHash(), Index: 0}
-	if ptx.UnsignedTx.TxIn[0].PreviousOutPoint != wantOutpoint {
-		return fmt.Errorf("ark input is not the checkpoint")
 	}
 	destScript, arkControl, err := checkpointDestScript(op.CheckpointTapscript, tree.SpendLeaf)
 	if err != nil {
 		return err
 	}
-	wu := ptx.Inputs[0].WitnessUtxo
-	if wu == nil || uint64(wu.Value) != uint64(inputs[0].ValueSats) || !bytes.Equal(wu.PkScript, destScript) {
-		return fmt.Errorf("ark prevout")
-	}
 	user := firstLeafPub(tree.SpendLeaf)
-	if err := requireExactLeaf(ptx.Inputs[0], destScript, tree.SpendLeaf, arkControl, [][]byte{user}); err != nil {
-		return err
+	var inSum uint64
+	for i, input := range inputs {
+		if ptx.UnsignedTx.TxIn[i].Sequence != wire.MaxTxInSequenceNum {
+			return fmt.Errorf("ark input sequence")
+		}
+		cp := checkpoints[i]
+		if cp == nil || cp.UnsignedTx == nil {
+			return fmt.Errorf("checkpoint psbt")
+		}
+		wantOutpoint := wire.OutPoint{Hash: cp.UnsignedTx.TxHash(), Index: 0}
+		if ptx.UnsignedTx.TxIn[i].PreviousOutPoint != wantOutpoint {
+			return fmt.Errorf("ark input is not checkpoint %d", i)
+		}
+		wu := ptx.Inputs[i].WitnessUtxo
+		if wu == nil || wu.Value < 0 || uint64(wu.Value) != uint64(input.ValueSats) || !bytes.Equal(wu.PkScript, destScript) {
+			return fmt.Errorf("ark prevout")
+		}
+		if uint64(wu.Value) > ^uint64(0)-inSum {
+			return fmt.Errorf("input amount overflow")
+		}
+		inSum += uint64(wu.Value)
+		if err := requireExactLeaf(ptx.Inputs[i], destScript, tree.SpendLeaf, arkControl, [][]byte{user}); err != nil {
+			return err
+		}
+		if err := requireVerifiedUserSignature(ptx, i, user, tree.SpendLeaf); err != nil {
+			return err
+		}
 	}
-	if err := requireVerifiedUserSignature(ptx, 0, user, tree.SpendLeaf); err != nil {
-		return err
+	wantOutputs := 2
+	if op.ChangeSats > 0 {
+		wantOutputs = 3
 	}
-	if len(ptx.UnsignedTx.TxOut) != 3 {
+	if len(ptx.UnsignedTx.TxOut) != wantOutputs {
 		return fmt.Errorf("ark output count")
 	}
 	dest := ptx.UnsignedTx.TxOut[0]
-	change := ptx.UnsignedTx.TxOut[1]
-	anchor := ptx.UnsignedTx.TxOut[2]
+	anchor := ptx.UnsignedTx.TxOut[len(ptx.UnsignedTx.TxOut)-1]
 	if uint64(dest.Value) != uint64(op.AmountSats) || !bytes.Equal(dest.PkScript, op.DestScript) {
 		return fmt.Errorf("dest")
 	}
 	if dest.Value < program.DustSats || dest.Value > program.TxRecipientCapSats {
 		return fmt.Errorf("dest amount")
 	}
-	if !bytes.Equal(change.PkScript, tree.PkScript) || !bytes.Equal(change.PkScript, op.ChangeScript) {
-		return fmt.Errorf("change must be vault-policy-v1")
-	}
-	if change.Value < program.DustSats {
-		return fmt.Errorf("change below dust")
+	var changeValue uint64
+	if op.ChangeSats == 0 {
+		if op.ChangeVout != nil || len(op.ChangeScript) != 0 {
+			return fmt.Errorf("invalid no-change shape")
+		}
+	} else {
+		if op.ChangeVout == nil || *op.ChangeVout != 1 || op.ChangeSats < program.DustSats {
+			return fmt.Errorf("invalid change shape")
+		}
+		change := ptx.UnsignedTx.TxOut[1]
+		if !bytes.Equal(change.PkScript, tree.PkScript) || !bytes.Equal(change.PkScript, op.ChangeScript) {
+			return fmt.Errorf("change must be vault-policy-v1")
+		}
+		if change.Value != op.ChangeSats {
+			return fmt.Errorf("change amount")
+		}
+		changeValue = uint64(change.Value)
 	}
 	if !bytes.Equal(anchor.PkScript, txutils.ANCHOR_PKSCRIPT) || anchor.Value != 0 {
 		return fmt.Errorf("p2a output")
 	}
-	inSum := uint64(wu.Value)
-	outSum := uint64(dest.Value + change.Value + anchor.Value)
-	if inSum != outSum {
+	outSum := uint64(dest.Value) + changeValue
+	if op.FeeSats < 0 || uint64(op.FeeSats) > ^uint64(0)-outSum || inSum != outSum+uint64(op.FeeSats) {
 		return fmt.Errorf("input/output conservation")
-	}
-	if op.FeeSats != 0 {
-		return fmt.Errorf("fee mismatch")
 	}
 	return nil
 }

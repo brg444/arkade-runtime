@@ -16,10 +16,23 @@ type Signer interface {
 
 // ResolvedVtxo is one spendable VTXO as reported by the pinned indexer.
 type ResolvedVtxo struct {
-	Txid      string // 64-char lowercase hex
-	Vout      uint32
-	ValueSats uint64
-	Script    []byte // raw pkScript
+	Txid            string // 64-char lowercase hex
+	Vout            uint32
+	ValueSats       uint64
+	Script          []byte // raw pkScript
+	CreatedAt       int64
+	ExpiresAt       *int64
+	IsSwept         bool
+	CommitmentTxids []string
+}
+
+// IntentFeePolicy is the complete Operator intent-fee program. All four
+// strings are release inputs, including explicitly empty strings.
+type IntentFeePolicy struct {
+	OffchainInput  string
+	OffchainOutput string
+	OnchainInput   string
+	OnchainOutput  string
 }
 
 // ArkResolver is the application-owned indexer surface. Policy consumes
@@ -28,6 +41,9 @@ type ArkResolver interface {
 	// SpendableVtxos returns currently spendable VTXOs whose pkScript matches.
 	// Amounts come from the pinned indexer. Never from a client PSBT.
 	SpendableVtxos(ctx context.Context, pkScript []byte) ([]ResolvedVtxo, error)
+	// IntentFeePolicy returns a freshly validated GetInfo fee policy. Callers
+	// compare its digest to the reservation before adding a signature.
+	IntentFeePolicy(ctx context.Context) (IntentFeePolicy, error)
 	// ReservedSpentByArkTxid requires every reserved outpoint to be spent by
 	// the persisted ark txid (confirmed or virtual mempool). Disappearance
 	// alone is not enough. arkd writes this at Operator accept, before

@@ -131,14 +131,30 @@ type rowScanner interface {
 
 func scanVtxoOperation(row rowScanner) (VtxoOperation, error) {
 	var rec VtxoOperation
+	var changeVout sql.NullInt64
 	err := row.Scan(
 		&rec.OperationID, &rec.VaultID, &rec.Purpose, &rec.BundleDigest, &rec.State,
-		&rec.AmountSats, &rec.FeeSats, &rec.DestScript, &rec.ChangeScript,
+		&rec.AmountSats, &rec.FeeSats, &rec.FeePolicyDigest, &rec.DestScript, &rec.ChangeScript,
+		&rec.ChangeSats, &changeVout,
 		&rec.UnsignedPSBT, &rec.AuthorizedPSBT, &rec.CheckpointPSBTs, &rec.CheckpointRequestPSBTs,
 		&rec.CheckpointTapscript, &rec.ArkTxid, &rec.ExpiresAt, &rec.CreatedAt,
 		&rec.LastDestScript, &rec.IntegrityMAC,
 	)
+	if err == nil && changeVout.Valid {
+		if changeVout.Int64 < 0 || changeVout.Int64 > 1<<32-1 {
+			return VtxoOperation{}, fmt.Errorf("vtxo operation change vout")
+		}
+		vout := uint32(changeVout.Int64)
+		rec.ChangeVout = &vout
+	}
 	return rec, err
+}
+
+func nullableVtxoVout(vout *uint32) any {
+	if vout == nil {
+		return nil
+	}
+	return int64(*vout)
 }
 
 // SpentInPeriod returns authenticated VTXO outflow reserved during the rolling

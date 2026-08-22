@@ -27,6 +27,8 @@ import (
 
 type stubArkResolver struct {
 	vtxos        []ports.ResolvedVtxo
+	feePolicy    ports.IntentFeePolicy
+	feeErr       error
 	checkpoint   []byte
 	signer       []byte
 	spentBy      string
@@ -36,6 +38,10 @@ type stubArkResolver struct {
 
 func (s stubArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.ResolvedVtxo, error) {
 	return append([]ports.ResolvedVtxo(nil), s.vtxos...), nil
+}
+
+func (s stubArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy, error) {
+	return s.feePolicy, s.feeErr
 }
 
 func (s stubArkResolver) ReservedSpentByArkTxid(_ context.Context, _ []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
@@ -279,6 +285,9 @@ func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
 	if !bytes.Equal(changeScript, tree.PkScript) {
 		t.Fatal("change must be vault-policy-v1")
 	}
+	if out.ChangeSats != 15_000 || out.ChangeVout == nil || *out.ChangeVout != 1 || out.ChangeAddress != tree.ArkAddress {
+		t.Fatalf("change response = %+v", out)
+	}
 	op, err := e.svc.Ledger.GetVtxoOperation(context.Background(), out.OperationID)
 	if err != nil {
 		t.Fatal(err)
@@ -286,12 +295,162 @@ func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
 	swapped := []policy.VtxoBundleInput{
 		{Txid: []byte(strings.ToUpper(low)), Vout: 1, ValueSats: 45_000},
 	}
-	again, err := policy.ComputeVtxoBundleDigest(policy.VtxoPurposeSpend, fixture.VaultID, destScript, changeScript, 30_000, out.FeeSats, swapped, op.CreatedAt)
+	again, err := policy.ComputeVtxoBundleDigest(
+		policy.VtxoPurposeSpend, fixture.VaultID, destScript, changeScript,
+		30_000, out.FeeSats, out.ChangeSats, out.ChangeVout, op.FeePolicyDigest, swapped, op.CreatedAt,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(digest, again) {
 		t.Fatal("bundle digest depends on input order")
+	}
+}
+
+func TestReserveSelectsFragmentedInputsWithOperatorFees(t *testing.T) {
+	e, resolver, arkd := vtxoTestEnv(t)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, e.svc.snapshot(fixture.VaultID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.feePolicy = ports.IntentFeePolicy{
+		OffchainInput: "5.0", OffchainOutput: "amount * 0.001",
+		OnchainInput: "7.0", OnchainOutput: "amount * 0.002",
+	}
+	// Indexer order is deliberately the reverse of effective-value order.
+	resolver.vtxos = []ports.ResolvedVtxo{
+		{Txid: strings.Repeat("22", 32), Vout: 2, ValueSats: 15_000, Script: tree.PkScript},
+		{Txid: strings.Repeat("11", 32), Vout: 1, ValueSats: 20_000, Script: tree.PkScript},
+	}
+	req := signedReserveRequest(t, e, VtxoReserveRequest{
+		OperationID: strings.Repeat("31", 16), VaultID: fixture.VaultID,
+		Purpose: policy.VtxoPurposeSpend, DestAddress: mustArkadeDest(t, arkd), AmountSats: 30_000,
+	})
+	out, err := e.svc.ReserveVtxo(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Inputs) != 2 || out.Inputs[0].Txid != strings.Repeat("11", 32) || out.Inputs[1].Txid != strings.Repeat("22", 32) {
+		t.Fatalf("canonical inputs = %+v", out.Inputs)
+	}
+	if out.FeeSats != 45 || out.ChangeSats != 4_955 || out.ChangeVout == nil || *out.ChangeVout != 1 {
+		t.Fatalf("fee/change = %+v", out)
+	}
+	if out.FeePolicyDigest != "0315f524ae0610202998492284c074829ab156bea680b8313adfa25bdb782fb4" {
+		t.Fatalf("fee policy digest = %s", out.FeePolicyDigest)
+	}
+	stored, err := e.svc.Ledger.GetVtxoOperationInputs(context.Background(), out.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 2 || hex.EncodeToString(stored[0].Txid) != out.Inputs[0].Txid || hex.EncodeToString(stored[1].Txid) != out.Inputs[1].Txid {
+		t.Fatalf("stored input order = %+v", stored)
+	}
+}
+
+func TestReserveExactNoChangeReloadShape(t *testing.T) {
+	e, resolver, arkd := vtxoTestEnv(t)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, e.svc.snapshot(fixture.VaultID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.vtxos = []ports.ResolvedVtxo{{
+		Txid: strings.Repeat("32", 32), Vout: 0, ValueSats: 20_000, Script: tree.PkScript,
+	}}
+	req := signedReserveRequest(t, e, VtxoReserveRequest{
+		OperationID: strings.Repeat("33", 16), VaultID: fixture.VaultID,
+		Purpose: policy.VtxoPurposeSpend, DestAddress: mustArkadeDest(t, arkd), AmountSats: 20_000,
+	})
+	out, err := e.svc.ReserveVtxo(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.FeeSats != 0 || out.ChangeSats != 0 || out.ChangeVout != nil || out.ChangeAddress != "" || out.ChangeScript != "" {
+		t.Fatalf("no-change reserve = %+v", out)
+	}
+	if len(out.FeePolicyDigest) != 64 {
+		t.Fatalf("fee policy digest = %q", out.FeePolicyDigest)
+	}
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, out.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.FeeSats != out.FeeSats || view.FeePolicyDigest != out.FeePolicyDigest || view.ChangeSats != 0 || view.ChangeVout != nil || view.ChangeScript != "" {
+		t.Fatalf("no-change reload = %+v", view)
+	}
+}
+
+func TestVtxoFeePolicyDriftFailsBeforeAuthorize(t *testing.T) {
+	e, resolver, arkd := vtxoTestEnv(t)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, e.svc.snapshot(fixture.VaultID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.vtxos = []ports.ResolvedVtxo{{
+		Txid: strings.Repeat("34", 32), Vout: 0, ValueSats: 20_000, Script: tree.PkScript,
+	}}
+	req := signedReserveRequest(t, e, VtxoReserveRequest{
+		OperationID: strings.Repeat("35", 16), VaultID: fixture.VaultID,
+		Purpose: policy.VtxoPurposeSpend, DestAddress: mustArkadeDest(t, arkd), AmountSats: 20_000,
+	})
+	out, err := e.svc.ReserveVtxo(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := e.svc.Ledger.GetVtxoOperation(context.Background(), out.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.feePolicy.OffchainInput = "1.0"
+	if err := e.svc.requireCurrentVtxoFeePolicy(context.Background(), op); err == nil || !strings.Contains(err.Error(), "changed after reservation") {
+		t.Fatalf("fee drift = %v", err)
+	}
+}
+
+func TestSelectSpendVtxosRejectsUnsafeEconomicShapes(t *testing.T) {
+	pkScript := []byte{0x51, 0x20, 0x01}
+	destScript := []byte{0x51, 0x20, 0x02}
+	tests := []struct {
+		name      string
+		coins     []ports.ResolvedVtxo
+		amount    uint64
+		fee       ports.IntentFeePolicy
+		wantError string
+	}{
+		{
+			name: "subdust change", amount: 20_000,
+			coins:     []ports.ResolvedVtxo{{Txid: strings.Repeat("41", 32), ValueSats: 20_329, Script: pkScript}},
+			wantError: "insufficient economic",
+		},
+		{
+			name: "uneconomic input", amount: 330,
+			coins: []ports.ResolvedVtxo{{Txid: strings.Repeat("42", 32), ValueSats: 1_000, Script: pkScript}},
+			fee:   ports.IntentFeePolicy{OffchainInput: "amount"}, wantError: "insufficient economic",
+		},
+		{
+			name: "fee over cap", amount: 20_000,
+			coins: []ports.ResolvedVtxo{{Txid: strings.Repeat("43", 32), ValueSats: 30_000, Script: pkScript}},
+			fee:   ports.IntentFeePolicy{OffchainInput: "5001.0"}, wantError: "insufficient economic",
+		},
+		{
+			name: "indexed value over signed range", amount: 330,
+			coins:     []ports.ResolvedVtxo{{Txid: strings.Repeat("44", 32), ValueSats: uint64(^uint64(0)>>1) + 1, Script: pkScript}},
+			wantError: "invalid indexed vtxo",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolver := &stubArkResolver{vtxos: test.coins}
+			estimator, _, err := newVtxoFeeEstimator(test.fee)
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc := &Service{ArkResolver: resolver}
+			_, _, _, err = svc.selectSpendVtxos(context.Background(), pkScript, destScript, test.amount, uint64(program.AbsoluteFeeCeiling), estimator)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("error = %v, want %q", err, test.wantError)
+			}
+		})
 	}
 }
 
@@ -450,7 +609,7 @@ func TestReserveRejectsDuplicateOutpoints(t *testing.T) {
 	txid := strings.Repeat("cd", 32)
 	resolver.vtxos = []ports.ResolvedVtxo{
 		{Txid: txid, Vout: 1, ValueSats: 20_000, Script: tree.PkScript},
-		{Txid: strings.ToUpper(txid), Vout: 1, ValueSats: 21_000, Script: tree.PkScript},
+		{Txid: txid, Vout: 1, ValueSats: 21_000, Script: tree.PkScript},
 	}
 	h := testAuthorizer(e.svc)
 	req := signedReserveRequest(t, e, VtxoReserveRequest{
@@ -539,26 +698,30 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 	}
 	now := e.svc.vtxoNow().Format(timeRFC3339)
 	digest := bytes.Repeat([]byte{0x33}, 32)
+	feePolicyDigest := bytes.Repeat([]byte{0x44}, 32)
+	changeVout := uint32(1)
 	arkTxid := strings.Repeat("ab", 32)
 	op := policy.VtxoOperation{
-		OperationID:  "spend-final",
-		VaultID:      fixture.VaultID,
-		Purpose:      policy.VtxoPurposeSpend,
-		BundleDigest: digest,
-		State:        policy.VtxoStateSigned,
-		AmountSats:   10_000,
-		DestScript:   bytes.Repeat([]byte{0x51}, 34),
-		ChangeScript: bytes.Clone(tree.PkScript),
-		ArkTxid:      arkTxid,
-		ExpiresAt:    e.svc.vtxoNow().Add(vtxoReserveAuthorizeTimeout).Format(timeRFC3339),
-		CreatedAt:    now,
+		OperationID:     "spend-final",
+		VaultID:         fixture.VaultID,
+		Purpose:         policy.VtxoPurposeSpend,
+		BundleDigest:    digest,
+		State:           policy.VtxoStateSigned,
+		AmountSats:      10_000,
+		DestScript:      bytes.Repeat([]byte{0x51}, 34),
+		FeePolicyDigest: feePolicyDigest,
+		ChangeScript:    bytes.Clone(tree.PkScript), ChangeSats: 10_000, ChangeVout: &changeVout,
+		ArkTxid:   arkTxid,
+		ExpiresAt: e.svc.vtxoNow().Add(vtxoReserveAuthorizeTimeout).Format(timeRFC3339),
+		CreatedAt: now,
 	}
 	in := policy.VtxoOperationInput{
 		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(tree.PkScript),
 	}
 	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
 		OperationID: op.OperationID, VaultID: op.VaultID, Purpose: op.Purpose, BundleDigest: op.BundleDigest,
-		State: policy.VtxoStateReserved, AmountSats: op.AmountSats, DestScript: op.DestScript, ChangeScript: op.ChangeScript,
+		State: policy.VtxoStateReserved, AmountSats: op.AmountSats, FeePolicyDigest: op.FeePolicyDigest,
+		DestScript: op.DestScript, ChangeScript: op.ChangeScript, ChangeSats: op.ChangeSats, ChangeVout: op.ChangeVout,
 		ExpiresAt: op.ExpiresAt, CreatedAt: op.CreatedAt,
 	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
 		t.Fatal(err)
@@ -608,15 +771,30 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 }
 
 func insertSubmittedSpend(t *testing.T, e *env, operationID, arkTxid string, treePkScript []byte) {
+	insertSubmittedSpendShape(t, e, operationID, arkTxid, treePkScript, true)
+}
+
+func insertSubmittedSpendShape(t *testing.T, e *env, operationID, arkTxid string, treePkScript []byte, withChange bool) {
 	t.Helper()
 	now := e.svc.vtxoNow().Format(timeRFC3339)
 	digest := bytes.Repeat([]byte{0x33}, 32)
+	feePolicyDigest := bytes.Repeat([]byte{0x44}, 32)
+	var changeScript []byte
+	var changeSats int64
+	var changeVout *uint32
+	if withChange {
+		vout := uint32(1)
+		changeScript = bytes.Clone(treePkScript)
+		changeSats = 10_000
+		changeVout = &vout
+	}
 	in := policy.VtxoOperationInput{
 		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(treePkScript),
 	}
 	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
 		OperationID: operationID, VaultID: fixture.VaultID, Purpose: policy.VtxoPurposeSpend, BundleDigest: digest,
-		State: policy.VtxoStateReserved, AmountSats: 10_000, DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: bytes.Clone(treePkScript),
+		State: policy.VtxoStateReserved, AmountSats: 10_000, FeePolicyDigest: feePolicyDigest,
+		DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: changeScript, ChangeSats: changeSats, ChangeVout: changeVout,
 		ExpiresAt: e.svc.vtxoNow().Add(vtxoReserveAuthorizeTimeout).Format(timeRFC3339), CreatedAt: now,
 	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
 		t.Fatal(err)
@@ -639,6 +817,25 @@ func insertSubmittedSpend(t *testing.T, e *env, operationID, arkTxid string, tre
 	stored.ArkTxid = arkTxid
 	if _, swapped, err := e.svc.Ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateSigned, stored); err != nil || !swapped {
 		t.Fatal(err)
+	}
+}
+
+func TestRequestedNoChangeOperationFinalizesWithoutChangeProjection(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, e.svc.snapshot(fixture.VaultID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	arkTxid := strings.Repeat("ac", 32)
+	insertSubmittedSpendShape(t, e, "spend-no-change", arkTxid, tree.PkScript, false)
+	resolver.spentBy = arkTxid
+	resolver.changeExists = false
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-no-change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != policy.VtxoStateFinalized || view.ChangeSats != 0 || view.ChangeVout != nil || view.ChangeScript != "" {
+		t.Fatalf("no-change finalize = %+v", view)
 	}
 }
 
@@ -767,12 +964,15 @@ func TestGetVtxoOperationViewAbortsExpiredReservation(t *testing.T) {
 	}
 	now := e.svc.vtxoNow()
 	digest := bytes.Repeat([]byte{0x33}, 32)
+	feePolicyDigest := bytes.Repeat([]byte{0x44}, 32)
+	changeVout := uint32(1)
 	in := policy.VtxoOperationInput{
 		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(tree.PkScript),
 	}
 	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
 		OperationID: "spend-expired", VaultID: fixture.VaultID, Purpose: policy.VtxoPurposeSpend, BundleDigest: digest,
-		State: policy.VtxoStateReserved, AmountSats: 10_000, DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: bytes.Clone(tree.PkScript),
+		State: policy.VtxoStateReserved, AmountSats: 10_000, FeePolicyDigest: feePolicyDigest,
+		DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: bytes.Clone(tree.PkScript), ChangeSats: 10_000, ChangeVout: &changeVout,
 		ExpiresAt: now.Add(-time.Second).Format(timeRFC3339), CreatedAt: now.Add(-2 * time.Minute).Format(timeRFC3339),
 	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
 		t.Fatal(err)

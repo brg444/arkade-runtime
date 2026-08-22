@@ -9,13 +9,14 @@ import (
 )
 
 const vtxoSelectColumns = `operation_id, vault_id, purpose, bundle_digest, state,
-		        amount_sats, fee_sats, dest_script, change_script,
+		        amount_sats, fee_sats, fee_policy_digest, dest_script, change_script,
+		        change_sats, change_vout,
 		        IFNULL(unsigned_psbt, ''), IFNULL(authorized_psbt, ''),
 		        IFNULL(checkpoint_psbts, ''), IFNULL(checkpoint_request_psbts, ''),
 		        checkpoint_tapscript, IFNULL(ark_txid, ''), IFNULL(expires_at, ''),
 		        created_at, last_dest_script, integrity_mac`
 
-const maxReservedVtxoInputs = 256
+const maxReservedVtxoInputs = MaxVtxoOperationInputs
 
 // NowUTC is the ledger clock. Reservation expiry and allowance share it.
 func (l *Ledger) NowUTC() time.Time {
@@ -143,13 +144,15 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 	if _, err := conn.ExecContext(ctx, `
 INSERT INTO vtxo_operation (
   operation_id, vault_id, purpose, bundle_digest, state,
-  amount_sats, fee_sats, dest_script, change_script,
+  amount_sats, fee_sats, fee_policy_digest, dest_script, change_script,
+  change_sats, change_vout,
   unsigned_psbt, authorized_psbt, checkpoint_psbts, checkpoint_request_psbts,
   checkpoint_tapscript, ark_txid, expires_at, created_at, last_dest_script,
   integrity_mac
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.OperationID, rec.VaultID, rec.Purpose, rec.BundleDigest, rec.State,
-		rec.AmountSats, rec.FeeSats, rec.DestScript, rec.ChangeScript,
+		rec.AmountSats, rec.FeeSats, rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript,
+		rec.ChangeSats, nullableVtxoVout(rec.ChangeVout),
 		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
 		rec.CheckpointTapscript, rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt,
 		rec.LastDestScript, rec.IntegrityMAC,
@@ -208,13 +211,15 @@ func (l *Ledger) TransitionVtxoOperation(ctx context.Context, expectedState stri
 	res, err := l.db.ExecContext(ctx, `
 UPDATE vtxo_operation SET
   purpose = ?, bundle_digest = ?, state = ?, amount_sats = ?, fee_sats = ?,
-  dest_script = ?, change_script = ?, unsigned_psbt = ?, authorized_psbt = ?,
+  fee_policy_digest = ?, dest_script = ?, change_script = ?, change_sats = ?, change_vout = ?,
+  unsigned_psbt = ?, authorized_psbt = ?,
   checkpoint_psbts = ?, checkpoint_request_psbts = ?, checkpoint_tapscript = ?,
   ark_txid = ?, expires_at = ?, created_at = ?, last_dest_script = ?,
   integrity_mac = ?
  WHERE operation_id = ? AND vault_id = ? AND state = ?`,
 		rec.Purpose, rec.BundleDigest, rec.State, rec.AmountSats, rec.FeeSats,
-		rec.DestScript, rec.ChangeScript, rec.UnsignedPSBT, rec.AuthorizedPSBT,
+		rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript, rec.ChangeSats, nullableVtxoVout(rec.ChangeVout),
+		rec.UnsignedPSBT, rec.AuthorizedPSBT,
 		rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs, rec.CheckpointTapscript,
 		rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt, rec.LastDestScript,
 		rec.IntegrityMAC, rec.OperationID, rec.VaultID, expectedState,
@@ -277,7 +282,7 @@ func (l *Ledger) loadVtxoOperationInputs(ctx context.Context, q queryContext, op
 	defer zeroBytes(key)
 	rows, err := q.QueryContext(ctx, `
 SELECT operation_id, txid, vout, value_sats, script, integrity_mac
-  FROM vtxo_operation_input WHERE operation_id = ?`, operationID)
+  FROM vtxo_operation_input WHERE operation_id = ? ORDER BY txid, vout`, operationID)
 	if err != nil {
 		return nil, err
 	}

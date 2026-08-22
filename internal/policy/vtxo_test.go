@@ -13,11 +13,13 @@ import (
 )
 
 func testVtxoOperation(vaultID, opID, purpose, state string, amount, fee int64, created time.Time) VtxoOperation {
+	changeVout := uint32(1)
 	return VtxoOperation{
 		OperationID: opID, VaultID: vaultID, Purpose: purpose,
 		BundleDigest: bytes.Repeat([]byte{0x11}, 32), State: state,
 		AmountSats: amount, FeeSats: fee,
-		DestScript: []byte{0x51}, ChangeScript: []byte{0x52},
+		FeePolicyDigest: bytes.Repeat([]byte{0x22}, 32),
+		DestScript:      []byte{0x51}, ChangeScript: []byte{0x52}, ChangeSats: 330, ChangeVout: &changeVout,
 		CheckpointPSBTs: `["cHNidP8="]`, CheckpointRequestPSBTs: "cHNidP8B",
 		CheckpointTapscript: []byte{0xc0, 0x01},
 		CreatedAt:           created.UTC().Format(time.RFC3339),
@@ -32,13 +34,15 @@ func insertTestVtxoOperation(t *testing.T, led *Ledger, rec VtxoOperation) {
 	if _, err := led.db.Exec(`
 INSERT INTO vtxo_operation (
   operation_id, vault_id, purpose, bundle_digest, state,
-  amount_sats, fee_sats, dest_script, change_script,
+  amount_sats, fee_sats, fee_policy_digest, dest_script, change_script,
+  change_sats, change_vout,
   unsigned_psbt, authorized_psbt, checkpoint_psbts, checkpoint_request_psbts,
   checkpoint_tapscript, ark_txid, expires_at, created_at, last_dest_script,
   integrity_mac
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.OperationID, rec.VaultID, rec.Purpose, rec.BundleDigest, rec.State,
-		rec.AmountSats, rec.FeeSats, rec.DestScript, rec.ChangeScript,
+		rec.AmountSats, rec.FeeSats, rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript,
+		rec.ChangeSats, nullableVtxoVout(rec.ChangeVout),
 		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
 		rec.CheckpointTapscript, rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt,
 		rec.LastDestScript, rec.IntegrityMAC,
@@ -57,6 +61,8 @@ func TestVtxoOperationMACCoversPolicyFields(t *testing.T) {
 	}
 	mutations := []func(*VtxoOperation){
 		func(op *VtxoOperation) { op.AmountSats++ },
+		func(op *VtxoOperation) { op.FeePolicyDigest[0]++ },
+		func(op *VtxoOperation) { op.ChangeSats++ },
 		func(op *VtxoOperation) { op.State = vtxoStateAborted },
 		func(op *VtxoOperation) { op.CheckpointPSBTs = `["other"]` },
 		func(op *VtxoOperation) { op.CheckpointRequestPSBTs = "mutated" },
@@ -94,28 +100,63 @@ func TestVtxoBundleDigestCanonicalizesInputs(t *testing.T) {
 	a := []VtxoBundleInput{{Txid: high, Vout: 2, ValueSats: 3}, {Txid: low, Vout: 1, ValueSats: 1}}
 	b := []VtxoBundleInput{{Txid: low, Vout: 1, ValueSats: 1}, {Txid: high, Vout: 2, ValueSats: 3}}
 	created := "2026-08-19T12:00:00Z"
-	spendA, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, a, created)
+	changeVout := uint32(1)
+	feePolicy := bytes.Repeat([]byte{0x33}, 32)
+	spendA, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, 5_000, &changeVout, feePolicy, a, created)
 	if err != nil {
 		t.Fatal(err)
 	}
-	spendB, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, b, created)
+	spendB, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, 5_000, &changeVout, feePolicy, b, created)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(spendA, spendB) {
 		t.Fatal("bundle digest depends on caller input order")
 	}
-	if _, err := ComputeVtxoBundleDigest("board", "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, a, created); err == nil {
+	if _, err := ComputeVtxoBundleDigest("board", "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, 5_000, &changeVout, feePolicy, a, created); err == nil {
 		t.Fatal("unsupported purpose accepted")
 	}
 	hexInputs := []VtxoBundleInput{{Txid: []byte(strings.ToUpper(hex.EncodeToString(high))), Vout: 2, ValueSats: 3}, {Txid: low, Vout: 1, ValueSats: 1}}
-	fromHex, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, hexInputs, created)
+	fromHex, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, 5_000, &changeVout, feePolicy, hexInputs, created)
 	if err != nil || !bytes.Equal(spendA, fromHex) {
 		t.Fatalf("hex txid normalization: %v", err)
 	}
 	duplicates := []VtxoBundleInput{{Txid: low, Vout: 1}, {Txid: []byte(hex.EncodeToString(low)), Vout: 1}}
 	if _, err := CanonicalVtxoBundleInputs(duplicates); err == nil {
 		t.Fatal("duplicate outpoint accepted")
+	}
+}
+
+func TestVtxoBundleDigestRequiresAllOrNothingEconomicChange(t *testing.T) {
+	input := []VtxoBundleInput{{Txid: bytes.Repeat([]byte{0x01}, 32), ValueSats: 10_000}}
+	feePolicy := bytes.Repeat([]byte{0x02}, 32)
+	vout := uint32(1)
+	created := "2026-08-22T12:00:00Z"
+	if _, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x51}, []byte{0x52}, 1_000, 0, 1, &vout, feePolicy, input, created); err == nil || !strings.Contains(err.Error(), "change shape") {
+		t.Fatalf("subdust change = %v", err)
+	}
+	if _, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x51}, nil, 1_000, 0, 330, nil, feePolicy, input, created); err == nil || !strings.Contains(err.Error(), "change shape") {
+		t.Fatalf("partial change = %v", err)
+	}
+	if _, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x51}, nil, 10_000, 0, 0, nil, feePolicy, input, created); err != nil {
+		t.Fatalf("no change = %v", err)
+	}
+	if _, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x51}, nil, 10_000, 0, 0, nil, feePolicy, nil, created); err == nil || !strings.Contains(err.Error(), "input count") {
+		t.Fatalf("zero inputs = %v", err)
+	}
+	tooMany := make([]VtxoBundleInput, MaxVtxoOperationInputs+1)
+	for i := range tooMany {
+		tooMany[i] = VtxoBundleInput{Txid: bytes.Repeat([]byte{byte(i + 1)}, 32), ValueSats: 1}
+	}
+	if _, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x51}, nil, 10_000, 0, 0, nil, feePolicy, tooMany, created); err == nil || !strings.Contains(err.Error(), "input count") {
+		t.Fatalf("too many inputs = %v", err)
+	}
+}
+
+func TestIntentFeePolicyDigestVector(t *testing.T) {
+	digest := ComputeIntentFeePolicyDigest("5.0", "amount * 0.001", "7.0", "amount * 0.002")
+	if got, want := hex.EncodeToString(digest), "0315f524ae0610202998492284c074829ab156bea680b8313adfa25bdb782fb4"; got != want {
+		t.Fatalf("fee policy digest = %s, want %s", got, want)
 	}
 }
 
