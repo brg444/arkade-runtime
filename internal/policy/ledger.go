@@ -955,35 +955,42 @@ func (l *Ledger) IssueForTest(
 // private in-process stage after a crash, or the public stage after any
 // ambiguous timeout, but it can never replace the bound request or spend a
 // second allowance reservation.
-func (l *Ledger) SetMonotonic(m *Monotonic) {
+// AttachMonotonic installs the external policy sequence and immediately
+// compares it with all durable economic-outflow reservations. A runtime must
+// call this before serving requests.
+func (l *Ledger) AttachMonotonic(m *Monotonic) error {
 	if l == nil {
-		return
+		return fmt.Errorf("ledger required")
+	}
+	if m == nil {
+		return fmt.Errorf("monotonic policy sequence required")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.monotonic = m
+	return l.observeEconomicOutflowsLocked()
 }
 
-func (l *Ledger) IssuanceRowCount() (uint64, error) {
-	if l == nil {
-		return 0, fmt.Errorf("ledger required")
-	}
+func (l *Ledger) economicOutflowCount() (uint64, error) {
 	var n int64
-	err := l.db.QueryRow(`SELECT COUNT(*) FROM issuance`).Scan(&n)
+	err := l.db.QueryRow(`
+SELECT
+  (SELECT COUNT(*) FROM issuance) +
+  (SELECT COUNT(*) FROM vtxo_operation)`).Scan(&n)
 	if err != nil {
 		return 0, err
 	}
 	if n < 0 {
-		return 0, fmt.Errorf("issuance count")
+		return 0, fmt.Errorf("economic outflow count")
 	}
 	return uint64(n), nil
 }
 
-func (l *Ledger) observeIssuanceLocked() error {
+func (l *Ledger) observeEconomicOutflowsLocked() error {
 	if l == nil || l.monotonic == nil {
 		return nil
 	}
-	n, err := l.IssuanceRowCount()
+	n, err := l.economicOutflowCount()
 	if err != nil {
 		return err
 	}
@@ -1220,7 +1227,7 @@ func (l *Ledger) commitReservation(
 	}
 	commit = true
 	// The ledger intentionally has one SQLite connection. Return this
-	// transaction connection before IssuanceRowCount asks the pool for it;
+	// transaction connection before the policy sequence asks the pool for it;
 	// otherwise the first issuance with a monotonic counter deadlocks while
 	// still holding l.mu, blocking every policy/status request behind it.
 	closeErr := conn.Close()
@@ -1228,7 +1235,7 @@ func (l *Ledger) commitReservation(
 	if closeErr != nil {
 		return issuanceStage{}, closeErr
 	}
-	if err := l.observeIssuanceLocked(); err != nil {
+	if err := l.observeEconomicOutflowsLocked(); err != nil {
 		return issuanceStage{}, err
 	}
 	return issuanceStage{state: stateReserved, requestPSBT: requestPSBT, created: true}, nil

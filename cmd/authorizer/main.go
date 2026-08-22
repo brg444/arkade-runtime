@@ -30,6 +30,7 @@ func main() {
 	var (
 		addr       = flag.String("addr", envOr("VAULT_AUTHORIZER_ADDR", "127.0.0.1:8788"), "internal authorizer listen address")
 		dbPath     = flag.String("db", os.Getenv("VAULT_DB_PATH"), "absolute authoritative SQLite path")
+		sequence   = flag.String("policy-sequence", os.Getenv("VAULT_POLICY_SEQUENCE_PATH"), "absolute external policy-sequence path")
 		keyFile    = flag.String("vault-cosigner-key-file", os.Getenv("VAULT_VAULT_COSIGNER_KEY_FILE"), "file containing the VaultCosigner private scalar")
 		tokenFile  = flag.String("enrollment-token-file", os.Getenv("VAULT_ENROLLMENT_TOKEN_FILE"), "one-time first-enrollment token file")
 		esploraURL = flag.String("esplora-url", os.Getenv("VAULT_ESPLORA_URL"), "checkpoint-pinned Mutinynet Esplora base URL")
@@ -53,6 +54,7 @@ func main() {
 			SavingsCSVBlocks:     uint32(*savingsCSV),
 		},
 		DatabasePath:         *dbPath,
+		PolicySequencePath:   *sequence,
 		VaultCosignerKeyFile: *keyFile,
 		EnrollmentTokenFile:  *tokenFile,
 		EsploraURL:           *esploraURL,

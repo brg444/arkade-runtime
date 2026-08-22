@@ -8,6 +8,7 @@ services:
     command:
       - -addr=0.0.0.0:8788
       - -db=/app/data/vault.sqlite
+      - -policy-sequence=/app/sequence/policy-sequence
       - -vault-cosigner-key-file=/run/secrets/vault_cosigner_key
       - -enrollment-token-file=/run/secrets/vault_enrollment_token
     environment:
@@ -25,6 +26,7 @@ services:
       - vault_enrollment_token
     volumes:
       - vault-data:/app/data
+      - vault-sequence:/app/sequence
     ports:
       - "127.0.0.1:8788:8788"
     read_only: true
@@ -43,3 +45,4 @@ secrets:
 
 volumes:
   vault-data:
+  vault-sequence:

@@ -1,56 +1,57 @@
 # Operations
 
-Mutinynet demo only. Do not put real funds on this signer.
+The mainnet v2 service starts with a fresh database and fresh keys. This
+runbook does not migrate or restore the current Mutinynet service.
 
-## SQLite backup and restore
+## Durable state
 
-Live volume is `/app/data` on Railway `authorizer-next`. The ledger file is `/app/data/vault.sqlite` plus `-wal` / `-shm` if present. There is also `/app/data/vault.sqlite.monotonic`.
+Configure two independently restorable durable volumes:
 
-Backup from a copy of the running files, not from a write in place:
+- `VAULT_DB_PATH=/app/data/vault.sqlite`
+- `VAULT_POLICY_SEQUENCE_PATH=/app/sequence/policy-sequence`
 
-The Railway image includes the `sqlite3` CLI used by this procedure. Treat a
-missing CLI as an image/runbook mismatch and stop before copying live database
-files directly.
+The SQLite ledger stores authenticated policy rows. Every new economic-outflow
+reservation advances the authenticated policy sequence. Startup fails if the
+database contains fewer reservations than the sequence records.
 
-```bash
-railway ssh -s authorizer-next -e production -- sqlite3 /app/data/vault.sqlite ".backup /app/data/vault.backup.sqlite"
-railway ssh -s authorizer-next -e production -- cp /app/data/vault.sqlite.monotonic /app/data/vault.backup.monotonic
-```
+The sequence is not protection against an operator who restores both volumes
+to the same earlier point. Database restore and policy-sequence restore require
+separate approvals. A database rollback normally retains the current sequence.
+If the current sequence is unavailable, stop the service and investigate. Do
+not replace it with a sequence from the database backup.
 
-Restore only onto a stopped process, then replace both the SQLite file and the monotonic sidecar. Never restore SQLite without the matching monotonic file.
+## Backup
 
-## Pre-deploy migration check
-
-Copy the backup locally. Point a throwaway binary at the copy:
-
-```bash
-VAULT_DATABASE_PATH=./vault.backup.sqlite go test ./internal/policy -count=1
-# then boot the new binary against the copy, not production:
-VAULT_DATABASE_PATH=./vault.backup.sqlite ./vault-authorizer
-```
-
-The copy must migrate forward. If boot refuses, do not deploy.
-
-Checked against a copy of Railway `authorizer-next` `/app/data/vault.sqlite` on
-2026-08-19: schema 8, four leftover vaults (1 v3, 1 v4, 2 v5), no v6 rows yet.
-`VAULT_LEDGER_COPY=<copy> go test ./internal/policy -run TestOpenCopiedLiveLedger`
-opened that copy and confirmed schema 8. Do not paste vault ids here.
-
-## Release checklist
-
-1. Wallet first: merge `vault-mode`, Vercel production, alias `arkade-vault-demo.vercel.app`.
-2. Confirm the pretty domain still talks same-origin `/v1`.
-3. Server: `go test ./...`, then `railway up -s authorizer-next -e production -y`.
-4. Health: `GET /health` → `ok`.
-5. Ready: `GET /ready` → `ok: true`, schema integer, enroll template `phone-hww-recovery-staged-v6`.
-6. Status: `GET /v1/status` through the demo gateway → `network=mutinynet`, `templateVersion=phone-hww-recovery-staged-v6`, token enrollment mode.
-7. Rollback: Railway previous successful deployment; Vercel previous alias. Do not restore a newer schema backup onto an older binary.
-
-## Smoke
+Back up a consistent SQLite snapshot while retaining the current policy
+sequence separately:
 
 ```bash
-curl -fsS https://authorizer-next-production.up.railway.app/health
-curl -fsS https://arkade-vault-demo.vercel.app/v1/status
+sqlite3 /app/data/vault.sqlite ".backup /app/data/vault.backup.sqlite"
+cp /app/sequence/policy-sequence /app/sequence/policy-sequence.backup
 ```
 
-Expect Mutinynet, v6, and token enrollment. `/ready` is unauthenticated and must not print keys.
+The two artifacts have different recovery roles. Automatic restore workflows
+must never roll both backward together.
+
+## Readiness
+
+`GET /health` proves only that the process is alive. `GET /ready` must remain
+false until the database, public Arkade cosigner, Arkade Operator resolver,
+Operator signer, and checkpoint policy all match the release pins.
+
+The process treats resolver startup failure as fatal. Restart after correcting
+network or Operator availability; there is no partially ready mode in which
+VTXO routes remain unavailable indefinitely.
+
+## Release order
+
+1. Run `go test ./... -count=1`, `go test -race ./...`, and `go vet ./...`.
+2. Start against empty mainnet v2 volumes and new key material.
+3. Require `/ready` to return `ok: true` before routing wallet traffic.
+4. Exercise VTXO receive, send, ambiguous-response recovery, and restart.
+5. Exercise Savings-to-Spending boarding and rollback failure drills.
+6. Enable outbound BOLT11 only after its separate durable-saga gate passes.
+
+Mainnet deployment remains blocked until every release pin and upstream
+Operator gate in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md)
+closes.

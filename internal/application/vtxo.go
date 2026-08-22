@@ -348,7 +348,7 @@ func (s *Service) decodeVtxoDest(addr string) ([]byte, string, error) {
 		if decoded.HRP != arklib.BitcoinTestNet.Addr {
 			return nil, "", apperr.New(apperr.CodeRejected, "destAddress network")
 		}
-		operator, err := btcec.ParsePubKey(s.advertisedArkdPub())
+		operator, err := btcec.ParsePubKey(s.operatorSignerPub())
 		if err != nil || decoded.Signer == nil ||
 			!bytes.Equal(schnorr.SerializePubKey(decoded.Signer), schnorr.SerializePubKey(operator)) {
 			return nil, "", apperr.New(apperr.CodeRejected, "destAddress Operator")

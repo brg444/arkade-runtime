@@ -15,10 +15,6 @@ const (
 	issuanceWindow          = 24 * time.Hour
 )
 
-// Issuance MAC limitation: the MAC authenticates each stored row. It does not
-// detect deletion of a row or restoring an older SQLite file. A monotonic
-// value outside this database would be required to notice those events.
-
 // IssuanceRecord is one per-vault allowance row. The MAC covers every
 // persisted field, including created_at and period_start, so a SQLite-only
 // edit cannot refill a tenant.

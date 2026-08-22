@@ -1,26 +1,20 @@
 # Deploy
 
-Build context is this repo. `cmd/authorizer` lives here.
+Build context is this repository. `cmd/authorizer` is the only production
+binary.
 
 | File | Role |
 | --- | --- |
-| [Dockerfile.railway](../Dockerfile.railway) | Live Railway image. Binds `$PORT`. |
-| [Dockerfile.mutinynet](../Dockerfile.mutinynet) | Compose image. |
-| [entrypoint.railway.sh](entrypoint.railway.sh) | Materialize key/token files from env. |
+| [Dockerfile.railway](../Dockerfile.railway) | Hosted image that binds `$PORT` |
+| [Dockerfile.mutinynet](../Dockerfile.mutinynet) | Local Mutinynet image |
+| [entrypoint.railway.sh](entrypoint.railway.sh) | Key-file materialization and privilege drop |
+| [ops.md](ops.md) | Mainnet v2 state, restore, readiness, and release procedure |
 
-Live service is Railway `authorizer-next`.
+The mainnet v2 service is a greenfield deployment. It does not open or migrate
+the existing Mutinynet ledger. Use fresh database and policy-sequence volumes,
+new VaultCosigner key material, and fresh enrollment invitations.
 
-That ledger is **not empty**. New invites mint the staged program
-(`phone-hww-recovery-staged-v6`). Leftover v4 and v5 rows still load.
-This is not a greenfield cut. Schema integer, template identity, and
-domain strings are independent — see
-[../docs/versions.md](../docs/versions.md). See [ops.md](ops.md).
-
-```sql
-SELECT version FROM schema_meta;
-SELECT template_version, cosigner_mode, COUNT(*) FROM vault GROUP BY 1, 2;
-```
-
-Mutinynet needs outbound HTTPS to the public Arkade emulator
-(`emulator.mutinynet.arkade.sh`). Origin, version, and base key are
-pinned in `internal/deployment`. Do not add an env override.
+The public Arkade cosigner and Arkade Operator resolver identities are release
+pins in `internal/deployment`. Environment overrides for custody or checkpoint
+policy are forbidden. Mainnet values remain intentionally absent until review
+freezes them.

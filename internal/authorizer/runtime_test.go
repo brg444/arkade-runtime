@@ -175,6 +175,7 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 			Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
 		},
 		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
+		PolicySequencePath:   filepath.Join(dir, "policy-sequence"),
 		VaultCosignerKeyFile: vaultCosignerPath,
 		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
 	}
@@ -267,6 +268,7 @@ func TestRuntimeRequiresGatewaySecret(t *testing.T) {
 			Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
 		},
 		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
+		PolicySequencePath:   filepath.Join(dir, "policy-sequence"),
 		VaultCosignerKeyFile: vaultCosignerPath,
 		EnrollmentTokenFile:  filepath.Join(dir, "enrollment-token"),
 		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",

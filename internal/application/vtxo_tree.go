@@ -35,11 +35,11 @@ type vtxoBoardTree struct {
 	OnchainAddress string
 }
 
-func (s *Service) advertisedArkdPub() []byte {
+func (s *Service) operatorSignerPub() []byte {
 	if s == nil || isNilInterface(s.ArkResolver) {
 		return nil
 	}
-	return s.ArkResolver.AdvertisedSignerPub()
+	return s.ArkResolver.OperatorSignerPub()
 }
 
 func (s *Service) deriveVtxoVaultCosigner(vaultID string) (*btcec.PrivateKey, error) {
@@ -47,12 +47,12 @@ func (s *Service) deriveVtxoVaultCosigner(vaultID string) (*btcec.PrivateKey, er
 	if err != nil {
 		return nil, err
 	}
-	advertised := s.advertisedArkdPub()
-	if len(advertised) != 33 {
-		return nil, fmt.Errorf("advertised arkd pub required")
+	operator := s.operatorSignerPub()
+	if len(operator) != 33 {
+		return nil, fmt.Errorf("Operator signer pubkey required")
 	}
 	cfg := s.runtimeConfig()
-	return policy.DeriveVtxoVaultCosignerScalar(master, vaultID, program.VaultPolicyV1, cfg.Network, advertised)
+	return policy.DeriveVtxoVaultCosignerScalar(master, vaultID, program.VaultPolicyV1, cfg.Network, operator)
 }
 
 func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*vtxoPolicyTree, error) {
@@ -63,10 +63,10 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if err != nil {
 		return nil, err
 	}
-	advertised := s.advertisedArkdPub()
-	arkd, err := btcec.ParsePubKey(advertised)
+	operator := s.operatorSignerPub()
+	arkd, err := btcec.ParsePubKey(operator)
 	if err != nil {
-		return nil, fmt.Errorf("advertised arkd pub")
+		return nil, fmt.Errorf("Operator signer pubkey")
 	}
 	delegate, err := btcec.ParsePubKey(mustDecodeCompressed(program.VaultPolicyV1PinnedDelegate))
 	if err != nil {
@@ -167,9 +167,9 @@ func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, err
 	if snap.PhoneRoutineBIP340 == nil {
 		return nil, fmt.Errorf("enrolled phone key required")
 	}
-	arkd, err := btcec.ParsePubKey(s.advertisedArkdPub())
+	arkd, err := btcec.ParsePubKey(s.operatorSignerPub())
 	if err != nil {
-		return nil, fmt.Errorf("advertised arkd pub")
+		return nil, fmt.Errorf("Operator signer pubkey")
 	}
 	exit := arklib.RelativeLocktime{
 		Type:  arklib.LocktimeTypeSecond,
@@ -202,11 +202,11 @@ func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, err
 }
 
 func (s *Service) refuseDefaultVtxoChange(snap enrolledSnapshot, dest []byte) error {
-	advertised := s.advertisedArkdPub()
-	if snap.PhoneRoutineBIP340 == nil || len(advertised) != 33 {
+	operator := s.operatorSignerPub()
+	if snap.PhoneRoutineBIP340 == nil || len(operator) != 33 {
 		return nil
 	}
-	arkd, err := btcec.ParsePubKey(advertised)
+	arkd, err := btcec.ParsePubKey(operator)
 	if err != nil {
 		return nil
 	}

@@ -18,7 +18,7 @@ const (
 	sessionMACDomain            = "arkade-2fa-vault/recovery-session/v2"
 	signCountMACDomain          = "arkade-2fa-vault/webauthn-sign-count/v1"
 	vaultMapMACDomain           = "arkade-2fa-vault/vault-map/v1"
-	monotonicMACDomain          = "arkade-2fa-vault/issuance-monotonic/v1"
+	monotonicMACDomain          = "arkade-vault/policy-sequence/v2"
 	vtxoOperationMACDomain      = "arkade-2fa-vault/vtxo-operation/v1"
 	vtxoBundleDigestTag         = "arkade-2fa-vault/vtxo-bundle/v1"
 )

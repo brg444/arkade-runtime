@@ -1,11 +1,11 @@
 #!/bin/sh
 set -eu
 
-# Railway volume is root-owned on first attach. Drop to the vault user after.
+# Durable volumes are root-owned on first attach. Drop to the vault user after.
 if [ "$(id -u)" = "0" ]; then
-  mkdir -p /app/data
-  chown -R 10001:10001 /app/data
-  chmod 0700 /app/data
+  mkdir -p /app/data /app/sequence
+  chown -R 10001:10001 /app/data /app/sequence
+  chmod 0700 /app/data /app/sequence
 fi
 
 mkdir -p /tmp/vault-secrets

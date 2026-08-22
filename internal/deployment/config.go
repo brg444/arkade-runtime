@@ -35,6 +35,13 @@ const (
 	// MutinynetArkIndexerOrigin is the public Mutinynet arkd HTTPS gateway.
 	// There is no environment override.
 	MutinynetArkIndexerOrigin = "https://mutinynet.arkade.sh"
+
+	// MutinynetOperator* pin the Operator identity and checkpoint fallback
+	// policy into the release. GetInfo is discovery data, not a policy oracle.
+	MutinynetOperatorSignerPubHex    = "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a"
+	MutinynetCheckpointForfeitPubHex = "02dfcaec558c7e78cf3e38b898ba8a43cfb5727266bae32c5c5b3aeb32c558aa0b"
+	MutinynetCheckpointTapscriptHex  = "03080040b27520dfcaec558c7e78cf3e38b898ba8a43cfb5727266bae32c5c5b3aeb32c558aa0bac"
+	MutinynetCheckpointDelaySeconds  = uint32(4096)
 )
 
 // Config is persisted into the vault descriptor at enrollment. Changing any

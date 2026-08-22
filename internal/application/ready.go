@@ -16,7 +16,7 @@ type ReadyStatus struct {
 	Error          string `json:"error,omitempty"`
 }
 
-// Ready checks ledger access and the pinned Arkade identity.
+// Ready checks ledger access and every release-pinned signing dependency.
 func (s *Service) Ready() ReadyStatus {
 	st := ReadyStatus{
 		EnrollTemplate: v5.Template,
@@ -45,6 +45,18 @@ func (s *Service) Ready() ReadyStatus {
 	st.Schema = ver
 	if s.ArkadeCosignerOrigin == "" || s.ArkadeCosignerVersion == "" || s.ArkadeCosignerPub == nil {
 		st.Error = "arkade signer not pinned"
+		return st
+	}
+	if isNilInterface(s.ArkResolver) {
+		st.Error = "Arkade resolver unavailable"
+		return st
+	}
+	if s.ArkResolver.Network() != cfg.Network {
+		st.Error = "Arkade resolver network mismatch"
+		return st
+	}
+	if err := validateArkResolverPolicy(cfg.Network, s.ArkResolver.CheckpointTapscript(), s.ArkResolver.OperatorSignerPub()); err != nil {
+		st.Error = "Arkade resolver policy mismatch"
 		return st
 	}
 	st.Ok = true

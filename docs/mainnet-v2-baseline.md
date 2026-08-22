@@ -18,8 +18,8 @@ The process contains five application modules:
   adapters.
 
 The VaultCosigner key and authoritative policy ledger remain in the same
-protected process. Application modules receive narrow interfaces; they do not
-reach through a shared mutable service object.
+protected process. Narrow application interfaces prevent access through a
+shared mutable service object.
 
 ## Persistence
 
@@ -36,12 +36,18 @@ changes use small forward migrations from this new baseline only.
 
 Routes are grouped by enrollment, Spending, Savings, and recovery. HTTP
 handlers decode and encode; application services enforce workflows; domain
-packages validate complete transactions independently. Raw signing endpoints
-do not exist.
+packages validate complete transactions independently. The API exposes no raw
+signing endpoint.
 
 Every mutating operation has one durable identifier, one canonical digest, and
 an explicit state machine. An ambiguous response is reconciled by reading that
 operation. A client retry cannot allocate a second allowance or reuse an input.
+
+Every newly reserved economic outflow, whether an onchain issuance or a VTXO
+operation, also advances an authenticated sequence outside SQLite. Startup
+refuses a database whose durable outflow count is behind that sequence. The
+database and sequence must use separate durable volumes and separate restore
+decisions. Restoring both to the same earlier point defeats rollback detection.
 
 ## Release gates
 
@@ -54,3 +60,8 @@ Mainnet code remains fail-closed until the Operator origin, network identity,
 signer keys, supported versions, delay units, fee bounds, and rotation policy
 are frozen. The arkd intent lifecycle corrections and Redis concurrency tests
 must be upstream and deployed before boarding is enabled.
+
+The resolver is startup-critical for the VTXO-first release. Readiness requires
+the exact release-pinned Operator signer and checkpoint unroll closure. Remote
+GetInfo data cannot change the checkpoint key, closure type, or CSV delay that
+the VaultCosigner will authorize.

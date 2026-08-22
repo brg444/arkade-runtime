@@ -1,8 +1,11 @@
 package policy
 
 import (
+	"bytes"
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,13 +27,13 @@ func TestMonotonicRefusesRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := m.Observe(4); err == nil {
-		t.Fatal("accepted a rolled-back issuance count")
+		t.Fatal("accepted a rolled-back policy sequence")
 	}
 }
 
 func TestFirstIssuanceWithMonotonicCounterDoesNotDeadlock(t *testing.T) {
 	dir := t.TempDir()
-	led, err := OpenLedger(filepath.Join(dir, "ledger.sqlite"), nil)
+	led, err := OpenMainnetLedger(filepath.Join(dir, "ledger.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +44,9 @@ func TestFirstIssuanceWithMonotonicCounterDoesNotDeadlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	led.SetMonotonic(monotonic)
+	if err := led.AttachMonotonic(monotonic); err != nil {
+		t.Fatal(err)
+	}
 
 	done := make(chan error, 1)
 	go func() {
@@ -64,6 +69,74 @@ func TestFirstIssuanceWithMonotonicCounterDoesNotDeadlock(t *testing.T) {
 		// Do not close the ledger here: the regression holds its only
 		// connection forever, and Close would hide this failure by hanging.
 		t.Fatal("first issuance deadlocked while updating monotonic counter")
+	}
+}
+
+func TestVtxoReservationDetectsDatabaseRollback(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "ledger.sqlite")
+	sequencePath := filepath.Join(dir, "policy-sequence")
+	key := testIntegrityKey()
+
+	ledger, err := OpenMainnetLedger(dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.SetIntegrityKey(key); err != nil {
+		t.Fatal(err)
+	}
+	sequence, err := OpenMonotonic(sequencePath, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.AttachMonotonic(sequence); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	preReservation, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ledger, err = OpenMainnetLedger(dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.SetIntegrityKey(key); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.AttachMonotonic(sequence); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	rec := testVtxoOperation("vault-a", "op-rollback", vtxoPurposeSpend, vtxoStateReserved, 10_000, 100, now)
+	rec.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+	inputs := []VtxoOperationInput{{
+		Txid: bytes.Repeat([]byte{0x42}, 32), Vout: 0, ValueSats: 20_000, Script: []byte{0x51},
+	}}
+	if err := ledger.ReserveVtxoOperation(context.Background(), rec, inputs, 100_000); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(dbPath, preReservation, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := OpenMainnetLedger(dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	if err := restored.SetIntegrityKey(key); err != nil {
+		t.Fatal(err)
+	}
+	err = restored.AttachMonotonic(sequence)
+	if err == nil || !strings.Contains(err.Error(), "rolled-back database") {
+		t.Fatalf("restored pre-reservation database was accepted: %v", err)
 	}
 }
 

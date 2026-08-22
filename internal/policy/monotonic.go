@@ -11,11 +11,12 @@ import (
 	"sync"
 )
 
-const monotonicFileVersion = "arkade-vault-monotonic/v1"
+const monotonicFileVersion = "arkade-vault-policy-sequence/v2"
 
-// Monotonic is an issuance counter stored outside SQLite. Rolling the
-// database file back without this file is refused. An attacker who restores
-// both files together still wins; put this path on a different volume.
+// Monotonic is the policy-ledger sequence stored outside SQLite. Every new
+// economic-outflow reservation advances it. Restoring an older database while
+// retaining this file is refused. Restoring both files together defeats this
+// control, so production must protect them as separate failure domains.
 type Monotonic struct {
 	path string
 	key  []byte
@@ -43,7 +44,7 @@ func (m *Monotonic) Observe(dbCount uint64) error {
 		return err
 	}
 	if dbCount < fileCount {
-		return fmt.Errorf("issuance ledger is behind the external counter (%d < %d); refuse to start from a rolled-back database", dbCount, fileCount)
+		return fmt.Errorf("policy ledger is behind the external sequence (%d < %d); refuse to start from a rolled-back database", dbCount, fileCount)
 	}
 	if dbCount == fileCount {
 		return nil

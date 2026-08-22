@@ -92,7 +92,12 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	connClosed := false
+	defer func() {
+		if !connClosed {
+			_ = conn.Close()
+		}
+	}()
 	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
 		return err
 	}
@@ -165,7 +170,13 @@ INSERT INTO vtxo_operation_input (
 		return err
 	}
 	commit = true
-	return nil
+	// Release the only SQLite connection before querying the aggregate count.
+	// Keeping it here would deadlock while holding l.mu.
+	if err := conn.Close(); err != nil {
+		return err
+	}
+	connClosed = true
+	return l.observeEconomicOutflowsLocked()
 }
 
 // PutVtxoOperation reseals and updates one verified row.

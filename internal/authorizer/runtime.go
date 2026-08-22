@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"net/http"
 	"os"
@@ -35,6 +34,7 @@ import (
 type Config struct {
 	Deployment           deployment.Config
 	DatabasePath         string
+	PolicySequencePath   string
 	VaultCosignerKeyFile string
 	EnrollmentTokenFile  string
 	EnrollmentWindow     time.Duration
@@ -84,10 +84,14 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 	}
 	resolver, err := application.DialArkResolver(ctx, cfg.Deployment.Network)
 	if err != nil {
-		log.Printf("ark indexer unavailable; vtxo routes fail-closed: %v", err)
-		return rt, nil
+		_ = rt.Close()
+		return nil, fmt.Errorf("required Arkade resolver: %w", err)
 	}
 	rt.service.ArkResolver = resolver
+	if ready := rt.service.Ready(); !ready.Ok {
+		_ = rt.Close()
+		return nil, fmt.Errorf("authorizer readiness: %s", ready.Error)
+	}
 	return rt, nil
 }
 
@@ -103,6 +107,9 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 	}
 	if !filepath.IsAbs(cfg.DatabasePath) || cfg.DatabasePath == "/" || strings.Contains(strings.ToLower(cfg.DatabasePath), "mode=memory") {
 		return nil, fmt.Errorf("authoritative database must be an absolute on-disk file path")
+	}
+	if !filepath.IsAbs(cfg.PolicySequencePath) || cfg.PolicySequencePath == "/" || cfg.PolicySequencePath == cfg.DatabasePath {
+		return nil, fmt.Errorf("policy sequence must be a distinct absolute on-disk file path")
 	}
 	if cfg.EsploraURL == "" {
 		return nil, fmt.Errorf("mutinynet esplora url required")
@@ -140,18 +147,14 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	mono, err := policy.OpenMonotonic(cfg.DatabasePath+".monotonic", credentialIntegrityKey)
+	mono, err := policy.OpenMonotonic(cfg.PolicySequencePath, credentialIntegrityKey)
 	if err != nil {
 		zero(credentialIntegrityKey)
 		return nil, fmt.Errorf("monotonic counter: %w", err)
 	}
-	ledger.SetMonotonic(mono)
-	if n, countErr := ledger.IssuanceRowCount(); countErr != nil {
+	if err := ledger.AttachMonotonic(mono); err != nil {
 		zero(credentialIntegrityKey)
-		return nil, fmt.Errorf("issuance count: %w", countErr)
-	} else if err := mono.Observe(n); err != nil {
-		zero(credentialIntegrityKey)
-		return nil, err
+		return nil, fmt.Errorf("policy sequence: %w", err)
 	}
 
 	vaultIDs, err := ledger.ListVaultIDs()
