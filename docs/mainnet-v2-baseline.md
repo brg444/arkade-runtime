@@ -46,8 +46,10 @@ operation. A client retry cannot allocate a second allowance or reuse an input.
 Every newly reserved economic outflow, whether an onchain issuance or a VTXO
 operation, also advances an authenticated sequence outside SQLite. Startup
 refuses a database whose durable outflow count is behind that sequence. The
-database and sequence must use separate durable volumes and separate restore
-decisions. Restoring both to the same earlier point defeats rollback detection.
+database and sequence must use independently controlled durable storage,
+permissions, backups, and restore decisions. Separate paths or named volumes
+alone do not establish independent failure domains. Restoring both to the same
+earlier point defeats rollback detection.
 
 ## Release gates
 
@@ -65,3 +67,26 @@ The resolver is startup-critical for the VTXO-first release. Readiness requires
 the exact release-pinned Operator signer and checkpoint unroll closure. Remote
 GetInfo data cannot change the checkpoint key, closure type, or CSV delay that
 the VaultCosigner will authorize.
+
+## Boarding trust window
+
+The current boarding intermediate is a phone-plus-Operator contract. The
+VaultCosigner and rolling allowance begin governing the value only after the
+Operator settles it into `vault-policy-v1`. A compromised phone and Operator
+can therefore collude during that interval. Mainnet boarding remains blocked
+until a reviewed construction either proves an acceptable bound on that
+interval or includes the VaultCosigner policy before settlement.
+
+## Availability boundaries
+
+Passkey challenge issuance is intentionally possible before tenant
+authentication. The application-level pending cap is not denial-of-service
+protection. Mainnet traffic remains blocked until the production edge enforces
+a shared, durable rate limit by client address and vault identifier across all
+instances. The in-memory gateway bucket is only a local development guard.
+
+Allowance evaluation MAC-verifies every row before using its state or time.
+Database predicates must not exclude rows using fields that have not yet been
+authenticated. Mainnet load testing must establish a supported ledger bound,
+or the ledger must gain an authenticated accumulator before that bound is
+exceeded.

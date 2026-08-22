@@ -58,7 +58,8 @@ CREATE TABLE vtxo_operation_input (
   integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
   PRIMARY KEY (operation_id, txid, vout)
 );
-CREATE INDEX vtxo_operation_vault ON vtxo_operation(vault_id);
+CREATE INDEX vtxo_operation_vault_state_created ON vtxo_operation(vault_id, state, created_at);
+CREATE INDEX vtxo_operation_input_outpoint ON vtxo_operation_input(txid, vout, operation_id);
 `
 
 // OpenMainnetLedger opens the fresh mainnet persistence baseline. It never

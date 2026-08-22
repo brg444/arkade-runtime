@@ -5,7 +5,7 @@ runbook does not migrate or restore the current Mutinynet service.
 
 ## Durable state
 
-Configure two independently restorable durable volumes:
+Configure two independently controlled durable stores:
 
 - `VAULT_DB_PATH=/app/data/vault.sqlite`
 - `VAULT_POLICY_SEQUENCE_PATH=/app/sequence/policy-sequence`
@@ -14,11 +14,14 @@ The SQLite ledger stores authenticated policy rows. Every new economic-outflow
 reservation advances the authenticated policy sequence. Startup fails if the
 database contains fewer reservations than the sequence records.
 
-The sequence is not protection against an operator who restores both volumes
-to the same earlier point. Database restore and policy-sequence restore require
-separate approvals. A database rollback normally retains the current sequence.
-If the current sequence is unavailable, stop the service and investigate. Do
-not replace it with a sequence from the database backup.
+Separate paths or named Compose volumes are not sufficient. Use different
+storage permissions, backup jobs, and restore authorities for the database and
+policy sequence. The sequence is not protection against an operator who
+restores both stores to the same earlier point. Database restore and
+policy-sequence restore require separate approvals. A database rollback
+normally retains the current sequence. If the current sequence is unavailable,
+stop the service and investigate. Do not replace it with a sequence from the
+database backup.
 
 ## Backup
 
@@ -55,3 +58,7 @@ VTXO routes remain unavailable indefinitely.
 Mainnet deployment remains blocked until every release pin and upstream
 Operator gate in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md)
 closes.
+
+The public edge must also enforce a shared rate limit by client address and
+vault identifier on passkey challenge issuance. A process-local or serverless
+instance-local counter does not close this gate.

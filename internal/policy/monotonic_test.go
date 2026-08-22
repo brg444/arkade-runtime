@@ -3,6 +3,7 @@ package policy
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,6 +138,46 @@ func TestVtxoReservationDetectsDatabaseRollback(t *testing.T) {
 	err = restored.AttachMonotonic(sequence)
 	if err == nil || !strings.Contains(err.Error(), "rolled-back database") {
 		t.Fatalf("restored pre-reservation database was accepted: %v", err)
+	}
+}
+
+func TestVtxoReservationRollsBackWhenPolicySequenceCannotAdvance(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := OpenMainnetLedger(filepath.Join(dir, "ledger.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	key := testIntegrityKey()
+	if err := ledger.SetIntegrityKey(key); err != nil {
+		t.Fatal(err)
+	}
+	sequenceDir := filepath.Join(dir, "sequence")
+	if err := os.Mkdir(sequenceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sequence, err := OpenMonotonic(filepath.Join(sequenceDir, "policy-sequence"), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.AttachMonotonic(sequence); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(sequenceDir); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	rec := testVtxoOperation("vault-a", "op-no-sequence", vtxoPurposeSpend, vtxoStateReserved, 10_000, 100, now)
+	rec.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+	inputs := []VtxoOperationInput{{
+		Txid: bytes.Repeat([]byte{0x43}, 32), Vout: 0, ValueSats: 20_000, Script: []byte{0x51},
+	}}
+	if err := ledger.ReserveVtxoOperation(context.Background(), rec, inputs, 100_000); err == nil || !strings.Contains(err.Error(), "policy sequence") {
+		t.Fatalf("reservation survived sequence failure: %v", err)
+	}
+	if _, err := ledger.GetVtxoOperation(context.Background(), rec.OperationID); err != sql.ErrNoRows {
+		t.Fatalf("failed reservation was committed: %v", err)
 	}
 }
 

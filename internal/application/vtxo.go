@@ -151,9 +151,6 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err != nil {
 		return nil, err
 	}
-	if err := s.reconcileSubmittedVtxos(ctx, vaultID); err != nil {
-		return nil, err
-	}
 	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
 	if err != nil {
 		return nil, apperr.New(apperr.CodeRejected, "vault-policy-v1 dest unavailable")
@@ -455,7 +452,6 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 	if err != nil {
 		return nil, err
 	}
-	_ = s.reconcileSubmittedVtxos(ctx, id)
 	op, err := s.Ledger.GetVtxoOperation(ctx, operationID)
 	if err == sql.ErrNoRows {
 		return nil, apperr.ErrNotFound
@@ -465,6 +461,15 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 	}
 	if op.VaultID != id {
 		return nil, apperr.New(apperr.CodeRejected, "operation does not belong to this vault")
+	}
+	// Reconcile only the operation the client asked about. Scanning every
+	// historical operation made one status read trigger unbounded remote work.
+	if op.State == policy.VtxoStateSubmitted {
+		if err := s.promoteSubmittedVtxo(ctx, op); err == nil {
+			if current, loadErr := s.Ledger.GetVtxoOperation(ctx, operationID); loadErr == nil {
+				op = current
+			}
+		}
 	}
 	op, err = s.expireReservedVtxo(ctx, op)
 	if err != nil {
@@ -485,25 +490,6 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 		view.CheckpointPsbts = decodeJSONStringSlice(op.CheckpointPSBTs)
 	}
 	return view, nil
-}
-
-func (s *Service) reconcileSubmittedVtxos(ctx context.Context, vaultID string) error {
-	if err := s.requireArkResolver(); err != nil {
-		return err
-	}
-	ops, err := s.Ledger.ListVtxoOperations(ctx, vaultID)
-	if err != nil {
-		return err
-	}
-	for _, op := range ops {
-		if op.State != policy.VtxoStateSubmitted {
-			continue
-		}
-		if err := s.promoteSubmittedVtxo(ctx, op); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperation) error {

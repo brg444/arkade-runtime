@@ -18,6 +18,7 @@ if [ -n "${VAULT_ENROLLMENT_TOKEN:-}" ]; then
   printf '%s\n' "$VAULT_ENROLLMENT_TOKEN" > /tmp/vault-secrets/enrollment.token
   export VAULT_ENROLLMENT_TOKEN_FILE=/tmp/vault-secrets/enrollment.token
 fi
+unset VAULT_COSIGNER_KEY_HEX VAULT_ENROLLMENT_TOKEN
 chmod 0700 /tmp/vault-secrets
 chmod 0400 /tmp/vault-secrets/* 2>/dev/null || true
 PORT="${PORT:-8080}"

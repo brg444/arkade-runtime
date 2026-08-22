@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,10 +75,38 @@ func (m *Monotonic) write(count uint64) error {
 	body := fmt.Sprintf("%s\ncount=%d\n", monotonicFileVersion, count)
 	mac := m.mac(count)
 	tmp := m.path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(body+fmt.Sprintf("mac=%x\n", mac)), 0o600); err != nil {
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, m.path)
+	removeTmp := true
+	defer func() {
+		if removeTmp {
+			_ = os.Remove(tmp)
+		}
+	}()
+	payload := []byte(body + fmt.Sprintf("mac=%x\n", mac))
+	if _, err := f.Write(payload); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, m.path); err != nil {
+		return err
+	}
+	removeTmp = false
+	dir, err := os.Open(filepath.Dir(m.path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func (m *Monotonic) mac(count uint64) []byte {
