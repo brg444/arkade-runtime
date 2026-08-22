@@ -82,13 +82,16 @@ can therefore collude during that interval. Mainnet boarding remains blocked
 until a reviewed construction either proves an acceptable bound on that
 interval or includes the VaultCosigner policy before settlement.
 
-## Ordinary Spending gates
+## Ordinary Spending qualification
 
-The Mutinynet implementation requires one VTXO input, a dust-valued change
-output, and zero Operator fee. Mainnet must support fragmented balances,
-exact-value sends without forced dust change, and the reviewed Operator fee
-model. Reservation digests must bind every input, output, and fee, and the
-server must reject any fee drift between reserve and submission.
+The Mutinynet implementation supports up to 50 canonical VTXO inputs, optional
+change, and the Operator's bounded intent fee policy. Reservation digests bind
+every input, the exact fee-policy digest and fee, and the optional change
+shape. Both signing stages reject fee-policy drift.
+
+Mainnet remains blocked until live tests cover fragmented balances, exact
+no-change sends, nonzero and amount-dependent fees, reloads, dropped responses,
+checkpoint reordering, and concurrent retries against the release Operator.
 
 The client-generated operation ID closes lost reserve responses, the phone
 signature prevents a caller who only knows a vault ID from creating a
