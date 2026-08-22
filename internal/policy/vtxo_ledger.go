@@ -166,17 +166,17 @@ INSERT INTO vtxo_operation_input (
 			return err
 		}
 	}
+	// Advance rollback protection while the reservation can still be rolled
+	// back. A sequence-ahead database is a deliberate fail-closed state; a
+	// database-ahead sequence would permit allowance reuse after restoration.
+	if err := l.observeEconomicOutflowsLocked(conn); err != nil {
+		return fmt.Errorf("policy sequence: %w", err)
+	}
 	if _, err := conn.ExecContext(context.Background(), `COMMIT`); err != nil {
 		return err
 	}
 	commit = true
-	// Release the only SQLite connection before querying the aggregate count.
-	// Keeping it here would deadlock while holding l.mu.
-	if err := conn.Close(); err != nil {
-		return err
-	}
-	connClosed = true
-	return l.observeEconomicOutflowsLocked()
+	return nil
 }
 
 // PutVtxoOperation reseals and updates one verified row.
@@ -328,7 +328,7 @@ func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext
 		return err
 	}
 	defer rows.Close()
-	live := make(map[string]struct{})
+	liveOperations := make(map[string]struct{})
 	for rows.Next() {
 		rec, err := scanVtxoOperation(rows)
 		if err != nil {
@@ -343,22 +343,59 @@ func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext
 		if !vtxoStateCountsTowardAllowance(rec.State) {
 			continue
 		}
-		ins, err := l.loadVtxoOperationInputs(ctx, q, rec.OperationID)
-		if err != nil {
-			return err
-		}
-		for _, in := range ins {
-			live[hex.EncodeToString(in.Txid)+":"+fmt.Sprintf("%d", in.Vout)] = struct{}{}
-		}
+		liveOperations[rec.OperationID] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	allInputs, err := l.loadVtxoOperationInputsForVault(ctx, q, vaultID)
+	if err != nil {
+		return err
+	}
+	reserved := make(map[string]struct{}, len(allInputs))
+	for _, in := range allInputs {
+		if _, ok := liveOperations[in.OperationID]; !ok {
+			continue
+		}
+		reserved[hex.EncodeToString(in.Txid)+":"+fmt.Sprintf("%d", in.Vout)] = struct{}{}
+	}
 	for _, in := range inputs {
 		key := hex.EncodeToString(in.Txid) + ":" + fmt.Sprintf("%d", in.Vout)
-		if _, ok := live[key]; ok {
+		if _, ok := reserved[key]; ok {
 			return fmt.Errorf("vtxo outpoint already reserved")
 		}
 	}
 	return nil
+}
+
+func (l *Ledger) loadVtxoOperationInputsForVault(ctx context.Context, q queryContext, vaultID string) ([]VtxoOperationInput, error) {
+	key, err := l.issuanceKey()
+	if err != nil {
+		return nil, err
+	}
+	defer zeroBytes(key)
+	rows, err := q.QueryContext(ctx, `
+SELECT i.operation_id, i.txid, i.vout, i.value_sats, i.script, i.integrity_mac
+  FROM vtxo_operation_input AS i
+  JOIN vtxo_operation AS o ON o.operation_id = i.operation_id
+ WHERE o.vault_id = ?`, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []VtxoOperationInput
+	for rows.Next() {
+		var rec VtxoOperationInput
+		if err := rows.Scan(&rec.OperationID, &rec.Txid, &rec.Vout, &rec.ValueSats, &rec.Script, &rec.IntegrityMAC); err != nil {
+			return nil, err
+		}
+		if err := VerifyVtxoOperationInput(&rec, key); err != nil {
+			return nil, fmt.Errorf("vtxo operation input integrity: %w", err)
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
 }

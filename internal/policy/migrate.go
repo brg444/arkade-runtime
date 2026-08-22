@@ -428,8 +428,11 @@ func (l *Ledger) migrateVtxoOperationLocked() error {
 )`); err != nil {
 		return fmt.Errorf("vtxo operation input table: %w", err)
 	}
-	if _, err := l.db.Exec(`CREATE INDEX IF NOT EXISTS vtxo_operation_vault ON vtxo_operation(vault_id)`); err != nil {
+	if _, err := l.db.Exec(`CREATE INDEX IF NOT EXISTS vtxo_operation_vault_state_created ON vtxo_operation(vault_id, state, created_at)`); err != nil {
 		return fmt.Errorf("vtxo operation vault index: %w", err)
+	}
+	if _, err := l.db.Exec(`CREATE INDEX IF NOT EXISTS vtxo_operation_input_outpoint ON vtxo_operation_input(txid, vout, operation_id)`); err != nil {
+		return fmt.Errorf("vtxo operation outpoint index: %w", err)
 	}
 	ver, n, err := schemaMetaState(l.db)
 	if err != nil {
@@ -543,6 +546,7 @@ CREATE TABLE issuance (
   ),
   PRIMARY KEY (vault_id, arkade_sighash)
 );
+CREATE INDEX issuance_vault_state_created ON issuance(vault_id, state, created_at);
 `
 
 func validateCredentialEnvelopeSchema(db *sql.DB, path string) error {

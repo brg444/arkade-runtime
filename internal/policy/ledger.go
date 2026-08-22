@@ -968,12 +968,12 @@ func (l *Ledger) AttachMonotonic(m *Monotonic) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.monotonic = m
-	return l.observeEconomicOutflowsLocked()
+	return l.observeEconomicOutflowsLocked(l.db)
 }
 
-func (l *Ledger) economicOutflowCount() (uint64, error) {
+func economicOutflowCount(q queryContext) (uint64, error) {
 	var n int64
-	err := l.db.QueryRow(`
+	err := q.QueryRowContext(context.Background(), `
 SELECT
   (SELECT COUNT(*) FROM issuance) +
   (SELECT COUNT(*) FROM vtxo_operation)`).Scan(&n)
@@ -986,11 +986,11 @@ SELECT
 	return uint64(n), nil
 }
 
-func (l *Ledger) observeEconomicOutflowsLocked() error {
+func (l *Ledger) observeEconomicOutflowsLocked(q queryContext) error {
 	if l == nil || l.monotonic == nil {
 		return nil
 	}
-	n, err := l.economicOutflowCount()
+	n, err := economicOutflowCount(q)
 	if err != nil {
 		return err
 	}
@@ -1222,22 +1222,16 @@ func (l *Ledger) commitReservation(
 	); err != nil {
 		return issuanceStage{}, err
 	}
+	// Advance the external sequence before committing SQLite. A sequence write
+	// failure rolls this transaction back. A crash after this point but before
+	// COMMIT leaves the sequence ahead and deliberately blocks the next startup.
+	if err := l.observeEconomicOutflowsLocked(conn); err != nil {
+		return issuanceStage{}, fmt.Errorf("policy sequence: %w", err)
+	}
 	if _, err := conn.ExecContext(context.Background(), `COMMIT`); err != nil {
 		return issuanceStage{}, err
 	}
 	commit = true
-	// The ledger intentionally has one SQLite connection. Return this
-	// transaction connection before the policy sequence asks the pool for it;
-	// otherwise the first issuance with a monotonic counter deadlocks while
-	// still holding l.mu, blocking every policy/status request behind it.
-	closeErr := conn.Close()
-	connClosed = true
-	if closeErr != nil {
-		return issuanceStage{}, closeErr
-	}
-	if err := l.observeEconomicOutflowsLocked(); err != nil {
-		return issuanceStage{}, err
-	}
 	return issuanceStage{state: stateReserved, requestPSBT: requestPSBT, created: true}, nil
 }
 

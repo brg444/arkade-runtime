@@ -474,8 +474,8 @@ func insertSubmittedSpend(t *testing.T, e *env, operationID, arkTxid string, tre
 	}
 }
 
-func TestReserveReconcilesSubmittedWhenIndexerShowsStoredArkTxid(t *testing.T) {
-	e, resolver, arkd := vtxoTestEnv(t)
+func TestRequestedOperationReconcilesWhenIndexerShowsStoredArkTxid(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
 	snap := e.svc.snapshot(fixture.VaultID)
 	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
 	if err != nil {
@@ -484,31 +484,24 @@ func TestReserveReconcilesSubmittedWhenIndexerShowsStoredArkTxid(t *testing.T) {
 	arkTxid := strings.Repeat("ab", 32)
 	insertSubmittedSpend(t, e, "spend-submitted", arkTxid, tree.PkScript)
 	resolver.spentBy = arkTxid
-	if err := e.svc.reconcileSubmittedVtxos(context.Background(), fixture.VaultID); err != nil {
-		t.Fatal(err)
-	}
-	got, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-submitted")
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-submitted")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State != policy.VtxoStateSubmitted {
-		t.Fatalf("accept-only spend was finalized: %s", got.State)
+	if view.State != policy.VtxoStateSubmitted {
+		t.Fatalf("accept-only spend was finalized: %s", view.State)
 	}
 	resolver.changeExists = true
-	if err := e.svc.reconcileSubmittedVtxos(context.Background(), fixture.VaultID); err != nil {
-		t.Fatal(err)
-	}
-	got, err = e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-submitted")
+	view, err = e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-submitted")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State != policy.VtxoStateFinalized {
-		t.Fatalf("submitted was not reconciled: %s", got.State)
+	if view.State != policy.VtxoStateFinalized {
+		t.Fatalf("submitted was not reconciled: %s", view.State)
 	}
-	_ = arkd
 }
 
-func TestReconcileDoesNotTrustADifferentArkTxid(t *testing.T) {
+func TestRequestedOperationDoesNotTrustADifferentArkTxid(t *testing.T) {
 	e, resolver, _ := vtxoTestEnv(t)
 	snap := e.svc.snapshot(fixture.VaultID)
 	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
@@ -518,15 +511,12 @@ func TestReconcileDoesNotTrustADifferentArkTxid(t *testing.T) {
 	storedTxid := strings.Repeat("ab", 32)
 	insertSubmittedSpend(t, e, "spend-foreign", storedTxid, tree.PkScript)
 	resolver.spentBy = strings.Repeat("cd", 32)
-	if err := e.svc.reconcileSubmittedVtxos(context.Background(), fixture.VaultID); err != nil {
-		t.Fatal(err)
-	}
-	got, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-foreign")
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-foreign")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State != policy.VtxoStateUnresolved {
-		t.Fatalf("foreign spend was not quarantined: %s", got.State)
+	if view.State != policy.VtxoStateUnresolved {
+		t.Fatalf("foreign spend was not quarantined: %s", view.State)
 	}
 	spent, err := e.svc.Ledger.SpentInPeriod(context.Background(), fixture.VaultID, "")
 	if err != nil {
@@ -537,7 +527,7 @@ func TestReconcileDoesNotTrustADifferentArkTxid(t *testing.T) {
 	}
 }
 
-func TestGetVtxoOperationViewIsReadOnly(t *testing.T) {
+func TestGetVtxoOperationViewKeepsPendingSubmissionPending(t *testing.T) {
 	e, _, _ := vtxoTestEnv(t)
 	snap := e.svc.snapshot(fixture.VaultID)
 	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, snap)
