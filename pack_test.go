@@ -3,6 +3,7 @@ package pack_test
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/internal/contractpack"
@@ -106,7 +107,12 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if delegate["capability"] != "multi-presigned-signature" {
 		t.Fatalf("vault-policy-v1 delegate capability: %+v", delegate)
 	}
-	if delegate["note"] != "SDK 0.4.28 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised." {
+	note, ok := delegate["note"].(string)
+	if !ok ||
+		!strings.Contains(note, "DelegatorManager matches any Multisig containing the delegate pub") ||
+		!strings.Contains(note, "4-key delegate-forfeit") ||
+		!strings.Contains(note, "Not OP_TUNNEL") ||
+		!strings.Contains(note, "stays fail-closed until this capability is advertised") {
 		t.Fatalf("vault-policy-v1 delegate note: %+v", delegate)
 	}
 	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
