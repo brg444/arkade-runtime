@@ -2,12 +2,12 @@
 
 Collaborative spend is a one-VTXO MVP. Reserve rejects any bundle that is
 not exactly one spendable policy VTXO covering `amount + dust`. The wallet
-must build from the single outpoint returned by the reservation; it must not
-imply general multi-input spending.
+builds only from the single outpoint returned by the reservation and exposes
+this limitation directly.
 
 The destination must be a `tark` address for the same pinned Operator. Bitcoin
-destinations continue through the existing onchain spend path; VTXO offboarding
-is not part of this slice.
+destinations and VTXO offboarding are outside this slice. The retired onchain
+Spending pipeline is not a fallback.
 
 Arkade addresses serialize the Operator key in BIP340 x-only form. Decoding can
 therefore normalize an odd-Y compressed key to its even-Y representative. Code
@@ -25,7 +25,11 @@ control block, user signature, version, locktime, sequence, output order,
 P2A, destination, mandatory change, and input/output conservation. The live
 sequence follows the SDK and Operator protocol exactly:
 
-1. `reserve` fixes the one input, destination, amount, and change program.
+1. The wallet persists a random operation ID, signs the canonical operation
+   ID, vault, purpose, destination script, and amount with the phone key, then
+   calls `reserve`. The server authenticates the proof before it fixes the one
+   input, amount, and change program. An exact retry returns the same
+   reservation; a mutated retry is rejected.
 2. `authorize` validates the unsigned checkpoints and user-signed Ark PSBT,
    then adds the VaultCosigner signature to the Ark PSBT.
 3. The wallet submits that Ark PSBT and the unsigned checkpoints to the
@@ -42,8 +46,12 @@ the spend. The vault service must compare the authorized Arkade transaction ID
 to `arkTxid`, not to `spentBy`.
 
 Signing checkpoints before Operator submission is invalid because the
-Operator intentionally rebuilds that stage. This slice permits zero virtual
-fee only.
+Operator intentionally rebuilds that stage. State changes use compare-and-swap
+updates so concurrent requests cannot overwrite a completed stage.
+
+This slice permits zero virtual fee only. It also requires one input and a
+dust-valued change output. Fragmented balances, exact-value sends, and nonzero
+Operator fees are mainnet release gates, not wallet errors to disguise.
 
 Deploy this regular VTXO spend path and validate it on Mutinynet before
 enabling delegation or beginning Lightning integration.

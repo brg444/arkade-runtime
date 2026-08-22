@@ -221,10 +221,10 @@ func TestUnsignedPSBTEqualIncludesSignatureBytesAndSighashType(t *testing.T) {
 }
 
 func TestEnforceVtxoAmountRejectsUint64Wraparound(t *testing.T) {
-	if err := enforceVtxoAmount(^uint64(0), 0, nil, enrolledSnapshot{}); err == nil {
+	if err := enforceVtxoAmount(^uint64(0), 0, nil); err == nil {
 		t.Fatal("uint64 amount wraparound must be rejected")
 	}
-	if err := enforceVtxoAmount(10_000, ^uint64(0), nil, enrolledSnapshot{}); err == nil {
+	if err := enforceVtxoAmount(10_000, ^uint64(0), nil); err == nil {
 		t.Fatal("uint64 fee wraparound must be rejected")
 	}
 }

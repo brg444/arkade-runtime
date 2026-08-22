@@ -62,3 +62,42 @@ func TestOpenMainnetLedgerRefusesLegacyOrUnknownFilesWithoutChangingThem(t *test
 		}
 	}
 }
+
+func TestOpenMainnetLedgerRefusesVtxoSchemaDrift(t *testing.T) {
+	mutations := []struct {
+		name string
+		sql  string
+	}{
+		{name: "column", sql: `ALTER TABLE vtxo_operation ADD COLUMN attacker TEXT`},
+		{name: "index", sql: `DROP INDEX vtxo_operation_input_outpoint`},
+		{name: "trigger", sql: `CREATE TRIGGER erase_allowance AFTER INSERT ON vtxo_operation BEGIN DELETE FROM vtxo_operation WHERE operation_id != NEW.operation_id; END`},
+		{name: "view", sql: `CREATE VIEW leaked_policy AS SELECT * FROM vtxo_operation`},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "vault.sqlite")
+			ledger, err := OpenMainnetLedger(path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ledger.Close(); err != nil {
+				t.Fatal(err)
+			}
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(mutation.sql); err != nil {
+				_ = db.Close()
+				t.Fatal(err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if accepted, err := OpenMainnetLedger(path, nil); err == nil {
+				_ = accepted.Close()
+				t.Fatal("altered mainnet schema was accepted")
+			}
+		})
+	}
+}

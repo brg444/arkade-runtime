@@ -18,23 +18,15 @@ type VaultRecord struct {
 	Network               string
 	RPID                  string
 	Origin                string
-	PhoneRoutineBIP340    []byte
+	PhoneBIP340           []byte
 	PhoneDirectP256       []byte
 	ExternalOwnerWallet   []byte
 	RecoveryKey           []byte
 	VaultCosignerBase     []byte
-	TweakedVaultCosigner  []byte
 	ArkadeCosignerBase    []byte
-	TweakedArkadeCosigner []byte
 	ArkadeCosignerOrigin  string
 	ArkadeCosignerVersion string
 	CosignerMode          string
-	OperationalCSVType    int64
-	OperationalCSVValue   uint32
-	SavingsCSVType        int64
-	SavingsCSVValue       uint32
-	OperationalAddress    string
-	OperationalScript     []byte
 	SavingsAddress        string
 	SavingsScript         []byte
 	RecipientDustSats     int64
@@ -55,32 +47,24 @@ type VaultCredential struct {
 	IntegrityMAC []byte
 }
 
-// VaultRecordFromCredential copies a v3-shaped descriptor into a v4 vault row.
+// VaultRecordFromCredential separates the application view into the persisted
+// vault and passkey records.
 func VaultRecordFromCredential(c Credential) VaultRecord {
 	return vaultRecordFromCredential(c)
 }
 
 func vaultRecordFromCredential(c Credential) VaultRecord {
-	mode := CosignerModeHKDFSHA256V1
-	if c.VaultID == LegacyFirstVaultID {
-		mode = CosignerModeLegacyDirectV0
-	}
 	return VaultRecord{
 		VaultID: c.VaultID, TemplateVersion: c.TemplateVersion, PolicyVersion: c.PolicyVersion,
 		Network: c.Network, RPID: c.RPID, Origin: c.Origin,
-		PhoneRoutineBIP340:    append([]byte(nil), c.PhoneRoutineBIP340...),
-		PhoneDirectP256:       append([]byte(nil), c.PhoneDirectP256...),
-		ExternalOwnerWallet:   append([]byte(nil), c.ExternalOwnerWallet...),
-		RecoveryKey:           append([]byte(nil), c.RecoveryKey...),
-		VaultCosignerBase:     append([]byte(nil), c.VaultCosignerBase...),
-		TweakedVaultCosigner:  append([]byte(nil), c.TweakedVaultCosigner...),
-		ArkadeCosignerBase:    append([]byte(nil), c.ArkadeCosignerBase...),
-		TweakedArkadeCosigner: append([]byte(nil), c.TweakedArkadeCosigner...),
-		ArkadeCosignerOrigin:  c.ArkadeCosignerOrigin, ArkadeCosignerVersion: c.ArkadeCosignerVersion,
-		CosignerMode:       mode,
-		OperationalCSVType: c.OperationalCSVType, OperationalCSVValue: c.OperationalCSVValue,
-		SavingsCSVType: c.SavingsCSVType, SavingsCSVValue: c.SavingsCSVValue,
-		OperationalAddress: c.OperationalAddress, OperationalScript: append([]byte(nil), c.OperationalScript...),
+		PhoneBIP340:          append([]byte(nil), c.PhoneBIP340...),
+		PhoneDirectP256:      append([]byte(nil), c.PhoneDirectP256...),
+		ExternalOwnerWallet:  append([]byte(nil), c.ExternalOwnerWallet...),
+		RecoveryKey:          append([]byte(nil), c.RecoveryKey...),
+		VaultCosignerBase:    append([]byte(nil), c.VaultCosignerBase...),
+		ArkadeCosignerBase:   append([]byte(nil), c.ArkadeCosignerBase...),
+		ArkadeCosignerOrigin: c.ArkadeCosignerOrigin, ArkadeCosignerVersion: c.ArkadeCosignerVersion,
+		CosignerMode:   CosignerModeHKDFSHA256V1,
 		SavingsAddress: c.SavingsAddress, SavingsScript: append([]byte(nil), c.SavingsScript...),
 		RecipientDustSats: c.RecipientDustSats, TxRecipientCapSats: c.TxRecipientCapSats,
 		PeriodAllowanceSats: c.PeriodAllowanceSats, AbsoluteFeeCapSats: c.AbsoluteFeeCapSats,
@@ -88,7 +72,7 @@ func vaultRecordFromCredential(c Credential) VaultRecord {
 	}
 }
 
-// ToCredential rebuilds the v3-shaped descriptor used by existing loaders.
+// ToCredential rebuilds the application view used by the signing service.
 func (v VaultRecord) ToCredential(cred VaultCredential) Credential {
 	return v.toCredential(cred)
 }
@@ -96,16 +80,13 @@ func (v VaultRecord) ToCredential(cred VaultCredential) Credential {
 func (v VaultRecord) toCredential(cred VaultCredential) Credential {
 	return Credential{
 		ID: cred.CredentialID, WebAuthnP256: cred.WebAuthnP256, PhoneDirectP256: v.PhoneDirectP256,
-		RPID: v.RPID, Origin: v.Origin, PhoneRoutineBIP340: v.PhoneRoutineBIP340,
+		RPID: v.RPID, Origin: v.Origin, PhoneBIP340: v.PhoneBIP340,
 		ExternalOwnerWallet: v.ExternalOwnerWallet, RecoveryKey: v.RecoveryKey,
-		VaultCosignerBase: v.VaultCosignerBase, TweakedVaultCosigner: v.TweakedVaultCosigner,
-		ArkadeCosignerBase: v.ArkadeCosignerBase, TweakedArkadeCosigner: v.TweakedArkadeCosigner,
+		VaultCosignerBase:    v.VaultCosignerBase,
+		ArkadeCosignerBase:   v.ArkadeCosignerBase,
 		ArkadeCosignerOrigin: v.ArkadeCosignerOrigin, ArkadeCosignerVersion: v.ArkadeCosignerVersion,
 		TemplateVersion: v.TemplateVersion, PolicyVersion: v.PolicyVersion,
 		Network: v.Network, VaultID: v.VaultID,
-		OperationalCSVType: v.OperationalCSVType, OperationalCSVValue: v.OperationalCSVValue,
-		SavingsCSVType: v.SavingsCSVType, SavingsCSVValue: v.SavingsCSVValue,
-		OperationalAddress: v.OperationalAddress, OperationalScript: v.OperationalScript,
 		SavingsAddress: v.SavingsAddress, SavingsScript: v.SavingsScript,
 		RecipientDustSats: v.RecipientDustSats, TxRecipientCapSats: v.TxRecipientCapSats,
 		PeriodAllowanceSats: v.PeriodAllowanceSats, AbsoluteFeeCapSats: v.AbsoluteFeeCapSats,
@@ -113,7 +94,7 @@ func (v VaultRecord) toCredential(cred VaultCredential) Credential {
 	}
 }
 
-// SealVaultRecord authenticates a v4 vault descriptor.
+// SealVaultRecord authenticates a vault descriptor.
 func SealVaultRecord(v *VaultRecord, key []byte) error {
 	return sealVaultRecord(v, key)
 }
@@ -157,7 +138,7 @@ func verifyVaultCredential(c *VaultCredential, key []byte) error {
 	return nil
 }
 
-// VerifyVaultRecord is the exported MAC check for the v4 vault descriptor.
+// VerifyVaultRecord is the exported MAC check for the vault descriptor.
 func VerifyVaultRecord(v *VaultRecord, key []byte) error {
 	return verifyVaultRecord(v, key)
 }
@@ -177,12 +158,12 @@ func vaultRecordMAC(v VaultRecord, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out = binary.LittleEndian.AppendUint32(out, 4)
+	out = binary.LittleEndian.AppendUint32(out, 1)
 	for _, field := range [][]byte{
 		[]byte(v.VaultID), []byte(v.TemplateVersion), []byte(v.PolicyVersion),
 		[]byte(v.CosignerMode), []byte(v.Network), []byte(v.RPID), []byte(v.Origin),
-		v.PhoneRoutineBIP340, v.PhoneDirectP256, v.ExternalOwnerWallet, v.RecoveryKey,
-		v.VaultCosignerBase, v.TweakedVaultCosigner, v.ArkadeCosignerBase, v.TweakedArkadeCosigner,
+		v.PhoneBIP340, v.PhoneDirectP256, v.ExternalOwnerWallet, v.RecoveryKey,
+		v.VaultCosignerBase, v.ArkadeCosignerBase,
 		[]byte(v.ArkadeCosignerOrigin), []byte(v.ArkadeCosignerVersion),
 	} {
 		out, err = appendCredentialField(out, field)
@@ -191,17 +172,12 @@ func vaultRecordMAC(v VaultRecord, key []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	out = binary.LittleEndian.AppendUint64(out, uint64(v.OperationalCSVType))
-	out = binary.LittleEndian.AppendUint32(out, v.OperationalCSVValue)
-	out = binary.LittleEndian.AppendUint64(out, uint64(v.SavingsCSVType))
-	out = binary.LittleEndian.AppendUint32(out, v.SavingsCSVValue)
 	out = binary.LittleEndian.AppendUint64(out, uint64(v.RecipientDustSats))
 	out = binary.LittleEndian.AppendUint64(out, uint64(v.TxRecipientCapSats))
 	out = binary.LittleEndian.AppendUint64(out, uint64(v.PeriodAllowanceSats))
 	out = binary.LittleEndian.AppendUint64(out, uint64(v.AbsoluteFeeCapSats))
 	out = binary.LittleEndian.AppendUint64(out, uint64(v.FeerateCapSatPerV))
 	for _, field := range [][]byte{
-		[]byte(v.OperationalAddress), v.OperationalScript,
 		[]byte(v.SavingsAddress), v.SavingsScript,
 	} {
 		out, err = appendCredentialField(out, field)
@@ -266,22 +242,19 @@ func (l *Ledger) LoadVault(vaultID string) (*VaultRecord, *VaultCredential, erro
 	var v VaultRecord
 	err := l.db.QueryRow(`
 SELECT vault_id, template_version, policy_version, network, rp_id, origin,
-       phone_routine_bip340_compressed, phone_direct_p256_compressed,
+       phone_bip340_compressed, phone_direct_p256_compressed,
        external_owner_wallet_compressed, recovery_key_compressed,
-       vault_cosigner_base_compressed, tweaked_vault_cosigner_compressed,
-       arkade_cosigner_base_compressed, tweaked_arkade_cosigner_compressed,
+       vault_cosigner_base_compressed, arkade_cosigner_base_compressed,
        arkade_cosigner_origin, arkade_cosigner_version, cosigner_mode,
-       operational_csv_type, operational_csv_value, savings_csv_type, savings_csv_value,
-       operational_address, operational_script, savings_address, savings_script,
+       savings_address, savings_script,
        recipient_dust_sats, tx_recipient_cap_sats, period_allowance_sats,
        absolute_fee_cap_sats, feerate_cap_sat_vb, integrity_mac
   FROM vault WHERE vault_id = ?`, vaultID).Scan(
 		&v.VaultID, &v.TemplateVersion, &v.PolicyVersion, &v.Network, &v.RPID, &v.Origin,
-		&v.PhoneRoutineBIP340, &v.PhoneDirectP256, &v.ExternalOwnerWallet, &v.RecoveryKey,
-		&v.VaultCosignerBase, &v.TweakedVaultCosigner, &v.ArkadeCosignerBase, &v.TweakedArkadeCosigner,
+		&v.PhoneBIP340, &v.PhoneDirectP256, &v.ExternalOwnerWallet, &v.RecoveryKey,
+		&v.VaultCosignerBase, &v.ArkadeCosignerBase,
 		&v.ArkadeCosignerOrigin, &v.ArkadeCosignerVersion, &v.CosignerMode,
-		&v.OperationalCSVType, &v.OperationalCSVValue, &v.SavingsCSVType, &v.SavingsCSVValue,
-		&v.OperationalAddress, &v.OperationalScript, &v.SavingsAddress, &v.SavingsScript,
+		&v.SavingsAddress, &v.SavingsScript,
 		&v.RecipientDustSats, &v.TxRecipientCapSats, &v.PeriodAllowanceSats,
 		&v.AbsoluteFeeCapSats, &v.FeerateCapSatPerV, &v.IntegrityMAC,
 	)
@@ -333,22 +306,19 @@ func insertVaultTx(tx *sql.Tx, v VaultRecord, cred VaultCredential, envelope *Cr
 	if _, err := tx.Exec(`
 INSERT INTO vault (
   vault_id, template_version, policy_version, network, rp_id, origin,
-  phone_routine_bip340_compressed, phone_direct_p256_compressed,
+  phone_bip340_compressed, phone_direct_p256_compressed,
   external_owner_wallet_compressed, recovery_key_compressed,
-  vault_cosigner_base_compressed, tweaked_vault_cosigner_compressed,
-  arkade_cosigner_base_compressed, tweaked_arkade_cosigner_compressed,
+  vault_cosigner_base_compressed, arkade_cosigner_base_compressed,
   arkade_cosigner_origin, arkade_cosigner_version, cosigner_mode,
-  operational_csv_type, operational_csv_value, savings_csv_type, savings_csv_value,
-  operational_address, operational_script, savings_address, savings_script,
+  savings_address, savings_script,
   recipient_dust_sats, tx_recipient_cap_sats, period_allowance_sats,
   absolute_fee_cap_sats, feerate_cap_sat_vb, integrity_mac
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		v.VaultID, v.TemplateVersion, v.PolicyVersion, v.Network, v.RPID, v.Origin,
-		v.PhoneRoutineBIP340, v.PhoneDirectP256, v.ExternalOwnerWallet, v.RecoveryKey,
-		v.VaultCosignerBase, v.TweakedVaultCosigner, v.ArkadeCosignerBase, v.TweakedArkadeCosigner,
+		v.PhoneBIP340, v.PhoneDirectP256, v.ExternalOwnerWallet, v.RecoveryKey,
+		v.VaultCosignerBase, v.ArkadeCosignerBase,
 		v.ArkadeCosignerOrigin, v.ArkadeCosignerVersion, v.CosignerMode,
-		v.OperationalCSVType, v.OperationalCSVValue, v.SavingsCSVType, v.SavingsCSVValue,
-		v.OperationalAddress, v.OperationalScript, v.SavingsAddress, v.SavingsScript,
+		v.SavingsAddress, v.SavingsScript,
 		v.RecipientDustSats, v.TxRecipientCapSats, v.PeriodAllowanceSats,
 		v.AbsoluteFeeCapSats, v.FeerateCapSatPerV, v.IntegrityMAC,
 	); err != nil {
@@ -385,22 +355,19 @@ func getVaultTx(tx *sql.Tx, vaultID string) (*VaultRecord, error) {
 	var v VaultRecord
 	err := tx.QueryRow(`
 SELECT vault_id, template_version, policy_version, network, rp_id, origin,
-       phone_routine_bip340_compressed, phone_direct_p256_compressed,
+       phone_bip340_compressed, phone_direct_p256_compressed,
        external_owner_wallet_compressed, recovery_key_compressed,
-       vault_cosigner_base_compressed, tweaked_vault_cosigner_compressed,
-       arkade_cosigner_base_compressed, tweaked_arkade_cosigner_compressed,
+       vault_cosigner_base_compressed, arkade_cosigner_base_compressed,
        arkade_cosigner_origin, arkade_cosigner_version, cosigner_mode,
-       operational_csv_type, operational_csv_value, savings_csv_type, savings_csv_value,
-       operational_address, operational_script, savings_address, savings_script,
+       savings_address, savings_script,
        recipient_dust_sats, tx_recipient_cap_sats, period_allowance_sats,
        absolute_fee_cap_sats, feerate_cap_sat_vb, integrity_mac
   FROM vault WHERE vault_id = ?`, vaultID).Scan(
 		&v.VaultID, &v.TemplateVersion, &v.PolicyVersion, &v.Network, &v.RPID, &v.Origin,
-		&v.PhoneRoutineBIP340, &v.PhoneDirectP256, &v.ExternalOwnerWallet, &v.RecoveryKey,
-		&v.VaultCosignerBase, &v.TweakedVaultCosigner, &v.ArkadeCosignerBase, &v.TweakedArkadeCosigner,
+		&v.PhoneBIP340, &v.PhoneDirectP256, &v.ExternalOwnerWallet, &v.RecoveryKey,
+		&v.VaultCosignerBase, &v.ArkadeCosignerBase,
 		&v.ArkadeCosignerOrigin, &v.ArkadeCosignerVersion, &v.CosignerMode,
-		&v.OperationalCSVType, &v.OperationalCSVValue, &v.SavingsCSVType, &v.SavingsCSVValue,
-		&v.OperationalAddress, &v.OperationalScript, &v.SavingsAddress, &v.SavingsScript,
+		&v.SavingsAddress, &v.SavingsScript,
 		&v.RecipientDustSats, &v.TxRecipientCapSats, &v.PeriodAllowanceSats,
 		&v.AbsoluteFeeCapSats, &v.FeerateCapSatPerV, &v.IntegrityMAC,
 	)
@@ -477,13 +444,9 @@ SELECT version, binding, nonce, ciphertext, direct_signature, phone_signature, i
 }
 
 // GetVaultEnvelope returns the tenant-scoped recovery envelope, if any.
-// It never reads the legacy singleton credential_envelope table.
 func (l *Ledger) GetVaultEnvelope(vaultID string) (*CredentialEnvelope, error) {
 	if vaultID == "" {
 		return nil, fmt.Errorf("vault id required")
-	}
-	if !v4TableExists(l.db) {
-		return nil, nil
 	}
 	return getVaultEnvelope(l.db, vaultID)
 }
@@ -499,9 +462,6 @@ func (l *Ledger) StoreVaultEnvelopeIfAbsent(vaultID string, envelope CredentialE
 	}
 	if len(envelope.IntegrityMAC) != sha256.Size {
 		return fmt.Errorf("credential envelope integrity MAC must be 32 bytes")
-	}
-	if !v4TableExists(l.db) {
-		return fmt.Errorf("multi-tenant schema is not ready")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -543,7 +503,9 @@ func envelopesEqual(a, b CredentialEnvelope) bool {
 		bytes.Equal(a.IntegrityMAC, b.IntegrityMAC)
 }
 
-func vaultRecordsCanonicallyEqual(got, want VaultRecord) error {
+// VaultRecordsCanonicallyEqual compares every persisted descriptor field but
+// ignores the MAC, which authenticates rather than defines the descriptor.
+func VaultRecordsCanonicallyEqual(got, want VaultRecord) error {
 	switch {
 	case got.VaultID != want.VaultID:
 		return fmt.Errorf("vault_id")
@@ -557,8 +519,8 @@ func vaultRecordsCanonicallyEqual(got, want VaultRecord) error {
 		return fmt.Errorf("rp_id")
 	case got.Origin != want.Origin:
 		return fmt.Errorf("origin")
-	case !bytes.Equal(got.PhoneRoutineBIP340, want.PhoneRoutineBIP340):
-		return fmt.Errorf("phone_routine_bip340")
+	case !bytes.Equal(got.PhoneBIP340, want.PhoneBIP340):
+		return fmt.Errorf("phone_bip340")
 	case !bytes.Equal(got.PhoneDirectP256, want.PhoneDirectP256):
 		return fmt.Errorf("phone_direct_p256")
 	case !bytes.Equal(got.ExternalOwnerWallet, want.ExternalOwnerWallet):
@@ -567,30 +529,14 @@ func vaultRecordsCanonicallyEqual(got, want VaultRecord) error {
 		return fmt.Errorf("recovery_key")
 	case !bytes.Equal(got.VaultCosignerBase, want.VaultCosignerBase):
 		return fmt.Errorf("vault_cosigner_base")
-	case !bytes.Equal(got.TweakedVaultCosigner, want.TweakedVaultCosigner):
-		return fmt.Errorf("tweaked_vault_cosigner")
 	case !bytes.Equal(got.ArkadeCosignerBase, want.ArkadeCosignerBase):
 		return fmt.Errorf("arkade_cosigner_base")
-	case !bytes.Equal(got.TweakedArkadeCosigner, want.TweakedArkadeCosigner):
-		return fmt.Errorf("tweaked_arkade_cosigner")
 	case got.ArkadeCosignerOrigin != want.ArkadeCosignerOrigin:
 		return fmt.Errorf("arkade_cosigner_origin")
 	case got.ArkadeCosignerVersion != want.ArkadeCosignerVersion:
 		return fmt.Errorf("arkade_cosigner_version")
 	case got.CosignerMode != want.CosignerMode:
 		return fmt.Errorf("cosigner_mode")
-	case got.OperationalCSVType != want.OperationalCSVType:
-		return fmt.Errorf("operational_csv_type")
-	case got.OperationalCSVValue != want.OperationalCSVValue:
-		return fmt.Errorf("operational_csv_value")
-	case got.SavingsCSVType != want.SavingsCSVType:
-		return fmt.Errorf("savings_csv_type")
-	case got.SavingsCSVValue != want.SavingsCSVValue:
-		return fmt.Errorf("savings_csv_value")
-	case got.OperationalAddress != want.OperationalAddress:
-		return fmt.Errorf("operational_address")
-	case !bytes.Equal(got.OperationalScript, want.OperationalScript):
-		return fmt.Errorf("operational_script")
 	case got.SavingsAddress != want.SavingsAddress:
 		return fmt.Errorf("savings_address")
 	case !bytes.Equal(got.SavingsScript, want.SavingsScript):
@@ -610,7 +556,8 @@ func vaultRecordsCanonicallyEqual(got, want VaultRecord) error {
 	}
 }
 
-func vaultCredentialsCanonicallyEqual(got, want VaultCredential) error {
+// VaultCredentialsCanonicallyEqual compares the persisted passkey binding.
+func VaultCredentialsCanonicallyEqual(got, want VaultCredential) error {
 	switch {
 	case !bytes.Equal(got.CredentialID, want.CredentialID):
 		return fmt.Errorf("credential_id")
@@ -653,36 +600,20 @@ func credentialIdentitiesEqual(got, want *Credential) error {
 		return fmt.Errorf("webauthn_p256")
 	case !bytes.Equal(got.PhoneDirectP256, want.PhoneDirectP256):
 		return fmt.Errorf("phone_direct_p256")
-	case !bytes.Equal(got.PhoneRoutineBIP340, want.PhoneRoutineBIP340):
-		return fmt.Errorf("phone_routine_bip340")
+	case !bytes.Equal(got.PhoneBIP340, want.PhoneBIP340):
+		return fmt.Errorf("phone_bip340")
 	case !bytes.Equal(got.ExternalOwnerWallet, want.ExternalOwnerWallet):
 		return fmt.Errorf("external_owner_wallet")
 	case !bytes.Equal(got.RecoveryKey, want.RecoveryKey):
 		return fmt.Errorf("recovery_key")
 	case !bytes.Equal(got.VaultCosignerBase, want.VaultCosignerBase):
 		return fmt.Errorf("vault_cosigner_base")
-	case !bytes.Equal(got.TweakedVaultCosigner, want.TweakedVaultCosigner):
-		return fmt.Errorf("tweaked_vault_cosigner")
 	case !bytes.Equal(got.ArkadeCosignerBase, want.ArkadeCosignerBase):
 		return fmt.Errorf("arkade_cosigner_base")
-	case !bytes.Equal(got.TweakedArkadeCosigner, want.TweakedArkadeCosigner):
-		return fmt.Errorf("tweaked_arkade_cosigner")
 	case got.ArkadeCosignerOrigin != want.ArkadeCosignerOrigin:
 		return fmt.Errorf("arkade_cosigner_origin")
 	case got.ArkadeCosignerVersion != want.ArkadeCosignerVersion:
 		return fmt.Errorf("arkade_cosigner_version")
-	case got.OperationalCSVType != want.OperationalCSVType:
-		return fmt.Errorf("operational_csv_type")
-	case got.OperationalCSVValue != want.OperationalCSVValue:
-		return fmt.Errorf("operational_csv_value")
-	case got.SavingsCSVType != want.SavingsCSVType:
-		return fmt.Errorf("savings_csv_type")
-	case got.SavingsCSVValue != want.SavingsCSVValue:
-		return fmt.Errorf("savings_csv_value")
-	case got.OperationalAddress != want.OperationalAddress:
-		return fmt.Errorf("operational_address")
-	case !bytes.Equal(got.OperationalScript, want.OperationalScript):
-		return fmt.Errorf("operational_script")
 	case got.SavingsAddress != want.SavingsAddress:
 		return fmt.Errorf("savings_address")
 	case !bytes.Equal(got.SavingsScript, want.SavingsScript):

@@ -56,7 +56,7 @@ func (s *Service) deriveVtxoVaultCosigner(vaultID string) (*btcec.PrivateKey, er
 }
 
 func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*vtxoPolicyTree, error) {
-	if snap.PhoneRoutineBIP340 == nil || snap.ExternalOwnerWallet == nil {
+	if snap.PhoneBIP340 == nil || snap.ExternalOwnerWallet == nil {
 		return nil, fmt.Errorf("enrolled keys required")
 	}
 	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
@@ -73,11 +73,11 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		return nil, fmt.Errorf("pinned public delegate")
 	}
 	params := policy.VaultPolicyV1Params{
-		UserPub:              schnorr.SerializePubKey(snap.PhoneRoutineBIP340),
+		UserPub:              schnorr.SerializePubKey(snap.PhoneBIP340),
 		VtxoVaultCosignerPub: schnorr.SerializePubKey(cosigner.PubKey()),
 		ArkdServerPub:        schnorr.SerializePubKey(arkd),
 		DelegatePub:          schnorr.SerializePubKey(delegate),
-		ExitDevicePub:        schnorr.SerializePubKey(snap.PhoneRoutineBIP340),
+		ExitDevicePub:        schnorr.SerializePubKey(snap.PhoneBIP340),
 		ExitHardwarePub:      schnorr.SerializePubKey(snap.ExternalOwnerWallet),
 	}
 	if snap.RecoveryKey != nil {
@@ -91,9 +91,9 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if err != nil {
 		return nil, err
 	}
-	hrp := arklib.BitcoinRegTest.Addr
-	if s.runtimeConfig().Network == program.NetworkMutinynet {
-		hrp = arklib.BitcoinMutinyNet.Addr
+	hrp := arklib.BitcoinMutinyNet.Addr
+	if s.runtimeConfig().Network == program.NetworkMainnet {
+		hrp = arklib.Bitcoin.Addr
 	}
 	arkAddr := &arklib.Address{Version: 0, HRP: hrp, Signer: arkd, VtxoTapKey: tapKey}
 	addr, err := arkAddr.EncodeV0()
@@ -134,10 +134,10 @@ func mustDecodeCompressed(hex33 string) []byte {
 
 func vtxoNetworkParams(name string) (*chaincfg.Params, error) {
 	switch name {
-	case "", program.NetworkRegtest:
-		return &chaincfg.RegressionNetParams, nil
 	case program.NetworkMutinynet:
 		return &arklib.MutinyNetSigNetParams, nil
+	case program.NetworkMainnet:
+		return &chaincfg.MainNetParams, nil
 	default:
 		return nil, fmt.Errorf("unsupported network %q", name)
 	}
@@ -161,10 +161,10 @@ func defaultVtxoPkScript(user, arkd *btcec.PublicKey) []byte {
 }
 
 // buildVtxoBoardTree constructs the distinct vault-board-v1 intermediate.
-// It is arkd's standard two-party boarding contract, not the existing Daily
-// output and not the vault-policy-v1 VTXO tree.
+// It is arkd's standard two-party boarding contract, distinct from the
+// vault-policy-v1 VTXO tree used after settlement.
 func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, error) {
-	if snap.PhoneRoutineBIP340 == nil {
+	if snap.PhoneBIP340 == nil {
 		return nil, fmt.Errorf("enrolled phone key required")
 	}
 	arkd, err := btcec.ParsePubKey(s.operatorSignerPub())
@@ -175,7 +175,7 @@ func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, err
 		Type:  arklib.LocktimeTypeSecond,
 		Value: program.VaultBoardV1ExitDelay,
 	}
-	def := arkscript.NewDefaultVtxoScript(snap.PhoneRoutineBIP340, arkd, exit)
+	def := arkscript.NewDefaultVtxoScript(snap.PhoneBIP340, arkd, exit)
 	tap, _, err := def.TapTree()
 	if err != nil {
 		return nil, fmt.Errorf("vault-board-v1 tree: %w", err)
@@ -203,14 +203,14 @@ func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, err
 
 func (s *Service) refuseDefaultVtxoChange(snap enrolledSnapshot, dest []byte) error {
 	operator := s.operatorSignerPub()
-	if snap.PhoneRoutineBIP340 == nil || len(operator) != 33 {
+	if snap.PhoneBIP340 == nil || len(operator) != 33 {
 		return nil
 	}
 	arkd, err := btcec.ParsePubKey(operator)
 	if err != nil {
 		return nil
 	}
-	if bytes.Equal(dest, defaultVtxoPkScript(snap.PhoneRoutineBIP340, arkd)) {
+	if bytes.Equal(dest, defaultVtxoPkScript(snap.PhoneBIP340, arkd)) {
 		return fmt.Errorf("DefaultVtxo change refused")
 	}
 	return nil

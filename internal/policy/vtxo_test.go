@@ -3,44 +3,25 @@ package policy
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
-	"math"
 	"strings"
+	"sync"
 	"testing"
-	"testing/quick"
 	"time"
 
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
-func openVtxoTestLedger(t *testing.T, clock Clock) (*Ledger, string) {
-	t.Helper()
-	led := openTestLedger(t, clock)
-	if err := led.Enroll(validCredential(0x61)); err != nil {
-		t.Fatal(err)
+func testVtxoOperation(vaultID, opID, purpose, state string, amount, fee int64, created time.Time) VtxoOperation {
+	return VtxoOperation{
+		OperationID: opID, VaultID: vaultID, Purpose: purpose,
+		BundleDigest: bytes.Repeat([]byte{0x11}, 32), State: state,
+		AmountSats: amount, FeeSats: fee,
+		DestScript: []byte{0x51}, ChangeScript: []byte{0x52},
+		CheckpointPSBTs: `["cHNidP8="]`, CheckpointRequestPSBTs: "cHNidP8B",
+		CheckpointTapscript: []byte{0xc0, 0x01},
+		CreatedAt:           created.UTC().Format(time.RFC3339),
 	}
-	if err := led.MigrateLegacySingleton(testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	if err := led.MigrateIssuanceIntegrity(testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	if err := led.MigrateRecoverySessions(); err != nil {
-		t.Fatal(err)
-	}
-	if err := led.MigrateAuthzHardening(); err != nil {
-		t.Fatal(err)
-	}
-	if err := led.MigrateVtxoOperation(); err != nil {
-		t.Fatal(err)
-	}
-	ver, err := schemaVersion(led.db)
-	if err != nil || ver != schemaVersionVtxoOperation {
-		t.Fatalf("schema = %d %v, want %d", ver, err, schemaVersionVtxoOperation)
-	}
-	return led, LegacyFirstVaultID
 }
 
 func insertTestVtxoOperation(t *testing.T, led *Ledger, rec VtxoOperation) {
@@ -52,13 +33,13 @@ func insertTestVtxoOperation(t *testing.T, led *Ledger, rec VtxoOperation) {
 INSERT INTO vtxo_operation (
   operation_id, vault_id, purpose, bundle_digest, state,
   amount_sats, fee_sats, dest_script, change_script,
-  unsigned_psbt, authorized_psbt, checkpoint_psbts, commitment_psbt,
+  unsigned_psbt, authorized_psbt, checkpoint_psbts, checkpoint_request_psbts,
   checkpoint_tapscript, ark_txid, expires_at, created_at, last_dest_script,
   integrity_mac
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.OperationID, rec.VaultID, rec.Purpose, rec.BundleDigest, rec.State,
 		rec.AmountSats, rec.FeeSats, rec.DestScript, rec.ChangeScript,
-		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CommitmentPSBT,
+		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
 		rec.CheckpointTapscript, rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt,
 		rec.LastDestScript, rec.IntegrityMAC,
 	); err != nil {
@@ -66,88 +47,34 @@ INSERT INTO vtxo_operation (
 	}
 }
 
-func testVtxoOperation(vaultID, opID, purpose, state string, amount, fee int64, created time.Time) VtxoOperation {
-	return VtxoOperation{
-		OperationID:         opID,
-		VaultID:             vaultID,
-		Purpose:             purpose,
-		BundleDigest:        bytes.Repeat([]byte{0x11}, 32),
-		State:               state,
-		AmountSats:          amount,
-		FeeSats:             fee,
-		DestScript:          []byte{0x51},
-		ChangeScript:        []byte{0x52},
-		CheckpointPSBTs:     `["cHNidP8="]`,
-		CommitmentPSBT:      "cHNidP8B",
-		CheckpointTapscript: []byte{0xc0, 0x01},
-		CreatedAt:           created.UTC().Format(time.RFC3339),
-	}
-}
-
-func TestVtxoOperationMACRejectsIssuanceDomainAndMutations(t *testing.T) {
-	if vtxoOperationMACDomain == issuanceIntegrityDomain {
-		t.Fatal("vtxo operation reused issuance-record/v3")
-	}
-	rec := testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, time.Unix(0, 0).UTC())
+func TestVtxoOperationMACCoversPolicyFields(t *testing.T) {
+	rec := testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, time.Unix(0, 0))
 	if err := SealVtxoOperation(&rec, testIntegrityKey()); err != nil {
 		t.Fatal(err)
 	}
 	if err := VerifyVtxoOperation(&rec, testIntegrityKey()); err != nil {
 		t.Fatal(err)
 	}
-	issuance := IssuanceRecord{
-		VaultID: rec.VaultID, Digest: rec.BundleDigest, PeriodStart: "2026-08-19",
-		Recipient: rec.AmountSats, Fee: rec.FeeSats, State: stateReserved, RequestPSBT: "psbt",
-		CreatedAt: rec.CreatedAt, UpdatedAt: rec.CreatedAt,
+	mutations := []func(*VtxoOperation){
+		func(op *VtxoOperation) { op.AmountSats++ },
+		func(op *VtxoOperation) { op.State = vtxoStateAborted },
+		func(op *VtxoOperation) { op.CheckpointPSBTs = `["other"]` },
+		func(op *VtxoOperation) { op.CheckpointRequestPSBTs = "mutated" },
+		func(op *VtxoOperation) { op.CheckpointTapscript = []byte{0xff} },
 	}
-	if err := SealIssuance(&issuance, testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	swapped := rec
-	swapped.IntegrityMAC = append([]byte(nil), issuance.IntegrityMAC...)
-	if err := VerifyVtxoOperation(&swapped, testIntegrityKey()); err == nil {
-		t.Fatal("issuance-record/v3 MAC verified a vtxo operation")
-	}
-	rec.AmountSats++
-	if err := VerifyVtxoOperation(&rec, testIntegrityKey()); err == nil {
-		t.Fatal("amount mutation still verified")
+	for _, mutate := range mutations {
+		copy := rec
+		mutate(&copy)
+		if err := VerifyVtxoOperation(&copy, testIntegrityKey()); err == nil {
+			t.Fatal("mutated VTXO operation verified")
+		}
 	}
 }
 
-func TestVtxoOperationMACCoversCheckpointFields(t *testing.T) {
-	rec := testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, time.Unix(0, 0).UTC())
-	if err := SealVtxoOperation(&rec, testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	rec.CheckpointPSBTs = `["other"]`
-	if err := VerifyVtxoOperation(&rec, testIntegrityKey()); err == nil {
-		t.Fatal("checkpoint_psbts mutation still verified")
-	}
-	rec = testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, time.Unix(0, 0).UTC())
-	if err := SealVtxoOperation(&rec, testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	rec.CommitmentPSBT = "mutated"
-	if err := VerifyVtxoOperation(&rec, testIntegrityKey()); err == nil {
-		t.Fatal("commitment_psbt mutation still verified")
-	}
-	rec = testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, time.Unix(0, 0).UTC())
-	if err := SealVtxoOperation(&rec, testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	rec.CheckpointTapscript = []byte{0xff}
-	if err := VerifyVtxoOperation(&rec, testIntegrityKey()); err == nil {
-		t.Fatal("checkpoint_tapscript mutation still verified")
-	}
-}
-
-func TestVtxoOperationInputMACRoundTrip(t *testing.T) {
+func TestVtxoOperationInputMACCoversOutpointAndValue(t *testing.T) {
 	in := VtxoOperationInput{
-		OperationID: "op-1",
-		Txid:        bytes.Repeat([]byte{0x22}, 32),
-		Vout:        1,
-		ValueSats:   25_000,
-		Script:      []byte{0x51, 0x20},
+		OperationID: "op-1", Txid: bytes.Repeat([]byte{0x22}, 32),
+		Vout: 1, ValueSats: 25_000, Script: []byte{0x51, 0x20},
 	}
 	if err := SealVtxoOperationInput(&in, testIntegrityKey()); err != nil {
 		t.Fatal(err)
@@ -157,227 +84,211 @@ func TestVtxoOperationInputMACRoundTrip(t *testing.T) {
 	}
 	in.ValueSats++
 	if err := VerifyVtxoOperationInput(&in, testIntegrityKey()); err == nil {
-		t.Fatal("input value mutation still verified")
+		t.Fatal("mutated VTXO input verified")
 	}
 }
 
-func TestVtxoBundleDigestBindsPurposeAndLengthPrefixes(t *testing.T) {
-	txid := bytes.Repeat([]byte{0x33}, 32)
-	inputs := []VtxoBundleInput{{Txid: txid, Vout: 1, ValueSats: 25_000}}
-	dest := []byte{0x00, 0x51}
-	change := []byte{0x00, 0x52}
-	created := "2026-08-19T12:00:00Z"
-	spend, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", dest, change, 10_000, 200, inputs, created)
-	if err != nil {
-		t.Fatal(err)
-	}
-	board, err := ComputeVtxoBundleDigest(vtxoPurposeBoard, "vault-a", dest, change, 10_000, 200, inputs, created)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Equal(spend, board) {
-		t.Fatal("purpose is not bound into the bundle digest")
-	}
-	if len(spend) != sha256.Size {
-		t.Fatalf("digest length %d", len(spend))
-	}
-	// dest_script || 0x00 || change_script would be ambiguous; length-prefix
-	// must keep dest=[0x00,0x51] distinct from dest=[0x00] + leftover.
-	alt, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x00}, append([]byte{0x51}, change...), 10_000, 200, inputs, created)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Equal(spend, alt) {
-		t.Fatal("0x00-separated scripts collided")
-	}
-}
-
-func TestVtxoBundleDigestIsPermutationInvariant(t *testing.T) {
+func TestVtxoBundleDigestCanonicalizesInputs(t *testing.T) {
 	low := bytes.Repeat([]byte{0x01}, 32)
 	high := bytes.Repeat([]byte{0x02}, 32)
-	a := []VtxoBundleInput{
-		{Txid: high, Vout: 2, ValueSats: 3},
-		{Txid: low, Vout: 1, ValueSats: 1},
-		{Txid: high, Vout: 0, ValueSats: 2},
-	}
-	b := []VtxoBundleInput{
-		{Txid: low, Vout: 1, ValueSats: 1},
-		{Txid: high, Vout: 0, ValueSats: 2},
-		{Txid: high, Vout: 2, ValueSats: 3},
-	}
-	dest := []byte{0x51}
-	change := []byte{0x52}
+	a := []VtxoBundleInput{{Txid: high, Vout: 2, ValueSats: 3}, {Txid: low, Vout: 1, ValueSats: 1}}
+	b := []VtxoBundleInput{{Txid: low, Vout: 1, ValueSats: 1}, {Txid: high, Vout: 2, ValueSats: 3}}
 	created := "2026-08-19T12:00:00Z"
-	left, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", dest, change, 10_000, 200, a, created)
+	spendA, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, a, created)
 	if err != nil {
 		t.Fatal(err)
 	}
-	right, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", dest, change, 10_000, 200, b, created)
+	spendB, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, b, created)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(left, right) {
+	if !bytes.Equal(spendA, spendB) {
 		t.Fatal("bundle digest depends on caller input order")
 	}
-	ordered, err := CanonicalVtxoBundleInputs(a)
-	if err != nil || len(ordered) != 3 {
-		t.Fatalf("canonical = %#v err=%v", ordered, err)
+	if _, err := ComputeVtxoBundleDigest("board", "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, a, created); err == nil {
+		t.Fatal("unsupported purpose accepted")
 	}
-	if !bytes.Equal(ordered[0].Txid, low) || ordered[0].Vout != 1 {
-		t.Fatalf("want low:1 first, got %+v", ordered[0])
+	hexInputs := []VtxoBundleInput{{Txid: []byte(strings.ToUpper(hex.EncodeToString(high))), Vout: 2, ValueSats: 3}, {Txid: low, Vout: 1, ValueSats: 1}}
+	fromHex, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0, 0x51}, []byte{0, 0x52}, 10_000, 200, hexInputs, created)
+	if err != nil || !bytes.Equal(spendA, fromHex) {
+		t.Fatalf("hex txid normalization: %v", err)
 	}
-	if !bytes.Equal(ordered[1].Txid, high) || ordered[1].Vout != 0 {
-		t.Fatalf("want high:0 second, got %+v", ordered[1])
-	}
-	if !bytes.Equal(ordered[2].Txid, high) || ordered[2].Vout != 2 {
-		t.Fatalf("want high:2 third, got %+v", ordered[2])
-	}
-	hexInputs := []VtxoBundleInput{
-		{Txid: []byte(strings.ToUpper(hex.EncodeToString(high))), Vout: 2, ValueSats: 3},
-		{Txid: []byte(hex.EncodeToString(low)), Vout: 1, ValueSats: 1},
-		{Txid: high, Vout: 0, ValueSats: 2},
-	}
-	fromHex, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", dest, change, 10_000, 200, hexInputs, created)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(left, fromHex) {
-		t.Fatal("hex and raw txids produced different digests")
+	duplicates := []VtxoBundleInput{{Txid: low, Vout: 1}, {Txid: []byte(hex.EncodeToString(low)), Vout: 1}}
+	if _, err := CanonicalVtxoBundleInputs(duplicates); err == nil {
+		t.Fatal("duplicate outpoint accepted")
 	}
 }
 
-func TestVtxoBundleDigestRejectsDuplicateOutpoints(t *testing.T) {
-	txid := bytes.Repeat([]byte{0xab}, 32)
-	inputs := []VtxoBundleInput{
-		{Txid: txid, Vout: 1, ValueSats: 1},
-		{Txid: []byte(strings.ToUpper(hex.EncodeToString(txid))), Vout: 1, ValueSats: 2},
+func TestVtxoReserveDigestWalletVector(t *testing.T) {
+	destScript, err := hex.DecodeString("5120" + strings.Repeat("11", 32))
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, err := ComputeVtxoBundleDigest(vtxoPurposeSpend, "vault-a", []byte{0x51}, []byte{0x52}, 10_000, 200, inputs, "2026-08-19T12:00:00Z")
-	if err == nil || !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("duplicate outpoint accepted: %v", err)
+	digest, err := ComputeVtxoReserveDigest(
+		"000102030405060708090a0b0c0d0e0f",
+		"vault-vector-1",
+		vtxoPurposeSpend,
+		destScript,
+		123456789,
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := CanonicalVtxoBundleInputs(inputs); err == nil || !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("canonical accepted duplicate: %v", err)
+	if got, want := hex.EncodeToString(digest), "48de90168b40f88d8e705228c56f9ed83b969d319b0b8dbc3aedfe45da0c1981"; got != want {
+		t.Fatalf("digest = %s, want %s", got, want)
+	}
+
+	pubRaw, _ := hex.DecodeString("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9")
+	pub, err := schnorr.ParsePubKey(pubRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigRaw, _ := hex.DecodeString("6196fc6c472bc605daa653b8a8096a171d80abdccb7faf12859776ba631cdbc20fd5e0d0509eaee085e916b1a1c83beada2290fbefcdbf746a452b5416e0a64a")
+	sig, err := schnorr.ParseSignature(sigRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sig.Verify(digest, pub) {
+		t.Fatal("wallet reserve signature does not verify")
 	}
 }
 
-func TestMigrateVtxoOperationFromSchema8LeavesIssuanceAlone(t *testing.T) {
-	clock := newManualClock(time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC))
-	led, vaultID := openVtxoTestLedger(t, clock.Now)
-	if _, _, err := led.IssueForTest(context.Background(), vaultID, digest(0xaa), 10, 1, 100, func(context.Context) (string, error) {
-		return "signed", nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := led.db.Exec(`DROP TABLE vtxo_operation_input`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := led.db.Exec(`DROP TABLE vtxo_operation`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := led.db.Exec(`UPDATE schema_meta SET version = ?`, schemaVersionAuthzHardening); err != nil {
-		t.Fatal(err)
-	}
-	before, err := tableColumns(led.db, "issuance")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := led.MigrateVtxoOperation(); err != nil {
-		t.Fatal(err)
-	}
-	after, err := tableColumns(led.db, "issuance")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(before, ",") != strings.Join(after, ",") {
-		t.Fatalf("issuance columns changed: %v -> %v", before, after)
-	}
-	rows, err := led.db.Query(`PRAGMA table_info(vtxo_operation)`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var names []string
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notnull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			t.Fatal(err)
-		}
-		names = append(names, name)
-	}
-	joined := strings.Join(names, ",")
-	for _, name := range []string{"checkpoint_psbts", "commitment_psbt", "checkpoint_tapscript"} {
-		if !strings.Contains(joined, name) {
-			t.Fatalf("schema 9 missing %s in %v", name, names)
-		}
-	}
-}
-
-func TestSpentInWindowRejectsUnauthenticatedAbort(t *testing.T) {
+func TestSpentInWindowAuthenticatesRowsBeforeStateDecision(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
-	clock := newManualClock(now)
-	led, vaultID := openVtxoTestLedger(t, clock.Now)
-	rec := testVtxoOperation(vaultID, "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, now)
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x61)
+	rec := testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, now)
 	insertTestVtxoOperation(t, led, rec)
 	if _, err := led.db.Exec(`UPDATE vtxo_operation SET state = ? WHERE operation_id = ?`, vtxoStateAborted, rec.OperationID); err != nil {
 		t.Fatal(err)
 	}
-	_, err := led.SpentInPeriod(context.Background(), vaultID, "")
-	if err == nil || !strings.Contains(err.Error(), "vtxo operation integrity") {
-		t.Fatalf("want MAC fail-closed on unauthenticated abort, got %v", err)
+	if _, err := led.SpentInPeriod(context.Background(), "vault-a", ""); err == nil || !strings.Contains(err.Error(), "integrity") {
+		t.Fatalf("unauthenticated state mutation did not fail closed: %v", err)
 	}
 }
 
-func TestAbortedDoesNotCountAfterReseal(t *testing.T) {
+func TestSpentInWindowCountsOnlyLiveRecentVtxoOperations(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
-	clock := newManualClock(now)
-	led, vaultID := openVtxoTestLedger(t, clock.Now)
-	rec := testVtxoOperation(vaultID, "op-1", vtxoPurposeSpend, vtxoStateAborted, 1_000, 50, now)
-	insertTestVtxoOperation(t, led, rec)
-	got, err := led.SpentInPeriod(context.Background(), vaultID, "")
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x62)
+	insertTestVtxoOperation(t, led, testVtxoOperation("vault-a", "current", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, now))
+	insertTestVtxoOperation(t, led, testVtxoOperation("vault-a", "aborted", vtxoPurposeSpend, vtxoStateAborted, 5_000, 100, now))
+	insertTestVtxoOperation(t, led, testVtxoOperation("vault-a", "old", vtxoPurposeSpend, vtxoStateFinalized, 9_000, 100, now.Add(-25*time.Hour)))
+	got, err := led.SpentInPeriod(context.Background(), "vault-a", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != 0 {
-		t.Fatalf("aborted counted %d", got)
+	if got != 1_050 {
+		t.Fatalf("spent = %d, want 1050", got)
 	}
 }
 
-func TestPropertyL1AndVtxoOutflowWithinRolling24h(t *testing.T) {
+func TestConcurrentVtxoReservationsCannotOversubscribeAllowance(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
-	cfg := &quick.Config{MaxCount: 64}
-	err := quick.Check(func(l1Amt, l1Fee, vAmt, vFee uint16) bool {
-		if int64(l1Amt)+int64(l1Fee)+int64(vAmt)+int64(vFee) > program.PeriodAllowanceSats {
-			return true
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x63)
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			rec := testVtxoOperation("vault-a", "op-"+string(rune('a'+i)), vtxoPurposeSpend, vtxoStateReserved, 60_000, 0, now)
+			rec.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+			input := VtxoOperationInput{Txid: bytes.Repeat([]byte{byte(0x30 + i)}, 32), ValueSats: 70_000, Script: []byte{0x51}}
+			errs <- led.ReserveVtxoOperation(context.Background(), rec, []VtxoOperationInput{input}, 100_000)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	var succeeded, failed int
+	for err := range errs {
+		if err == nil {
+			succeeded++
+		} else if strings.Contains(err.Error(), "allowance") {
+			failed++
+		} else {
+			t.Fatalf("unexpected reservation error: %v", err)
 		}
-		clock := newManualClock(now)
-		led, vaultID := openVtxoTestLedger(t, clock.Now)
-		if l1Amt > 0 || l1Fee > 0 {
-			if _, _, err := led.IssueForTest(context.Background(), vaultID, digest(0xab), int64(l1Amt), int64(l1Fee), program.PeriodAllowanceSats, func(context.Context) (string, error) {
-				return "signed", nil
-			}); err != nil {
-				t.Log(err)
-				return false
+	}
+	if succeeded != 1 || failed != 1 {
+		t.Fatalf("succeeded=%d failed=%d", succeeded, failed)
+	}
+}
+
+func TestVtxoTransitionCompareAndSwap(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-cas", 0x65)
+	rec := testVtxoOperation("vault-cas", "cas-op", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x65}, 32), ValueSats: 20_000, Script: []byte{0x51}}
+	if err := led.ReserveVtxoOperation(context.Background(), rec, []VtxoOperationInput{input}, 100_000); err != nil {
+		t.Fatal(err)
+	}
+	base, err := led.GetVtxoOperation(context.Background(), rec.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	type outcome struct {
+		current VtxoOperation
+		swapped bool
+		err     error
+	}
+	outcomes := make(chan outcome, 2)
+	for _, authorized := range []string{"authorized-a", "authorized-b"} {
+		candidate := base
+		candidate.State = VtxoStateSigned
+		candidate.AuthorizedPSBT = authorized
+		go func(next VtxoOperation) {
+			<-start
+			current, swapped, err := led.TransitionVtxoOperation(context.Background(), VtxoStateReserved, next)
+			outcomes <- outcome{current: current, swapped: swapped, err: err}
+		}(candidate)
+	}
+	close(start)
+	var winner string
+	for range 2 {
+		out := <-outcomes
+		if out.err != nil {
+			t.Fatal(out.err)
+		}
+		if out.swapped {
+			if winner != "" {
+				t.Fatal("two state transitions swapped")
 			}
+			winner = out.current.AuthorizedPSBT
 		}
-		if vAmt > 0 || vFee > 0 {
-			insertTestVtxoOperation(t, led, testVtxoOperation(vaultID, "op-prop", vtxoPurposeSpend, vtxoStateReserved, int64(vAmt), int64(vFee), now))
-		}
-		got, err := led.SpentInPeriod(context.Background(), vaultID, "")
-		if err != nil {
-			t.Log(err)
-			return false
-		}
-		want := int64(l1Amt) + int64(l1Fee) + int64(vAmt) + int64(vFee)
-		if want > math.MaxInt64 {
-			return false
-		}
-		return got == want
-	}, cfg)
+	}
+	if winner == "" {
+		t.Fatal("no state transition swapped")
+	}
+	stored, err := led.GetVtxoOperation(context.Background(), rec.OperationID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if stored.State != VtxoStateSigned || stored.AuthorizedPSBT != winner {
+		t.Fatalf("stored winner = %+v, want %q", stored, winner)
+	}
+}
+
+func TestVtxoReservationRejectsOverlappingOutpoint(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x64)
+	input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x44}, 32), ValueSats: 20_000, Script: []byte{0x51}}
+	for i, opID := range []string{"op-a", "op-b"} {
+		rec := testVtxoOperation("vault-a", opID, vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+		rec.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+		err := led.ReserveVtxoOperation(context.Background(), rec, []VtxoOperationInput{input}, 100_000)
+		if i == 0 && err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 && (err == nil || !strings.Contains(err.Error(), "already reserved")) {
+			t.Fatalf("overlapping input accepted: %v", err)
+		}
 	}
 }

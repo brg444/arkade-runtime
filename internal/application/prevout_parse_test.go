@@ -5,12 +5,33 @@ import (
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/arkade-os/emulator/pkg/arkade"
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
 )
 
 func TestParseAndVerifyPrevoutFailClosed(t *testing.T) {
-	e := newBoundaryEnv(t)
-	good := e.canonicalDraft(t, 90_000, 20_000, 500)
+	e := newEnv(t)
+	previous := wire.NewMsgTx(2)
+	previous.AddTxIn(&wire.TxIn{PreviousOutPoint: wire.OutPoint{Index: ^uint32(0)}})
+	previous.AddTxOut(&wire.TxOut{Value: 90_000, PkScript: e.savings.PkScript})
+	destinationKey, _ := btcec.NewPrivateKey()
+	destination, err := txscript.PayToTaprootScript(destinationKey.PubKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := wire.NewMsgTx(2)
+	tx.AddTxIn(&wire.TxIn{PreviousOutPoint: wire.OutPoint{Hash: previous.TxHash(), Index: 0}})
+	tx.AddTxOut(&wire.TxOut{Value: 69_500, PkScript: destination})
+	good, err := psbt.NewFromUnsignedTx(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good.Inputs[0].WitnessUtxo = previous.TxOut[0]
+	if err := txutils.SetArkPsbtField(good, 0, arkade.PrevoutTxField, *previous); err != nil {
+		t.Fatal(err)
+	}
 	goodB64, err := good.B64Encode()
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +57,10 @@ func TestParseAndVerifyPrevoutFailClosed(t *testing.T) {
 
 	encode := func(mutate func(*psbt.Packet)) string {
 		t.Helper()
-		ptx := boundaryClonePSBT(t, good)
+		ptx, err := clonePacket(good)
+		if err != nil {
+			t.Fatal(err)
+		}
 		mutate(ptx)
 		raw, err := ptx.B64Encode()
 		if err != nil {

@@ -13,7 +13,6 @@ import (
 
 const (
 	vtxoPurposeSpend = "spend"
-	vtxoPurposeBoard = "board"
 
 	vtxoStateReserved   = "reserved"
 	vtxoStateSigned     = "signed"
@@ -23,9 +22,6 @@ const (
 	vtxoStateUnresolved = "unresolved"
 
 	VtxoPurposeSpend = vtxoPurposeSpend
-	// VtxoPurposeBoard remains a digest/MAC token for schema 9 rows. HTTP
-	// spend routes must not accept it.
-	VtxoPurposeBoard = vtxoPurposeBoard
 
 	VtxoStateReserved   = vtxoStateReserved
 	VtxoStateSigned     = vtxoStateSigned
@@ -38,28 +34,27 @@ const (
 	vtxoOperationInputKind    = "input"
 )
 
-// VtxoOperation is one boarding or policy-spend row. It is a separate
-// ledger from issuance; the MAC domain is not issuance-record/v3.
+// VtxoOperation is one policy-spend row.
 type VtxoOperation struct {
-	OperationID         string
-	VaultID             string
-	Purpose             string
-	BundleDigest        []byte
-	State               string
-	AmountSats          int64
-	FeeSats             int64
-	DestScript          []byte
-	ChangeScript        []byte
-	UnsignedPSBT        string
-	AuthorizedPSBT      string
-	CheckpointPSBTs     string
-	CommitmentPSBT      string
-	CheckpointTapscript []byte
-	ArkTxid             string
-	ExpiresAt           string
-	CreatedAt           string
-	LastDestScript      []byte
-	IntegrityMAC        []byte
+	OperationID            string
+	VaultID                string
+	Purpose                string
+	BundleDigest           []byte
+	State                  string
+	AmountSats             int64
+	FeeSats                int64
+	DestScript             []byte
+	ChangeScript           []byte
+	UnsignedPSBT           string
+	AuthorizedPSBT         string
+	CheckpointPSBTs        string
+	CheckpointRequestPSBTs string
+	CheckpointTapscript    []byte
+	ArkTxid                string
+	ExpiresAt              string
+	CreatedAt              string
+	LastDestScript         []byte
+	IntegrityMAC           []byte
 }
 
 // VtxoOperationInput is one reserved outpoint for an operation.
@@ -199,8 +194,8 @@ func canonicalVtxoTxid(txid []byte) (string, []byte, error) {
 // dest/change scripts cannot be split at an embedded 0x00. Inputs are sorted
 // internally; caller order is not trusted.
 func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript []byte, amountSats, feeSats uint64, inputs []VtxoBundleInput, createdAt string) ([]byte, error) {
-	if purpose != vtxoPurposeSpend && purpose != vtxoPurposeBoard {
-		return nil, fmt.Errorf("vtxo purpose must be spend or board")
+	if purpose != vtxoPurposeSpend {
+		return nil, fmt.Errorf("vtxo purpose must be spend")
 	}
 	if vaultID == "" {
 		return nil, fmt.Errorf("vault id required")
@@ -247,6 +242,41 @@ func ComputeVtxoBundleDigest(purpose, vaultID string, destScript, changeScript [
 	return sum, nil
 }
 
+// ComputeVtxoReserveDigest authenticates the mutation that creates a durable
+// reservation. The phone signs this before the server selects or locks any
+// outpoint; operationID is the caller's already-persisted idempotency key.
+func ComputeVtxoReserveDigest(operationID, vaultID, purpose string, destScript []byte, amountSats uint64) ([]byte, error) {
+	operationRaw, err := hex.DecodeString(operationID)
+	if err != nil || len(operationRaw) != 16 || operationID != strings.ToLower(operationID) {
+		return nil, fmt.Errorf("operation id must be 16 bytes encoded as lowercase hex")
+	}
+	if vaultID == "" {
+		return nil, fmt.Errorf("vault id required")
+	}
+	if purpose != vtxoPurposeSpend {
+		return nil, fmt.Errorf("vtxo purpose must be spend")
+	}
+	if len(destScript) == 0 {
+		return nil, fmt.Errorf("destination script required")
+	}
+	if amountSats == 0 {
+		return nil, fmt.Errorf("amount required")
+	}
+	payload := make([]byte, 0, 128)
+	payload = binary.LittleEndian.AppendUint32(payload, 1)
+	for _, field := range [][]byte{operationRaw, []byte(vaultID), []byte(purpose), destScript} {
+		payload, err = appendCredentialField(payload, field)
+		if err != nil {
+			zeroBytes(payload)
+			return nil, err
+		}
+	}
+	payload = binary.LittleEndian.AppendUint64(payload, amountSats)
+	digest := taggedSHA256(vtxoReserveDigestTag, payload)
+	zeroBytes(payload)
+	return digest, nil
+}
+
 func taggedSHA256(tag string, msg []byte) []byte {
 	th := sha256.Sum256([]byte(tag))
 	h := sha256.New()
@@ -288,8 +318,8 @@ func canonicalVtxoOperation(rec VtxoOperation) ([]byte, error) {
 	if rec.OperationID == "" || rec.VaultID == "" {
 		return nil, fmt.Errorf("vtxo operation identity required")
 	}
-	if rec.Purpose != vtxoPurposeSpend && rec.Purpose != vtxoPurposeBoard {
-		return nil, fmt.Errorf("vtxo purpose must be spend or board")
+	if rec.Purpose != vtxoPurposeSpend {
+		return nil, fmt.Errorf("vtxo purpose must be spend")
 	}
 	if err := requireVtxoState(rec.State); err != nil {
 		return nil, err
@@ -311,7 +341,7 @@ func canonicalVtxoOperation(rec VtxoOperation) ([]byte, error) {
 		[]byte(rec.OperationID), []byte(rec.VaultID), []byte(rec.Purpose),
 		rec.BundleDigest, []byte(rec.State), rec.DestScript, rec.ChangeScript,
 		[]byte(rec.UnsignedPSBT), []byte(rec.AuthorizedPSBT),
-		[]byte(rec.CheckpointPSBTs), []byte(rec.CommitmentPSBT), rec.CheckpointTapscript,
+		[]byte(rec.CheckpointPSBTs), []byte(rec.CheckpointRequestPSBTs), rec.CheckpointTapscript,
 		[]byte(rec.ArkTxid), []byte(rec.ExpiresAt), []byte(rec.CreatedAt), rec.LastDestScript,
 	} {
 		out, err = appendCredentialField(out, field)

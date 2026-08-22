@@ -16,19 +16,10 @@ import (
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 )
-
-type stubPublisher struct{}
-
-func (stubPublisher) Broadcast(context.Context, []byte) (string, error) {
-	return "", nil
-}
-
-func (stubPublisher) Lookup(context.Context, string) (int64, bool, error) {
-	return 0, false, nil
-}
 
 type stubEmulatorSigner struct{}
 
@@ -172,20 +163,11 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	cfg := Config{
 		Deployment: deployment.Config{
 			ClientOrigin: "https://vault.example.com", RPID: "vault.example.com",
-			Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
+			Network: deployment.NetworkMutinynet,
 		},
 		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
 		PolicySequencePath:   filepath.Join(dir, "policy-sequence"),
 		VaultCosignerKeyFile: vaultCosignerPath,
-		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
-	}
-	dials := 0
-	dial := func(_ context.Context, baseURL, network string) (application.Broadcaster, error) {
-		dials++
-		if baseURL != cfg.EsploraURL || network != deployment.NetworkMutinynet {
-			t.Fatalf("publisher identity = %q, %q", baseURL, network)
-		}
-		return stubPublisher{}, nil
 	}
 	emulatorDials := 0
 	emulatorDial := func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, allowDeprecated bool) (application.Signer, application.PublicEmulatorIdentity, error) {
@@ -203,23 +185,17 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 		}, nil
 	}
 
-	if _, err := openWithDialers(context.Background(), cfg, dial, emulatorDial); err == nil || !strings.Contains(err.Error(), "enrollment token file") {
+	if _, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial); err == nil || !strings.Contains(err.Error(), "enrollment token file") {
 		t.Fatalf("fresh ledger without enrollment secret: %v", err)
 	}
-	if dials != 0 || emulatorDials != 0 {
+	if emulatorDials != 0 {
 		t.Fatal("external service contacted before fresh-ledger bootstrap validation")
 	}
 
 	cfg.EnrollmentTokenFile = tokenPath
-	runtime, err := openWithDialers(context.Background(), cfg, dial, emulatorDial)
+	runtime, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if runtime.service.HasVaultSigner() {
-		t.Fatal("protected runtime installed the master scalar as VaultSigner")
-	}
-	if runtime.service.EnrollmentTokenLen() != 0 {
-		t.Fatal("initial invite secret leaked into the application service")
 	}
 	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
@@ -245,9 +221,75 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	// An empty deployment still requires the token file on every restart. The
 	// persisted row is authoritative, but startup never recovers the plaintext.
 	cfg.EnrollmentTokenFile = filepath.Join(dir, "already-removed-token")
-	if _, err := openWithDialers(context.Background(), cfg, dial, emulatorDial); err == nil ||
+	if _, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial); err == nil ||
 		!strings.Contains(err.Error(), "enrollment token") {
 		t.Fatalf("empty restart without token: %v", err)
+	}
+}
+
+func TestProvisionEnrollmentInviteSupportsOfflineTokenRotation(t *testing.T) {
+	dir := t.TempDir()
+	ledger, err := policy.OpenMainnetLedger(filepath.Join(dir, "vault.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	now := time.Date(2026, time.August, 22, 10, 0, 0, 0, time.UTC)
+	firstToken := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x6a}, 32))
+	firstPath := filepath.Join(dir, "invite-one")
+	if err := os.WriteFile(firstPath, []byte(firstToken+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{EnrollmentTokenFile: firstPath, EnrollmentWindow: 15 * time.Minute}
+	if err := provisionEnrollmentInvite(ledger, cfg, false, now); err != nil {
+		t.Fatal(err)
+	}
+	firstHash, err := application.HashEnrollmentToken(firstToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := ledger.GetInvite(firstHash)
+	if err != nil || first == nil {
+		t.Fatalf("first invite: %+v %v", first, err)
+	}
+
+	// Re-presenting the same operator file must preserve the original expiry,
+	// even if startup happens much later.
+	if err := provisionEnrollmentInvite(ledger, cfg, true, now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := ledger.GetInvite(firstHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed == nil || replayed.ExpiresAt != first.ExpiresAt || replayed.CreatedAt != first.CreatedAt {
+		t.Fatalf("same-token replay changed invitation: first=%+v replay=%+v", first, replayed)
+	}
+
+	secondToken := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x6b}, 32))
+	secondPath := filepath.Join(dir, "invite-two")
+	if err := os.WriteFile(secondPath, []byte(secondToken+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.EnrollmentTokenFile = secondPath
+	if err := provisionEnrollmentInvite(ledger, cfg, true, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	secondHash, err := application.HashEnrollmentToken(secondToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ledger.GetInvite(secondHash)
+	if err != nil || second == nil || !second.Usable(now.Add(time.Hour)) {
+		t.Fatalf("rotated invite: %+v %v", second, err)
+	}
+
+	if err := provisionEnrollmentInvite(ledger, Config{}, true, now); err != nil {
+		t.Fatalf("existing deployment without a provisioning file: %v", err)
+	}
+	if err := provisionEnrollmentInvite(ledger, Config{}, false, now); err == nil ||
+		!strings.Contains(err.Error(), "fresh authorizer") {
+		t.Fatalf("fresh deployment without a provisioning file: %v", err)
 	}
 }
 
@@ -265,16 +307,14 @@ func TestRuntimeRequiresGatewaySecret(t *testing.T) {
 	cfg := Config{
 		Deployment: deployment.Config{
 			ClientOrigin: "https://vault.example.com", RPID: "vault.example.com",
-			Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
+			Network: deployment.NetworkMutinynet,
 		},
 		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
 		PolicySequencePath:   filepath.Join(dir, "policy-sequence"),
 		VaultCosignerKeyFile: vaultCosignerPath,
 		EnrollmentTokenFile:  filepath.Join(dir, "enrollment-token"),
-		EsploraURL:           "https://mempool.mutinynet.arkade.sh/api",
 	}
-	_, err = openWithDialers(context.Background(), cfg,
-		func(context.Context, string, string) (application.Broadcaster, error) { return stubPublisher{}, nil },
+	_, err = openWithArkadeDialer(context.Background(), cfg,
 		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (application.Signer, application.PublicEmulatorIdentity, error) {
 			return stubEmulatorSigner{}, application.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
 		},

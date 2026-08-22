@@ -8,8 +8,8 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/application"
 )
 
-// Authorizer is the protected software-box surface. No static files, demo
-// routes, or raw signing path.
+// Authorizer is the protected software-box surface. No static files or raw
+// signing path is registered here.
 func Authorizer(svc *application.Service) http.Handler {
 	return application.AuthorizerHandler(svc)
 }

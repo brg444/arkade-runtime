@@ -6,21 +6,15 @@ import (
 )
 
 const (
-	schemaVersionMultiTenant    = 4
-	schemaVersionIssuanceMAC    = 5
-	schemaVersionSessions       = 6
-	schemaVersionSessionMAC     = 7
-	schemaVersionAuthzHardening = 8
-	schemaVersionVtxoOperation  = 9
-	schemaVersionCurrent        = schemaVersionVtxoOperation
-	vaultRecordMACDomain        = "arkade-2fa-vault/vault-record/v4"
-	vaultCredentialMACDomain    = "arkade-2fa-vault/vault-credential/v1"
-	sessionMACDomain            = "arkade-2fa-vault/recovery-session/v2"
-	signCountMACDomain          = "arkade-2fa-vault/webauthn-sign-count/v1"
-	vaultMapMACDomain           = "arkade-2fa-vault/vault-map/v1"
-	monotonicMACDomain          = "arkade-vault/policy-sequence/v2"
-	vtxoOperationMACDomain      = "arkade-2fa-vault/vtxo-operation/v1"
-	vtxoBundleDigestTag         = "arkade-2fa-vault/vtxo-bundle/v1"
+	vaultRecordMACDomain     = "arkade-vault/vault-record/v1"
+	vaultCredentialMACDomain = "arkade-vault/vault-credential/v1"
+	sessionMACDomain         = "arkade-2fa-vault/recovery-session/v2"
+	signCountMACDomain       = "arkade-2fa-vault/webauthn-sign-count/v1"
+	vaultMapMACDomain        = "arkade-2fa-vault/vault-map/v1"
+	monotonicMACDomain       = "arkade-vault/policy-sequence/v2"
+	vtxoOperationMACDomain   = "arkade-2fa-vault/vtxo-operation/v1"
+	vtxoBundleDigestTag      = "arkade-2fa-vault/vtxo-bundle/v1"
+	vtxoReserveDigestTag     = "arkade-vault/vtxo-reserve/v1"
 )
 
 const createMultiTenantSchema = `
@@ -34,23 +28,15 @@ CREATE TABLE IF NOT EXISTS vault (
   network TEXT NOT NULL,
   rp_id TEXT NOT NULL,
   origin TEXT NOT NULL,
-  phone_routine_bip340_compressed BLOB NOT NULL,
+  phone_bip340_compressed BLOB NOT NULL,
   phone_direct_p256_compressed BLOB NOT NULL,
   external_owner_wallet_compressed BLOB NOT NULL,
-  recovery_key_compressed BLOB NOT NULL,
+  recovery_key_compressed BLOB,
   vault_cosigner_base_compressed BLOB NOT NULL,
-  tweaked_vault_cosigner_compressed BLOB NOT NULL,
   arkade_cosigner_base_compressed BLOB NOT NULL,
-  tweaked_arkade_cosigner_compressed BLOB NOT NULL,
   arkade_cosigner_origin TEXT NOT NULL,
   arkade_cosigner_version TEXT NOT NULL,
-  cosigner_mode TEXT NOT NULL CHECK (cosigner_mode IN ('legacy-direct-v0', 'hkdf-sha256-v1')),
-  operational_csv_type INTEGER NOT NULL,
-  operational_csv_value INTEGER NOT NULL,
-  savings_csv_type INTEGER NOT NULL,
-  savings_csv_value INTEGER NOT NULL,
-  operational_address TEXT NOT NULL,
-  operational_script BLOB NOT NULL,
+  cosigner_mode TEXT NOT NULL CHECK (cosigner_mode = 'hkdf-sha256-v1'),
   savings_address TEXT NOT NULL,
   savings_script BLOB NOT NULL,
   recipient_dust_sats INTEGER NOT NULL,
@@ -70,7 +56,7 @@ CREATE TABLE IF NOT EXISTS vault_credential (
 );
 CREATE TABLE IF NOT EXISTS vault_envelope (
   vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),
-  version INTEGER NOT NULL CHECK (version = 1),
+  version INTEGER NOT NULL CHECK (version = 2),
   binding TEXT NOT NULL CHECK (length(binding) > 0 AND length(binding) <= 16384),
   nonce BLOB NOT NULL CHECK (length(nonce) = 12),
   ciphertext BLOB NOT NULL CHECK (length(ciphertext) = 48),
@@ -123,67 +109,6 @@ CREATE TABLE IF NOT EXISTS vault_map (
 );
 `
 
-func ensureMultiTenantSchema(db *sql.DB) error {
-	if err := rejectUnsupportedSchemaVersion(db); err != nil {
-		return err
-	}
-	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		return err
-	}
-	if err := createMultiTenantSchemaOn(db); err != nil {
-		return err
-	}
-	if err := validateMultiTenantSchemaOn(db); err != nil {
-		return err
-	}
-	if err := requireForeignKeysEnabled(db); err != nil {
-		return err
-	}
-	if err := requireForeignKeyCheckClean(db); err != nil {
-		return err
-	}
-	return nil
-}
-
-func ensureMultiTenantSchemaTx(tx *sql.Tx) error {
-	if _, err := tx.Exec(`PRAGMA foreign_keys = ON`); err != nil {
-		return err
-	}
-	if err := createMultiTenantSchemaOn(tx); err != nil {
-		return err
-	}
-	if err := validateMultiTenantSchemaOn(tx); err != nil {
-		return err
-	}
-	return nil
-}
-
-// MultiTenantReady reports whether the v4 tables exist on this ledger.
-func (l *Ledger) MultiTenantReady() bool {
-	if l == nil || l.db == nil {
-		return false
-	}
-	return v4TableExists(l.db)
-}
-
-// checkSchemaVersionAt is the version gate used by this binary (max =
-// schemaVersionCurrent) and by the v4-binary rollback test (max = 4).
-func checkSchemaVersionAt(ver, n, max int) error {
-	if n == 0 {
-		return nil
-	}
-	if n != 1 {
-		return fmt.Errorf("incompatible vault database: schema_meta must contain exactly one version row, have %d", n)
-	}
-	if ver > max {
-		return fmt.Errorf("incompatible vault database: schema version %d is newer than this binary (%d)", ver, max)
-	}
-	if ver < schemaVersionMultiTenant {
-		return fmt.Errorf("incompatible vault database: schema_meta version %d, want %d..%d", ver, schemaVersionMultiTenant, max)
-	}
-	return nil
-}
-
 type queryRower interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
@@ -209,11 +134,7 @@ func (l *Ledger) SchemaVersion() (int, error) {
 	if l == nil || l.db == nil {
 		return 0, nil
 	}
-	return schemaVersion(l.db)
-}
-
-func schemaVersion(db *sql.DB) (int, error) {
-	ver, n, err := schemaMetaState(db)
+	ver, n, err := schemaMetaState(l.db)
 	if err != nil {
 		return 0, err
 	}

@@ -20,21 +20,21 @@ policy sequence. The sequence is not protection against an operator who
 restores both stores to the same earlier point. Database restore and
 policy-sequence restore require separate approvals. A database rollback
 normally retains the current sequence. If the current sequence is unavailable,
-stop the service and investigate. Do not replace it with a sequence from the
-database backup.
+stop the service and investigate; replacing it with a sequence from the
+database backup is forbidden.
 
 ## Backup
 
-Back up a consistent SQLite snapshot while retaining the current policy
-sequence separately:
+Back up a consistent SQLite snapshot without changing the current policy
+sequence:
 
 ```bash
 sqlite3 /app/data/vault.sqlite ".backup /app/data/vault.backup.sqlite"
-cp /app/sequence/policy-sequence /app/sequence/policy-sequence.backup
 ```
 
-The two artifacts have different recovery roles. Automatic restore workflows
-must never roll both backward together.
+The sequence store needs its own independently administered continuity plan.
+Database backup automation excludes every policy-sequence copy, version, and
+restore action.
 
 ## Readiness
 
@@ -48,11 +48,13 @@ VTXO routes remain unavailable indefinitely.
 
 ## Release order
 
-1. Run `go test ./... -count=1`, `go test -race ./...`, and `go vet ./...`.
+1. Run `go test ./... -count=1`, `go vet ./...`, and the targeted race suites
+   documented in the repository README.
 2. Start against empty mainnet v2 volumes and new key material.
 3. Require `/ready` to return `ok: true` before routing wallet traffic.
 4. Exercise VTXO receive, send, ambiguous-response recovery, and restart.
-5. Exercise Savings-to-Spending boarding and rollback failure drills.
+5. Exercise Savings-to-Spending boarding, invitation rotation, and rollback
+   failure drills.
 6. Enable outbound BOLT11 only after its separate durable-saga gate passes.
 
 Mainnet deployment remains blocked until every release pin and upstream
@@ -60,5 +62,7 @@ Operator gate in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md)
 closes.
 
 The public edge must also enforce a shared rate limit by client address and
-vault identifier on passkey challenge issuance. A process-local or serverless
-instance-local counter does not close this gate.
+vault identifier on passkey challenge issuance and VTXO reservation. Phone
+authentication protects the reservation mutation, but it does not replace
+load protection. A process-local or serverless instance-local counter does not
+close this gate.

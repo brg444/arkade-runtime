@@ -16,17 +16,17 @@ import (
 
 func TestPasskeyEnvelopeInstallAndCrossDeviceRecover(t *testing.T) {
 	e := newEnv(t)
-	status, err := e.svc.Status(context.Background())
+	status, err := e.svc.StatusFor(context.Background(), fixture.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status.PasskeyLoginAvailable {
-		t.Fatal("fresh legacy enrollment unexpectedly has a recovery envelope")
+		t.Fatal("fresh enrollment unexpectedly has a recovery envelope")
 	}
 
 	nonce := strings.Repeat("11", 12)
 	ciphertext := strings.Repeat("22", 48)
-	binding, err := e.svc.BuildRecoveryBinding(RecoveryBindingRequest{
+	binding, err := e.svc.BuildRecoveryBindingFor(fixture.VaultID, RecoveryBindingRequest{
 		EnvelopeNonce: nonce, EnvelopeCiphertext: ciphertext,
 	})
 	if err != nil {
@@ -46,6 +46,7 @@ func TestPasskeyEnvelopeInstallAndCrossDeviceRecover(t *testing.T) {
 	}
 	installChallenge, installAssertion := passkeySessionAssertion(t, e, passkeyPurposeInstall)
 	if err := e.svc.InstallCredentialEnvelope(context.Background(), InstallCredentialEnvelopeRequest{
+		VaultID:                 fixture.VaultID,
 		SessionAssertionRequest: installAssertion,
 		RecoveryBindingRequest: RecoveryBindingRequest{
 			EnvelopeNonce: nonce, EnvelopeCiphertext: ciphertext,
@@ -55,7 +56,7 @@ func TestPasskeyEnvelopeInstallAndCrossDeviceRecover(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("install envelope: %v (challenge %s)", err, installChallenge.ChallengeID)
 	}
-	status, err = e.svc.Status(context.Background())
+	status, err = e.svc.StatusFor(context.Background(), fixture.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +66,7 @@ func TestPasskeyEnvelopeInstallAndCrossDeviceRecover(t *testing.T) {
 
 	_, recoveryAssertion := passkeySessionAssertion(t, e, passkeyPurposeRecover)
 	recovered, err := e.svc.RecoverCredentialEnvelope(context.Background(), RecoverCredentialEnvelopeRequest{
+		VaultID:                 fixture.VaultID,
 		SessionAssertionRequest: recoveryAssertion,
 	})
 	if err != nil {
@@ -80,7 +82,7 @@ func TestPasskeyEnvelopeInstallAndCrossDeviceRecover(t *testing.T) {
 
 func passkeySessionAssertion(t *testing.T, e *env, purpose string) (*PasskeyChallengeResponse, SessionAssertionRequest) {
 	t.Helper()
-	issued, err := e.svc.IssuePasskeyChallenge(context.Background(), purpose)
+	issued, err := e.svc.IssuePasskeyChallengeFor(context.Background(), fixture.VaultID, purpose)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +128,7 @@ func TestPasskeyChallengeIsPurposeBoundExpiringAndOneUse(t *testing.T) {
 	issued, req := passkeySessionAssertion(t, e, passkeyPurposeInstall)
 
 	wrong := req
-	if _, err := e.svc.RecoverCredentialEnvelope(context.Background(), RecoverCredentialEnvelopeRequest{SessionAssertionRequest: wrong}); err == nil {
+	if _, err := e.svc.RecoverCredentialEnvelope(context.Background(), RecoverCredentialEnvelopeRequest{VaultID: fixture.VaultID, SessionAssertionRequest: wrong}); err == nil {
 		t.Fatal("wrong-purpose challenge accepted")
 	}
 	if _, err := e.svc.consumePasskeyChallenge(fixture.VaultID, issued.ChallengeID, passkeyPurposeInstall); err != nil {
@@ -136,6 +138,7 @@ func TestPasskeyChallengeIsPurposeBoundExpiringAndOneUse(t *testing.T) {
 	issued, req = passkeySessionAssertion(t, e, passkeyPurposeInstall)
 	now = now.Add(passkeyChallengeTTL)
 	if err := e.svc.InstallCredentialEnvelope(context.Background(), InstallCredentialEnvelopeRequest{
+		VaultID:                 fixture.VaultID,
 		SessionAssertionRequest: req,
 	}); err == nil {
 		t.Fatalf("expired challenge %s accepted", issued.ChallengeID)
@@ -179,7 +182,7 @@ func TestPasskeySessionBrowserDigestParityVectors(t *testing.T) {
 	if got, want := hex.EncodeToString(passkeySessionProofDigest(passkeyPurposeRecover, challenge, []byte{0xaa, 0xbb, 0xcc})), "84dc9646da544458148af17e91f1df49e97221c203dcb23dd92e5895b7ce8230"; got != want {
 		t.Fatalf("passkey proof digest = %s, want %s", got, want)
 	}
-	if got, want := hex.EncodeToString(recoveryBindingDigest(`{"version":1}`)), "926b118982e8fc1f8ced9d1651c98e1d58652bd57537223a4aa90d96fc36f886"; got != want {
+	if got, want := hex.EncodeToString(recoveryBindingDigest(`{"version":2}`)), "16ea7a20802e97036a68d00d11666c5600598ab41c68ab457807f4f916e32327"; got != want {
 		t.Fatalf("recovery binding digest = %s, want %s", got, want)
 	}
 }
@@ -198,7 +201,7 @@ func TestPasskeyEnvelopeRejectsBindingAndSignatureSubstitution(t *testing.T) {
 			e := newEnv(t)
 			nonce := strings.Repeat("33", 12)
 			ciphertext := strings.Repeat("44", 48)
-			binding, err := e.svc.BuildRecoveryBinding(RecoveryBindingRequest{
+			binding, err := e.svc.BuildRecoveryBindingFor(fixture.VaultID, RecoveryBindingRequest{
 				EnvelopeNonce: nonce, EnvelopeCiphertext: ciphertext,
 			})
 			if err != nil {
@@ -209,6 +212,7 @@ func TestPasskeyEnvelopeRejectsBindingAndSignatureSubstitution(t *testing.T) {
 			phoneSig, _ := schnorr.Sign(e.hot, digest)
 			_, assertion := passkeySessionAssertion(t, e, passkeyPurposeInstall)
 			req := InstallCredentialEnvelopeRequest{
+				VaultID:                 fixture.VaultID,
 				SessionAssertionRequest: assertion,
 				RecoveryBindingRequest: RecoveryBindingRequest{
 					EnvelopeNonce: nonce, EnvelopeCiphertext: ciphertext,
@@ -220,7 +224,7 @@ func TestPasskeyEnvelopeRejectsBindingAndSignatureSubstitution(t *testing.T) {
 			if err := e.svc.InstallCredentialEnvelope(context.Background(), req); err == nil {
 				t.Fatal("substitution accepted")
 			}
-			envelope, err := e.svc.Ledger.GetCredentialEnvelope()
+			envelope, err := e.svc.Ledger.GetVaultEnvelope(fixture.VaultID)
 			if err != nil {
 				t.Fatal(err)
 			}

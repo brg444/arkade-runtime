@@ -15,7 +15,6 @@ const (
 	CodeBusy             Code = "BUSY"
 	CodeVaultIDRequired  Code = "VAULT_ID_REQUIRED"
 	CodeNotEnrolled      Code = "NOT_ENROLLED"
-	CodeLegacyMasterSign Code = "LEGACY_MASTER_SIGNER"
 	CodeEnrollmentClosed Code = "ENROLLMENT_CLOSED"
 )
 
@@ -67,7 +66,6 @@ var (
 	ErrBusy             = New(CodeBusy, "busy")
 	ErrVaultIDRequired  = New(CodeVaultIDRequired, "vault id required")
 	ErrNotEnrolled      = New(CodeNotEnrolled, "not enrolled")
-	ErrLegacyMasterSign = New(CodeLegacyMasterSign, "leftover master signer is retired")
 	ErrEnrollmentClosed = New(CodeEnrollmentClosed, "not found")
 )
 

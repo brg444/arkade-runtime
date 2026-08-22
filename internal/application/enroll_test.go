@@ -6,8 +6,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/base64"
 	"encoding/hex"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -18,7 +16,7 @@ import (
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
-	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
+	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -49,31 +47,8 @@ func proposedDescriptor(t *testing.T, svc *Service, vaultID string, req Register
 	return req
 }
 
-func TestEnrollRoutesAreUnreachableWhenFlagOff(t *testing.T) {
-	svc := &Service{Deployment: deployment.Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: deployment.NetworkMutinynet}}
-	h := testAuthorizer(svc)
-	for _, path := range []string{"/v1/invite", "/v1/enroll/start", "/v1/enroll/propose", "/v1/enroll/finish"} {
-		method := http.MethodPost
-		body := "{}"
-		if path == "/v1/invite" {
-			method = http.MethodGet
-			body = ""
-		}
-		req := httptest.NewRequest(method, path, strings.NewReader(body))
-		req.Header.Set("Origin", "https://vault.example.com")
-		if body != "" {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("%s: status %d, want 404", path, rec.Code)
-		}
-	}
-}
-
 func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
-	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "enroll.sqlite"), nil)
+	led, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "enroll.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,12 +61,12 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	direct, _ := webauthn.NewP256()
 	svc := &Service{
 		Ledger: led, VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
-		VaultSigner: LocalSigner{Priv: master}, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
+		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
 		Deployment: deployment.Config{
-			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkRegtest,
-			OperationalCSVBlocks: 144, SavingsCSVBlocks: 6,
+			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		},
-		MultiTenantEnrollment: true,
 	}
 	raw := bytes.Repeat([]byte{0x3c}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -129,7 +104,7 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 
 	req := attestedFinish(t, svc, replay, pass, []byte("cred-b"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	})
 	missing := req
@@ -141,11 +116,11 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.VaultID != replay.VaultID || st.OperationalAddr == "" {
+	if st.VaultID != replay.VaultID || st.SavingsAddr == "" {
 		t.Fatalf("finish status: %+v", st)
 	}
-	if st.TemplateVersion != v5.Template {
-		t.Fatalf("skip-recovery enroll minted %q, want v5", st.TemplateVersion)
+	if st.TemplateVersion != savings.Template {
+		t.Fatalf("skip-recovery enroll minted %q, want %s", st.TemplateVersion, savings.Template)
 	}
 	if st.RecoveryKeyPub != "" {
 		t.Fatalf("skip-recovery status leaked recovery: %+v", st)
@@ -154,6 +129,18 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	if err != nil || again.VaultID != st.VaultID {
 		t.Fatalf("duplicate finish: %+v %v", again, err)
 	}
+	forgedDescriptor := req
+	forgedDescriptor.DescriptorHash = strings.Repeat("ab", 32)
+	if _, err := svc.FinishEnrollment(context.Background(), token, forgedDescriptor); err == nil {
+		t.Fatal("duplicate finish accepted a different descriptor hash")
+	}
+	otherRecovery, _ := btcec.NewPrivateKey()
+	forgedRecovery := req
+	forgedRecovery.RecoveryXOnly = hex.EncodeToString(schnorr.SerializePubKey(otherRecovery.PubKey()))
+	forgedRecovery.RegisterRequest = proposedDescriptor(t, svc, replay.VaultID, forgedRecovery.RegisterRequest)
+	if _, err := svc.FinishEnrollment(context.Background(), token, forgedRecovery); err == nil {
+		t.Fatal("duplicate finish accepted a different recovery key")
+	}
 	view, err = svc.InviteStatus(token)
 	if err != nil || view.CanEnroll || view.VaultID == nil || *view.VaultID != replay.VaultID {
 		t.Fatalf("consumed invite view: %+v %v", view, err)
@@ -161,9 +148,106 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 
 	other, _ := btcec.NewPrivateKey()
 	forged := req
-	forged.PhoneRoutineBIP340Pub = hex.EncodeToString(other.PubKey().SerializeCompressed())
+	forged.PhoneBIP340Pub = hex.EncodeToString(other.PubKey().SerializeCompressed())
 	if _, err := svc.FinishEnrollment(context.Background(), token, forged); err == nil {
 		t.Fatal("forged finish replaced the tenant")
+	}
+}
+
+func TestDuplicateFinishWithRecoveryRequiresExactReplay(t *testing.T) {
+	svc, token, start := enrollReady(t)
+	pass, _ := webauthn.NewP256()
+	direct, _ := webauthn.NewP256()
+	hot, _ := btcec.NewPrivateKey()
+	hardware, _ := btcec.NewPrivateKey()
+	recovery, _ := btcec.NewPrivateKey()
+	req := attestedFinish(t, svc, start, pass, []byte("cred-recovery-replay"), RegisterRequest{
+		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(hardware.PubKey())),
+		RecoveryXOnly:            hex.EncodeToString(schnorr.SerializePubKey(recovery.PubKey())),
+	})
+	first, err := svc.FinishEnrollment(context.Background(), token, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := svc.FinishEnrollment(context.Background(), token, req)
+	if err != nil || replay.VaultID != first.VaultID {
+		t.Fatalf("exact lost-response replay: %+v %v", replay, err)
+	}
+	withoutRecovery := req
+	withoutRecovery.RecoveryXOnly = ""
+	withoutRecovery.RegisterRequest = proposedDescriptor(t, svc, start.VaultID, withoutRecovery.RegisterRequest)
+	if _, err := svc.FinishEnrollment(context.Background(), token, withoutRecovery); err == nil {
+		t.Fatal("recovery enrollment replayed as no-recovery enrollment")
+	}
+}
+
+func TestCurrentSavingsDescriptorRebuildsExactlyAfterRestart(t *testing.T) {
+	svc, token, start := enrollReady(t)
+	pass, _ := webauthn.NewP256()
+	direct, _ := webauthn.NewP256()
+	phone, _ := btcec.NewPrivateKey()
+	hardware, _ := btcec.NewPrivateKey()
+	recovery, _ := btcec.NewPrivateKey()
+	req := attestedFinish(t, svc, start, pass, []byte("cred-restart"), RegisterRequest{
+		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:           hex.EncodeToString(phone.PubKey().SerializeCompressed()),
+		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(hardware.PubKey())),
+		RecoveryXOnly:            hex.EncodeToString(schnorr.SerializePubKey(recovery.PubKey())),
+	})
+	before, err := svc.FinishEnrollment(context.Background(), token, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := New(Deps{
+		Ledger:                svc.Ledger,
+		Deployment:            svc.Deployment,
+		IntegrityKey:          append([]byte(nil), svc.CredentialIntegrityKey...),
+		MasterIKM:             svc.vaultIKM,
+		VaultCosignerPub:      svc.VaultCosignerPub,
+		ArkadeCosignerPub:     svc.ArkadeCosignerPub,
+		ArkadeCosignerOrigin:  svc.ArkadeCosignerOrigin,
+		ArkadeCosignerVersion: svc.ArkadeCosignerVersion,
+		ArkadeSigner:          svc.ArkadeCosignerSigner,
+		ArkResolver:           svc.ArkResolver,
+	})
+	if err := restarted.LoadVaults(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := restarted.StatusFor(context.Background(), before.VaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type immutableStatus struct {
+		VaultID, TemplateVersion, PolicyVersion                      string
+		SavingsAddr, SavingsScript                                   string
+		PhoneBIP340Pub, PhoneDirectP256                              string
+		ExternalOwnerWalletPub, RecoveryKeyPub                       string
+		VaultCosignerBasePub, ArkadeCosignerBasePub                  string
+		ArkadeCosignerOrigin, ArkadeCosignerVersion                  string
+		SpendingArkAddress, SpendingArkScript                        string
+		VtxoVaultCosignerPub, VtxoDelegatePub                        string
+		VtxoBoardingProgram, VtxoBoardingAddress, VtxoBoardingScript string
+	}
+	project := func(st Status) immutableStatus {
+		return immutableStatus{
+			VaultID: st.VaultID, TemplateVersion: st.TemplateVersion, PolicyVersion: st.PolicyVersion,
+			SavingsAddr: st.SavingsAddr, SavingsScript: st.SavingsScript,
+			PhoneBIP340Pub: st.PhoneBIP340Pub, PhoneDirectP256: st.PhoneDirectP256,
+			ExternalOwnerWalletPub: st.ExternalOwnerWalletPub, RecoveryKeyPub: st.RecoveryKeyPub,
+			VaultCosignerBasePub: st.VaultCosignerBasePub, ArkadeCosignerBasePub: st.ArkadeCosignerBasePub,
+			ArkadeCosignerOrigin: st.ArkadeCosignerOrigin, ArkadeCosignerVersion: st.ArkadeCosignerVersion,
+			SpendingArkAddress: st.SpendingArkAddress, SpendingArkScript: st.SpendingArkScript,
+			VtxoVaultCosignerPub: st.VtxoVaultCosignerPub, VtxoDelegatePub: st.VtxoDelegatePub,
+			VtxoBoardingProgram: st.VtxoBoardingProgram,
+			VtxoBoardingAddress: st.VtxoBoardingAddress, VtxoBoardingScript: st.VtxoBoardingScript,
+		}
+	}
+	if got, want := project(after), project(*before); !reflect.DeepEqual(got, want) {
+		t.Fatalf("restart rebuilt different descriptor facts:\n got: %+v\nwant: %+v", got, want)
 	}
 }
 
@@ -175,7 +259,7 @@ func TestProposeBindsDescriptorIntoEnrollment(t *testing.T) {
 	owner, _ := btcec.NewPrivateKey()
 	base := RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	}
 	req := attestedFinish(t, svc, start, pass, []byte("cred-desc"), base)
@@ -193,28 +277,25 @@ func TestProposeBindsDescriptorIntoEnrollment(t *testing.T) {
 }
 
 func TestFinishDoesNotInheritProcessOwnerPubs(t *testing.T) {
-	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "inherit.sqlite"), nil)
+	led, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "inherit.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = led.Close() })
 	master, _ := btcec.NewPrivateKey()
 	arkade, _ := btcec.NewPrivateKey()
-	processOwner, _ := btcec.NewPrivateKey()
-	processRec, _ := btcec.NewPrivateKey()
-	_ = processRec
 	hot, _ := btcec.NewPrivateKey()
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	svc := &Service{
-		Ledger: led, ExternalOwnerWallet: processOwner.PubKey(),
+		Ledger:           led,
 		VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
-		VaultSigner: LocalSigner{Priv: master}, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
+		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
 		Deployment: deployment.Config{
-			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkRegtest,
-			OperationalCSVBlocks: 144, SavingsCSVBlocks: 6,
+			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		},
-		MultiTenantEnrollment: true,
 	}
 	raw := bytes.Repeat([]byte{0x4d}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -228,8 +309,8 @@ func TestFinishDoesNotInheritProcessOwnerPubs(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = svc.FinishEnrollment(context.Background(), token, attestedFinish(t, svc, start, pass, []byte("cred-x"), RegisterRequest{
-		PhoneDirectP256:       hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub: hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneDirectP256: hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:  hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 	}))
 	if err == nil {
 		t.Fatal("finish inherited process-level owner/recovery pubs")
@@ -258,7 +339,7 @@ func TestFinishAcceptsPRFShapedAuthenticatorExtensions(t *testing.T) {
 			CredentialID:             hex.EncodeToString(credID),
 			WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(pass)),
 			PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-			PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+			PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 			ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 		}),
 	}
@@ -286,7 +367,7 @@ func TestFinishCannotConsumeAfterConcurrentChallengeRotation(t *testing.T) {
 	owner, _ := btcec.NewPrivateKey()
 	stale := attestedFinish(t, svc, start, pass, []byte("stale-race"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	})
 
@@ -321,16 +402,16 @@ func TestFinishCannotConsumeAfterConcurrentChallengeRotation(t *testing.T) {
 	}
 }
 
-func TestProposeMintsRebuiltV5Descriptor(t *testing.T) {
+func TestProposeMintsSavingsDescriptor(t *testing.T) {
 	svc, token, start := enrollReady(t)
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	hot, _ := btcec.NewPrivateKey()
 	owner, _ := btcec.NewPrivateKey()
 	recovery, _ := btcec.NewPrivateKey()
-	req := attestedFinish(t, svc, start, pass, []byte("cred-v5"), RegisterRequest{
+	req := attestedFinish(t, svc, start, pass, []byte("cred-savings"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 		RecoveryXOnly:            hex.EncodeToString(schnorr.SerializePubKey(recovery.PubKey())),
 	})
@@ -338,18 +419,18 @@ func TestProposeMintsRebuiltV5Descriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc, ok := proposed.Descriptor.(v5.PublicDescriptor)
-	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.Template {
-		t.Fatalf("propose did not mint v6: %+v", proposed.Descriptor)
+	desc, ok := proposed.Descriptor.(savings.PublicDescriptor)
+	if !ok || desc.Schema != savings.Schema || desc.TemplateVersion != savings.Template {
+		t.Fatalf("propose did not mint Savings: %+v", proposed.Descriptor)
 	}
-	if desc.Daily.Address == "" || desc.Savings.Address == "" || desc.Keys.Recovery == "" {
-		t.Fatalf("v5 descriptor missing trees: %+v", desc)
+	if desc.Savings.Address == "" || desc.Keys.Recovery == "" {
+		t.Fatalf("Savings descriptor missing trees: %+v", desc)
 	}
 	st, err := svc.FinishEnrollment(context.Background(), token, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.Template || st.RecoveryKeyPub == "" || st.OperationalAddr != desc.Daily.Address {
+	if st.TemplateVersion != savings.Template || st.RecoveryKeyPub == "" || st.SavingsAddr != desc.Savings.Address {
 		t.Fatalf("finish status: %+v", st)
 	}
 	if _, err := svc.SignTransition(context.Background(), TransitionRequest{
@@ -364,47 +445,47 @@ func TestProposeMintsRebuiltV5Descriptor(t *testing.T) {
 	}
 }
 
-func TestProposeMintsV5WithoutRecovery(t *testing.T) {
+func TestProposeMintsSavingsWithoutRecovery(t *testing.T) {
 	svc, token, start := enrollReady(t)
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	hot, _ := btcec.NewPrivateKey()
 	owner, _ := btcec.NewPrivateKey()
-	req := attestedFinish(t, svc, start, pass, []byte("cred-v5-skip"), RegisterRequest{
+	req := attestedFinish(t, svc, start, pass, []byte("cred-savings-skip"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	})
 	proposed, err := svc.ProposeEnrollment(token, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc, ok := proposed.Descriptor.(v5.PublicDescriptor)
-	if !ok || desc.Schema != v5.Schema || desc.TemplateVersion != v5.Template {
-		t.Fatalf("skip-recovery propose did not mint v6: %+v", proposed.Descriptor)
+	desc, ok := proposed.Descriptor.(savings.PublicDescriptor)
+	if !ok || desc.Schema != savings.Schema || desc.TemplateVersion != savings.Template {
+		t.Fatalf("skip-recovery propose did not mint Savings: %+v", proposed.Descriptor)
 	}
 	if desc.Keys.Recovery != "" {
 		t.Fatalf("skip-recovery descriptor included recovery: %+v", desc.Keys)
 	}
-	if _, ok := desc.Pending["daily-recovery"]; ok {
+	if _, ok := desc.Pending["savings-recovery"]; ok {
 		t.Fatal("skip-recovery descriptor included a recovery pending tree")
 	}
-	if len(desc.Pending) != 4 || len(desc.Quarantine) != 4 {
+	if len(desc.Pending) != 2 || len(desc.Quarantine) != 2 {
 		t.Fatalf("want 2-guardian pending/quarantine, got pending=%d quarantine=%d", len(desc.Pending), len(desc.Quarantine))
 	}
 	st, err := svc.FinishEnrollment(context.Background(), token, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.Template || st.RecoveryKeyPub != "" || st.OperationalAddr != desc.Daily.Address {
+	if st.TemplateVersion != savings.Template || st.RecoveryKeyPub != "" || st.SavingsAddr != desc.Savings.Address {
 		t.Fatalf("skip-recovery finish status: %+v", st)
 	}
 }
 
 func TestCredentialCannotOperateAnotherVault(t *testing.T) {
 	svc := &Service{}
-	svc.publishEnrollmentAt("vault-a", []byte("cred-a"), nil, nil, nil)
-	svc.publishEnrollmentAt("vault-b", []byte("cred-b"), nil, nil, nil)
+	svc.publishEnrollmentAt("vault-a", []byte("cred-a"), nil, nil)
+	svc.publishEnrollmentAt("vault-b", []byte("cred-b"), nil, nil)
 	if err := svc.rejectCrossVaultCredential("vault-b", []byte("cred-a")); err == nil {
 		t.Fatal("credential A operated vault B")
 	}
@@ -448,7 +529,7 @@ func TestFinishRejectsUnattestedOrMismatchedCreate(t *testing.T) {
 	owner, _ := btcec.NewPrivateKey()
 	req := attestedFinish(t, svc, start, pass, []byte("cred-at"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	})
 	noAT := req
@@ -487,7 +568,7 @@ func TestStaleStartChallengeCannotFinishAfterExpiryRotation(t *testing.T) {
 	owner, _ := btcec.NewPrivateKey()
 	staleReq := attestedFinish(t, svc, start, pass, []byte("stale"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	})
 	if _, err := svc.FinishEnrollment(context.Background(), token, staleReq); err == nil {
@@ -499,102 +580,6 @@ func TestStaleStartChallengeCannotFinishAfterExpiryRotation(t *testing.T) {
 	}
 }
 
-func TestSecondTenantStatusDoesNotInspectFirstVaultEnvelope(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "envelope-iso.sqlite")
-	led, err := policy.OpenLedger(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = led.Close() })
-	svc := enrollService(t, led)
-	if err := registerFirstVault(t, svc); err != nil {
-		t.Fatal(err)
-	}
-	key, err := svc.credentialIntegrityKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	cred, err := led.GetCredential()
-	if err != nil || cred == nil {
-		t.Fatal(err)
-	}
-	env := policy.CredentialEnvelope{
-		Version: policy.CredentialEnvelopeVersion, Binding: `{"v":1}`,
-		Nonce: bytes.Repeat([]byte{0x11}, 12), Ciphertext: bytes.Repeat([]byte{0x22}, 48),
-		DirectSig: bytes.Repeat([]byte{0x33}, 64), PhoneSig: bytes.Repeat([]byte{0x44}, 64),
-	}
-	if err := policy.SealCredentialEnvelope(&env, cred.ID, key); err != nil {
-		t.Fatal(err)
-	}
-	if err := led.SetIntegrityKey(key); err != nil {
-		t.Fatal(err)
-	}
-	if err := led.MigrateLegacySingleton(key); err != nil {
-		t.Fatal(err)
-	}
-	if err := led.StoreCredentialEnvelopeIfAbsent(env); err != nil {
-		t.Fatal(err)
-	}
-	first, err := svc.statusFor(context.Background(), fixture.VaultID)
-	if err != nil || !first.PasskeyLoginAvailable {
-		t.Fatalf("first vault envelope: %+v %v", first, err)
-	}
-
-	raw := bytes.Repeat([]byte{0x61}, 32)
-	token := base64.RawURLEncoding.EncodeToString(raw)
-	hash, _ := HashEnrollmentToken(token)
-	now := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
-	if err := led.PutInvite(hash, now, now); err != nil {
-		t.Fatal(err)
-	}
-	start, err := svc.StartEnrollment(token)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pass, _ := webauthn.NewP256()
-	direct, _ := webauthn.NewP256()
-	hot, _ := btcec.NewPrivateKey()
-	owner, _ := btcec.NewPrivateKey()
-	second, err := svc.FinishEnrollment(context.Background(), token, attestedFinish(t, svc, start, pass, []byte("cred-b"), RegisterRequest{
-		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
-		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.PasskeyLoginAvailable {
-		t.Fatal("second tenant inherited the first vault envelope")
-	}
-	if first2, err := svc.statusFor(context.Background(), fixture.VaultID); err != nil || !first2.PasskeyLoginAvailable {
-		t.Fatalf("first vault status after second enroll: %+v %v", first2, err)
-	}
-
-	reopened, err := policy.OpenLedger(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = reopened.Close() })
-	restarted := enrollService(t, reopened)
-	restarted.VaultCosignerPub = svc.VaultCosignerPub
-	restarted.ArkadeCosignerPub = svc.ArkadeCosignerPub
-	restarted.VaultSigner = svc.VaultSigner
-	restarted.ArkadeCosignerSigner = svc.ArkadeCosignerSigner
-	restarted.ExternalOwnerWallet = svc.ExternalOwnerWallet
-	restarted.RecoveryKey = svc.RecoveryKey
-	if err := restarted.LoadVaults(); err != nil {
-		t.Fatal(err)
-	}
-	gotFirst, err := restarted.statusFor(context.Background(), fixture.VaultID)
-	if err != nil || !gotFirst.PasskeyLoginAvailable {
-		t.Fatalf("restart first: %+v %v", gotFirst, err)
-	}
-	gotSecond, err := restarted.statusFor(context.Background(), second.VaultID)
-	if err != nil || gotSecond.PasskeyLoginAvailable {
-		t.Fatalf("restart second: %+v %v", gotSecond, err)
-	}
-}
-
 func TestConcurrentFinishAndStatusDoNotRaceSharedKeyFields(t *testing.T) {
 	svc, token, start := enrollReady(t)
 	pass, _ := webauthn.NewP256()
@@ -603,7 +588,7 @@ func TestConcurrentFinishAndStatusDoNotRaceSharedKeyFields(t *testing.T) {
 	owner, _ := btcec.NewPrivateKey()
 	req := attestedFinish(t, svc, start, pass, []byte("race"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	})
 	if _, err := svc.FinishEnrollment(context.Background(), token, req); err != nil {
@@ -621,7 +606,7 @@ func TestConcurrentFinishAndStatusDoNotRaceSharedKeyFields(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			if _, err := svc.Status(context.Background()); err != nil {
+			if _, err := svc.StatusFor(context.Background(), start.VaultID); err != nil {
 				errCh <- err
 			}
 		}()
@@ -641,13 +626,12 @@ func TestConcurrentFinishAndStatusDoNotRaceSharedKeyFields(t *testing.T) {
 
 func enrollReady(t *testing.T) (*Service, string, *EnrollStartResponse) {
 	t.Helper()
-	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "ready.sqlite"), nil)
+	led, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "ready.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = led.Close() })
 	svc := enrollService(t, led)
-	svc.MultiTenantEnrollment = true
 	raw := bytes.Repeat([]byte{0x3c}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	hash, err := HashEnrollmentToken(token)
@@ -665,62 +649,19 @@ func enrollReady(t *testing.T) (*Service, string, *EnrollStartResponse) {
 	return svc, token, start
 }
 
-func TestPublicStatusStaysTokenWhenMultiTenantPastSingletonDeadline(t *testing.T) {
-	svc := enrollService(t, nil)
-	svc.Deployment.Network = deployment.NetworkMutinynet
-	svc.Deployment.ClientOrigin = "https://arkade-vault-demo.vercel.app"
-	svc.Deployment.RPID = "arkade-vault-demo.vercel.app"
-	svc.Deployment.OperationalCSVBlocks = 4032
-	svc.Deployment.SavingsCSVBlocks = 288
-	svc.EnrollmentDeadline = time.Now().UTC().Add(-time.Minute)
-	svc.EnrollmentTokenHash = bytes.Repeat([]byte{0x11}, 32)
-	st, err := svc.PublicStatus()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st.EnrollmentMode != "token" || st.EnrollmentExpiresAt != "" {
-		t.Fatalf("multi-tenant public status = %+v", st)
-	}
-	svc.MultiTenantEnrollment = false
-	st, err = svc.PublicStatus()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st.EnrollmentMode != "expired" {
-		t.Fatalf("singleton past deadline = %+v", st)
-	}
-}
-
 func enrollService(t *testing.T, led *policy.Ledger) *Service {
 	t.Helper()
 	master, _ := btcec.NewPrivateKey()
 	arkade, _ := btcec.NewPrivateKey()
 	return &Service{
 		Ledger: led, VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
-		VaultSigner: LocalSigner{Priv: master}, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
+		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
 		Deployment: deployment.Config{
-			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkRegtest,
-			OperationalCSVBlocks: 144, SavingsCSVBlocks: 6,
+			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		},
-		MultiTenantEnrollment: true,
 	}
-}
-
-func registerFirstVault(t *testing.T, svc *Service) error {
-	t.Helper()
-	owner, _ := btcec.NewPrivateKey()
-	recovery, _ := btcec.NewPrivateKey()
-	svc.ExternalOwnerWallet = owner.PubKey()
-	svc.RecoveryKey = recovery.PubKey()
-	hot, _ := btcec.NewPrivateKey()
-	pass, _ := webauthn.NewP256()
-	direct, _ := webauthn.NewP256()
-	return svc.Register(RegisterRequest{
-		CredentialID:          hex.EncodeToString([]byte("cred-a")),
-		WebAuthnP256:          hex.EncodeToString(webauthn.CompressedP256(pass)),
-		PhoneDirectP256:       hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub: hex.EncodeToString(hot.PubKey().SerializeCompressed()),
-	})
 }
 
 func mustDecode(t *testing.T, h string) []byte {

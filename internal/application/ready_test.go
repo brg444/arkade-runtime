@@ -58,7 +58,7 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 	}
 	cfg := deployment.Config{
 		ClientOrigin: "https://vault.example.com", RPID: "vault.example.com",
-		Network: deployment.NetworkMutinynet, OperationalCSVBlocks: 4032, SavingsCSVBlocks: 288,
+		Network: deployment.NetworkMutinynet,
 	}
 	svc := New(Deps{
 		Ledger: ledger, Deployment: cfg, ArkadeCosignerPub: arkadeCosignerPub,

@@ -29,7 +29,7 @@ func spec(name, ctype string, notNull bool, pk int) colSpec {
 	return colSpec{Name: name, Type: ctype, NotNull: notNull, PK: pk}
 }
 
-var expectedV4Tables = map[string]struct {
+var expectedCurrentTables = map[string]struct {
 	cols    []colSpec
 	fks     []fkSpec
 	indexes []idxSpec
@@ -45,23 +45,15 @@ var expectedV4Tables = map[string]struct {
 			spec("network", "TEXT", true, 0),
 			spec("rp_id", "TEXT", true, 0),
 			spec("origin", "TEXT", true, 0),
-			spec("phone_routine_bip340_compressed", "BLOB", true, 0),
+			spec("phone_bip340_compressed", "BLOB", true, 0),
 			spec("phone_direct_p256_compressed", "BLOB", true, 0),
 			spec("external_owner_wallet_compressed", "BLOB", true, 0),
-			spec("recovery_key_compressed", "BLOB", true, 0),
+			spec("recovery_key_compressed", "BLOB", false, 0),
 			spec("vault_cosigner_base_compressed", "BLOB", true, 0),
-			spec("tweaked_vault_cosigner_compressed", "BLOB", true, 0),
 			spec("arkade_cosigner_base_compressed", "BLOB", true, 0),
-			spec("tweaked_arkade_cosigner_compressed", "BLOB", true, 0),
 			spec("arkade_cosigner_origin", "TEXT", true, 0),
 			spec("arkade_cosigner_version", "TEXT", true, 0),
 			spec("cosigner_mode", "TEXT", true, 0),
-			spec("operational_csv_type", "INTEGER", true, 0),
-			spec("operational_csv_value", "INTEGER", true, 0),
-			spec("savings_csv_type", "INTEGER", true, 0),
-			spec("savings_csv_value", "INTEGER", true, 0),
-			spec("operational_address", "TEXT", true, 0),
-			spec("operational_script", "BLOB", true, 0),
 			spec("savings_address", "TEXT", true, 0),
 			spec("savings_script", "BLOB", true, 0),
 			spec("recipient_dust_sats", "INTEGER", true, 0),
@@ -161,6 +153,48 @@ var expectedV4Tables = map[string]struct {
 		},
 		fks: []fkSpec{{Table: "vault", From: "vault_id", To: "vault_id"}},
 	},
+	"vtxo_operation": {
+		cols: []colSpec{
+			spec("operation_id", "TEXT", false, 1),
+			spec("vault_id", "TEXT", true, 0),
+			spec("purpose", "TEXT", true, 0),
+			spec("bundle_digest", "BLOB", true, 0),
+			spec("state", "TEXT", true, 0),
+			spec("amount_sats", "INTEGER", true, 0),
+			spec("fee_sats", "INTEGER", true, 0),
+			spec("dest_script", "BLOB", false, 0),
+			spec("change_script", "BLOB", false, 0),
+			spec("unsigned_psbt", "TEXT", false, 0),
+			spec("authorized_psbt", "TEXT", false, 0),
+			spec("checkpoint_psbts", "TEXT", false, 0),
+			spec("checkpoint_request_psbts", "TEXT", false, 0),
+			spec("checkpoint_tapscript", "BLOB", false, 0),
+			spec("ark_txid", "TEXT", false, 0),
+			spec("expires_at", "TEXT", false, 0),
+			spec("created_at", "TEXT", true, 0),
+			spec("last_dest_script", "BLOB", false, 0),
+			spec("integrity_mac", "BLOB", true, 0),
+		},
+		fks: []fkSpec{{Table: "vault", From: "vault_id", To: "vault_id"}},
+		indexes: []idxSpec{
+			{Name: "vtxo_operation_vault_state_created", Unique: false, Cols: []string{"vault_id", "state", "created_at"}},
+			{Name: "vtxo_operation_vault_state_expiry", Unique: false, Cols: []string{"vault_id", "state", "expires_at"}},
+		},
+	},
+	"vtxo_operation_input": {
+		cols: []colSpec{
+			spec("operation_id", "TEXT", true, 1),
+			spec("txid", "BLOB", true, 2),
+			spec("vout", "INTEGER", true, 3),
+			spec("value_sats", "INTEGER", true, 0),
+			spec("script", "BLOB", false, 0),
+			spec("integrity_mac", "BLOB", true, 0),
+		},
+		fks: []fkSpec{{Table: "vtxo_operation", From: "operation_id", To: "operation_id"}},
+		indexes: []idxSpec{
+			{Name: "vtxo_operation_input_outpoint", Unique: false, Cols: []string{"txid", "vout", "operation_id"}},
+		},
+	},
 }
 
 type schemaQuerier interface {
@@ -169,40 +203,8 @@ type schemaQuerier interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
 
-func rejectUnsupportedSchemaVersion(q schemaQuerier) error {
-	var name string
-	err := q.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta'`).Scan(&name)
-	if err == sql.ErrNoRows {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	ver, n, err := schemaMetaState(q)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return nil
-	}
-	return checkSchemaVersionAt(ver, n, schemaVersionCurrent)
-}
-
-func v4TableExists(q schemaQuerier) bool {
-	var name string
-	err := q.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='vault'`).Scan(&name)
-	return err == nil
-}
-
-func createMultiTenantSchemaOn(q schemaQuerier) error {
-	if _, err := q.Exec(createMultiTenantSchema); err != nil {
-		return fmt.Errorf("multi-tenant schema: %w", err)
-	}
-	return nil
-}
-
 func validateMultiTenantSchemaOn(q schemaQuerier) error {
-	for table, want := range expectedV4Tables {
+	for table, want := range expectedCurrentTables {
 		got, err := readTableXInfo(q, table)
 		if err != nil {
 			return fmt.Errorf("incompatible vault database: %s: %w", table, err)
@@ -232,7 +234,7 @@ func validateMultiTenantSchemaOn(q schemaQuerier) error {
 }
 
 func canonicalChecksByTable() map[string][]string {
-	return extractChecksByTable(createMultiTenantSchema)
+	return extractChecksByTable(createMultiTenantSchema + createMainnetVtxoSchema)
 }
 
 func matchCheckConstraints(q schemaQuerier, table string) error {

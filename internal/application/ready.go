@@ -1,7 +1,7 @@
 package application
 
 import (
-	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
+	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 )
 
 // ReadyStatus is the unauthenticated readiness body. It never includes keys,
@@ -19,7 +19,7 @@ type ReadyStatus struct {
 // Ready checks ledger access and every release-pinned signing dependency.
 func (s *Service) Ready() ReadyStatus {
 	st := ReadyStatus{
-		EnrollTemplate: v5.Template,
+		EnrollTemplate: savings.Template,
 	}
 	if s == nil {
 		st.Error = "service unavailable"

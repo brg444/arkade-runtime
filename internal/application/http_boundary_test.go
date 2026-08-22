@@ -2,7 +2,6 @@ package application
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,13 +31,8 @@ func TestHTTPBoundaryDoesNotExposeRawEmulatorSigningRoute(t *testing.T) {
 }
 
 func TestHTTPBoundaryRejectsUnknownAndTrailingJSON(t *testing.T) {
-	e := newBoundaryEnv(t)
-	handler := testAuthorizer(e.service)
-	draft := e.canonicalDraft(t, 90_000, 20_000, 500)
-	encoded, err := draft.B64Encode()
-	if err != nil {
-		t.Fatal(err)
-	}
+	e := newEnv(t)
+	handler := testAuthorizer(e.svc)
 
 	tests := []struct {
 		name string
@@ -46,17 +40,17 @@ func TestHTTPBoundaryRejectsUnknownAndTrailingJSON(t *testing.T) {
 	}{
 		{
 			name: "unknown top-level field",
-			body: `{"psbt":"` + encoded + `","prf":"must-never-cross-boundary"}`,
+			body: `{"vaultId":"test","prf":"must-never-cross-boundary"}`,
 		},
 		{
 			name: "second JSON value",
-			body: `{"psbt":"` + encoded + `"}{"ignored":true}`,
+			body: `{"vaultId":"test"}{"ignored":true}`,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := boundaryHTTPCall(
-				t, handler, http.MethodPost, "/v1/preflight", "application/json", fixture.Origin, test.body,
+				t, handler, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, test.body,
 			)
 			if response.Code != http.StatusBadRequest {
 				t.Fatalf("status: got %d, want 400; body=%s", response.Code, response.Body.String())
@@ -69,13 +63,13 @@ func TestHTTPBoundaryRejectsUnknownAndTrailingJSON(t *testing.T) {
 }
 
 func TestHTTPBoundaryCapsJSONRequestBodies(t *testing.T) {
-	e := newBoundaryEnv(t)
-	handler := testAuthorizer(e.service)
-	// Two MiB is intentionally far larger than any one-input POC PSBT or
+	e := newEnv(t)
+	handler := testAuthorizer(e.svc)
+	// Two MiB is intentionally far larger than any supported PSBT or
 	// WebAuthn assertion. The handler must stop reading at its configured cap.
-	tooLarge := `{"psbt":"` + strings.Repeat("A", 2<<20) + `"}`
+	tooLarge := `{"vaultId":"` + strings.Repeat("A", 2<<20) + `"}`
 	response := boundaryHTTPCall(
-		t, handler, http.MethodPost, "/v1/preflight", "application/json", fixture.Origin, tooLarge,
+		t, handler, http.MethodPost, "/v1/vtxo/reserve", "application/json", fixture.Origin, tooLarge,
 	)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized body status: got %d, want 413", response.Code)
@@ -83,42 +77,30 @@ func TestHTTPBoundaryCapsJSONRequestBodies(t *testing.T) {
 }
 
 func TestHTTPBoundaryRejectsCrossOriginMutation(t *testing.T) {
-	e := newBoundaryEnv(t)
-	handler := testAuthorizer(e.service)
-	draft := e.canonicalDraft(t, 90_000, 20_000, 500)
-	encoded, err := draft.B64Encode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := json.Marshal(PreflightRequest{PSBT: encoded})
-	if err != nil {
-		t.Fatal(err)
-	}
+	e := newEnv(t)
+	handler := testAuthorizer(e.svc)
 	response := boundaryHTTPCall(
 		t,
 		handler,
 		http.MethodPost,
-		"/v1/preflight",
+		"/v1/vtxo/reserve",
 		"application/json",
 		"https://attacker.invalid",
-		string(body),
+		`{"vaultId":"test"}`,
 	)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("cross-origin request status: got %d, want 403", response.Code)
 	}
-	if got := e.countingSigner.callCount(); got != 0 {
-		t.Fatalf("cross-origin request reached signer: got %d calls", got)
-	}
 }
 
 func TestHTTPBoundaryRequiresJSONContentTypeForMutations(t *testing.T) {
-	e := newBoundaryEnv(t)
-	handler := testAuthorizer(e.service)
+	e := newEnv(t)
+	handler := testAuthorizer(e.svc)
 	response := boundaryHTTPCall(
 		t,
 		handler,
 		http.MethodPost,
-		"/v1/preflight",
+		"/v1/vtxo/reserve",
 		"text/plain",
 		"https://attacker.invalid",
 		`{"credentialId":"00","webauthnP256":"00"}`,
@@ -128,9 +110,9 @@ func TestHTTPBoundaryRequiresJSONContentTypeForMutations(t *testing.T) {
 	}
 }
 
-func TestHTTPBoundaryAllowsExpectedPreflight(t *testing.T) {
+func TestHTTPBoundaryAllowsExpectedVtxoPreflight(t *testing.T) {
 	handler := testAuthorizer(nil)
-	request := httptest.NewRequest(http.MethodOptions, "/v1/authorize", nil)
+	request := httptest.NewRequest(http.MethodOptions, "/v1/vtxo/authorize", nil)
 	request.Header.Set("Origin", fixture.Origin)
 	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
 	request.Header.Set("Access-Control-Request-Headers", "Content-Type")

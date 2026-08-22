@@ -5,17 +5,12 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 )
-
-// ErrEnrollmentClosed is returned when multi-tenant enrollment is not armed.
-// HTTP maps it to 404 so the live authorizer stays unreachable.
-var ErrEnrollmentClosed = errors.New("not found")
 
 const pendingEnrollmentTTL = 5 * time.Minute
 
@@ -50,18 +45,8 @@ type EnrollFinishRequest struct {
 	RegisterRequest
 }
 
-func (s *Service) requireMultiTenantEnrollment() error {
-	if s == nil || !s.MultiTenantEnrollment {
-		return ErrEnrollmentClosed
-	}
-	return nil
-}
-
 // InviteStatus reports whether the token can still enroll. Failures are generic.
 func (s *Service) InviteStatus(token string) (InviteView, error) {
-	if err := s.requireMultiTenantEnrollment(); err != nil {
-		return InviteView{}, err
-	}
 	hash, err := HashEnrollmentToken(token)
 	if err != nil {
 		return InviteView{}, fmt.Errorf("invite not available")
@@ -85,9 +70,6 @@ func (s *Service) InviteStatus(token string) (InviteView, error) {
 
 // StartEnrollment assigns a vault id for an unused invite and does not consume it.
 func (s *Service) StartEnrollment(token string) (*EnrollStartResponse, error) {
-	if err := s.requireMultiTenantEnrollment(); err != nil {
-		return nil, err
-	}
 	if err := s.runtimeConfig().Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -135,9 +117,6 @@ func (s *Service) StartEnrollment(token string) (*EnrollStartResponse, error) {
 // ProposeEnrollment returns the descriptor that Finish will persist. It does
 // not consume the invite or write a vault row.
 func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*ProposedEnrollment, error) {
-	if err := s.requireMultiTenantEnrollment(); err != nil {
-		return nil, err
-	}
 	hash, err := HashEnrollmentToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
@@ -160,14 +139,11 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 }
 
 func (s *Service) previewTenantDescriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
-	return s.previewV5Descriptor(vaultID, req)
+	return s.previewSavingsDescriptor(vaultID, req)
 }
 
 // FinishEnrollment verifies the create ceremony and CAS-consumes the invite.
 func (s *Service) FinishEnrollment(ctx context.Context, token string, req EnrollFinishRequest) (*Status, error) {
-	if err := s.requireMultiTenantEnrollment(); err != nil {
-		return nil, err
-	}
 	if err := s.attachLedgerIntegrity(); err != nil {
 		return nil, err
 	}
@@ -279,11 +255,29 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	if err != nil {
 		return nil, false
 	}
-	if !bytesEqualConst(cred.CredentialID, parsed.id) ||
-		!bytesEqualConst(cred.WebAuthnP256, parsed.webauthnP256) ||
-		!bytesEqualConst(rec.PhoneDirectP256, parsed.phoneDirectP256) ||
-		!bytesEqualConst(rec.PhoneRoutineBIP340, parsed.phoneRoutine.SerializeCompressed()) ||
-		!bytesEqualConst(rec.ExternalOwnerWallet, parsed.externalOwner.SerializeCompressed()) {
+	preview, err := s.previewTenantDescriptor(vaultID, req)
+	if err != nil || req.DescriptorHash == "" || req.DescriptorHash != preview.DescriptorHash {
+		return nil, false
+	}
+	master, err := s.vaultCosignerMaster()
+	if err != nil {
+		return nil, false
+	}
+	child, err := policy.DeriveVaultCosignerScalar(master, vaultID, policy.CosignerModeHKDFSHA256V1)
+	if err != nil {
+		return nil, false
+	}
+	descriptor, _, err := s.mintSavingsCredential(vaultID, parsed, child.PubKey())
+	if err != nil {
+		return nil, false
+	}
+	wantRecord := vaultRecordFromDescriptor(descriptor)
+	wantCredential := policy.VaultCredential{
+		CredentialID: parsed.id, VaultID: vaultID, WebAuthnP256: parsed.webauthnP256,
+		UserHandle: []byte(vaultID), Resident: true,
+	}
+	if policy.VaultRecordsCanonicallyEqual(*rec, wantRecord) != nil ||
+		policy.VaultCredentialsCanonicallyEqual(*cred, wantCredential) != nil {
 		return nil, false
 	}
 	st, err := s.statusFor(context.Background(), vaultID)

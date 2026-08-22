@@ -1,8 +1,15 @@
-# Security
+# Security policy
 
-Mutinynet demo signer. Not a bounty program.
+Arkade Vault Server is under active security review, with no public bug-bounty
+program. The current release candidate is restricted to Mutinynet, and
+real-fund use remains out of scope.
 
-If you can make this process sign an address it did not build itself,
-skip the invite, or use the service’s master key on chain, contact the
-maintainer on the GitHub org. Do not open a public issue with a live
-exploit.
+Report suspected signing-policy bypasses, invitation or tenant-isolation
+failures, ledger rollback paths, transaction-verification defects, and secret
+exposure privately to the repository maintainers. Include the affected commit,
+deployment assumptions, reproduction steps, and potential fund impact. Keep
+exploits and sensitive deployment data out of public issues.
+
+The maintainers will acknowledge the report, reproduce it against the current
+release candidate, and coordinate remediation and disclosure. General defects
+without a security impact may use the public issue tracker.
