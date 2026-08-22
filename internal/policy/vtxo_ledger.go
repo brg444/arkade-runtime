@@ -11,9 +11,11 @@ import (
 const vtxoSelectColumns = `operation_id, vault_id, purpose, bundle_digest, state,
 		        amount_sats, fee_sats, dest_script, change_script,
 		        IFNULL(unsigned_psbt, ''), IFNULL(authorized_psbt, ''),
-		        IFNULL(checkpoint_psbts, ''), IFNULL(commitment_psbt, ''),
+		        IFNULL(checkpoint_psbts, ''), IFNULL(checkpoint_request_psbts, ''),
 		        checkpoint_tapscript, IFNULL(ark_txid, ''), IFNULL(expires_at, ''),
 		        created_at, last_dest_script, integrity_mac`
+
+const maxReservedVtxoInputs = 256
 
 // NowUTC is the ledger clock. Reservation expiry and allowance share it.
 func (l *Ledger) NowUTC() time.Time {
@@ -50,7 +52,7 @@ func (l *Ledger) ListVtxoOperations(ctx context.Context, vaultID string) ([]Vtxo
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +87,9 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 	}
 	if remainingCap < 0 {
 		return fmt.Errorf("negative allowance")
+	}
+	if len(inputs) == 0 || len(inputs) > maxReservedVtxoInputs {
+		return fmt.Errorf("vtxo reservation input count must be 1..%d", maxReservedVtxoInputs)
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -127,7 +132,7 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 	if need > remainingCap-usedAmt {
 		return fmt.Errorf("period allowance exceeded")
 	}
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return err
 	}
@@ -139,13 +144,13 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 INSERT INTO vtxo_operation (
   operation_id, vault_id, purpose, bundle_digest, state,
   amount_sats, fee_sats, dest_script, change_script,
-  unsigned_psbt, authorized_psbt, checkpoint_psbts, commitment_psbt,
+  unsigned_psbt, authorized_psbt, checkpoint_psbts, checkpoint_request_psbts,
   checkpoint_tapscript, ark_txid, expires_at, created_at, last_dest_script,
   integrity_mac
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.OperationID, rec.VaultID, rec.Purpose, rec.BundleDigest, rec.State,
 		rec.AmountSats, rec.FeeSats, rec.DestScript, rec.ChangeScript,
-		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CommitmentPSBT,
+		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
 		rec.CheckpointTapscript, rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt,
 		rec.LastDestScript, rec.IntegrityMAC,
 	); err != nil {
@@ -179,50 +184,73 @@ INSERT INTO vtxo_operation_input (
 	return nil
 }
 
-// PutVtxoOperation reseals and updates one verified row.
-func (l *Ledger) PutVtxoOperation(ctx context.Context, rec VtxoOperation) error {
-	if rec.OperationID == "" {
-		return fmt.Errorf("vtxo operation id required")
+// TransitionVtxoOperation reseals and advances one operation only from the
+// caller's verified state. A false swapped result returns the MAC-verified
+// current row so the application can distinguish an exact retry from a
+// conflicting concurrent mutation.
+func (l *Ledger) TransitionVtxoOperation(ctx context.Context, expectedState string, rec VtxoOperation) (current VtxoOperation, swapped bool, err error) {
+	if rec.OperationID == "" || rec.VaultID == "" {
+		return VtxoOperation{}, false, fmt.Errorf("vtxo operation identity required")
+	}
+	if !validVtxoTransition(expectedState, rec.State) {
+		return VtxoOperation{}, false, fmt.Errorf("invalid vtxo state transition %s -> %s", expectedState, rec.State)
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
-		return err
+		return VtxoOperation{}, false, err
 	}
 	defer zeroBytes(key)
 	if err := SealVtxoOperation(&rec, key); err != nil {
-		return err
+		return VtxoOperation{}, false, err
 	}
 	res, err := l.db.ExecContext(ctx, `
 UPDATE vtxo_operation SET
   purpose = ?, bundle_digest = ?, state = ?, amount_sats = ?, fee_sats = ?,
   dest_script = ?, change_script = ?, unsigned_psbt = ?, authorized_psbt = ?,
-  checkpoint_psbts = ?, commitment_psbt = ?, checkpoint_tapscript = ?,
+  checkpoint_psbts = ?, checkpoint_request_psbts = ?, checkpoint_tapscript = ?,
   ark_txid = ?, expires_at = ?, created_at = ?, last_dest_script = ?,
   integrity_mac = ?
- WHERE operation_id = ? AND vault_id = ?`,
+ WHERE operation_id = ? AND vault_id = ? AND state = ?`,
 		rec.Purpose, rec.BundleDigest, rec.State, rec.AmountSats, rec.FeeSats,
 		rec.DestScript, rec.ChangeScript, rec.UnsignedPSBT, rec.AuthorizedPSBT,
-		rec.CheckpointPSBTs, rec.CommitmentPSBT, rec.CheckpointTapscript,
+		rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs, rec.CheckpointTapscript,
 		rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt, rec.LastDestScript,
-		rec.IntegrityMAC, rec.OperationID, rec.VaultID,
+		rec.IntegrityMAC, rec.OperationID, rec.VaultID, expectedState,
 	)
 	if err != nil {
-		return err
+		return VtxoOperation{}, false, err
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return VtxoOperation{}, false, err
 	}
-	if n != 1 {
-		return fmt.Errorf("vtxo operation not found")
+	if n == 1 {
+		return rec, true, nil
 	}
-	return nil
+	current, err = l.loadVtxoOperation(ctx, l.db, rec.OperationID)
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	return current, false, nil
+}
+
+func validVtxoTransition(from, to string) bool {
+	switch from {
+	case vtxoStateReserved:
+		return to == vtxoStateSigned || to == vtxoStateAborted
+	case vtxoStateSigned:
+		return to == vtxoStateSubmitted
+	case vtxoStateSubmitted:
+		return to == vtxoStateFinalized || to == vtxoStateUnresolved
+	default:
+		return false
+	}
 }
 
 func (l *Ledger) loadVtxoOperation(ctx context.Context, q queryContext, operationID string) (VtxoOperation, error) {
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return VtxoOperation{}, err
 	}
@@ -242,7 +270,7 @@ func (l *Ledger) loadVtxoOperation(ctx context.Context, q queryContext, operatio
 }
 
 func (l *Ledger) loadVtxoOperationInputs(ctx context.Context, q queryContext, operationID string) ([]VtxoOperationInput, error) {
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return nil, err
 	}
@@ -269,12 +297,14 @@ SELECT operation_id, txid, vout, value_sats, script, integrity_mac
 }
 
 func (l *Ledger) abortExpiredVtxoLocked(ctx context.Context, q queryContext, vaultID string, now time.Time) error {
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return err
 	}
 	defer zeroBytes(key)
-	rows, err := q.QueryContext(ctx, `SELECT `+vtxoSelectColumns+` FROM vtxo_operation WHERE vault_id = ? AND state = ?`, vaultID, vtxoStateReserved)
+	rows, err := q.QueryContext(ctx, `SELECT `+vtxoSelectColumns+` FROM vtxo_operation
+WHERE vault_id = ? AND state = ? AND expires_at != '' AND expires_at <= ?`,
+		vaultID, vtxoStateReserved, now.Format(time.RFC3339))
 	if err != nil {
 		return err
 	}
@@ -308,8 +338,8 @@ func (l *Ledger) abortExpiredVtxoLocked(ctx context.Context, q queryContext, vau
 			return err
 		}
 		if _, err := q.ExecContext(ctx, `
-UPDATE vtxo_operation SET state = ?, integrity_mac = ? WHERE operation_id = ?`,
-			expired[i].State, expired[i].IntegrityMAC, expired[i].OperationID,
+UPDATE vtxo_operation SET state = ?, integrity_mac = ? WHERE operation_id = ? AND state = ?`,
+			expired[i].State, expired[i].IntegrityMAC, expired[i].OperationID, vtxoStateReserved,
 		); err != nil {
 			return err
 		}
@@ -318,7 +348,7 @@ UPDATE vtxo_operation SET state = ?, integrity_mac = ? WHERE operation_id = ?`,
 }
 
 func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext, vaultID, operationID string, inputs []VtxoOperationInput) error {
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return err
 	}
@@ -340,10 +370,9 @@ func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext
 		if rec.OperationID == operationID {
 			continue
 		}
-		if !vtxoStateCountsTowardAllowance(rec.State) {
-			continue
+		if vtxoStateCountsTowardAllowance(rec.State) {
+			liveOperations[rec.OperationID] = struct{}{}
 		}
-		liveOperations[rec.OperationID] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -372,7 +401,7 @@ func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext
 }
 
 func (l *Ledger) loadVtxoOperationInputsForVault(ctx context.Context, q queryContext, vaultID string) ([]VtxoOperationInput, error) {
-	key, err := l.issuanceKey()
+	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return nil, err
 	}

@@ -20,9 +20,6 @@ func (l *Ledger) GetInvite(tokenHash []byte) (*Invite, error) {
 	if len(tokenHash) != sha256.Size {
 		return nil, fmt.Errorf("invite token_hash must be 32 bytes")
 	}
-	if err := ensureMultiTenantSchema(l.db); err != nil {
-		return nil, err
-	}
 	return getInvite(l.db, tokenHash)
 }
 

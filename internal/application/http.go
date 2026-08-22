@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/apperr"
-	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const GatewaySecretHeader = "X-Vault-Gateway-Secret"
@@ -24,27 +23,24 @@ const maxJSONBody = 1 << 20
 const EnrollmentTokenHeader = "X-Vault-Enrollment-Token"
 
 const (
-	publishOperationTimeout = 55 * time.Second
-	serverWriteTimeout      = 75 * time.Second
+	serverWriteTimeout = 75 * time.Second
 )
 
-// NewServer wraps h with the POC listen timeouts.
+// NewServer applies bounded production HTTP timeouts.
 func NewServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		// A publish operation has its own 55-second deadline. Leave a bounded
-		// response margin above it for error serialization and slow clients.
-		WriteTimeout: serverWriteTimeout,
-		IdleTimeout:  60 * time.Second,
+		WriteTimeout:      serverWriteTimeout,
+		IdleTimeout:       60 * time.Second,
 	}
 }
 
 // ContentSecurityPolicy is the page policy for the decrypt-and-sign UI.
 // Remote script and connect sources are forbidden so a CDN cannot see the
-// PRF-unlocked PhoneRoutineBIP340 software key.
+// PRF-unlocked PhoneBIP340 software key.
 const ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; worker-src 'none'"
 
 // AuthorizerHandler is the protected software-box surface. It deliberately
@@ -164,14 +160,8 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/enroll/start":               {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/enroll/propose":             {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/enroll/finish":              {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/preflight":                  {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/draft":                      {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/bind":                       {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/authorize":                  {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/initiate":                   {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/clawback":                   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/publish":                    {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/tx":                         {http.MethodGet: {}, http.MethodOptions: {}},
 	"/v1/passkey/challenge":          {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/passkey/binding":            {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/passkey/install":            {http.MethodPost: {}, http.MethodOptions: {}},
@@ -195,7 +185,7 @@ func sortedMethods(methods map[string]struct{}) []string {
 
 func serviceOrigin(svc *Service) string {
 	if svc == nil {
-		return program.RegtestOrigin
+		return ""
 	}
 	return svc.runtimeConfig().ClientOrigin
 }
@@ -213,7 +203,6 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		writeJSON(w, st, nil)
 	})
 	attachEnrollmentRoutes(mux, svc, origin)
-	attachSavingsRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
 }
@@ -272,7 +261,7 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 		status := http.StatusBadRequest
 		code := apperr.CodeRejected
 		switch {
-		case errors.Is(err, ErrEnrollmentClosed), errors.Is(err, apperr.ErrEnrollmentClosed), errors.Is(err, apperr.ErrNotFound):
+		case errors.Is(err, apperr.ErrEnrollmentClosed), errors.Is(err, apperr.ErrNotFound):
 			status = http.StatusNotFound
 			code = apperr.CodeNotFound
 		case errors.Is(err, ErrVerificationBusy), errors.Is(err, apperr.ErrBusy):
@@ -283,8 +272,6 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 			code = apperr.CodeVaultIDRequired
 		case errors.Is(err, apperr.ErrNotEnrolled):
 			code = apperr.CodeNotEnrolled
-		case errors.Is(err, apperr.ErrLegacyMasterSign):
-			code = apperr.CodeLegacyMasterSign
 		default:
 			if e := apperr.Of(err); e != nil && e.Code != apperr.CodeRejected {
 				code = e.Code

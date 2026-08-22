@@ -1,66 +1,18 @@
 package application
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/fixture"
 )
 
-// TestAuthorizerHTTPBoundaryEnforcesPolicyBeforeProviderKeyUse replaces the
-// former intentionally green raw-signer bypass proof. LocalSigner remains a
-// small policy-agnostic primitive, but the deployed authorizer never exposes
-// it: every provider-key operation is reached only through Service.Authorize
-// after independent transaction, WebAuthn, PhoneDirectP256, hot-signature, policy,
-// and durable-reservation checks.
-func TestAuthorizerHTTPBoundaryEnforcesPolicyBeforeProviderKeyUse(t *testing.T) {
-	t.Run("recipient cap", func(t *testing.T) {
-		e := newBoundaryEnv(t)
-		handler := testAuthorizer(e.service)
-		draft := e.canonicalDraft(t, 90_000, fixture.TxRecipientCapSats+1, 500)
-		req, _ := e.requestFor(t, draft, e.passkeyPriv)
-
-		response := authorizerAuthorize(t, handler, req)
-		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "recipient exceeds transaction cap") {
-			t.Fatalf("over-cap response = %d %s", response.Code, response.Body.String())
-		}
-		if got := e.countingSigner.callCount(); got != 0 {
-			t.Fatalf("over-cap request reached provider key %d times", got)
-		}
-	})
-
-	t.Run("period allowance", func(t *testing.T) {
-		e := newBoundaryEnv(t)
-		handler := testAuthorizer(e.service)
-		for i := 0; i < 2; i++ {
-			draft := e.canonicalDraft(t, 90_000, fixture.TxRecipientCapSats-500, 500)
-			req, _ := e.requestFor(t, draft, e.passkeyPriv)
-			response := authorizerAuthorize(t, handler, req)
-			if response.Code != http.StatusOK {
-				t.Fatalf("allowance request %d = %d %s", i+1, response.Code, response.Body.String())
-			}
-		}
-
-		draft := e.canonicalDraft(t, 90_000, 1_000, 500)
-		req, _ := e.requestFor(t, draft, e.passkeyPriv)
-		response := authorizerAuthorize(t, handler, req)
-		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "period allowance exceeded") {
-			t.Fatalf("period-overflow response = %d %s", response.Code, response.Body.String())
-		}
-		if got := e.countingSigner.callCount(); got != 2 {
-			t.Fatalf("period-policy rejection reached provider key: calls=%d, want 2", got)
-		}
-	})
-}
-
 func TestAuthorizerFailsClosedWithoutGatewaySecret(t *testing.T) {
 	t.Setenv("VAULT_GATEWAY_SECRET", "")
-	e := newBoundaryEnv(t)
-	handler := AuthorizerHandler(e.service)
+	e := newEnv(t)
+	handler := AuthorizerHandler(e.svc)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
 	if rec.Code != http.StatusServiceUnavailable {
@@ -75,8 +27,8 @@ func TestAuthorizerFailsClosedWithoutGatewaySecret(t *testing.T) {
 
 func TestAuthorizerRequiresGatewaySecretOnV1WhenConfigured(t *testing.T) {
 	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
-	e := newBoundaryEnv(t)
-	handler := AuthorizerHandler(e.service)
+	e := newEnv(t)
+	handler := AuthorizerHandler(e.svc)
 	denied := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 	denied.Header.Set("Origin", fixture.Origin)
 	rec := httptest.NewRecorder()
@@ -101,8 +53,8 @@ func TestAuthorizerRequiresGatewaySecretOnV1WhenConfigured(t *testing.T) {
 }
 
 func TestAuthorizerDoesNotServeRegister(t *testing.T) {
-	e := newBoundaryEnv(t)
-	handler := testAuthorizer(e.service)
+	e := newEnv(t)
+	handler := testAuthorizer(e.svc)
 	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodOptions} {
 		rec := boundaryHTTPCall(t, handler, method, "/v1/register", "application/json", fixture.Origin, `{}`)
 		if rec.Code != http.StatusNotFound {
@@ -112,8 +64,8 @@ func TestAuthorizerDoesNotServeRegister(t *testing.T) {
 }
 
 func TestAuthorizerHTTPBoundaryHasNoGenericSigningOrStaticSurface(t *testing.T) {
-	e := newBoundaryEnv(t)
-	handler := testAuthorizer(e.service)
+	e := newEnv(t)
+	handler := testAuthorizer(e.svc)
 	for _, path := range []string{
 		"/v1/onchain-tx",
 		"/v1/onchain-tx/",
@@ -130,14 +82,11 @@ func TestAuthorizerHTTPBoundaryHasNoGenericSigningOrStaticSurface(t *testing.T) 
 			}
 		})
 	}
-	if got := e.countingSigner.callCount(); got != 0 {
-		t.Fatalf("forbidden routes reached provider key %d times", got)
-	}
 	for _, request := range []struct {
 		method string
 		path   string
 	}{
-		{method: http.MethodGet, path: "/v1/authorize"},
+		{method: http.MethodGet, path: "/v1/vtxo/authorize"},
 		{method: http.MethodPost, path: "/v1/status"},
 		{method: http.MethodGet, path: "/v1/enroll/start"},
 		{method: http.MethodPost, path: "/health"},
@@ -158,14 +107,8 @@ func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
 		"/v1/enroll/start":               {http.MethodOptions, http.MethodPost},
 		"/v1/enroll/propose":             {http.MethodOptions, http.MethodPost},
 		"/v1/enroll/finish":              {http.MethodOptions, http.MethodPost},
-		"/v1/preflight":                  {http.MethodOptions, http.MethodPost},
-		"/v1/draft":                      {http.MethodOptions, http.MethodPost},
-		"/v1/bind":                       {http.MethodOptions, http.MethodPost},
-		"/v1/authorize":                  {http.MethodOptions, http.MethodPost},
 		"/v1/initiate":                   {http.MethodOptions, http.MethodPost},
 		"/v1/clawback":                   {http.MethodOptions, http.MethodPost},
-		"/v1/publish":                    {http.MethodOptions, http.MethodPost},
-		"/v1/tx":                         {http.MethodGet, http.MethodOptions},
 		"/v1/passkey/challenge":          {http.MethodOptions, http.MethodPost},
 		"/v1/passkey/binding":            {http.MethodOptions, http.MethodPost},
 		"/v1/passkey/install":            {http.MethodOptions, http.MethodPost},
@@ -184,13 +127,4 @@ func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("authorizer routes changed:\n got: %#v\nwant: %#v", got, expected)
 	}
-}
-
-func authorizerAuthorize(t *testing.T, handler http.Handler, req AuthorizeRequest) *httptest.ResponseRecorder {
-	t.Helper()
-	body, err := json.Marshal(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return boundaryHTTPCall(t, handler, http.MethodPost, "/v1/authorize", "application/json", fixture.Origin, string(body))
 }

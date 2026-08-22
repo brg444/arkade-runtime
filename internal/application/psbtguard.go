@@ -18,17 +18,6 @@ import (
 // only its single valid expected signature, and discards every other response
 // mutation. This wrapper protects both the in-process primitive and the
 // hostile public Emulator response with the same delta invariant.
-type expectedKeySigner interface {
-	SignExpected(ctx context.Context, ptx *psbt.Packet, expectedXOnly []byte) (*psbt.Packet, error)
-}
-
-func signWithExpected(ctx context.Context, signer Signer, ptx *psbt.Packet, expectedXOnly []byte) (*psbt.Packet, error) {
-	if es, ok := signer.(expectedKeySigner); ok {
-		return es.SignExpected(ctx, ptx, expectedXOnly)
-	}
-	return signer.Sign(ctx, ptx)
-}
-
 func parsePSBT(raw string) (*psbt.Packet, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("psbt required")
@@ -64,7 +53,7 @@ func signExactStage(
 	if err != nil {
 		return "", err
 	}
-	response, err := signWithExpected(ctx, signer, work, expectedXOnly)
+	response, err := signer.Sign(ctx, work)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", role, err)
 	}
@@ -235,48 +224,6 @@ func multiWitnessFetcher(ptx *psbt.Packet) txscript.PrevOutputFetcher {
 		}
 	}
 	return txscript.NewMultiPrevOutFetcher(prevs)
-}
-
-func verifyExactRoutineSignatures(ptx *psbt.Packet, op *vault.Built, pubs ...*btcec.PublicKey) error {
-	if ptx == nil || ptx.UnsignedTx == nil || op == nil || op.Leaves.Routine == nil || len(ptx.Inputs) != 1 || len(ptx.UnsignedTx.TxIn) != 1 {
-		return fmt.Errorf("routine signature stage inputs")
-	}
-	if len(pubs) == 0 || len(ptx.Inputs[0].TaprootScriptSpendSig) != len(pubs) {
-		return fmt.Errorf("expected exactly %d routine signatures", len(pubs))
-	}
-	if ptx.Inputs[0].WitnessUtxo == nil || len(ptx.Inputs[0].TaprootLeafScript) != 1 || ptx.Inputs[0].TaprootLeafScript[0] == nil {
-		return fmt.Errorf("routine leaf commitment required")
-	}
-	leaf := txscript.NewBaseTapLeaf(op.Leaves.Routine.Script)
-	leafHash := leaf.TapHash()
-	expected := make(map[string][]byte, len(pubs))
-	for _, pub := range pubs {
-		if pub == nil {
-			return fmt.Errorf("routine signer key required")
-		}
-		xonly := schnorr.SerializePubKey(pub)
-		if _, duplicate := expected[string(xonly)]; duplicate {
-			return fmt.Errorf("duplicate routine signer identity")
-		}
-		expected[string(xonly)] = xonly
-	}
-	for _, sig := range ptx.Inputs[0].TaprootScriptSpendSig {
-		if sig == nil || sig.SigHash != txscript.SigHashDefault || !bytes.Equal(sig.LeafHash, leafHash[:]) {
-			return fmt.Errorf("malformed routine signature")
-		}
-		xonly, ok := expected[string(sig.XOnlyPubKey)]
-		if !ok {
-			return fmt.Errorf("unexpected or duplicate routine signature")
-		}
-		if err := verifySignerSig(ptx, sig, xonly, leaf); err != nil {
-			return err
-		}
-		delete(expected, string(sig.XOnlyPubKey))
-	}
-	if len(expected) != 0 {
-		return fmt.Errorf("missing routine signature")
-	}
-	return nil
 }
 
 func clonePacket(p *psbt.Packet) (*psbt.Packet, error) {

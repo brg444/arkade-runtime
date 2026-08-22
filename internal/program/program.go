@@ -3,20 +3,12 @@
 // different axis — see docs/versions.md.
 package program
 
-import (
-	"fmt"
-
-	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
-)
+import "fmt"
 
 const (
-	LeftoverVaultID = "operational-vault-v1"
-
-	RegtestRPID   = "localhost"
-	RegtestOrigin = "http://localhost:8787"
-
-	OperationalCSVBlocks uint32 = 144
-	SavingsCSVBlocks     uint32 = 6
+	HardwareRecoveryCSVBlocks uint32 = 6
+	PhoneRecoveryCSVBlocks    uint32 = 144
+	RecoveryCSVBlocks         uint32 = 288
 
 	TxRecipientCapSats    int64 = 50_000
 	PeriodAllowanceSats   int64 = 100_000
@@ -35,13 +27,9 @@ const (
 	UnsafeGeneratorG  = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 	UnsafeGenerator2G = "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
 
-	// LeftoverV4Template is the retired daily program. Not enrollable.
-	LeftoverV4Template = "phone-direct-p256-routine-3of3-admin-phone-hww-v4"
-	// LeftoverV3Template is a quarantined pre-daily id that may still exist.
-	LeftoverV3Template = "phone-direct-p256-routine-3of3-admin-2of2-v3"
-	PolicyVersion      = "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3"
-	NetworkRegtest     = "regtest"
-	NetworkMutinynet   = "mutinynet"
+	PolicyVersion    = "vault-spending-policy-v1"
+	NetworkMainnet   = "mainnet"
+	NetworkMutinynet = "mutinynet"
 
 	VaultPolicyV1         = "vault-policy-v1"
 	VaultPolicyV1Schema   = "arkade-vault/vtxo-policy-v1"
@@ -103,12 +91,4 @@ func ValidateVaultPolicyV1ExitDelay(delay uint32, unit string) error {
 		return fmt.Errorf("vault-policy-v1 exit delay is frozen at %d seconds", VaultPolicyV1ExitDelay)
 	}
 	return nil
-}
-
-func OperationalCSV() arklib.RelativeLocktime {
-	return arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: OperationalCSVBlocks}
-}
-
-func SavingsCSV() arklib.RelativeLocktime {
-	return arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: SavingsCSVBlocks}
 }

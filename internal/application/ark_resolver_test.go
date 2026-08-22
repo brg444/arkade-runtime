@@ -249,7 +249,7 @@ func TestDialArkResolverRejectsOriginsWithoutNetwork(t *testing.T) {
 }
 
 func TestDialArkResolverRejectsNetworkMismatch(t *testing.T) {
-	if _, err := DialArkResolver(context.Background(), deployment.NetworkRegtest); err == nil || !strings.Contains(err.Error(), "network") {
+	if _, err := DialArkResolver(context.Background(), "regtest"); err == nil || !strings.Contains(err.Error(), "network") {
 		t.Fatalf("regtest dial accepted: %v", err)
 	}
 
@@ -288,7 +288,7 @@ func TestDialArkResolverIgnoresEnvOverride(t *testing.T) {
 	if _, err := dialArkResolver(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DialArkResolver(context.Background(), deployment.NetworkRegtest); err == nil {
+	if _, err := DialArkResolver(context.Background(), "regtest"); err == nil {
 		t.Fatal("public Dial accepted regtest")
 	}
 }

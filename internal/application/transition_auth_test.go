@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
+	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -20,7 +20,7 @@ func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 	owner, _ := btcec.NewPrivateKey()
 	req := attestedFinish(t, svc, start, pass, []byte("cred-transition-auth"), RegisterRequest{
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneRoutineBIP340Pub:    hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
 	})
 	if _, err := svc.FinishEnrollment(context.Background(), token, req); err != nil {
@@ -35,7 +35,7 @@ func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.TemplateVersion != v5.Template {
+	if st.TemplateVersion != savings.Template {
 		t.Fatalf("template %s", st.TemplateVersion)
 	}
 	if len(st.Warnings) == 0 {

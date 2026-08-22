@@ -132,7 +132,7 @@ func TestVtxoPairwiseIndependence(t *testing.T) {
 	if bytes.Equal(otherVault.Serialize(), vtxo.Serialize()) {
 		t.Fatal("distinct vault ids derived the same VTXO scalar")
 	}
-	otherNet, err := DeriveVtxoVaultCosignerScalar(master, vaultID, program.VaultPolicyV1, program.NetworkRegtest, advertised)
+	otherNet, err := DeriveVtxoVaultCosignerScalar(master, vaultID, program.VaultPolicyV1, program.NetworkMainnet, advertised)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,8 +216,8 @@ func TestVtxoRejectsInvalidInputs(t *testing.T) {
 	if _, err := DeriveVtxoVaultCosignerScalar(master, "tenant-example", "", program.NetworkMutinynet, advertised); err == nil {
 		t.Fatal("empty policy version accepted")
 	}
-	if _, err := DeriveVtxoVaultCosignerScalar(master, "tenant-example", program.VaultPolicyV1, "mainnet", advertised); err == nil {
-		t.Fatal("mainnet accepted")
+	if _, err := DeriveVtxoVaultCosignerScalar(master, "tenant-example", program.VaultPolicyV1, "signet", advertised); err == nil {
+		t.Fatal("unsupported network accepted")
 	}
 	if _, err := DeriveVtxoVaultCosignerScalar(master, "tenant-example", program.VaultPolicyV1, program.NetworkMutinynet, advertised[:32]); err == nil {
 		t.Fatal("32-byte advertised pub accepted")

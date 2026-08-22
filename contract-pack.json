@@ -7,23 +7,23 @@
     "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
   ],
   "programs": {
-    "staged": {
+    "savings-recovery-v1": {
       "status": "live",
       "enrollable": true,
-      "schema": "arkade-vault/v5",
-      "template": "phone-hww-recovery-staged-v6",
-      "policy": "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3",
+      "schema": "arkade-vault/savings-v1",
+      "template": "phone-hww-recovery-savings-v1",
+      "policy": "vault-spending-policy-v1",
       "csv": { "hardware": 6, "phone": 144, "recovery": 288 },
       "recovery": "optional",
       "serverFreeClawback": true,
-      "internalTag": "arkade-vault/v5/internal"
+      "internalTag": "arkade-vault/savings-v1/internal"
     },
     "vault-policy-v1": {
       "status": "listed",
       "module": "vtxo",
       "schema": "arkade-vault/vtxo-policy-v1",
       "template": "vault-policy-v1-collaborative-3key",
-      "policy": "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3",
+      "policy": "vault-spending-policy-v1",
       "recovery": "optional",
       "caps": {
         "txRecipientSats": 50000,
@@ -52,7 +52,7 @@
         "capability": "multi-presigned-signature",
         "note": "SDK 0.4.64 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised."
       },
-      "notes": "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
+      "notes": "Spending only. Savings stays L1. VTXO Spending does not reuse the Savings Pending or Quarantine trees. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
     },
     "vault-board-v1": {
       "status": "live",
@@ -74,10 +74,11 @@
     "prf": "arkade-2fa-vault/prf/v1",
     "kek": "arkade-2fa-vault/kek/v1",
     "directP256": "arkade-2fa-vault/direct-p256/v1",
-    "credentialRecord": "arkade-2fa-vault/credential-record/v3",
-    "issuanceRecord": "arkade-2fa-vault/issuance-record/v3",
-    "vaultRecord": "arkade-2fa-vault/vault-record/v4",
-    "vaultCredential": "arkade-2fa-vault/vault-credential/v1",
-    "recoverySession": "arkade-2fa-vault/recovery-session/v2"
+    "vaultRecord": "arkade-vault/vault-record/v1",
+    "vaultCredential": "arkade-vault/vault-credential/v1",
+    "recoverySession": "arkade-2fa-vault/recovery-session/v2",
+    "recoveryBinding": "arkade-vault/recovery-binding/v2",
+    "passkeyProof": "arkade-2fa-vault/passkey-proof/v1",
+    "vtxoReserve": "arkade-vault/vtxo-reserve/v1"
   }
 }

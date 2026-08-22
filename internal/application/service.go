@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
-	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -16,15 +14,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
-	"github.com/arkade-os/emulator/pkg/arkade"
 	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault"
-	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
+	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -37,46 +33,21 @@ type Service struct {
 	Ledger     *policy.Ledger
 	Deployment deployment.Config
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
-	// the authoritative ledger. Production obtains this key from the VaultCosigner
-	// scalar through a domain-separated KDF; regtest uses a public deterministic
-	// test key so existing demo deployments retain corruption detection.
+	// the authoritative ledger. Production derives it from the VaultCosigner
+	// scalar with a domain-separated KDF.
 	CredentialIntegrityKey []byte
-	// EnrollmentTokenHash gates the first and only enrollment. Once a
-	// credential exists, the token is never consulted again; only the exact
-	// persisted tuple remains idempotent.
-	EnrollmentTokenHash []byte
-	// EnrollmentDeadline bounds how long a fresh deployment can be claimed.
-	// An enrolled deployment never consults it. Production sets this at
-	// process start; tests may inject EnrollmentNow.
-	EnrollmentDeadline time.Time
-	EnrollmentNow      func() time.Time
-	// OpenEnrollment explicitly arms a first-come claim without an invite.
-	// Production still sets a short EnrollmentDeadline. The singleton insert
-	// permanently closes this mode after the first successful claimant.
-	OpenEnrollment bool
-	// MultiTenantEnrollment arms invite-scoped /v1/enroll/* and /v1/invite.
-	// Default false: those routes stay 404 until an explicit cutover.
-	MultiTenantEnrollment     bool
-	PhoneRoutineBIP340        *btcec.PublicKey
-	ExternalOwnerWallet       *btcec.PublicKey
-	RecoveryKey               *btcec.PublicKey
-	VaultCosignerPub          *btcec.PublicKey
-	DeprecatedVaultCosigners  []*btcec.PublicKey
-	ArkadeCosignerPub         *btcec.PublicKey
-	DeprecatedArkadeCosigners []*btcec.PublicKey
-	ArkadeCosignerOrigin      string
-	ArkadeCosignerVersion     string
-	Operational               *vault.Built
-	Savings                   *vault.Built
-	// VaultSigner is the private VaultCosigner-key stage. ArkadeCosignerSigner
-	// is the independent public stage and must never hold the VaultCosigner key.
-	VaultSigner          Signer
+	EnrollmentNow          func() time.Time
+	VaultCosignerPub       *btcec.PublicKey
+	ArkadeCosignerPub      *btcec.PublicKey
+	ArkadeCosignerOrigin   string
+	ArkadeCosignerVersion  string
+	// ArkadeCosignerSigner is the independent Operator signing stage. The
+	// VaultCosigner always comes from the per-vault child derived from vaultIKM.
 	ArkadeCosignerSigner Signer
 	SignTimeout          time.Duration
 	// MaxConcurrentVerifications bounds the CPU-heavy WebAuthn, P-256 and
 	// Schnorr verification stage. Zero uses the conservative default.
 	MaxConcurrentVerifications int
-	Broadcaster                Broadcaster
 	ArkResolver                ports.ArkResolver
 	contractPackJSON           []byte
 	vaultPolicyHasExit         *bool
@@ -89,7 +60,7 @@ type Service struct {
 	SessionNow                 func() time.Time
 	afterLoadPending           func()
 	// vaultIKM is the long-lived master scalar. It is never a Taproot signer.
-	// Per-vault keys are HKDF children. Leftover-direct-v0 signing is refused.
+	// Per-vault keys are HKDF children.
 	vaultIKM *btcec.PrivateKey
 }
 
@@ -99,37 +70,26 @@ type Deps struct {
 	Deployment            deployment.Config
 	IntegrityKey          []byte
 	MasterIKM             *btcec.PrivateKey
-	ExternalOwner         *btcec.PublicKey
 	VaultCosignerPub      *btcec.PublicKey
 	ArkadeCosignerPub     *btcec.PublicKey
 	ArkadeCosignerOrigin  string
 	ArkadeCosignerVersion string
 	ArkadeSigner          Signer
-	EnrollmentTokenHash   []byte
-	OpenEnrollment        bool
-	MultiTenantEnrollment bool
-	EnrollmentDeadline    time.Time
-	Broadcaster           Broadcaster
 	ArkResolver           ports.ArkResolver
 }
 
-// New builds the application service. VaultSigner is not the master scalar.
+// New builds the application service. The master scalar is derivation input,
+// never a transaction signer.
 func New(d Deps) *Service {
 	s := &Service{
 		Ledger:                 d.Ledger,
 		Deployment:             d.Deployment,
 		CredentialIntegrityKey: d.IntegrityKey,
-		ExternalOwnerWallet:    d.ExternalOwner,
 		VaultCosignerPub:       d.VaultCosignerPub,
 		ArkadeCosignerPub:      d.ArkadeCosignerPub,
 		ArkadeCosignerOrigin:   d.ArkadeCosignerOrigin,
 		ArkadeCosignerVersion:  d.ArkadeCosignerVersion,
 		ArkadeCosignerSigner:   d.ArkadeSigner,
-		EnrollmentTokenHash:    d.EnrollmentTokenHash,
-		OpenEnrollment:         d.OpenEnrollment,
-		MultiTenantEnrollment:  d.MultiTenantEnrollment,
-		EnrollmentDeadline:     d.EnrollmentDeadline,
-		Broadcaster:            d.Broadcaster,
 		ArkResolver:            d.ArkResolver,
 		vaultIKM:               d.MasterIKM,
 	}
@@ -147,34 +107,6 @@ func (s *Service) ClientOrigin() string {
 	return s.runtimeConfig().ClientOrigin
 }
 
-// ArmEnrollmentDeadline sets the first-claim window on a fresh process.
-func (s *Service) ArmEnrollmentDeadline(deadline time.Time) {
-	if s != nil {
-		s.EnrollmentDeadline = deadline
-	}
-}
-
-// AttachBroadcaster sets the post-verify publisher.
-func (s *Service) AttachBroadcaster(b Broadcaster) {
-	if s != nil {
-		s.Broadcaster = b
-	}
-}
-
-// HasVaultSigner reports whether a leftover in-process signer is attached.
-func (s *Service) HasVaultSigner() bool {
-	return s != nil && !isNilInterface(s.VaultSigner)
-}
-
-// EnrollmentTokenLen is the loaded invite hash length. Tests use this instead
-// of reading the field.
-func (s *Service) EnrollmentTokenLen() int {
-	if s == nil {
-		return 0
-	}
-	return len(s.EnrollmentTokenHash)
-}
-
 // IntegrityKeyCopy returns a copy of the MAC key for shutdown tests.
 func (s *Service) IntegrityKeyCopy() []byte {
 	if s == nil {
@@ -190,20 +122,15 @@ func (s *Service) WipeSecrets() {
 	}
 	zeroServiceBytes(s.CredentialIntegrityKey)
 	s.CredentialIntegrityKey = nil
-	zeroServiceBytes(s.EnrollmentTokenHash)
-	s.EnrollmentTokenHash = nil
 	if s.vaultIKM != nil {
 		raw := s.vaultIKM.Serialize()
 		zeroServiceBytes(raw)
 		s.vaultIKM.Key = btcec.ModNScalar{}
 		s.vaultIKM = nil
 	}
-	s.VaultSigner = nil
 }
 
 const defaultConcurrentVerifications = 4
-
-const regtestCredentialIntegrityDomain = "arkade-2fa-vault/regtest-public-credential-integrity-key/v1"
 
 var ErrVerificationBusy = errors.New("crypto verification capacity exhausted")
 
@@ -211,13 +138,21 @@ var ErrVerificationBusy = errors.New("crypto verification capacity exhausted")
 type enrolledSnapshot struct {
 	VaultID             string
 	CredentialID        []byte
-	PhoneRoutineBIP340  *btcec.PublicKey
+	PhoneBIP340         *btcec.PublicKey
 	ExternalOwnerWallet *btcec.PublicKey
 	RecoveryKey         *btcec.PublicKey
 	VaultCosignerBase   *btcec.PublicKey
 	ArkadeCosignerBase  *btcec.PublicKey
-	Operational         *vault.Built
-	Savings             *vault.Built
+	Savings             *savingsSnapshot
+}
+
+type savingsSnapshot struct {
+	Address             string
+	PkScript            []byte
+	ExternalOwnerWallet *btcec.PublicKey
+	RecoveryKey         *btcec.PublicKey
+	VaultCosignerBase   *btcec.PublicKey
+	ArkadeCosignerBase  *btcec.PublicKey
 }
 
 // publishedIndex is a swapped immutable map of vaults and credential IDs.
@@ -228,14 +163,14 @@ type publishedIndex struct {
 
 // RegisterRequest is the enrollment payload. All byte fields are hex.
 // A second call is accepted only when it matches the already-enrolled
-// credential ID, WebAuthn P-256, PhoneDirectP256, and PhoneRoutineBIP340,
+// credential ID, WebAuthn P-256, PhoneDirectP256, and PhoneBIP340,
 // and this process's pinned deployment keys/policy still rebuild the stored
 // descriptor.
 type RegisterRequest struct {
-	CredentialID          string `json:"credentialId"`
-	WebAuthnP256          string `json:"webauthnP256"`
-	PhoneDirectP256       string `json:"phoneDirectP256"`
-	PhoneRoutineBIP340Pub string `json:"phoneRoutineBip340Pub"`
+	CredentialID    string `json:"credentialId"`
+	WebAuthnP256    string `json:"webauthnP256"`
+	PhoneDirectP256 string `json:"phoneDirectP256"`
+	PhoneBIP340Pub  string `json:"phoneBip340Pub"`
 	// These BIP340 x-only keys are chosen exactly once for a fresh portable
 	// deployment. A configured deployment may precommit the same identities.
 	ExternalOwnerWalletXOnly string `json:"externalOwnerWalletXOnly,omitempty"`
@@ -249,19 +184,12 @@ type RegisterRequest struct {
 
 type parsedRegisterRequest struct {
 	id, webauthnP256, phoneDirectP256 []byte
-	phoneRoutine                      *btcec.PublicKey
+	phone                             *btcec.PublicKey
 	externalOwner                     *btcec.PublicKey
 	recovery                          *btcec.PublicKey
 	vaultID                           string
 }
 
-func (s *Service) Register(req RegisterRequest) error {
-	return s.RegisterWithBootstrap(req, "")
-}
-
-// RegisterWithBootstrap applies the configured first-enrollment mode only
-// while the ledger is unenrolled. Open mode requires an empty bootstrap;
-// optional token mode validates it without ever reflecting token material.
 func (s *Service) attachLedgerIntegrity() error {
 	if s == nil || s.Ledger == nil {
 		return fmt.Errorf("ledger required")
@@ -272,76 +200,6 @@ func (s *Service) attachLedgerIntegrity() error {
 	}
 	defer zeroServiceBytes(key)
 	return s.Ledger.SetIntegrityKey(key)
-}
-
-func (s *Service) RegisterWithBootstrap(req RegisterRequest, bootstrap string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.attachLedgerIntegrity(); err != nil {
-		return err
-	}
-	if err := s.runtimeConfig().Validate(); err != nil {
-		return fmt.Errorf("deployment: %w", err)
-	}
-
-	existing, err := s.loadVerifiedCredential()
-	if err != nil {
-		return err
-	}
-	if existing != nil {
-		parsed, err := s.parseRegisterRequest(req, existing)
-		if err != nil {
-			return err
-		}
-		if err := s.acceptPersistedEnrollment(existing, parsed); err != nil {
-			return err
-		}
-		s.clearEnrollmentTokenHash()
-		return nil
-	}
-	// Validate the explicitly armed claim mode and deadline before parsing
-	// attacker-controlled public keys or deriving any descriptor. Open mode is
-	// intentionally first-come; token mode authenticates one intended claimant.
-	if err := s.validateEnrollmentBootstrap(bootstrap); err != nil {
-		return err
-	}
-	parsed, err := s.parseRegisterRequest(req, nil)
-	if err != nil {
-		return err
-	}
-	if recoveryField(req) != "" || parsed.recovery != nil {
-		return fmt.Errorf("recoveryKeyXOnly is retired")
-	}
-	op, sv, err := s.makeTrees(parsed.phoneRoutine, parsed.phoneDirectP256, parsed.externalOwner)
-	if err != nil {
-		return err
-	}
-	descriptor := descriptorFromTrees(
-		s.runtimeConfig(), parsed.id, parsed.webauthnP256, parsed.phoneDirectP256,
-		parsed.phoneRoutine, parsed.externalOwner,
-		s.VaultCosignerPub, s.ArkadeCosignerPub,
-		s.ArkadeCosignerOrigin, s.ArkadeCosignerVersion, op, sv,
-	)
-	if err := s.sealCredential(&descriptor); err != nil {
-		return err
-	}
-	if err := s.Ledger.Enroll(descriptor); err != nil {
-		existing, getErr := s.loadVerifiedCredential()
-		if getErr != nil {
-			return err
-		}
-		if existing == nil {
-			return err
-		}
-		if err := s.acceptPersistedEnrollment(existing, parsed); err != nil {
-			return err
-		}
-		s.clearEnrollmentTokenHash()
-		return nil
-	}
-	s.publishEnrollmentAt(program.LeftoverVaultID, parsed.id, parsed.phoneRoutine, op, sv)
-	s.clearEnrollmentTokenHash()
-	return nil
 }
 
 // CreateTenantVault atomically persists a new HKDF-derived vault and consumes
@@ -356,7 +214,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err := s.runtimeConfig().Validate(); err != nil {
 		return fmt.Errorf("deployment: %w", err)
 	}
-	if vaultID == "" || vaultID == program.LeftoverVaultID {
+	if vaultID == "" {
 		return fmt.Errorf("tenant vault id required")
 	}
 	if req.ExternalOwnerWalletXOnly == "" {
@@ -381,11 +239,8 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if req.DescriptorHash == "" || req.DescriptorHash != proposed.DescriptorHash {
 		return fmt.Errorf("enrollment descriptor hash does not match the proposed vault")
 	}
-	descriptor, op, sv, err := s.mintV5Credential(vaultID, parsed, child.PubKey())
+	descriptor, sv, err := s.mintSavingsCredential(vaultID, parsed, child.PubKey())
 	if err != nil {
-		return err
-	}
-	if err := s.sealCredential(&descriptor); err != nil {
 		return err
 	}
 	rec := policy.VaultRecord{}
@@ -408,7 +263,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	}); err != nil {
 		return err
 	}
-	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phoneRoutine, op, sv)
+	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv)
 	return nil
 }
 
@@ -416,11 +271,7 @@ func (s *Service) vaultCosignerMaster() (*btcec.PrivateKey, error) {
 	if s.vaultIKM != nil {
 		return s.vaultIKM, nil
 	}
-	ls, ok := s.VaultSigner.(LocalSigner)
-	if !ok || ls.Priv == nil {
-		return nil, fmt.Errorf("vault cosigner IKM required")
-	}
-	return ls.Priv, nil
+	return nil, fmt.Errorf("vault cosigner IKM required")
 }
 
 func vaultRecordFromDescriptor(c policy.Credential) policy.VaultRecord {
@@ -443,34 +294,6 @@ func sealVaultCredentialForService(cred *policy.VaultCredential, s *Service) err
 	}
 	defer zeroServiceBytes(key)
 	return policy.SealVaultCredential(cred, key)
-}
-
-func (s *Service) validateEnrollmentBootstrap(bootstrap string) error {
-	if !s.EnrollmentDeadline.IsZero() && !s.currentEnrollmentTime().Before(s.EnrollmentDeadline) {
-		return fmt.Errorf("enrollment window is closed")
-	}
-	if s.runtimeConfig().Network == deployment.NetworkRegtest && len(s.EnrollmentTokenHash) == 0 {
-		return nil
-	}
-	if s.OpenEnrollment {
-		if bootstrap != "" {
-			return fmt.Errorf("open enrollment does not accept an invitation token")
-		}
-		return nil
-	}
-	if len(s.EnrollmentTokenHash) != sha256.Size {
-		return fmt.Errorf("enrollment bootstrap authorization is not configured")
-	}
-	raw, err := decodeEnrollmentToken(bootstrap)
-	if err != nil {
-		return fmt.Errorf("enrollment bootstrap authorization failed")
-	}
-	defer zeroServiceBytes(raw)
-	got := sha256.Sum256(raw)
-	if subtle.ConstantTimeCompare(got[:], s.EnrollmentTokenHash) != 1 {
-		return fmt.Errorf("enrollment bootstrap authorization failed")
-	}
-	return nil
 }
 
 func (s *Service) currentEnrollmentTime() time.Time {
@@ -504,37 +327,9 @@ func decodeEnrollmentToken(token string) ([]byte, error) {
 	return raw, nil
 }
 
-func (s *Service) clearEnrollmentTokenHash() {
-	for i := range s.EnrollmentTokenHash {
-		s.EnrollmentTokenHash[i] = 0
-	}
-	s.EnrollmentTokenHash = nil
-}
-
-// acceptPersistedEnrollment succeeds only for the exact user tuple when
-// runtime config matches the stored descriptor and trees rebuilt from that
-// record equal the persisted addresses/scripts/tweaked provider. It never
-// publishes trees derived from this process's speculative RecoveryKey/Provider.
-func (s *Service) acceptPersistedEnrollment(existing *policy.Credential, parsed parsedRegisterRequest) error {
-	if !sameEnrollmentTuple(existing, parsed) {
-		return fmt.Errorf("enrollment locked")
-	}
-	return s.publishStoredEnrollment(existing, false)
-}
-
-func (s *Service) parseRegisterRequest(req RegisterRequest, existing *policy.Credential) (parsedRegisterRequest, error) {
-	return s.parseRegisterRequestWithKeys(req, existing, s.PhoneRoutineBIP340, s.ExternalOwnerWallet, s.RecoveryKey)
-}
-
 func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRegisterRequest, error) {
-	return s.parseRegisterRequestWithKeys(req, nil, nil, nil, nil)
-}
-
-func (s *Service) parseRegisterRequestWithKeys(
-	req RegisterRequest,
-	existing *policy.Credential,
-	phoneFallback, ownerFallback, recoveryFallback *btcec.PublicKey,
-) (parsed parsedRegisterRequest, err error) {
+	var parsed parsedRegisterRequest
+	var err error
 	parsed.id, err = decodeHex(req.CredentialID)
 	if err != nil {
 		return parsed, fmt.Errorf("credentialId: %w", err)
@@ -559,47 +354,22 @@ func (s *Service) parseRegisterRequestWithKeys(
 	if bytes.Equal(parsed.webauthnP256, parsed.phoneDirectP256) {
 		return parsed, fmt.Errorf("direct-auth p256 must be distinct from the webauthn credential p256")
 	}
-	parsed.phoneRoutine, err = parsePhoneRoutineBIP340Pub(req.PhoneRoutineBIP340Pub, phoneFallback)
+	parsed.phone, err = parsePhoneBIP340Pub(req.PhoneBIP340Pub)
 	if err != nil {
 		return parsed, err
 	}
-	var existingOwner *btcec.PublicKey
-	if existing != nil {
-		existingOwner, err = btcec.ParsePubKey(existing.ExternalOwnerWallet)
-		if err != nil {
-			return parsed, fmt.Errorf("stored ExternalOwnerWallet: %w", err)
-		}
-	}
-	parsed.externalOwner, err = s.parseOnboardingKey("externalOwnerWalletXOnly", req.ExternalOwnerWalletXOnly, ownerFallback, existingOwner)
+	parsed.externalOwner, err = s.parseOnboardingKey("externalOwnerWalletXOnly", req.ExternalOwnerWalletXOnly)
 	if err != nil {
 		return parsed, err
-	}
-	var existingRecovery *btcec.PublicKey
-	if existing != nil && len(existing.RecoveryKey) > 0 {
-		if pub, err := btcec.ParsePubKey(existing.RecoveryKey); err == nil && !knownFixtureXOnly(schnorr.SerializePubKey(pub)) {
-			existingRecovery = pub
-		}
 	}
 	if rec := recoveryField(req); rec != "" {
-		parsed.recovery, err = s.parseOnboardingKey("recoveryXOnly", rec, recoveryFallback, existingRecovery)
+		parsed.recovery, err = s.parseOnboardingKey("recoveryXOnly", rec)
 		if err != nil {
 			return parsed, err
 		}
-	} else if existingRecovery != nil {
-		parsed.recovery = existingRecovery
 	}
 	parsed.vaultID = req.VaultID
 	return parsed, nil
-}
-
-func sameEnrollmentTuple(c *policy.Credential, parsed parsedRegisterRequest) bool {
-	return c != nil && parsed.phoneRoutine != nil && parsed.externalOwner != nil &&
-		bytes.Equal(c.ID, parsed.id) &&
-		bytes.Equal(c.WebAuthnP256, parsed.webauthnP256) &&
-		bytes.Equal(c.PhoneDirectP256, parsed.phoneDirectP256) &&
-		bytes.Equal(c.PhoneRoutineBIP340, parsed.phoneRoutine.SerializeCompressed()) &&
-		bytes.Equal(c.ExternalOwnerWallet, parsed.externalOwner.SerializeCompressed()) &&
-		(parsed.vaultID == "" || parsed.vaultID == c.VaultID)
 }
 
 // LoadVaults rebuilds trees from the persisted enrollment descriptor.
@@ -618,22 +388,6 @@ func (s *Service) LoadVaults() error {
 	if err != nil {
 		return err
 	}
-	if len(ids) == 0 {
-		if s.MultiTenantEnrollment {
-			return nil
-		}
-		cred, err := s.loadVerifiedCredential()
-		if err != nil {
-			return err
-		}
-		if cred == nil {
-			return nil
-		}
-		if quarantineLegacyVault(s, cred.VaultID, cred.TemplateVersion) {
-			return nil
-		}
-		return s.publishStoredEnrollment(cred, true)
-	}
 	key, err := s.credentialIntegrityKey()
 	if err != nil {
 		return err
@@ -648,214 +402,33 @@ func (s *Service) LoadVaults() error {
 			return fmt.Errorf("vault %s missing credential", id)
 		}
 		cred := rec.ToCredential(*vcred)
-		if quarantineLegacyVault(s, id, cred.TemplateVersion) {
-			continue
-		}
-		if err := s.publishStoredEnrollment(&cred, true && id == program.LeftoverVaultID); err != nil {
+		if err := s.publishStoredEnrollment(&cred); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) publishStoredEnrollment(cred *policy.Credential, startup bool) error {
-	phoneRoutine, externalOwner, recovery, vaultBase, arkadeBase, op, sv, err := s.rebuildFromCredential(cred)
+func (s *Service) publishStoredEnrollment(cred *policy.Credential) error {
+	phone, _, _, _, _, sv, err := s.rebuildFromCredential(cred)
 	if err != nil {
 		return err
 	}
-	runtimeVaultCosigner := s.VaultCosignerPub
-	// Startup may replace a deprecated/current RemoteSigner identity with the
-	// persisted vault identity after compatibility is checked. An idempotent
-	// /register never rewrites fields read by concurrent requests.
-	if startup {
-		s.ExternalOwnerWallet = externalOwner
-		s.RecoveryKey = recovery
-		s.VaultCosignerPub = vaultBase
-		s.ArkadeCosignerPub = arkadeBase
-	}
-	s.publishEnrollmentAt(cred.VaultID, cred.ID, phoneRoutine, op, sv)
-	if runtimeVaultCosigner != nil && !sameCompressed(runtimeVaultCosigner, cred.VaultCosignerBase) {
-		log.Printf("rebuilt vault from enrolled VaultCosigner base %x; current runtime signer %x must remain deprecated",
-			cred.VaultCosignerBase, runtimeVaultCosigner.SerializeCompressed())
-	}
+	s.publishEnrollmentAt(cred.VaultID, cred.ID, phone, sv)
 	return nil
 }
 
 func (s *Service) rebuildFromCredential(cred *policy.Credential) (
-	phoneRoutine, externalOwner, recovery, vaultBase, arkadeBase *btcec.PublicKey,
-	op, sv *vault.Built, err error,
+	phone, externalOwner, recovery, vaultBase, arkadeBase *btcec.PublicKey,
+	sv *savingsSnapshot, err error,
 ) {
 	if err = s.requireCompatible(cred); err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
-	if isV5Template(cred.TemplateVersion) {
-		return s.rebuildV5(cred)
+	if cred.TemplateVersion != savings.Template {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("unsupported vault template %q", cred.TemplateVersion)
 	}
-	phoneRoutine, err = btcec.ParsePubKey(cred.PhoneRoutineBIP340)
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("stored PhoneRoutineBIP340: %w", err)
-	}
-	externalOwner, err = btcec.ParsePubKey(cred.ExternalOwnerWallet)
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("stored ExternalOwnerWallet: %w", err)
-	}
-	if len(cred.RecoveryKey) > 0 {
-		recovery, err = btcec.ParsePubKey(cred.RecoveryKey)
-		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("stored RecoveryKey: %w", err)
-		}
-	}
-	vaultBase, err = btcec.ParsePubKey(cred.VaultCosignerBase)
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("stored VaultCosigner: %w", err)
-	}
-	arkadeBase, err = btcec.ParsePubKey(cred.ArkadeCosignerBase)
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("stored ArkadeCosigner: %w", err)
-	}
-	opCSV := arklib.RelativeLocktime{Type: arklib.RelativeLocktimeType(cred.OperationalCSVType), Value: cred.OperationalCSVValue}
-	svCSV := arklib.RelativeLocktime{Type: arklib.RelativeLocktimeType(cred.SavingsCSVType), Value: cred.SavingsCSVValue}
-	op, err = vault.NewFromRecord(vault.Record{
-		Kind:                vault.Operational,
-		PhoneRoutineBIP340:  phoneRoutine,
-		PhoneDirectP256:     cred.PhoneDirectP256,
-		ExternalOwnerWallet: externalOwner,
-		VaultCosignerBase:   vaultBase,
-		ArkadeCosignerBase:  arkadeBase,
-		CSV:                 opCSV,
-		HardwareCSV:         svCSV,
-		AuthorizationPolicy: authorizationPolicyFromCredential(cred),
-		Network:             cred.Network,
-	})
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
-	}
-	sv, err = vault.NewFromRecord(vault.Record{
-		Kind:                vault.Savings,
-		PhoneRoutineBIP340:  phoneRoutine,
-		ExternalOwnerWallet: externalOwner,
-		CSV:                 opCSV,
-		HardwareCSV:         svCSV,
-		Network:             cred.Network,
-	})
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
-	}
-	if err = sv.AssertNoRoutineCosigners(vaultBase, op.TweakedVaultCosigner, arkadeBase, op.TweakedArkadeCosigner); err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, err
-	}
-	if op.Address != cred.OperationalAddress || !bytes.Equal(op.PkScript, cred.OperationalScript) {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("rebuilt operational vault does not match stored descriptor")
-	}
-	if sv.Address != cred.SavingsAddress || !bytes.Equal(sv.PkScript, cred.SavingsScript) {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("rebuilt savings vault does not match stored descriptor")
-	}
-	if op.TweakedVaultCosigner == nil || !bytes.Equal(op.TweakedVaultCosigner.SerializeCompressed(), cred.TweakedVaultCosigner) {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("rebuilt tweaked VaultCosigner does not match stored descriptor")
-	}
-	if op.TweakedArkadeCosigner == nil || !bytes.Equal(op.TweakedArkadeCosigner.SerializeCompressed(), cred.TweakedArkadeCosigner) {
-		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("rebuilt tweaked ArkadeCosigner does not match stored descriptor")
-	}
-	return phoneRoutine, externalOwner, recovery, vaultBase, arkadeBase, op, sv, nil
-}
-
-func (s *Service) makeTrees(phoneRoutine *btcec.PublicKey, phoneDirectP256 []byte, externalOwner *btcec.PublicKey) (*vault.Built, *vault.Built, error) {
-	return s.makeTreesWithCosigner(phoneRoutine, phoneDirectP256, externalOwner, s.VaultCosignerPub)
-}
-
-func (s *Service) makeTreesWithCosigner(phoneRoutine *btcec.PublicKey, phoneDirectP256 []byte, externalOwner, vaultCosigner *btcec.PublicKey) (*vault.Built, *vault.Built, error) {
-	if phoneRoutine == nil || externalOwner == nil || vaultCosigner == nil || s.ArkadeCosignerPub == nil {
-		return nil, nil, fmt.Errorf("vault keys not configured")
-	}
-	cfg := s.runtimeConfig()
-	opCSV := arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: cfg.OperationalCSVBlocks}
-	svCSV := arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: cfg.SavingsCSVBlocks}
-	op, err := vault.NewOperationalWithPolicy(vault.OperationalKeys{
-		PhoneRoutineBIP340:  phoneRoutine,
-		PhoneDirectP256:     phoneDirectP256,
-		ExternalOwnerWallet: externalOwner,
-		VaultCosignerBase:   vaultCosigner,
-		ArkadeCosignerBase:  s.ArkadeCosignerPub,
-	}, cfg.Network, opCSV, svCSV, configuredAuthorizationPolicy())
-	if err != nil {
-		return nil, nil, err
-	}
-	sv, err := vault.NewSavingsWithPolicy(
-		phoneRoutine, externalOwner, cfg.Network, opCSV, svCSV,
-		vaultCosigner, op.TweakedVaultCosigner, s.ArkadeCosignerPub, op.TweakedArkadeCosigner,
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-	return op, sv, nil
-}
-
-func descriptorFromTrees(
-	cfg deployment.Config, id, webauthnP256, phoneDirectP256 []byte,
-	phoneRoutine, externalOwner, vaultBase, arkadeBase *btcec.PublicKey,
-	arkadeOrigin, arkadeVersion string, op, sv *vault.Built,
-) policy.Credential {
-	opCSV := arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: cfg.OperationalCSVBlocks}
-	svCSV := arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: cfg.SavingsCSVBlocks}
-	return policy.Credential{
-		ID:                    id,
-		WebAuthnP256:          append([]byte(nil), webauthnP256...),
-		PhoneDirectP256:       append([]byte(nil), phoneDirectP256...),
-		PhoneRoutineBIP340:    phoneRoutine.SerializeCompressed(),
-		ExternalOwnerWallet:   externalOwner.SerializeCompressed(),
-		RecoveryKey:           retiredRecoveryPlaceholder(),
-		RPID:                  cfg.RPID,
-		Origin:                cfg.ClientOrigin,
-		VaultCosignerBase:     vaultBase.SerializeCompressed(),
-		TweakedVaultCosigner:  op.TweakedVaultCosigner.SerializeCompressed(),
-		ArkadeCosignerBase:    arkadeBase.SerializeCompressed(),
-		TweakedArkadeCosigner: op.TweakedArkadeCosigner.SerializeCompressed(),
-		ArkadeCosignerOrigin:  arkadeOrigin,
-		ArkadeCosignerVersion: arkadeVersion,
-		TemplateVersion:       program.LeftoverV4Template,
-		PolicyVersion:         program.PolicyVersion,
-		Network:               cfg.Network,
-		VaultID:               program.LeftoverVaultID,
-		OperationalCSVType:    int64(opCSV.Type),
-		OperationalCSVValue:   opCSV.Value,
-		SavingsCSVType:        int64(svCSV.Type),
-		SavingsCSVValue:       svCSV.Value,
-		OperationalAddress:    op.Address,
-		OperationalScript:     append([]byte(nil), op.PkScript...),
-		SavingsAddress:        sv.Address,
-		SavingsScript:         append([]byte(nil), sv.PkScript...),
-		RecipientDustSats:     program.DustSats,
-		TxRecipientCapSats:    program.TxRecipientCapSats,
-		PeriodAllowanceSats:   program.PeriodAllowanceSats,
-		AbsoluteFeeCapSats:    program.AbsoluteFeeCeiling,
-		FeerateCapSatPerV:     program.FeerateCeilingSatPerV,
-	}
-}
-
-func retiredRecoveryPlaceholder() []byte {
-	raw, err := hex.DecodeString(program.UnsafeGeneratorG)
-	if err != nil {
-		return []byte{0}
-	}
-	return raw
-}
-
-func configuredAuthorizationPolicy() vault.AuthorizationPolicy {
-	return vault.AuthorizationPolicy{
-		RecipientDustSats:      program.DustSats,
-		RecipientCapSats:       program.TxRecipientCapSats,
-		AbsoluteFeeCeilingSats: program.AbsoluteFeeCeiling,
-		FeerateCeilingSatPerV:  program.FeerateCeilingSatPerV,
-	}
-}
-
-func authorizationPolicyFromCredential(cred *policy.Credential) vault.AuthorizationPolicy {
-	return vault.AuthorizationPolicy{
-		RecipientDustSats:      cred.RecipientDustSats,
-		RecipientCapSats:       cred.TxRecipientCapSats,
-		AbsoluteFeeCeilingSats: cred.AbsoluteFeeCapSats,
-		FeerateCeilingSatPerV:  cred.FeerateCapSatPerV,
-	}
+	return s.rebuildSavings(cred)
 }
 
 func (s *Service) requireCompatible(cred *policy.Credential) error {
@@ -872,14 +445,6 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	if cred.VaultID == "" {
 		return fmt.Errorf("stored vault id required")
 	}
-	opCSV := arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: cfg.OperationalCSVBlocks}
-	svCSV := arklib.RelativeLocktime{Type: arklib.LocktimeTypeBlock, Value: cfg.SavingsCSVBlocks}
-	if cred.OperationalCSVType != int64(opCSV.Type) || cred.OperationalCSVValue != opCSV.Value {
-		return fmt.Errorf("stored operational CSV incompatible with runtime")
-	}
-	if cred.SavingsCSVType != int64(svCSV.Type) || cred.SavingsCSVValue != svCSV.Value {
-		return fmt.Errorf("stored savings CSV incompatible with runtime")
-	}
 	if cred.Origin != cfg.ClientOrigin {
 		return fmt.Errorf("stored origin %q incompatible with runtime %q", cred.Origin, cfg.ClientOrigin)
 	}
@@ -894,84 +459,49 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 		return fmt.Errorf("stored economic policy incompatible with runtime")
 	}
 	wantOrigin, wantVersion := s.arkadeIdentity()
-	if isV5Template(cred.TemplateVersion) {
-		if cred.ArkadeCosignerOrigin != wantOrigin {
-			return fmt.Errorf("stored ArkadeCosigner origin %q incompatible with runtime %q", cred.ArkadeCosignerOrigin, wantOrigin)
-		}
-		if cred.ArkadeCosignerVersion != wantVersion {
-			return fmt.Errorf("stored ArkadeCosigner version %q incompatible with runtime %q", cred.ArkadeCosignerVersion, wantVersion)
-		}
-	} else if cred.ArkadeCosignerOrigin != s.ArkadeCosignerOrigin {
-		return fmt.Errorf("stored ArkadeCosigner origin %q incompatible with runtime %q", cred.ArkadeCosignerOrigin, s.ArkadeCosignerOrigin)
+	if cred.ArkadeCosignerOrigin != wantOrigin {
+		return fmt.Errorf("stored ArkadeCosigner origin %q incompatible with runtime %q", cred.ArkadeCosignerOrigin, wantOrigin)
 	}
-	if cfg.Network != deployment.NetworkRegtest && (cred.ArkadeCosignerVersion == "" || s.ArkadeCosignerVersion == "") {
+	if cred.ArkadeCosignerVersion != wantVersion {
+		return fmt.Errorf("stored ArkadeCosigner version %q incompatible with runtime %q", cred.ArkadeCosignerVersion, wantVersion)
+	}
+	if cred.ArkadeCosignerVersion == "" || s.ArkadeCosignerVersion == "" {
 		return fmt.Errorf("stored and runtime ArkadeCosigner versions are required")
 	}
-	// The persisted value records the exact reviewed version at enrollment.
-	// Runtime separately accepts only its release allowlist. They need not be
-	// equal after a reviewed key/version rotation: an existing descriptor stays
-	// live only when its exact MAC-authenticated key is still advertised as an
-	// active deprecated signer.
-	if cred.VaultID == program.LeftoverVaultID {
-		if s.ExternalOwnerWallet != nil && !sameCompressed(s.ExternalOwnerWallet, cred.ExternalOwnerWallet) {
-			return fmt.Errorf("runtime ExternalOwnerWallet does not match enrolled vault")
-		}
-		// v4 does not commit RecoveryKey. Ignore leftover column bytes.
-		if err := requireSignerCompatible("VaultCosigner", s.VaultCosignerPub, s.DeprecatedVaultCosigners, cred.VaultCosignerBase); err != nil {
-			return err
-		}
-	}
-	if err := requireSignerCompatible("ArkadeCosigner", s.ArkadeCosignerPub, s.DeprecatedArkadeCosigners, cred.ArkadeCosignerBase); err != nil {
+	if err := requireSignerCompatible("ArkadeCosigner", s.ArkadeCosignerPub, cred.ArkadeCosignerBase); err != nil {
 		return err
 	}
 	return nil
 }
 
-func requireSignerCompatible(name string, current *btcec.PublicKey, deprecated []*btcec.PublicKey, stored []byte) error {
-	if current == nil && len(deprecated) == 0 {
-		return nil
-	}
+func requireSignerCompatible(name string, current *btcec.PublicKey, stored []byte) error {
 	if current != nil && sameCompressed(current, stored) {
 		return nil
 	}
-	for _, pub := range deprecated {
-		if sameCompressed(pub, stored) {
-			return nil
-		}
-	}
-	return fmt.Errorf("enrolled %s key does not match the configured runtime signer or an allowed deprecated key", name)
+	return fmt.Errorf("enrolled %s key does not match the configured runtime signer", name)
 }
 
 func sameCompressed(pub *btcec.PublicKey, raw []byte) bool {
 	return pub != nil && bytes.Equal(pub.SerializeCompressed(), raw)
 }
 
-func parsePhoneRoutineBIP340Pub(hexPub string, fallback *btcec.PublicKey) (*btcec.PublicKey, error) {
+func parsePhoneBIP340Pub(hexPub string) (*btcec.PublicKey, error) {
 	if hexPub == "" {
-		if fallback == nil {
-			return nil, fmt.Errorf("phoneRoutineBip340Pub required")
-		}
-		return fallback, nil
+		return nil, fmt.Errorf("phoneBip340Pub required")
 	}
 	raw, err := decodeHex(hexPub)
 	if err != nil {
-		return nil, fmt.Errorf("phoneRoutineBip340Pub: %w", err)
+		return nil, fmt.Errorf("phoneBip340Pub: %w", err)
 	}
 	pub, err := btcec.ParsePubKey(raw)
 	if err != nil {
-		return nil, fmt.Errorf("phoneRoutineBip340Pub: %w", err)
+		return nil, fmt.Errorf("phoneBip340Pub: %w", err)
 	}
 	return pub, nil
 }
 
-func (s *Service) parseOnboardingKey(name, encoded string, configured, persisted *btcec.PublicKey) (*btcec.PublicKey, error) {
+func (s *Service) parseOnboardingKey(name, encoded string) (*btcec.PublicKey, error) {
 	if encoded == "" {
-		if persisted != nil {
-			return persisted, nil
-		}
-		if configured != nil {
-			return configured, nil
-		}
 		return nil, fmt.Errorf("%s required", name)
 	}
 	if len(encoded) != 64 || encoded != strings.ToLower(encoded) {
@@ -985,13 +515,7 @@ func (s *Service) parseOnboardingKey(name, encoded string, configured, persisted
 	if err != nil || !bytes.Equal(schnorr.SerializePubKey(pub), raw) {
 		return nil, fmt.Errorf("%s is invalid", name)
 	}
-	if configured != nil && !bytes.Equal(schnorr.SerializePubKey(configured), raw) {
-		return nil, fmt.Errorf("%s does not match deployment precommit", name)
-	}
-	if persisted != nil && !bytes.Equal(schnorr.SerializePubKey(persisted), raw) {
-		return nil, fmt.Errorf("enrollment locked")
-	}
-	if s.runtimeConfig().Network != deployment.NetworkRegtest && knownFixtureXOnly(raw) {
+	if knownFixtureXOnly(raw) {
 		return nil, fmt.Errorf("public test fixture is forbidden for %s", name)
 	}
 	return pub, nil
@@ -1014,67 +538,56 @@ func knownFixtureXOnly(xonly []byte) bool {
 // PublicStatus is the unauthenticated authorizer identity. It is not a
 // tenant descriptor and must not be treated as enrolled.
 type PublicStatus struct {
-	Network              string `json:"network"`
-	ClientOrigin         string `json:"clientOrigin"`
-	RPID                 string `json:"rpId"`
-	TemplateVersion      string `json:"templateVersion"`
-	PolicyVersion        string `json:"policyVersion"`
-	OperationalCSVBlocks uint32 `json:"operationalCsvBlocks"`
-	SavingsCSVBlocks     uint32 `json:"savingsCsvBlocks"`
-	EnrollmentMode       string `json:"enrollmentMode"`
-	EnrollmentExpiresAt  string `json:"enrollmentExpiresAt,omitempty"`
+	Network             string `json:"network"`
+	ClientOrigin        string `json:"clientOrigin"`
+	RPID                string `json:"rpId"`
+	TemplateVersion     string `json:"templateVersion"`
+	PolicyVersion       string `json:"policyVersion"`
+	EnrollmentMode      string `json:"enrollmentMode"`
+	EnrollmentExpiresAt string `json:"enrollmentExpiresAt,omitempty"`
 }
 
 // Status is the UI snapshot.
 type Status struct {
-	Enrolled                        bool     `json:"enrolled"`
-	Network                         string   `json:"network"`
-	ClientOrigin                    string   `json:"clientOrigin"`
-	RPID                            string   `json:"rpId"`
-	VaultID                         string   `json:"vaultId"`
-	TemplateVersion                 string   `json:"templateVersion"`
-	PolicyVersion                   string   `json:"policyVersion"`
-	OperationalCSVBlocks            uint32   `json:"operationalCsvBlocks"`
-	SavingsCSVBlocks                uint32   `json:"savingsCsvBlocks"`
-	ExternalOwnerWalletPub          string   `json:"externalOwnerWalletPub,omitempty"`
-	RecoveryKeyPub                  string   `json:"recoveryKeyPub,omitempty"`
-	VaultCosignerBasePub            string   `json:"vaultCosignerBasePub,omitempty"`
-	ArkadeCosignerBasePub           string   `json:"arkadeCosignerBasePub,omitempty"`
-	ArkadeCosignerOrigin            string   `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion           string   `json:"arkadeCosignerVersion"`
-	OperationalAddr                 string   `json:"operationalAddress"`
-	OperationalScript               string   `json:"operationalScript,omitempty"`
-	SavingsAddr                     string   `json:"savingsAddress"`
-	SavingsScript                   string   `json:"savingsScript,omitempty"`
-	SavingsExcludesRoutineCosigners bool     `json:"savingsExcludesRoutineCosigners"`
-	PasskeyLoginAvailable           bool     `json:"passkeyLoginAvailable"`
-	EnrollmentMode                  string   `json:"enrollmentMode"`
-	EnrollmentExpiresAt             string   `json:"enrollmentExpiresAt,omitempty"`
-	PeriodAllowance                 int64    `json:"periodAllowance"`
-	PeriodSpent                     int64    `json:"periodSpent"`
-	PeriodRemaining                 int64    `json:"periodRemaining"`
-	TxCap                           int64    `json:"txCap"`
-	AbsoluteFeeCap                  int64    `json:"absoluteFeeCap"`
-	FeerateCapSatPerV               int64    `json:"feerateCapSatVb"`
-	PhoneRoutineBIP340Pub           string   `json:"phoneRoutineBip340Pub,omitempty"`
-	PhoneDirectP256                 string   `json:"phoneDirectP256,omitempty"`
-	TweakedVaultCosignerXOnly       string   `json:"tweakedVaultCosignerXOnly,omitempty"`
-	TweakedArkadeCosignerXOnly      string   `json:"tweakedArkadeCosignerXOnly,omitempty"`
-	Warnings                        []string `json:"warnings,omitempty"`
-	VtxoVaultCosignerPub            string   `json:"vtxoVaultCosignerPub"`
-	VtxoExitDelay                   uint32   `json:"vtxoExitDelay"`
-	VtxoExitDelayUnit               string   `json:"vtxoExitDelayUnit"`
-	SpendingArkAddress              string   `json:"spendingArkAddress"`
-	SpendingArkScript               string   `json:"spendingArkScript"`
-	SpendingOnchainAddress          string   `json:"spendingOnchainAddress"`
-	SpendingOnchainScript           string   `json:"spendingOnchainScript"`
-	VtxoDelegatePub                 string   `json:"vtxoDelegatePub"`
-	VtxoBoardingActive              bool     `json:"vtxoBoardingActive"`
-	VtxoBoardingProgram             string   `json:"vtxoBoardingProgram"`
-	VtxoBoardingAddress             string   `json:"vtxoBoardingAddress"`
-	VtxoBoardingScript              string   `json:"vtxoBoardingScript"`
-	VtxoBoardingExitDelay           uint32   `json:"vtxoBoardingExitDelay"`
-	VtxoBoardingExitDelayUnit       string   `json:"vtxoBoardingExitDelayUnit"`
+	Enrolled                  bool     `json:"enrolled"`
+	Network                   string   `json:"network"`
+	ClientOrigin              string   `json:"clientOrigin"`
+	RPID                      string   `json:"rpId"`
+	VaultID                   string   `json:"vaultId"`
+	TemplateVersion           string   `json:"templateVersion"`
+	PolicyVersion             string   `json:"policyVersion"`
+	ExternalOwnerWalletPub    string   `json:"externalOwnerWalletPub,omitempty"`
+	RecoveryKeyPub            string   `json:"recoveryKeyPub,omitempty"`
+	VaultCosignerBasePub      string   `json:"vaultCosignerBasePub,omitempty"`
+	ArkadeCosignerBasePub     string   `json:"arkadeCosignerBasePub,omitempty"`
+	ArkadeCosignerOrigin      string   `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion     string   `json:"arkadeCosignerVersion"`
+	SavingsAddr               string   `json:"savingsAddress"`
+	SavingsScript             string   `json:"savingsScript,omitempty"`
+	PasskeyLoginAvailable     bool     `json:"passkeyLoginAvailable"`
+	EnrollmentMode            string   `json:"enrollmentMode"`
+	EnrollmentExpiresAt       string   `json:"enrollmentExpiresAt,omitempty"`
+	PeriodAllowance           int64    `json:"periodAllowance"`
+	PeriodSpent               int64    `json:"periodSpent"`
+	PeriodRemaining           int64    `json:"periodRemaining"`
+	TxCap                     int64    `json:"txCap"`
+	AbsoluteFeeCap            int64    `json:"absoluteFeeCap"`
+	FeerateCapSatPerV         int64    `json:"feerateCapSatVb"`
+	PhoneBIP340Pub            string   `json:"phoneBip340Pub,omitempty"`
+	PhoneDirectP256           string   `json:"phoneDirectP256,omitempty"`
+	Warnings                  []string `json:"warnings,omitempty"`
+	VtxoVaultCosignerPub      string   `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay             uint32   `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit         string   `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress        string   `json:"spendingArkAddress"`
+	SpendingArkScript         string   `json:"spendingArkScript"`
+	VtxoDelegatePub           string   `json:"vtxoDelegatePub"`
+	VtxoBoardingActive        bool     `json:"vtxoBoardingActive"`
+	VtxoBoardingProgram       string   `json:"vtxoBoardingProgram"`
+	VtxoBoardingAddress       string   `json:"vtxoBoardingAddress"`
+	VtxoBoardingScript        string   `json:"vtxoBoardingScript"`
+	VtxoBoardingExitDelay     uint32   `json:"vtxoBoardingExitDelay"`
+	VtxoBoardingExitDelayUnit string   `json:"vtxoBoardingExitDelayUnit"`
 }
 
 func statusWarnings(cred *policy.Credential) []string {
@@ -1082,11 +595,8 @@ func statusWarnings(cred *policy.Credential) []string {
 		return nil
 	}
 	var out []string
-	if isStagedTemplate(cred.TemplateVersion) {
+	if cred.TemplateVersion == savings.Template {
 		out = append(out, "A recovery already in flight cannot be cancelled if both cosigners are gone.")
-		if cred.TemplateVersion != v5.Template {
-			out = append(out, "This vault still needs both cosigners to cancel a pending recovery.")
-		}
 	}
 	if cred.Network == deployment.NetworkMutinynet {
 		out = append(out, "Mutinynet blocks are much faster than mainnet. Delays are block counts, not days.")
@@ -1094,17 +604,17 @@ func statusWarnings(cred *policy.Credential) []string {
 	return out
 }
 
-func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phoneRoutine *btcec.PublicKey, op, sv *vault.Built) {
+func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phone *btcec.PublicKey, sv *savingsSnapshot) {
 	snap := &enrolledSnapshot{
-		VaultID:            vaultID,
-		CredentialID:       append([]byte(nil), credID...),
-		PhoneRoutineBIP340: phoneRoutine, Operational: op, Savings: sv,
+		VaultID:      vaultID,
+		CredentialID: append([]byte(nil), credID...),
+		PhoneBIP340:  phone, Savings: sv,
 	}
-	if op != nil {
-		snap.ExternalOwnerWallet = op.Record.ExternalOwnerWallet
-		snap.RecoveryKey = op.Record.RecoveryKey
-		snap.VaultCosignerBase = op.Record.VaultCosignerBase
-		snap.ArkadeCosignerBase = op.Record.ArkadeCosignerBase
+	if sv != nil {
+		snap.ExternalOwnerWallet = sv.ExternalOwnerWallet
+		snap.RecoveryKey = sv.RecoveryKey
+		snap.VaultCosignerBase = sv.VaultCosignerBase
+		snap.ArkadeCosignerBase = sv.ArkadeCosignerBase
 	}
 	prev := s.published.Load()
 	next := &publishedIndex{
@@ -1124,22 +634,6 @@ func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phoneRoutin
 		next.byCred[hex.EncodeToString(credID)] = vaultID
 	}
 	s.published.Store(next)
-	// Keep exported legacy/test fields stable after their first publication.
-	if vaultID == program.LeftoverVaultID {
-		if s.PhoneRoutineBIP340 == nil {
-			s.PhoneRoutineBIP340 = phoneRoutine
-		}
-		if s.Operational == nil {
-			s.Operational = op
-		}
-		if s.Savings == nil {
-			s.Savings = sv
-		}
-	}
-}
-
-func (s *Service) enrolled() enrolledSnapshot {
-	return s.snapshot(program.LeftoverVaultID)
 }
 
 func (s *Service) snapshot(vaultID string) enrolledSnapshot {
@@ -1165,18 +659,10 @@ func periodAllowanceSats(rec *policy.VaultRecord, cred *policy.Credential) int64
 
 func (s *Service) routeVaultID(vaultID string) (string, error) {
 	id := strings.TrimSpace(vaultID)
-	if id != "" {
-		return id, nil
-	}
-	if s != nil && s.MultiTenantEnrollment {
+	if id == "" {
 		return "", apperr.ErrVaultIDRequired
 	}
-	return program.LeftoverVaultID, nil
-}
-
-func (s *Service) resolveSpendVault(vaultID string) (string, enrolledSnapshot, error) {
-	id, snap, _, err := s.resolveSpendVaultRecord(vaultID)
-	return id, snap, err
+	return id, nil
 }
 
 func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnapshot, *policy.VaultRecord, error) {
@@ -1185,14 +671,11 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, err
 	}
 	snap := s.snapshot(id)
-	if snap.Operational == nil {
+	if snap.Savings == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
-	if s.Ledger == nil || !s.Ledger.MultiTenantReady() {
-		if id != program.LeftoverVaultID {
-			return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
-		}
-		return id, snap, nil, nil
+	if s.Ledger == nil {
+		return "", enrolledSnapshot{}, nil, fmt.Errorf("ledger unavailable")
 	}
 	key, err := s.credentialIntegrityKey()
 	if err != nil {
@@ -1203,21 +686,15 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	if err != nil {
 		return "", enrolledSnapshot{}, nil, err
 	}
-	if rec == nil && id != program.LeftoverVaultID {
+	if rec == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
 	return id, snap, rec, nil
 }
 
 func (s *Service) vaultCosignerSigner(rec *policy.VaultRecord) (Signer, error) {
-	if rec != nil && rec.CosignerMode == policy.CosignerModeLegacyDirectV0 {
-		return nil, apperr.ErrLegacyMasterSign
-	}
-	if rec == nil || rec.CosignerMode == "" {
-		if isNilInterface(s.VaultSigner) {
-			return nil, apperr.ErrLegacyMasterSign
-		}
-		return s.VaultSigner, nil
+	if rec == nil || rec.CosignerMode != policy.CosignerModeHKDFSHA256V1 {
+		return nil, fmt.Errorf("vault cosigner mode is not supported")
 	}
 	master, err := s.vaultCosignerMaster()
 	if err != nil {
@@ -1233,67 +710,6 @@ func (s *Service) vaultCosignerSigner(rec *policy.VaultRecord) (Signer, error) {
 	return LocalSigner{Priv: child}, nil
 }
 
-func (s *Service) routineSigners(rec *policy.VaultRecord, op *vault.Built) (Signer, Signer, error) {
-	vaultSigner, err := s.vaultCosignerSigner(rec)
-	if err != nil {
-		return nil, nil, err
-	}
-	if isNilInterface(vaultSigner) || isNilInterface(s.ArkadeCosignerSigner) ||
-		op == nil || op.TweakedVaultCosigner == nil || op.TweakedArkadeCosigner == nil {
-		return nil, nil, fmt.Errorf("both VaultCosigner and ArkadeCosigner signers are required")
-	}
-	return vaultSigner, s.ArkadeCosignerSigner, nil
-}
-
-// boundAuthorizeRequest preserves the first integrity-protected PSBT for a
-// digest while allowing a browser that reloaded after an ambiguous response
-// to prove the same transaction again with fresh authenticator/signature
-// bytes. The new request is fully verified before this function is called;
-// only the already-verified, MAC-protected first request reaches the signers.
-func (s *Service) boundAuthorizeRequest(
-	ctx context.Context,
-	vaultID string,
-	challenge []byte,
-	requestPSBT string,
-	op *vault.Built,
-) (string, error) {
-	issuance, err := s.Ledger.GetIssuance(ctx, vaultID, challenge)
-	if errors.Is(err, sql.ErrNoRows) {
-		return requestPSBT, nil
-	}
-	if err != nil {
-		return "", err
-	}
-	if issuance.RequestPSBT == requestPSBT {
-		return requestPSBT, nil
-	}
-	stored, _, err := parseAndVerifyPrevout(issuance.RequestPSBT)
-	if err != nil {
-		return "", fmt.Errorf("stored issuance request: %w", err)
-	}
-	storedChallenge, err := vault.Challenge(stored, op)
-	if err != nil {
-		return "", fmt.Errorf("stored issuance request: %w", err)
-	}
-	if subtle.ConstantTimeCompare(storedChallenge, challenge) != 1 {
-		return "", fmt.Errorf("stored issuance request challenge mismatch")
-	}
-	if _, err := classifySpend(stored, op); err != nil {
-		return "", fmt.Errorf("stored issuance request: %w", err)
-	}
-	cred, err := s.loadVerifiedCredentialFor(vaultID)
-	if err != nil {
-		return "", err
-	}
-	if cred == nil {
-		return "", fmt.Errorf("not enrolled")
-	}
-	if err := verifyRoutineRequestAuthentication(stored, op, cred.PhoneDirectP256, challenge); err != nil {
-		return "", fmt.Errorf("stored issuance request: %w", err)
-	}
-	return issuance.RequestPSBT, nil
-}
-
 func (s *Service) rejectCrossVaultCredential(vaultID string, credID []byte) error {
 	idx := s.published.Load()
 	if idx == nil || len(credID) == 0 {
@@ -1304,12 +720,6 @@ func (s *Service) rejectCrossVaultCredential(vaultID string, credID []byte) erro
 		return fmt.Errorf("credential does not belong to this vault")
 	}
 	return nil
-}
-
-// Status is the first-vault snapshot used by in-process tests. HTTP never
-// calls this for an unauthenticated dump; see PublicStatus and StatusFor.
-func (s *Service) Status(ctx context.Context) (Status, error) {
-	return s.statusFor(ctx, program.LeftoverVaultID)
 }
 
 // StatusFor returns one tenant the caller already named. An empty id is
@@ -1329,13 +739,11 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 		return PublicStatus{}, fmt.Errorf("deployment: %w", err)
 	}
 	st := PublicStatus{
-		Network:              cfg.Network,
-		ClientOrigin:         cfg.ClientOrigin,
-		RPID:                 cfg.RPID,
-		TemplateVersion:      publicEnrollTemplate(s),
-		PolicyVersion:        program.PolicyVersion,
-		OperationalCSVBlocks: cfg.OperationalCSVBlocks,
-		SavingsCSVBlocks:     cfg.SavingsCSVBlocks,
+		Network:         cfg.Network,
+		ClientOrigin:    cfg.ClientOrigin,
+		RPID:            cfg.RPID,
+		TemplateVersion: publicEnrollTemplate(s),
+		PolicyVersion:   program.PolicyVersion,
 	}
 	st.EnrollmentMode, st.EnrollmentExpiresAt = s.publicEnrollmentMode()
 	return st, nil
@@ -1345,27 +753,7 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 // multi-tenant does not inherit the singleton 30-minute first-claim window;
 // each invite has its own expires_at.
 func (s *Service) publicEnrollmentMode() (mode, expires string) {
-	cfg := s.runtimeConfig()
-	if cfg.Network == deployment.NetworkRegtest {
-		return "open", ""
-	}
-	if s.MultiTenantEnrollment {
-		return "token", ""
-	}
-	deadline := ""
-	if !s.EnrollmentDeadline.IsZero() {
-		deadline = s.EnrollmentDeadline.UTC().Format(time.RFC3339)
-	}
-	if s.EnrollmentDeadline.IsZero() || !s.currentEnrollmentTime().Before(s.EnrollmentDeadline) {
-		return "expired", deadline
-	}
-	if s.OpenEnrollment {
-		return "open", deadline
-	}
-	if len(s.EnrollmentTokenHash) == sha256.Size {
-		return "token", deadline
-	}
-	return "unavailable", deadline
+	return "token", ""
 }
 
 func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error) {
@@ -1383,7 +771,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if err != nil {
 		return Status{}, err
 	}
-	if cred == nil && vaultID != program.LeftoverVaultID {
+	if cred == nil {
 		return Status{}, fmt.Errorf("not enrolled")
 	}
 	spent, err := s.Ledger.SpentInPeriod(ctx, vaultID, s.Ledger.PeriodStart())
@@ -1395,111 +783,66 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	feeCap := program.AbsoluteFeeCeiling
 	feerate := program.FeerateCeilingSatPerV
 	policyVersion := program.PolicyVersion
-	if cred != nil {
-		if cred.TxRecipientCapSats > 0 {
-			txCap = cred.TxRecipientCapSats
-		}
-		if cred.AbsoluteFeeCapSats >= 0 {
-			feeCap = cred.AbsoluteFeeCapSats
-		}
-		if cred.FeerateCapSatPerV > 0 {
-			feerate = cred.FeerateCapSatPerV
-		}
-		if cred.PolicyVersion != "" {
-			policyVersion = cred.PolicyVersion
-		}
+	if cred.TxRecipientCapSats > 0 {
+		txCap = cred.TxRecipientCapSats
+	}
+	if cred.AbsoluteFeeCapSats >= 0 {
+		feeCap = cred.AbsoluteFeeCapSats
+	}
+	if cred.FeerateCapSatPerV > 0 {
+		feerate = cred.FeerateCapSatPerV
+	}
+	if cred.PolicyVersion != "" {
+		policyVersion = cred.PolicyVersion
 	}
 	rem := allowance - spent
 	if rem < 0 {
 		rem = 0
 	}
 	st := Status{
-		Enrolled:             cred != nil,
-		Network:              cfg.Network,
-		ClientOrigin:         cfg.ClientOrigin,
-		RPID:                 cfg.RPID,
-		VaultID:              vaultID,
-		TemplateVersion:      publicEnrollTemplate(s),
-		PolicyVersion:        policyVersion,
-		OperationalCSVBlocks: cfg.OperationalCSVBlocks,
-		SavingsCSVBlocks:     cfg.SavingsCSVBlocks,
-		PeriodAllowance:      allowance,
-		PeriodSpent:          spent,
-		PeriodRemaining:      rem,
-		TxCap:                txCap,
-		AbsoluteFeeCap:       feeCap,
-		FeerateCapSatPerV:    feerate,
+		Enrolled:          true,
+		Network:           cfg.Network,
+		ClientOrigin:      cfg.ClientOrigin,
+		RPID:              cfg.RPID,
+		VaultID:           vaultID,
+		TemplateVersion:   publicEnrollTemplate(s),
+		PolicyVersion:     policyVersion,
+		PeriodAllowance:   allowance,
+		PeriodSpent:       spent,
+		PeriodRemaining:   rem,
+		TxCap:             txCap,
+		AbsoluteFeeCap:    feeCap,
+		FeerateCapSatPerV: feerate,
 	}
-	if cred != nil {
-		st.EnrollmentMode = "closed"
-	} else {
-		st.EnrollmentMode, st.EnrollmentExpiresAt = s.publicEnrollmentMode()
-	}
+	st.EnrollmentMode = "closed"
 	snap := s.snapshot(vaultID)
-	if cred == nil {
-		if s.ExternalOwnerWallet != nil {
-			st.ExternalOwnerWalletPub = hex.EncodeToString(s.ExternalOwnerWallet.SerializeCompressed())
-		}
-		if s.VaultCosignerPub != nil {
-			st.VaultCosignerBasePub = hex.EncodeToString(s.VaultCosignerPub.SerializeCompressed())
-		}
-		if s.ArkadeCosignerPub != nil {
-			st.ArkadeCosignerBasePub = hex.EncodeToString(s.ArkadeCosignerPub.SerializeCompressed())
+	// Report the persisted descriptor inputs, not merely mutable runtime
+	// fields. LoadVaults/Register already require these to match runtime.
+	st.TemplateVersion = cred.TemplateVersion
+	if len(cred.RecoveryKey) > 0 {
+		if pub, err := btcec.ParsePubKey(cred.RecoveryKey); err == nil && !knownFixtureXOnly(schnorr.SerializePubKey(pub)) {
+			st.RecoveryKeyPub = hex.EncodeToString(cred.RecoveryKey)
 		}
 	}
-	if cred != nil {
-		// Report the persisted descriptor inputs, not merely mutable runtime
-		// fields. LoadVaults/Register already require these to match runtime.
-		st.TemplateVersion = cred.TemplateVersion
-		if isV5Template(cred.TemplateVersion) && len(cred.RecoveryKey) > 0 {
-			if pub, err := btcec.ParsePubKey(cred.RecoveryKey); err == nil && !knownFixtureXOnly(schnorr.SerializePubKey(pub)) {
-				st.RecoveryKeyPub = hex.EncodeToString(cred.RecoveryKey)
-			}
-		}
-		st.ExternalOwnerWalletPub = hex.EncodeToString(cred.ExternalOwnerWallet)
-		st.VaultCosignerBasePub = hex.EncodeToString(cred.VaultCosignerBase)
-		st.ArkadeCosignerBasePub = hex.EncodeToString(cred.ArkadeCosignerBase)
-		st.ArkadeCosignerOrigin = cred.ArkadeCosignerOrigin
-		st.ArkadeCosignerVersion = cred.ArkadeCosignerVersion
-		envelope, envelopeErr := s.loadVerifiedEnvelopeFor(vaultID, cred.ID)
-		if envelopeErr != nil {
-			return Status{}, envelopeErr
-		}
-		st.PasskeyLoginAvailable = envelope != nil
-		st.Warnings = statusWarnings(cred)
+	st.ExternalOwnerWalletPub = hex.EncodeToString(cred.ExternalOwnerWallet)
+	st.VaultCosignerBasePub = hex.EncodeToString(cred.VaultCosignerBase)
+	st.ArkadeCosignerBasePub = hex.EncodeToString(cred.ArkadeCosignerBase)
+	st.ArkadeCosignerOrigin = cred.ArkadeCosignerOrigin
+	st.ArkadeCosignerVersion = cred.ArkadeCosignerVersion
+	envelope, envelopeErr := s.loadVerifiedEnvelopeFor(vaultID, cred.ID)
+	if envelopeErr != nil {
+		return Status{}, envelopeErr
 	}
-	if snap.Operational != nil {
-		st.OperationalAddr = snap.Operational.Address
-		st.OperationalScript = hex.EncodeToString(snap.Operational.PkScript)
-		if snap.Operational.TweakedVaultCosigner != nil {
-			st.TweakedVaultCosignerXOnly = hex.EncodeToString(schnorr.SerializePubKey(snap.Operational.TweakedVaultCosigner))
-		}
-		if snap.Operational.TweakedArkadeCosigner != nil {
-			st.TweakedArkadeCosignerXOnly = hex.EncodeToString(schnorr.SerializePubKey(snap.Operational.TweakedArkadeCosigner))
-		}
-	}
+	st.PasskeyLoginAvailable = envelope != nil
+	st.Warnings = statusWarnings(cred)
 	if snap.Savings != nil {
 		st.SavingsAddr = snap.Savings.Address
 		st.SavingsScript = hex.EncodeToString(snap.Savings.PkScript)
-		var forbidden []*btcec.PublicKey
-		if snap.VaultCosignerBase != nil {
-			forbidden = append(forbidden, snap.VaultCosignerBase)
-		}
-		if snap.Operational != nil && snap.Operational.TweakedVaultCosigner != nil {
-			forbidden = append(forbidden, snap.Operational.TweakedVaultCosigner)
-		}
-		if snap.ArkadeCosignerBase != nil {
-			forbidden = append(forbidden, snap.ArkadeCosignerBase)
-		}
-		if snap.Operational != nil && snap.Operational.TweakedArkadeCosigner != nil {
-			forbidden = append(forbidden, snap.Operational.TweakedArkadeCosigner)
-		}
-		st.SavingsExcludesRoutineCosigners = snap.Savings.AssertNoRoutineCosigners(forbidden...) == nil
 	}
-	if snap.PhoneRoutineBIP340 != nil {
-		st.PhoneRoutineBIP340Pub = hex.EncodeToString(snap.PhoneRoutineBIP340.SerializeCompressed())
+	if snap.PhoneBIP340 != nil {
+		st.PhoneBIP340Pub = hex.EncodeToString(snap.PhoneBIP340.SerializeCompressed())
 	}
-	if cred != nil && len(cred.PhoneDirectP256) > 0 {
+	if len(cred.PhoneDirectP256) > 0 {
 		st.PhoneDirectP256 = hex.EncodeToString(cred.PhoneDirectP256)
 	}
 	s.fillVtxoStatus(&st, vaultID, snap)
@@ -1515,7 +858,7 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	st.VtxoBoardingProgram = program.VaultBoardV1
 	st.VtxoBoardingExitDelay = program.VaultBoardV1ExitDelay
 	st.VtxoBoardingExitDelayUnit = program.VaultBoardV1ExitDelayUnit
-	if vaultID == "" || snap.PhoneRoutineBIP340 == nil {
+	if vaultID == "" || snap.PhoneBIP340 == nil {
 		return
 	}
 	priv, err := s.deriveVtxoVaultCosigner(vaultID)
@@ -1530,8 +873,6 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	}
 	st.SpendingArkAddress = tree.ArkAddress
 	st.SpendingArkScript = hex.EncodeToString(tree.PkScript)
-	st.SpendingOnchainAddress = tree.OnchainAddress
-	st.SpendingOnchainScript = hex.EncodeToString(tree.PkScript)
 	if tree.DelegatePub != nil {
 		st.VtxoDelegatePub = hex.EncodeToString(tree.DelegatePub.SerializeCompressed())
 	}
@@ -1544,438 +885,11 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	st.VtxoBoardingScript = hex.EncodeToString(board.PkScript)
 }
 
-// DraftRequest builds an empty-witness routine PSBT the browser can bind.
-type DraftRequest struct {
-	VaultID         string `json:"vaultId,omitempty"`
-	PrevTxHex       string `json:"prevTxHex"`
-	Vout            uint32 `json:"vout"`
-	RecipientScript string `json:"recipientScript"`
-	RecipientAmount int64  `json:"recipientAmount"`
-	Fee             int64  `json:"fee"`
-}
-
-func (s *Service) Draft(req DraftRequest) (string, error) {
-	return s.DraftContext(context.Background(), req)
-}
-
-// DraftContext bounds transaction parsing, hashing, classification and tree
-// work under the same non-queueing verification budget as signing routes.
-func (s *Service) DraftContext(ctx context.Context, req DraftRequest) (string, error) {
-	_, snap, err := s.resolveSpendVault(req.VaultID)
-	if err != nil {
-		return "", err
-	}
-	op := snap.Operational
-	release, err := s.acquireVerification(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer release()
-	raw, err := decodeHex(req.PrevTxHex)
-	if err != nil {
-		return "", err
-	}
-	prev := wire.NewMsgTx(2)
-	if err := prev.Deserialize(bytes.NewReader(raw)); err != nil {
-		return "", fmt.Errorf("prev tx: %w", err)
-	}
-	dest, err := decodeHex(req.RecipientScript)
-	if err != nil {
-		return "", err
-	}
-	if req.RecipientAmount <= 0 || req.Fee < 0 {
-		return "", fmt.Errorf("invalid amount")
-	}
-	built, err := vault.BuildRoutineSpend(vault.SpendParams{
-		Vault:           op,
-		PrevTx:          prev,
-		PrevOutPoint:    wire.OutPoint{Hash: prev.TxHash(), Index: req.Vout},
-		RecipientScript: dest,
-		RecipientAmount: req.RecipientAmount,
-		Fee:             req.Fee,
-	})
-	if err != nil {
-		return "", err
-	}
-	if _, err := classifySpend(built.Packet, op); err != nil {
-		return "", err
-	}
-	return built.Packet.B64Encode()
-}
-
-// BindRequest carries the off-chain WebAuthn assertion plus the compact
-// direct-auth signature. Only directSig is written into the packet witness.
-type BindRequest struct {
-	VaultID           string `json:"vaultId,omitempty"`
-	PSBT              string `json:"psbt"`
-	CredentialID      string `json:"credentialId"`
-	ClientDataJSON    string `json:"clientDataJSON"`
-	AuthenticatorData string `json:"authenticatorData"`
-	Signature         string `json:"signature"`
-	DirectSig         string `json:"directSig"`
-}
-
-func (s *Service) Bind(req BindRequest) (string, error) {
-	return s.BindContext(context.Background(), req)
-}
-
-// BindContext verifies and binds a direct-auth witness under the shared
-// bounded crypto-verification budget.
-func (s *Service) BindContext(ctx context.Context, req BindRequest) (string, error) {
-	vaultID, snap, err := s.resolveSpendVault(req.VaultID)
-	if err != nil {
-		return "", err
-	}
-	op := snap.Operational
-	release, err := s.acquireVerification(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer release()
-	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
-	if err != nil {
-		return "", err
-	}
-	if _, err := classifySpend(ptx, op); err != nil {
-		return "", err
-	}
-	assertion, err := decodeAssertion(AuthorizeRequest{
-		CredentialID: req.CredentialID, ClientDataJSON: req.ClientDataJSON,
-		AuthenticatorData: req.AuthenticatorData, Signature: req.Signature,
-	})
-	if err != nil {
-		return "", err
-	}
-	if err := rejectPRF(assertion.ClientDataJSON); err != nil {
-		return "", err
-	}
-	ch, err := vault.Challenge(ptx, op)
-	if err != nil {
-		return "", err
-	}
-	cred, err := s.loadVerifiedCredentialFor(vaultID)
-	if err != nil {
-		return "", err
-	}
-	if cred == nil {
-		return "", fmt.Errorf("not enrolled")
-	}
-	verified, err := webauthn.Validate(assertion, webauthn.Expected{
-		CredentialID: cred.ID, WebAuthnP256: cred.WebAuthnP256, Challenge: ch,
-		Origin: cred.Origin, RPID: cred.RPID,
-	})
-	if err != nil {
-		return "", err
-	}
-	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
-		return "", err
-	}
-	directSig, err := decodeHex(req.DirectSig)
-	if err != nil {
-		return "", fmt.Errorf("directSig: %w", err)
-	}
-	if err := verifyDirectAuth(cred.PhoneDirectP256, ch, directSig); err != nil {
-		return "", err
-	}
-	if err := vault.SetPacketWitness(ptx.UnsignedTx, wire.TxWitness{directSig}); err != nil {
-		return "", err
-	}
-	return ptx.B64Encode()
-}
-
-// PreflightRequest is a non-signing challenge request.
-type PreflightRequest struct {
-	VaultID string `json:"vaultId,omitempty"`
-	PSBT    string `json:"psbt"`
-}
-
-type PreflightResponse struct {
-	Challenge string `json:"challenge"`
-}
-
-func (s *Service) Preflight(rawPSBT string) (*PreflightResponse, error) {
-	return s.PreflightRequestContext(context.Background(), PreflightRequest{PSBT: rawPSBT})
-}
-
-func (s *Service) PreflightContext(ctx context.Context, rawPSBT string) (*PreflightResponse, error) {
-	return s.PreflightRequestContext(ctx, PreflightRequest{PSBT: rawPSBT})
-}
-
-// PreflightRequestContext admits PSBT parsing and sighash computation only while a
-// bounded verification slot is available.
-func (s *Service) PreflightRequestContext(ctx context.Context, req PreflightRequest) (*PreflightResponse, error) {
-	_, snap, err := s.resolveSpendVault(req.VaultID)
-	if err != nil {
-		return nil, err
-	}
-	op := snap.Operational
-	release, err := s.acquireVerification(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := classifySpend(ptx, op); err != nil {
-		return nil, err
-	}
-	ch, err := vault.Challenge(ptx, op)
-	if err != nil {
-		return nil, err
-	}
-	return &PreflightResponse{Challenge: hex.EncodeToString(ch)}, nil
-}
-
-// AuthorizeRequest is the field-by-field signing request. No PRF fields.
-type AuthorizeRequest struct {
-	VaultID           string `json:"vaultId,omitempty"`
-	PSBT              string `json:"psbt"`
-	CredentialID      string `json:"credentialId"`
-	ClientDataJSON    string `json:"clientDataJSON"`
-	AuthenticatorData string `json:"authenticatorData"`
-	Signature         string `json:"signature"`
-}
-
-func (s *Service) Authorize(ctx context.Context, req AuthorizeRequest) (signedPSBT string, replay bool, err error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
-		return "", false, err
-	}
-	vaultID, snap, rec, err := s.resolveSpendVaultRecord(req.VaultID)
-	if err != nil {
-		return "", false, err
-	}
-	op := snap.Operational
-	ptx, cl, challenge, err := s.verifyAuthorizeRequest(ctx, req, op, vaultID)
-	if err != nil {
-		return "", false, err
-	}
-
-	requestPSBT, err := ptx.B64Encode()
-	if err != nil {
-		return "", false, err
-	}
-	requestPSBT, err = s.boundAuthorizeRequest(ctx, vaultID, challenge, requestPSBT, op)
-	if err != nil {
-		return "", false, err
-	}
-	vaultSigner, arkadeSigner, err := s.routineSigners(rec, op)
-	if err != nil {
-		return "", false, err
-	}
-
-	timeout := s.SignTimeout
-	if timeout == 0 {
-		timeout = 15 * time.Second
-	}
-
-	allowance := periodAllowanceSats(rec, nil)
-	recipientDebit, err := s.routineRecipientDebit(snap, cl)
-	if err != nil {
-		return "", false, err
-	}
-	signed, replay, err := s.Ledger.IssueSequential(
-		ctx, vaultID, challenge, requestPSBT,
-		recipientDebit, cl.Fee, allowance,
-		func(issueCtx context.Context, storedRequest string) (string, error) {
-			if err := issueCtx.Err(); err != nil {
-				return "", err
-			}
-			// Start the signing window only after Issue has serialized this
-			// caller and committed its reservation. Creating it earlier lets a
-			// queued request expire while waiting, then reserve budget and
-			// call Sign with a dead context.
-			signCtx, cancel := context.WithTimeout(issueCtx, timeout)
-			defer cancel()
-			return signExactStage(
-				signCtx, storedRequest, vaultSigner,
-				schnorr.SerializePubKey(op.TweakedVaultCosigner), "VaultCosigner",
-			)
-		},
-		func(issueCtx context.Context, storedVaultPSBT string) (string, error) {
-			if err := issueCtx.Err(); err != nil {
-				return "", err
-			}
-			vaultStage, _, err := parseAndVerifyPrevout(storedVaultPSBT)
-			if err != nil {
-				return "", fmt.Errorf("stored VaultCosigner stage: %w", err)
-			}
-			if err := verifyExactRoutineSignatures(
-				vaultStage, op, op.Record.PhoneRoutineBIP340, op.TweakedVaultCosigner,
-			); err != nil {
-				return "", fmt.Errorf("stored VaultCosigner stage: %w", err)
-			}
-			signCtx, cancel := context.WithTimeout(issueCtx, timeout)
-			defer cancel()
-			completed, err := signExactStage(
-				signCtx, storedVaultPSBT, arkadeSigner,
-				schnorr.SerializePubKey(op.TweakedArkadeCosigner), "ArkadeCosigner",
-			)
-			if err != nil {
-				return "", err
-			}
-			completedPacket, _, err := parseAndVerifyPrevout(completed)
-			if err != nil {
-				return "", err
-			}
-			if err := verifyExactRoutineSignatures(
-				completedPacket, op, op.Record.PhoneRoutineBIP340, op.TweakedVaultCosigner, op.TweakedArkadeCosigner,
-			); err != nil {
-				return "", err
-			}
-			return completed, nil
-		},
-	)
-	if err != nil {
-		return "", false, mapLedgerBusy(err)
-	}
-	return signed, replay, nil
-}
-
-// AuthorizeWithBoundRequest returns the exact integrity-protected client PSBT
-// that the signers extended. A browser may have rebuilt equivalent phone and
-// direct signatures after an ambiguous response; it must validate the signer
-// delta against the first bound request, not those newly generated bytes.
-func (s *Service) AuthorizeWithBoundRequest(
-	ctx context.Context,
-	req AuthorizeRequest,
-) (signedPSBT, requestPSBT string, replay bool, err error) {
-	signedPSBT, replay, err = s.Authorize(ctx, req)
-	if err != nil {
-		return "", "", false, err
-	}
-	vaultID, snap, _, err := s.resolveSpendVaultRecord(req.VaultID)
-	if err != nil {
-		return "", "", false, err
-	}
-	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
-	if err != nil {
-		return "", "", false, err
-	}
-	challenge, err := vault.Challenge(ptx, snap.Operational)
-	if err != nil {
-		return "", "", false, err
-	}
-	issuance, err := s.Ledger.GetIssuance(ctx, vaultID, challenge)
-	if err != nil {
-		return "", "", false, err
-	}
-	if issuance.RequestPSBT == "" {
-		return "", "", false, fmt.Errorf("authorized issuance request missing")
-	}
-	return signedPSBT, issuance.RequestPSBT, replay, nil
-}
-
-// routineRecipientDebit keeps a structurally verified internal boarding
-// transfer from consuming the principal allowance. Its L1 fee still counts,
-// and the eventual VTXO payment debits its recipient amount normally.
-func (s *Service) routineRecipientDebit(snap enrolledSnapshot, cl *Classified) (int64, error) {
-	if cl == nil || cl.Recipient == nil {
-		return 0, fmt.Errorf("classified spend required")
-	}
-	board, err := s.buildVtxoBoardTree(snap)
-	if err == nil && board != nil && bytes.Equal(cl.Recipient.PkScript, board.PkScript) {
-		return 0, nil
-	}
-	return cl.Recipient.Value, nil
-}
-
 func mapLedgerBusy(err error) error {
-	if errors.Is(err, policy.ErrIssuanceBusy) || errors.Is(err, policy.ErrRecoveryBusy) {
+	if errors.Is(err, policy.ErrRecoveryBusy) {
 		return apperr.ErrBusy
 	}
 	return err
-}
-
-func (s *Service) verifyAuthorizeRequest(ctx context.Context, req AuthorizeRequest, op *vault.Built, vaultID string) (*psbt.Packet, *Classified, []byte, error) {
-	release, err := s.acquireVerification(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer release()
-	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	cl, err := classifySpend(ptx, op)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	challenge, err := s.verifyAuthorization(req, ptx, op, vaultID)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return ptx, cl, challenge, nil
-}
-
-func (s *Service) verifyAuthorization(req AuthorizeRequest, ptx *psbt.Packet, op *vault.Built, vaultID string) ([]byte, error) {
-
-	assertion, err := decodeAssertion(req)
-	if err != nil {
-		return nil, err
-	}
-	if err := rejectPRF(assertion.ClientDataJSON); err != nil {
-		return nil, err
-	}
-	cred, err := s.loadVerifiedCredentialFor(vaultID)
-	if err != nil {
-		return nil, err
-	}
-	if cred == nil {
-		return nil, fmt.Errorf("not enrolled")
-	}
-	if err := s.rejectCrossVaultCredential(vaultID, cred.ID); err != nil {
-		return nil, err
-	}
-
-	challenge, err := vault.Challenge(ptx, op)
-	if err != nil {
-		return nil, err
-	}
-	verified, err := webauthn.Validate(assertion, webauthn.Expected{
-		CredentialID: cred.ID,
-		WebAuthnP256: cred.WebAuthnP256,
-		Challenge:    challenge,
-		Origin:       cred.Origin,
-		RPID:         cred.RPID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
-		return nil, err
-	}
-
-	if err := verifyRoutineRequestAuthentication(ptx, op, cred.PhoneDirectP256, challenge); err != nil {
-		return nil, err
-	}
-	return challenge, nil
-}
-
-func verifyRoutineRequestAuthentication(
-	ptx *psbt.Packet,
-	op *vault.Built,
-	phoneDirectP256 []byte,
-	challenge []byte,
-) error {
-	packet, err := arkade.FindEmulatorPacket(ptx.UnsignedTx)
-	if err != nil {
-		return err
-	}
-	if len(packet) != 1 {
-		return fmt.Errorf("emulator packet")
-	}
-	if len(packet[0].Witness) != 1 || len(packet[0].Witness[0]) != 64 {
-		return fmt.Errorf("packet witness must be the one-item 64-byte direct signature")
-	}
-	if err := verifyDirectAuth(phoneDirectP256, challenge, packet[0].Witness[0]); err != nil {
-		return err
-	}
-	if err := verifyPhoneRoutineSignature(ptx, op); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *Service) acquireVerification(ctx context.Context) (func(), error) {
@@ -2002,9 +916,9 @@ func (s *Service) acquireVerification(ctx context.Context) (func(), error) {
 
 func (s *Service) runtimeConfig() deployment.Config {
 	if s == nil {
-		return deployment.Default()
+		return deployment.Config{}
 	}
-	return s.Deployment.WithDefaults()
+	return s.Deployment
 }
 
 func (s *Service) credentialIntegrityKey() ([]byte, error) {
@@ -2014,38 +928,7 @@ func (s *Service) credentialIntegrityKey() ([]byte, error) {
 	if len(s.CredentialIntegrityKey) != 0 {
 		return nil, fmt.Errorf("credential integrity key must be 32 bytes")
 	}
-	if s.runtimeConfig().Network != deployment.NetworkRegtest {
-		return nil, fmt.Errorf("credential integrity key is required outside regtest")
-	}
-	// This is intentionally public and provides corruption detection only for
-	// the disposable regtest demo. Production authorizer construction never
-	// accepts this fallback.
-	digest := sha256.Sum256([]byte(regtestCredentialIntegrityDomain))
-	return append([]byte(nil), digest[:]...), nil
-}
-
-func (s *Service) sealCredential(cred *policy.Credential) error {
-	key, err := s.credentialIntegrityKey()
-	if err != nil {
-		return err
-	}
-	defer zeroServiceBytes(key)
-	if err := policy.SealCredential(cred, key); err != nil {
-		return fmt.Errorf("seal credential record: %w", err)
-	}
-	return nil
-}
-
-func (s *Service) sealCredentialEnvelope(envelope *policy.CredentialEnvelope, credentialID []byte) error {
-	key, err := s.credentialIntegrityKey()
-	if err != nil {
-		return err
-	}
-	defer zeroServiceBytes(key)
-	if err := policy.SealCredentialEnvelope(envelope, credentialID, key); err != nil {
-		return fmt.Errorf("seal credential envelope: %w", err)
-	}
-	return nil
+	return nil, fmt.Errorf("credential integrity key is required")
 }
 
 func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (*policy.CredentialEnvelope, error) {
@@ -2058,40 +941,14 @@ func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (
 	if err != nil {
 		return nil, err
 	}
-	if s.Ledger != nil && s.Ledger.MultiTenantReady() {
-		envelope, err := s.Ledger.GetVaultEnvelope(vaultID)
-		if err != nil {
-			return nil, err
-		}
-		if envelope != nil {
-			if vaultID == program.LeftoverVaultID {
-				if err := policy.VerifyCredentialEnvelope(envelope, credentialID, key); err != nil {
-					return nil, fmt.Errorf("authoritative credential envelope integrity verification failed: %w; restore a verified backup or use a reviewed migration", err)
-				}
-			} else if err := policy.VerifyVaultEnvelope(envelope, vaultID, credentialID, key); err != nil {
-				return nil, fmt.Errorf("authoritative credential envelope integrity verification failed: %w; restore a verified backup or use a reviewed migration", err)
-			}
-			return envelope, nil
-		}
-		if vaultID != program.LeftoverVaultID {
-			return nil, nil
-		}
-	}
-	if vaultID != program.LeftoverVaultID {
-		return nil, nil
-	}
-	envelope, err := s.Ledger.GetCredentialEnvelope()
+	envelope, err := s.Ledger.GetVaultEnvelope(vaultID)
 	if err != nil || envelope == nil {
 		return envelope, err
 	}
-	if err := policy.VerifyCredentialEnvelope(envelope, credentialID, key); err != nil {
+	if err := policy.VerifyVaultEnvelope(envelope, vaultID, credentialID, key); err != nil {
 		return nil, fmt.Errorf("authoritative credential envelope integrity verification failed: %w; restore a verified backup or use a reviewed migration", err)
 	}
 	return envelope, nil
-}
-
-func (s *Service) loadVerifiedCredential() (*policy.Credential, error) {
-	return s.loadVerifiedCredentialFor(program.LeftoverVaultID)
 }
 
 func (s *Service) loadVerifiedCredentialFor(vaultID string) (*policy.Credential, error) {
@@ -2103,16 +960,6 @@ func (s *Service) loadVerifiedCredentialFor(vaultID string) (*policy.Credential,
 	vaultID, err = s.routeVaultID(vaultID)
 	if err != nil {
 		return nil, err
-	}
-	if vaultID == program.LeftoverVaultID {
-		cred, err := s.Ledger.GetCredential()
-		if err != nil || cred == nil {
-			return cred, err
-		}
-		if err := policy.VerifyCredentialIntegrity(cred, key); err != nil {
-			return nil, fmt.Errorf("authoritative credential integrity verification failed: %w; do not delete deployment data: stop the signer and restore a verified backup or use a reviewed migration", err)
-		}
-		return cred, nil
 	}
 	rec, vcred, err := s.Ledger.LoadVerifiedVault(vaultID, key)
 	if err != nil || rec == nil || vcred == nil {
@@ -2135,7 +982,7 @@ func (s *Service) RuntimeConfig() (deployment.Config, error) {
 	return cfg, cfg.Validate()
 }
 
-func decodeAssertion(req AuthorizeRequest) (webauthn.Assertion, error) {
+func decodeAssertion(req WebAuthnAssertionRequest) (webauthn.Assertion, error) {
 	id, err := decodeHex(req.CredentialID)
 	if err != nil {
 		return webauthn.Assertion{}, err

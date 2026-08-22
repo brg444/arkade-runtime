@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
-	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -26,7 +25,7 @@ const (
 	passkeyPurposeMapWrite       = "map-write"
 	passkeyChallengeTTL          = 2 * time.Minute
 	maxPasskeyChallengesPerVault = 16
-	recoveryBindingDomain        = "arkade-2fa-vault/recovery-binding/v1"
+	recoveryBindingDomain        = "arkade-vault/recovery-binding/v2"
 	passkeyProofDomain           = "arkade-2fa-vault/passkey-proof/v1"
 )
 
@@ -49,10 +48,18 @@ type PasskeyChallengeResponse struct {
 	ExpiresInSeconds  int64  `json:"expiresInSeconds"`
 }
 
-// SessionAssertionRequest contains only the field-by-field WebAuthn assertion
-// plus a PRF-derived DirectP256 proof. Browser extension results never cross
-// the API. userHandle is deliberately omitted: this singleton RP binds the
-// exact returned raw credential ID to its one stored ES256 public key.
+// WebAuthnAssertionRequest is the field-by-field assertion shared by the
+// passkey-authenticated workflows. Browser extension results and userHandle
+// never cross the API.
+type WebAuthnAssertionRequest struct {
+	CredentialID      string `json:"credentialId"`
+	ClientDataJSON    string `json:"clientDataJSON"`
+	AuthenticatorData string `json:"authenticatorData"`
+	Signature         string `json:"signature"`
+}
+
+// SessionAssertionRequest adds the issued challenge and the DirectP256 proof
+// required by passkey-authenticated session workflows.
 type SessionAssertionRequest struct {
 	ChallengeID       string `json:"challengeId"`
 	CredentialID      string `json:"credentialId"`
@@ -95,43 +102,35 @@ type RecoverCredentialEnvelopeResponse struct {
 	BindingPhoneSig    string `json:"bindingPhoneSig"`
 }
 
-// recoveryBinding is the complete public v3 descriptor plus the encrypted
-// PhoneRoutine envelope. The original device signs its exact JSON encoding;
+// recoveryBinding is the complete current descriptor plus the encrypted
+// phone-key envelope. The original device signs its exact JSON encoding;
 // a fresh device verifies those signatures before treating status as trusted.
 type recoveryBinding struct {
-	Version                    uint32 `json:"version"`
-	CredentialID               string `json:"credentialId"`
-	WebAuthnP256               string `json:"webauthnP256"`
-	PhoneDirectP256            string `json:"phoneDirectP256"`
-	PhoneRoutineBIP340Pub      string `json:"phoneRoutineBip340Pub"`
-	ExternalOwnerWalletPub     string `json:"externalOwnerWalletPub"`
-	VaultCosignerBasePub       string `json:"vaultCosignerBasePub"`
-	TweakedVaultCosignerXOnly  string `json:"tweakedVaultCosignerXOnly"`
-	ArkadeCosignerBasePub      string `json:"arkadeCosignerBasePub"`
-	TweakedArkadeCosignerXOnly string `json:"tweakedArkadeCosignerXOnly"`
-	ArkadeCosignerOrigin       string `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion      string `json:"arkadeCosignerVersion"`
-	ClientOrigin               string `json:"clientOrigin"`
-	RPID                       string `json:"rpId"`
-	Network                    string `json:"network"`
-	VaultID                    string `json:"vaultId"`
-	TemplateVersion            string `json:"templateVersion"`
-	PolicyVersion              string `json:"policyVersion"`
-	OperationalCSVType         int64  `json:"operationalCsvType"`
-	OperationalCSVValue        uint32 `json:"operationalCsvValue"`
-	SavingsCSVType             int64  `json:"savingsCsvType"`
-	SavingsCSVValue            uint32 `json:"savingsCsvValue"`
-	OperationalAddress         string `json:"operationalAddress"`
-	OperationalScript          string `json:"operationalScript"`
-	SavingsAddress             string `json:"savingsAddress"`
-	SavingsScript              string `json:"savingsScript"`
-	RecipientDustSats          int64  `json:"recipientDustSats"`
-	TxRecipientCapSats         int64  `json:"txRecipientCapSats"`
-	PeriodAllowanceSats        int64  `json:"periodAllowanceSats"`
-	AbsoluteFeeCapSats         int64  `json:"absoluteFeeCapSats"`
-	FeerateCapSatPerV          int64  `json:"feerateCapSatVb"`
-	EnvelopeNonce              string `json:"envelopeNonce"`
-	EnvelopeCiphertext         string `json:"envelopeCiphertext"`
+	Version                uint32 `json:"version"`
+	CredentialID           string `json:"credentialId"`
+	WebAuthnP256           string `json:"webauthnP256"`
+	PhoneDirectP256        string `json:"phoneDirectP256"`
+	PhoneBIP340Pub         string `json:"phoneBip340Pub"`
+	ExternalOwnerWalletPub string `json:"externalOwnerWalletPub"`
+	VaultCosignerBasePub   string `json:"vaultCosignerBasePub"`
+	ArkadeCosignerBasePub  string `json:"arkadeCosignerBasePub"`
+	ArkadeCosignerOrigin   string `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion  string `json:"arkadeCosignerVersion"`
+	ClientOrigin           string `json:"clientOrigin"`
+	RPID                   string `json:"rpId"`
+	Network                string `json:"network"`
+	VaultID                string `json:"vaultId"`
+	TemplateVersion        string `json:"templateVersion"`
+	PolicyVersion          string `json:"policyVersion"`
+	SavingsAddress         string `json:"savingsAddress"`
+	SavingsScript          string `json:"savingsScript"`
+	RecipientDustSats      int64  `json:"recipientDustSats"`
+	TxRecipientCapSats     int64  `json:"txRecipientCapSats"`
+	PeriodAllowanceSats    int64  `json:"periodAllowanceSats"`
+	AbsoluteFeeCapSats     int64  `json:"absoluteFeeCapSats"`
+	FeerateCapSatPerV      int64  `json:"feerateCapSatVb"`
+	EnvelopeNonce          string `json:"envelopeNonce"`
+	EnvelopeCiphertext     string `json:"envelopeCiphertext"`
 }
 
 func (s *Service) sessionNow() time.Time {
@@ -147,10 +146,6 @@ func passkeyChallengeKey(vaultID, challengeID string) string {
 
 func (s *Service) routePasskeyVaultID(vaultID string) (string, error) {
 	return s.routeVaultID(vaultID)
-}
-
-func (s *Service) IssuePasskeyChallenge(ctx context.Context, purpose string) (*PasskeyChallengeResponse, error) {
-	return s.IssuePasskeyChallengeFor(ctx, program.LeftoverVaultID, purpose)
 }
 
 func (s *Service) IssuePasskeyChallengeFor(ctx context.Context, vaultID, purpose string) (*PasskeyChallengeResponse, error) {
@@ -307,7 +302,7 @@ func failPasskeyAuth(stage string, err error) error {
 }
 
 func decodeBoundedSessionAssertion(req SessionAssertionRequest) (webauthn.Assertion, error) {
-	assertion, err := decodeAssertion(AuthorizeRequest{
+	assertion, err := decodeAssertion(WebAuthnAssertionRequest{
 		CredentialID: req.CredentialID, ClientDataJSON: req.ClientDataJSON,
 		AuthenticatorData: req.AuthenticatorData, Signature: req.Signature,
 	})
@@ -333,10 +328,6 @@ func passkeySessionProofDigest(purpose string, challenge, credentialID []byte) [
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write(credentialID)
 	return h.Sum(nil)
-}
-
-func (s *Service) BuildRecoveryBinding(req RecoveryBindingRequest) (*RecoveryBindingResponse, error) {
-	return s.BuildRecoveryBindingFor("", req)
 }
 
 func (s *Service) BuildRecoveryBindingFor(vaultID string, req RecoveryBindingRequest) (*RecoveryBindingResponse, error) {
@@ -372,20 +363,15 @@ func canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphertext []byte)
 		return "", fmt.Errorf("credential required")
 	}
 	binding := recoveryBinding{
-		Version:      1,
+		Version:      2,
 		CredentialID: hex.EncodeToString(cred.ID), WebAuthnP256: hex.EncodeToString(cred.WebAuthnP256),
-		PhoneDirectP256: hex.EncodeToString(cred.PhoneDirectP256), PhoneRoutineBIP340Pub: hex.EncodeToString(cred.PhoneRoutineBIP340),
-		ExternalOwnerWalletPub:     hex.EncodeToString(cred.ExternalOwnerWallet),
-		VaultCosignerBasePub:       hex.EncodeToString(cred.VaultCosignerBase),
-		TweakedVaultCosignerXOnly:  hex.EncodeToString(cred.TweakedVaultCosigner[1:]),
-		ArkadeCosignerBasePub:      hex.EncodeToString(cred.ArkadeCosignerBase),
-		TweakedArkadeCosignerXOnly: hex.EncodeToString(cred.TweakedArkadeCosigner[1:]),
-		ArkadeCosignerOrigin:       cred.ArkadeCosignerOrigin, ArkadeCosignerVersion: cred.ArkadeCosignerVersion,
+		PhoneDirectP256: hex.EncodeToString(cred.PhoneDirectP256), PhoneBIP340Pub: hex.EncodeToString(cred.PhoneBIP340),
+		ExternalOwnerWalletPub: hex.EncodeToString(cred.ExternalOwnerWallet),
+		VaultCosignerBasePub:   hex.EncodeToString(cred.VaultCosignerBase),
+		ArkadeCosignerBasePub:  hex.EncodeToString(cred.ArkadeCosignerBase),
+		ArkadeCosignerOrigin:   cred.ArkadeCosignerOrigin, ArkadeCosignerVersion: cred.ArkadeCosignerVersion,
 		ClientOrigin: cred.Origin, RPID: cred.RPID, Network: cred.Network, VaultID: cred.VaultID,
 		TemplateVersion: cred.TemplateVersion, PolicyVersion: cred.PolicyVersion,
-		OperationalCSVType: cred.OperationalCSVType, OperationalCSVValue: cred.OperationalCSVValue,
-		SavingsCSVType: cred.SavingsCSVType, SavingsCSVValue: cred.SavingsCSVValue,
-		OperationalAddress: cred.OperationalAddress, OperationalScript: hex.EncodeToString(cred.OperationalScript),
 		SavingsAddress: cred.SavingsAddress, SavingsScript: hex.EncodeToString(cred.SavingsScript),
 		RecipientDustSats: cred.RecipientDustSats, TxRecipientCapSats: cred.TxRecipientCapSats,
 		PeriodAllowanceSats: cred.PeriodAllowanceSats, AbsoluteFeeCapSats: cred.AbsoluteFeeCapSats,
@@ -439,17 +425,17 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 	if err := verifyDirectAuth(cred.PhoneDirectP256, digest, directSig); err != nil {
 		return fmt.Errorf("credential envelope binding: %w", err)
 	}
-	phoneSigRaw, err := decodeFixedHex(req.BindingPhoneSig, 64, "binding PhoneRoutine signature")
+	phoneSigRaw, err := decodeFixedHex(req.BindingPhoneSig, 64, "binding Phone signature")
 	if err != nil {
 		return err
 	}
-	phonePub, err := btcec.ParsePubKey(cred.PhoneRoutineBIP340)
+	phonePub, err := btcec.ParsePubKey(cred.PhoneBIP340)
 	if err != nil {
-		return fmt.Errorf("stored PhoneRoutineBIP340: %w", err)
+		return fmt.Errorf("stored PhoneBIP340: %w", err)
 	}
 	phoneSig, err := schnorr.ParseSignature(phoneSigRaw)
 	if err != nil || !phoneSig.Verify(digest, phonePub) {
-		return fmt.Errorf("credential envelope binding PhoneRoutine signature invalid")
+		return fmt.Errorf("credential envelope binding Phone signature invalid")
 	}
 	envelope := policy.CredentialEnvelope{
 		Version: policy.CredentialEnvelopeVersion, Binding: expectedBinding,
@@ -459,16 +445,10 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 	if err != nil {
 		return err
 	}
-	if vaultID != program.LeftoverVaultID {
-		if err := s.sealVaultEnvelope(&envelope, vaultID, cred.ID); err != nil {
-			return err
-		}
-		return s.Ledger.StoreVaultEnvelopeIfAbsent(vaultID, envelope)
-	}
-	if err := s.sealCredentialEnvelope(&envelope, cred.ID); err != nil {
+	if err := s.sealVaultEnvelope(&envelope, vaultID, cred.ID); err != nil {
 		return err
 	}
-	return s.Ledger.StoreCredentialEnvelopeIfAbsent(envelope)
+	return s.Ledger.StoreVaultEnvelopeIfAbsent(vaultID, envelope)
 }
 
 func (s *Service) RecoverCredentialEnvelope(ctx context.Context, req RecoverCredentialEnvelopeRequest) (*RecoverCredentialEnvelopeResponse, error) {

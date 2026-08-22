@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/internal/contractpack"
-	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
+	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 )
 
 func TestContractPackMatchesLiveEnroll(t *testing.T) {
@@ -17,25 +17,25 @@ func TestContractPackMatchesLiveEnroll(t *testing.T) {
 	}
 	var pack struct {
 		Programs struct {
-			Staged struct {
+			Savings struct {
 				Status     string `json:"status"`
 				Enrollable *bool  `json:"enrollable"`
 				Template   string `json:"template"`
 				Recovery   string `json:"recovery"`
-			} `json:"staged"`
+			} `json:"savings-recovery-v1"`
 		} `json:"programs"`
 	}
 	if err := json.Unmarshal(raw, &pack); err != nil {
 		t.Fatal(err)
 	}
-	if pack.Programs.Staged.Status != "live" || pack.Programs.Staged.Template != v5.Template {
-		t.Fatalf("live enroll: %+v want template %s", pack.Programs.Staged, v5.Template)
+	if pack.Programs.Savings.Status != "live" || pack.Programs.Savings.Template != savings.Template {
+		t.Fatalf("live enroll: %+v want template %s", pack.Programs.Savings, savings.Template)
 	}
-	if pack.Programs.Staged.Enrollable == nil || !*pack.Programs.Staged.Enrollable {
-		t.Fatalf("staged program must be enrollable: %+v", pack.Programs.Staged)
+	if pack.Programs.Savings.Enrollable == nil || !*pack.Programs.Savings.Enrollable {
+		t.Fatalf("Savings program must be enrollable: %+v", pack.Programs.Savings)
 	}
-	if pack.Programs.Staged.Recovery != "optional" {
-		t.Fatalf("recovery %q, want optional", pack.Programs.Staged.Recovery)
+	if pack.Programs.Savings.Recovery != "optional" {
+		t.Fatalf("recovery %q, want optional", pack.Programs.Savings.Recovery)
 	}
 }
 
@@ -52,12 +52,12 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if !ok {
 		t.Fatal("programs object required")
 	}
-	if _, ok := programs["staged"].(map[string]any); !ok {
-		t.Fatal("staged program must remain")
+	if _, ok := programs["savings-recovery-v1"].(map[string]any); !ok {
+		t.Fatal("Savings recovery program must be listed")
 	}
 	listed, ok := programs["vault-policy-v1"].(map[string]any)
 	if !ok {
-		t.Fatal("vault-policy-v1 must be listed beside staged")
+		t.Fatal("vault-policy-v1 must be listed beside Savings recovery")
 	}
 	if listed["status"] != "listed" || listed["module"] != "vtxo" {
 		t.Fatalf("vault-policy-v1 listing: %+v", listed)
@@ -115,7 +115,7 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 		!strings.Contains(note, "stays fail-closed until this capability is advertised") {
 		t.Fatalf("vault-policy-v1 delegate note: %+v", delegate)
 	}
-	if listed["notes"] != "Spending only. Savings stays L1. No staged Pending/Quarantine. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
+	if listed["notes"] != "Spending only. Savings stays L1. VTXO Spending does not reuse the Savings Pending or Quarantine trees. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program." {
 		t.Fatalf("vault-policy-v1 notes: %v", listed["notes"])
 	}
 	board, ok := programs["vault-board-v1"].(map[string]any)
@@ -160,7 +160,7 @@ func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
 	if _, ok := pack.Domains["enrollmentPop"]; ok {
 		t.Fatal("contract pack must not publish an enrollment proof domain")
 	}
-	if _, ok := pack.Programs["staged"]["recoveryPopTag"]; ok {
-		t.Fatal("staged program must not publish a recovery proof tag")
+	if _, ok := pack.Programs["savings-recovery-v1"]["recoveryPopTag"]; ok {
+		t.Fatal("Savings recovery program must not publish a recovery proof tag")
 	}
 }

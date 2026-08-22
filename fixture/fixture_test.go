@@ -24,23 +24,17 @@ func TestFixtureDoesNotExportOfflinePrivateScalar(t *testing.T) {
 	if ExternalOwnerWalletPubHex != "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5" {
 		t.Fatalf("ExternalOwnerWalletPubHex = %s, want generator 2G", ExternalOwnerWalletPubHex)
 	}
-	if LeftoverV3TemplateVersion != "phone-direct-p256-routine-3of3-admin-2of2-v3" {
-		t.Fatalf("LeftoverV3TemplateVersion = %s", LeftoverV3TemplateVersion)
-	}
 }
 
 func TestFrozenProductContract(t *testing.T) {
-	if TemplateVersion != "phone-direct-p256-routine-3of3-admin-phone-hww-v4" {
+	if TemplateVersion != "phone-hww-recovery-savings-v1" {
 		t.Fatalf("TemplateVersion = %s", TemplateVersion)
 	}
-	if PolicyVersion != "mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3" {
+	if PolicyVersion != "vault-spending-policy-v1" {
 		t.Fatalf("PolicyVersion = %s", PolicyVersion)
 	}
-	if OperationalCSVBlocks != 144 || SavingsCSVBlocks != 6 {
-		t.Fatalf("CSV clocks = %d/%d, want device 144 / hardware 6", OperationalCSVBlocks, SavingsCSVBlocks)
-	}
-	if DeviceCSVBlocks != OperationalCSVBlocks || HardwareCSVBlocks != SavingsCSVBlocks {
-		t.Fatal("DeviceCSV/HardwareCSV aliases must stay equal to the frozen wire names")
+	if HardwareRecoveryCSVBlocks != 6 || PhoneRecoveryCSVBlocks != 144 || RecoveryCSVBlocks != 288 {
+		t.Fatalf("recovery delays = %d/%d/%d", HardwareRecoveryCSVBlocks, PhoneRecoveryCSVBlocks, RecoveryCSVBlocks)
 	}
 	if PRFSalt != "arkade-2fa-vault/prf/v1" || HKDFInfo != "arkade-2fa-vault/kek/v1" || DirectP256HKDFInfo != "arkade-2fa-vault/direct-p256/v1" {
 		t.Fatal("client HKDF domains drifted")

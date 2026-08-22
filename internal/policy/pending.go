@@ -39,9 +39,6 @@ func (l *Ledger) ReservePendingEnrollment(p PendingEnrollment) (*PendingEnrollme
 	if err := validatePendingEnrollment(p); err != nil {
 		return nil, err
 	}
-	if err := ensureMultiTenantSchema(l.db); err != nil {
-		return nil, err
-	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	tx, err := l.db.Begin()
@@ -109,9 +106,6 @@ VALUES (?, ?, ?, ?, ?, ?)`,
 func (l *Ledger) GetPendingByHandle(handle string) (*PendingEnrollment, error) {
 	if handle == "" {
 		return nil, fmt.Errorf("pending enrollment handle required")
-	}
-	if err := ensureMultiTenantSchema(l.db); err != nil {
-		return nil, err
 	}
 	var p PendingEnrollment
 	err := l.db.QueryRow(`

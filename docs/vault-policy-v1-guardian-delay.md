@@ -1,32 +1,32 @@
-# vault-policy-v1 guardian delay
+# `vault-policy-v1` guardian delay
 
-Product pin: **4608 seconds**. Unit: BIP68 seconds. Encoded as sequence
-value `9` (`4608 / 512`) with the seconds type flag.
+The current tree pins a 4,608-second BIP68 delay for Mutinynet. The value is
+encoded as sequence value `9` because BIP68 seconds use 512-second units.
 
-This is not arkd's advertised hatch. Live Mutinynet `GetInfo.unilateralExitDelay`
-is **2048 seconds**. `TapscriptsVtxoScript.Validate` requires the smallest
-CSV on the tree to be greater than or equal to that minimum, and BIP68
-seconds values must be a multiple of 512. 2048 meets the arkd minimum and
-the 512-mod constraint, but it is below the 144-block floor at Mutinynet
-(~30s/block → 4320s). Do not freeze 2048.
-
-| Constraint | Value | 4608s |
+| Mutinynet constraint | Value | Result |
 | --- | --- | --- |
-| arkd `unilateralExitDelay` | 2048s | >= |
-| BIP68 seconds modulus | 512 | 9 × 512 |
-| 144-block floor at ~30s | 4320s | >= |
+| Operator minimum unilateral exit delay | 2,048 seconds | 4,608 is above the minimum. |
+| BIP68 encoding unit | 512 seconds | 4,608 is exactly 9 units. |
+| Existing 144-block test posture at roughly 30 seconds per block | 4,320 seconds | 4,608 preserves at least that test interval. |
 
-The tree has exactly three leaves, in this order:
+This is a Mutinynet compatibility pin. It does not establish a mainnet safety
+posture. With ten-minute Bitcoin blocks, 4,608 seconds is roughly 1.28 hours,
+far shorter than a 144-block observation window.
 
-1. collaborative spend/intent Multisig `[user, VTXO VaultCosigner, Arkade Operator]`
-2. exactly one guardian CSV exit at this delay
-3. delegate-forfeit Multisig `[user, VTXO VaultCosigner, pinned public delegate, Arkade Operator]`
+Mainnet activation therefore requires a separately reviewed delay, including
+the threat model, human response time, Operator minimum, BIP68 rounding, and
+recovery usability. Freezing that value changes the Taproot tree and requires
+new server and wallet contract packs plus regenerated cross-implementation
+vectors. Runtime `GetInfo` data may confirm a release pin, but it cannot choose
+or rewrite the delay.
 
-The emulator is not a tree signer. The required VaultCosigner
-independently enforces the Vault Program.
+The Mutinynet tree contains three leaves in a fixed order:
 
-Two-key mapping is device+hardware; three-key mapping (when recovery is
-present) is hardware+recovery. Those are alternate encodings of the same
-exit leaf, not two exits.
+1. Collaborative spend with the user, VTXO VaultCosigner, and Arkade Operator.
+2. One guardian exit at the pinned delay.
+3. Delegate-forfeit with the user, VTXO VaultCosigner, pinned public delegate,
+   and Arkade Operator.
 
-Do not read live arkd at runtime to rewrite boarded leaves.
+The two-guardian exit uses the device and hardware keys. When a recovery key
+is enrolled, the exit uses hardware and recovery. Both forms encode one exit
+leaf; the tree never includes two alternative guardian delays.

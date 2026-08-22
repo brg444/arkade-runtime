@@ -9,16 +9,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const (
-	NetworkRegtest   = "regtest"
 	NetworkMutinynet = "mutinynet"
-	// MaxCSVBlockDelay is the largest block-based relative locktime BIP68 can
-	// encode. Higher bits select time units or disable relative locktime.
-	MaxCSVBlockDelay = uint32(1<<16 - 1)
 	// MutinynetCheckpoint1 distinguishes the intended custom signet from every
 	// other signet. Custom signets share the standard signet genesis and all
 	// report getblockchaininfo.chain="signet".
@@ -48,50 +42,22 @@ const (
 // field after enrollment must make startup fail instead of silently deriving a
 // different vault or accepting assertions for a different relying party.
 type Config struct {
-	ClientOrigin         string
-	RPID                 string
-	Network              string
-	OperationalCSVBlocks uint32
-	SavingsCSVBlocks     uint32
+	ClientOrigin string
+	RPID         string
+	Network      string
 }
 
-// BitcoinCheckpoint returns an additional required checkpoint when a chain
-// name is not unique. A zero height/hash means the local regtest launcher owns
-// the node identity and no public-network checkpoint is needed.
+// BitcoinCheckpoint returns the release-pinned custom-signet checkpoint.
 func (c Config) BitcoinCheckpoint() (int64, string, error) {
-	switch c.Network {
-	case NetworkRegtest:
-		return 0, "", nil
-	case NetworkMutinynet:
-		return 1, MutinynetCheckpoint1, nil
-	default:
+	if c.Network != NetworkMutinynet {
 		return 0, "", fmt.Errorf("unsupported network %q", c.Network)
 	}
+	return 1, MutinynetCheckpoint1, nil
 }
 
-// Default is the local regtest demonstration identity.
-func Default() Config {
-	return Config{
-		ClientOrigin: program.RegtestOrigin, RPID: program.RegtestRPID, Network: NetworkRegtest,
-		OperationalCSVBlocks: program.OperationalCSVBlocks,
-		SavingsCSVBlocks:     program.SavingsCSVBlocks,
-	}
-}
-
-// WithDefaults preserves the zero-value Service configuration used by unit
-// tests and the existing regtest launcher. A partially configured deployment
-// is not filled in: it is rejected by Validate.
-func (c Config) WithDefaults() Config {
-	if c == (Config{}) {
-		return Default()
-	}
-	return c
-}
-
-// Validate accepts only regtest or Mutinynet. Mutinynet is a custom signet,
-// uses Bitcoin's signet/testnet address encoding, and requires a secure web
-// origin. The RP ID is intentionally required to equal the origin hostname;
-// this POC does not permit a broader parent-domain credential scope.
+// Validate accepts only the release-pinned Mutinynet candidate. The RP ID is
+// required to equal the secure origin hostname, which prevents a broader
+// parent-domain credential scope.
 func (c Config) Validate() error {
 	if c.ClientOrigin == "" || c.RPID == "" || c.Network == "" {
 		return fmt.Errorf("origin, rp id and network are required")
@@ -124,33 +90,14 @@ func (c Config) Validate() error {
 	if host == "" || rp == "" || host != rp || strings.Contains(c.RPID, ":") {
 		return fmt.Errorf("rp id must equal the origin hostname")
 	}
-	if net.ParseIP(rp) != nil && rp != "127.0.0.1" && rp != "::1" {
-		return fmt.Errorf("non-loopback IP relying party is not supported")
+	if net.ParseIP(rp) != nil {
+		return fmt.Errorf("IP relying party is not supported")
 	}
-
-	switch c.Network {
-	case NetworkRegtest:
-		if u.Scheme != "http" && u.Scheme != "https" {
-			return fmt.Errorf("regtest origin must use http or https")
-		}
-		if u.Scheme == "http" && host != "localhost" && host != "127.0.0.1" && host != "::1" {
-			return fmt.Errorf("insecure origin is allowed only on loopback regtest")
-		}
-	case NetworkMutinynet:
-		if u.Scheme != "https" {
-			return fmt.Errorf("mutinynet requires an https origin")
-		}
-	default:
+	if c.Network != NetworkMutinynet {
 		return fmt.Errorf("unsupported network %q", c.Network)
 	}
-	if c.OperationalCSVBlocks == 0 || c.SavingsCSVBlocks == 0 {
-		return fmt.Errorf("operational and savings CSV blocks are required")
-	}
-	if c.OperationalCSVBlocks > MaxCSVBlockDelay || c.SavingsCSVBlocks > MaxCSVBlockDelay {
-		return fmt.Errorf("operational and savings CSV block delays must not exceed %d", MaxCSVBlockDelay)
-	}
-	if c.OperationalCSVBlocks <= c.SavingsCSVBlocks {
-		return fmt.Errorf("device-only CSV blocks must exceed hardware-only CSV blocks")
+	if u.Scheme != "https" {
+		return fmt.Errorf("mutinynet requires an https origin")
 	}
 	return nil
 }

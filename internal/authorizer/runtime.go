@@ -1,6 +1,6 @@
 // Package authorizer assembles the protected software signing boundary.
 // This process is the sole owner of both the VaultCosigner private key and the
-// authoritative issuance ledger. It exposes Service policy operations, never
+// authoritative policy ledger. It exposes Service policy operations, never
 // the policy-agnostic LocalSigner primitive.
 package authorizer
 
@@ -29,7 +29,7 @@ import (
 )
 
 // Config contains only deployment inputs for the protected authorizer. The
-// VaultCosigner key and initial enrollment token are file-backed secrets; they
+// VaultCosigner key and each operator-provisioned enrollment token are file-backed secrets; they
 // cannot be supplied through environment text or a network signer.
 type Config struct {
 	Deployment           deployment.Config
@@ -38,7 +38,6 @@ type Config struct {
 	VaultCosignerKeyFile string
 	EnrollmentTokenFile  string
 	EnrollmentWindow     time.Duration
-	EsploraURL           string
 }
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
@@ -71,14 +70,12 @@ func (r *Runtime) Close() error {
 	return r.ledger.Close()
 }
 
-type publisherDialer func(context.Context, string, string) (application.Broadcaster, error)
 type arkadeSignerDialer func(context.Context, string, *btcec.PublicKey, []string, bool) (application.Signer, application.PublicEmulatorIdentity, error)
 
-// Open constructs the Mutinynet authorizer and checkpoint-pins its publisher.
+// Open constructs the Mutinynet authorizer and pins its external signing
+// identities before it serves traffic.
 func Open(ctx context.Context, cfg Config) (*Runtime, error) {
-	rt, err := openWithDialers(ctx, cfg, func(ctx context.Context, baseURL, network string) (application.Broadcaster, error) {
-		return application.DialEsplora(ctx, baseURL, network)
-	}, application.DialPublicEmulator)
+	rt, err := openWithArkadeDialer(ctx, cfg, application.DialPublicEmulator)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +92,7 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 	return rt, nil
 }
 
-func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dialArkade arkadeSignerDialer) (*Runtime, error) {
+func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer) (*Runtime, error) {
 	if err := cfg.Deployment.Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -110,12 +107,6 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 	}
 	if !filepath.IsAbs(cfg.PolicySequencePath) || cfg.PolicySequencePath == "/" || cfg.PolicySequencePath == cfg.DatabasePath {
 		return nil, fmt.Errorf("policy sequence must be a distinct absolute on-disk file path")
-	}
-	if cfg.EsploraURL == "" {
-		return nil, fmt.Errorf("mutinynet esplora url required")
-	}
-	if dial == nil {
-		return nil, fmt.Errorf("publisher dialer required")
 	}
 	if dialArkade == nil {
 		return nil, fmt.Errorf("public arkade emulator dialer required")
@@ -171,43 +162,9 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 		return nil, err
 	}
 
-	if len(vaultIDs) == 0 {
-		if cfg.EnrollmentTokenFile == "" {
-			zero(credentialIntegrityKey)
-			return nil, fmt.Errorf("fresh authorizer requires an enrollment token file")
-		}
-		window := cfg.EnrollmentWindow
-		if window == 0 {
-			window = 30 * time.Minute
-		}
-		if window < time.Minute || window > 24*time.Hour {
-			zero(credentialIntegrityKey)
-			return nil, fmt.Errorf("enrollment window must be between 1 minute and 24 hours")
-		}
-		token, err := readBoundedSecret(cfg.EnrollmentTokenFile, "enrollment token", 43, 43)
-		if err != nil {
-			zero(credentialIntegrityKey)
-			return nil, err
-		}
-		tokenHash, err := application.HashEnrollmentToken(string(token))
-		zero(token)
-		if err != nil {
-			zero(credentialIntegrityKey)
-			return nil, fmt.Errorf("enrollment token: %w", err)
-		}
-		defer zero(tokenHash)
-		invite, err := ledger.GetInvite(tokenHash)
-		if err != nil {
-			zero(credentialIntegrityKey)
-			return nil, fmt.Errorf("enrollment invite: %w", err)
-		}
-		if invite == nil {
-			now := time.Now().UTC()
-			if err := ledger.PutInvite(tokenHash, now.Add(window).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
-				zero(credentialIntegrityKey)
-				return nil, fmt.Errorf("enrollment invite: %w", err)
-			}
-		}
+	if err := provisionEnrollmentInvite(ledger, cfg, len(vaultIDs) > 0, time.Now().UTC()); err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
 	}
 
 	arkadeSigner, arkadeIdentity, err := dialArkade(
@@ -231,7 +188,6 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
 		ArkadeCosignerVersion: arkadeIdentity.Version,
 		ArkadeSigner:          arkadeSigner,
-		MultiTenantEnrollment: true,
 	})
 	defer func() {
 		if closeOnError {
@@ -245,17 +201,52 @@ func openWithDialers(ctx context.Context, cfg Config, dial publisherDialer, dial
 		return nil, err
 	}
 
-	publisher, err := dial(ctx, cfg.EsploraURL, cfg.Deployment.Network)
-	if err != nil {
-		return nil, fmt.Errorf("publisher: %w", err)
-	}
-	if publisher == nil {
-		return nil, fmt.Errorf("publisher not configured")
-	}
-	svc.AttachBroadcaster(publisher)
-
 	closeOnError = false
 	return &Runtime{handler: httpapi.Authorizer(svc), service: svc, ledger: ledger}, nil
+}
+
+// provisionEnrollmentInvite turns one operator-supplied secret file into one
+// durable invitation. Re-presenting the exact file is idempotent, including
+// after the invitation is consumed; rotating the file provisions a distinct
+// invitation without exposing an administrative route on the signing API.
+func provisionEnrollmentInvite(ledger *policy.Ledger, cfg Config, hasVaults bool, now time.Time) error {
+	if ledger == nil {
+		return fmt.Errorf("enrollment ledger required")
+	}
+	if cfg.EnrollmentTokenFile == "" {
+		if hasVaults {
+			return nil
+		}
+		return fmt.Errorf("fresh authorizer requires an enrollment token file")
+	}
+	window := cfg.EnrollmentWindow
+	if window == 0 {
+		window = 30 * time.Minute
+	}
+	if window < time.Minute || window > 24*time.Hour {
+		return fmt.Errorf("enrollment window must be between 1 minute and 24 hours")
+	}
+	token, err := readBoundedSecret(cfg.EnrollmentTokenFile, "enrollment token", 43, 43)
+	if err != nil {
+		return err
+	}
+	tokenHash, err := application.HashEnrollmentToken(string(token))
+	zero(token)
+	if err != nil {
+		return fmt.Errorf("enrollment token: %w", err)
+	}
+	defer zero(tokenHash)
+	invite, err := ledger.GetInvite(tokenHash)
+	if err != nil {
+		return fmt.Errorf("enrollment invite: %w", err)
+	}
+	if invite != nil {
+		return nil
+	}
+	if err := ledger.PutInvite(tokenHash, now.Add(window).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("enrollment invite: %w", err)
+	}
+	return nil
 }
 
 func parseCanonicalCompressedPub(role, encoded string) (*btcec.PublicKey, error) {

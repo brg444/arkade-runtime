@@ -40,9 +40,15 @@ func (m *Monotonic) Observe(dbCount uint64) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	fileCount, err := m.read()
+	fileCount, exists, err := m.read()
 	if err != nil {
 		return err
+	}
+	if !exists {
+		if dbCount != 0 {
+			return fmt.Errorf("policy sequence is missing for a non-empty policy ledger")
+		}
+		return m.write(0)
 	}
 	if dbCount < fileCount {
 		return fmt.Errorf("policy ledger is behind the external sequence (%d < %d); refuse to start from a rolled-back database", dbCount, fileCount)
@@ -53,22 +59,22 @@ func (m *Monotonic) Observe(dbCount uint64) error {
 	return m.write(dbCount)
 }
 
-func (m *Monotonic) read() (uint64, error) {
+func (m *Monotonic) read() (uint64, bool, error) {
 	raw, err := os.ReadFile(m.path)
 	if os.IsNotExist(err) {
-		return 0, nil
+		return 0, false, nil
 	}
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	count, mac, err := parseMonotonic(raw)
 	if err != nil {
-		return 0, err
+		return 0, true, err
 	}
 	if !hmac.Equal(mac, m.mac(count)) {
-		return 0, fmt.Errorf("monotonic counter MAC mismatch")
+		return 0, true, fmt.Errorf("monotonic counter MAC mismatch")
 	}
-	return count, nil
+	return count, true, nil
 }
 
 func (m *Monotonic) write(count uint64) error {

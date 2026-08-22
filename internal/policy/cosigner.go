@@ -6,15 +6,13 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 const (
-	// CosignerModeLegacyDirectV0 is the first Mutinynet vault: the process
-	// VaultCosigner master scalar is used on-chain as-is.
-	CosignerModeLegacyDirectV0 = "legacy-direct-v0"
-	// CosignerModeHKDFSHA256V1 is used for every vault created after the
-	// multi-tenant migration. The on-chain VaultCosigner is derived below.
+	// CosignerModeHKDFSHA256V1 derives an independent L1 VaultCosigner for
+	// every Vault.
 	CosignerModeHKDFSHA256V1 = "hkdf-sha256-v1"
 
 	vaultCosignerHKDFSalt = "arkade-2fa-vault/vault-cosigner/hkdf-sha256-v1"
@@ -25,15 +23,10 @@ const (
 	CosignerModeVtxoHKDFSHA256V1 = "vtxo-hkdf-sha256-v1"
 	vtxoVaultCosignerHKDFSalt    = "arkade-2fa-vault/vtxo-vault-cosigner/hkdf-sha256-v1"
 	vtxoVaultCosignerHKDFInfo    = "vtxo-vault-cosigner/v1"
-
-	// LegacyFirstVaultID is the opaque instance id of the funded Mutinynet
-	// singleton. It is not a UUID and must never be reinterpreted as 16 bytes.
-	LegacyFirstVaultID = "operational-vault-v1"
 )
 
 // DeriveVaultCosignerScalar returns the secp256k1 scalar for vaultID.
 //
-//	legacy-direct-v0: copy of master (first vault only).
 //	hkdf-sha256-v1: RFC 5869 HKDF-SHA256
 //	  IKM  = 32-byte master scalar
 //	  salt = vaultCosignerHKDFSalt (UTF-8)
@@ -47,21 +40,10 @@ func DeriveVaultCosignerScalar(master *btcec.PrivateKey, vaultID, mode string) (
 	if vaultID == "" {
 		return nil, fmt.Errorf("vault id required")
 	}
-	switch mode {
-	case CosignerModeLegacyDirectV0:
-		if vaultID != LegacyFirstVaultID {
-			return nil, fmt.Errorf("legacy-direct-v0 is only valid for %s", LegacyFirstVaultID)
-		}
-		priv, _ := btcec.PrivKeyFromBytes(master.Serialize())
-		return priv, nil
-	case CosignerModeHKDFSHA256V1:
-		if vaultID == LegacyFirstVaultID {
-			return nil, fmt.Errorf("%s must use %s", LegacyFirstVaultID, CosignerModeLegacyDirectV0)
-		}
-		return deriveHKDFVaultCosigner(master, vaultID)
-	default:
+	if mode != CosignerModeHKDFSHA256V1 {
 		return nil, fmt.Errorf("unknown cosigner mode")
 	}
+	return deriveHKDFVaultCosigner(master, vaultID)
 }
 
 func deriveHKDFVaultCosigner(master *btcec.PrivateKey, vaultID string) (*btcec.PrivateKey, error) {
@@ -118,7 +100,7 @@ func DeriveVtxoVaultCosignerScalar(master *btcec.PrivateKey, vaultID, policyVers
 	if policyVersion == "" {
 		return nil, fmt.Errorf("policy version required")
 	}
-	if network != "mutinynet" && network != "regtest" {
+	if network != program.NetworkMutinynet && network != program.NetworkMainnet {
 		return nil, fmt.Errorf("unsupported network")
 	}
 	if len(advertisedServerPub) != 33 || (advertisedServerPub[0] != 0x02 && advertisedServerPub[0] != 0x03) {

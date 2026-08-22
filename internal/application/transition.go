@@ -11,7 +11,7 @@ import (
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/vault"
-	v5 "github.com/brg444/arkade-vault-server/internal/vault/v5"
+	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
@@ -58,8 +58,8 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err != nil {
 		return nil, err
 	}
-	if cred == nil || !isStagedTemplate(cred.TemplateVersion) {
-		return nil, fmt.Errorf("v5 vault required")
+	if cred == nil || cred.TemplateVersion != savings.Template {
+		return nil, fmt.Errorf("current vault template required")
 	}
 	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
 	if err != nil {
@@ -162,7 +162,7 @@ func validateTransitionPacket(ptx *psbt.Packet) error {
 	if len(ptx.UnsignedTx.TxIn) != 1 || len(ptx.Inputs) != 1 {
 		return fmt.Errorf("exactly one input required")
 	}
-	if ptx.UnsignedTx.TxIn[0].Sequence != v5.TransitionSequence {
+	if ptx.UnsignedTx.TxIn[0].Sequence != savings.TransitionSequence {
 		return fmt.Errorf("transition sequence must be 0xfffffffd")
 	}
 	if ptx.Inputs[0].SighashType != txscript.SigHashDefault {
@@ -202,22 +202,22 @@ func sameUnsignedTransition(stored []byte, current *psbt.Packet) error {
 	return nil
 }
 
-func (s *Service) transitionFamily(cred *policy.Credential) (*v5.Family, error) {
-	phone, hardware, recovery, vaultBase, arkadeBase, _, _, err := s.rebuildV5(cred)
+func (s *Service) transitionFamily(cred *policy.Credential) (*savings.Family, error) {
+	phone, hardware, recovery, vaultBase, arkadeBase, _, err := s.rebuildSavings(cred)
 	if err != nil {
 		return nil, err
 	}
 	parsed := parsedRegisterRequest{
 		phoneDirectP256: cred.PhoneDirectP256,
-		phoneRoutine:    phone, externalOwner: hardware, recovery: recovery,
+		phone:           phone, externalOwner: hardware, recovery: recovery,
 	}
-	in, err := s.v5FamilyInput(cred.VaultID, parsed, vaultBase, arkadeBase)
+	in, err := s.savingsFamilyInput(cred.VaultID, parsed, vaultBase, arkadeBase)
 	if err != nil {
 		return nil, err
 	}
 	in.TemplateVersion = cred.TemplateVersion
-	in.ServerFreeClawback = cred.TemplateVersion == v5.Template
-	_, fam, err := v5.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)
+	in.ServerFreeClawback = cred.TemplateVersion == savings.Template
+	_, fam, err := savings.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ type transitionBinding struct {
 	SignerPub   *btcec.PublicKey
 }
 
-func resolveTransitionBinding(fam *v5.Family, cred *policy.Credential, purpose string, ptx *psbt.Packet) (*transitionBinding, error) {
+func resolveTransitionBinding(fam *savings.Family, cred *policy.Credential, purpose string, ptx *psbt.Packet) (*transitionBinding, error) {
 	if fam == nil || cred == nil || ptx == nil || ptx.UnsignedTx == nil || len(ptx.UnsignedTx.TxOut) < 1 {
 		return nil, fmt.Errorf("transition dest required")
 	}
@@ -245,91 +245,80 @@ func resolveTransitionBinding(fam *v5.Family, cred *policy.Credential, purpose s
 	leaf := ptx.Inputs[0].TaprootLeafScript[0].Script
 	input := ptx.Inputs[0].WitnessUtxo.PkScript
 	dest := ptx.UnsignedTx.TxOut[0].PkScript
-	roles, err := stagedRolePubs(cred)
+	roles, err := recoveryRolePubs(cred)
 	if err != nil {
 		return nil, err
 	}
-	kinds := []string{"daily", "savings"}
 	claimants := []string{"phone", "hardware", "recovery"}
 	if purpose == "initiate" {
-		for _, kind := range kinds {
-			source := fam.Daily.PkScript
-			pairs := fam.InitiateDaily
-			if kind == "savings" {
-				source = fam.Savings.PkScript
-				pairs = fam.InitiateSave
-			}
-			if !bytes.Equal(input, source) {
-				continue
-			}
-			for _, claimant := range claimants {
-				pub := roles[claimant]
-				pair := pairs[claimant]
-				if pub == nil || pair.Vault == nil || pair.Arkade == nil {
-					continue
-				}
-				want, err := v5.Checksig(pub, pair.Vault, pair.Arkade)
-				if err != nil {
-					return nil, err
-				}
-				if !bytes.Equal(leaf, want) {
-					continue
-				}
-				key := v5.FamilyKey(kind, claimant)
-				pending := fam.Pending[key].PkScript
-				if pending == nil || !bytes.Equal(dest, pending) {
-					return nil, fmt.Errorf("initiate dest is not the pending tree for this leaf")
-				}
-				return &transitionBinding{
-					Kind: kind, Claimant: claimant, Role: claimant, Dest: dest,
-					VaultTweak: pair.Vault, ArkadeTweak: pair.Arkade, Leaf: leaf, SignerPub: pub,
-				}, nil
-			}
+		if !bytes.Equal(input, fam.Savings.PkScript) {
+			return nil, fmt.Errorf("initiate input is not the rebuilt Savings tree")
 		}
-		return nil, fmt.Errorf("initiate leaf is not a rebuilt staged tree")
-	}
-	for _, kind := range kinds {
 		for _, claimant := range claimants {
-			key := v5.FamilyKey(kind, claimant)
+			pub := roles[claimant]
+			pair := fam.Initiate[claimant]
+			if pub == nil || pair.Vault == nil || pair.Arkade == nil {
+				continue
+			}
+			want, err := savings.Checksig(pub, pair.Vault, pair.Arkade)
+			if err != nil {
+				return nil, err
+			}
+			if !bytes.Equal(leaf, want) {
+				continue
+			}
+			key := savings.FamilyKey(claimant)
 			pending := fam.Pending[key].PkScript
-			if pending == nil || !bytes.Equal(input, pending) {
+			if pending == nil || !bytes.Equal(dest, pending) {
+				return nil, fmt.Errorf("initiate dest is not the pending tree for this leaf")
+			}
+			return &transitionBinding{
+				Kind: "savings", Claimant: claimant, Role: claimant, Dest: dest,
+				VaultTweak: pair.Vault, ArkadeTweak: pair.Arkade, Leaf: leaf, SignerPub: pub,
+			}, nil
+		}
+		return nil, fmt.Errorf("initiate leaf is not a rebuilt Savings recovery tree")
+	}
+	for _, claimant := range claimants {
+		key := savings.FamilyKey(claimant)
+		pending := fam.Pending[key].PkScript
+		if pending == nil || !bytes.Equal(input, pending) {
+			continue
+		}
+		pair := fam.PendingTweaks[key]
+		if pair.Vault == nil || pair.Arkade == nil {
+			continue
+		}
+		for _, guardian := range claimants {
+			if guardian == claimant {
 				continue
 			}
-			pair := fam.PendingTweaks[key]
-			if pair.Vault == nil || pair.Arkade == nil {
+			pub := roles[guardian]
+			if pub == nil {
 				continue
 			}
-			for _, guardian := range claimants {
-				if guardian == claimant {
-					continue
-				}
-				pub := roles[guardian]
-				if pub == nil {
-					continue
-				}
-				want, err := v5.Checksig(pub, pair.Vault, pair.Arkade)
-				if err != nil {
-					return nil, err
-				}
-				if !bytes.Equal(leaf, want) {
-					continue
-				}
-				quarantine := fam.Quarantine[key].PkScript
-				if quarantine == nil || !bytes.Equal(dest, quarantine) {
-					return nil, fmt.Errorf("clawback dest is not the quarantine tree for this leaf")
-				}
-				return &transitionBinding{
-					Kind: kind, Claimant: claimant, Role: guardian, Dest: dest,
-					VaultTweak: pair.Vault, ArkadeTweak: pair.Arkade, Leaf: leaf, SignerPub: pub,
-				}, nil
+			want, err := savings.Checksig(pub, pair.Vault, pair.Arkade)
+			if err != nil {
+				return nil, err
 			}
+			if !bytes.Equal(leaf, want) {
+				continue
+			}
+			quarantine := fam.Quarantine[key].PkScript
+			if quarantine == nil || !bytes.Equal(dest, quarantine) {
+				return nil, fmt.Errorf("clawback dest is not the quarantine tree for this leaf")
+			}
+			return &transitionBinding{
+				Kind: "savings", Claimant: claimant, Role: guardian, Dest: dest,
+				VaultTweak: pair.Vault, ArkadeTweak: pair.Arkade, Leaf: leaf, SignerPub: pub,
+			}, nil
 		}
 	}
-	return nil, fmt.Errorf("clawback leaf is not a rebuilt staged tree")
+	return nil, fmt.Errorf("clawback leaf is not a rebuilt Savings recovery tree")
 }
 
-func stagedRolePubs(cred *policy.Credential) (map[string]*btcec.PublicKey, error) {
-	phone, err := btcec.ParsePubKey(cred.PhoneRoutineBIP340)
+func recoveryRolePubs(cred *policy.Credential) (map[string]*btcec.PublicKey, error) {
+	phone, err := btcec.ParsePubKey(cred.PhoneBIP340)
 	if err != nil {
 		return nil, fmt.Errorf("phone key")
 	}

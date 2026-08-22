@@ -4,20 +4,18 @@ package fixture
 import (
 	"net/url"
 
-	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const (
-	VaultID = program.LeftoverVaultID
+	VaultID = "vault-test-v2"
 
-	RPID   = program.RegtestRPID
-	Origin = program.RegtestOrigin
+	RPID   = "vault.example.com"
+	Origin = "https://vault.example.com"
 
-	OperationalCSVBlocks = program.OperationalCSVBlocks
-	DeviceCSVBlocks      = program.OperationalCSVBlocks
-	SavingsCSVBlocks     = program.SavingsCSVBlocks
-	HardwareCSVBlocks    = program.SavingsCSVBlocks
+	HardwareRecoveryCSVBlocks = program.HardwareRecoveryCSVBlocks
+	PhoneRecoveryCSVBlocks    = program.PhoneRecoveryCSVBlocks
+	RecoveryCSVBlocks         = program.RecoveryCSVBlocks
 
 	TxRecipientCapSats    = program.TxRecipientCapSats
 	PeriodAllowanceSats   = program.PeriodAllowanceSats
@@ -38,14 +36,10 @@ const (
 
 	HTTPAddr = "localhost:8787"
 
-	TemplateVersion           = program.LeftoverV4Template
-	LeftoverV3TemplateVersion = program.LeftoverV3Template
-	PolicyVersion             = program.PolicyVersion
-	Network                   = program.NetworkRegtest
+	TemplateVersion = "phone-hww-recovery-savings-v1"
+	PolicyVersion   = program.PolicyVersion
+	Network         = program.NetworkMutinynet
 )
-
-func OperationalCSV() arklib.RelativeLocktime { return program.OperationalCSV() }
-func SavingsCSV() arklib.RelativeLocktime     { return program.SavingsCSV() }
 
 func OriginURL() *url.URL {
 	u, err := url.Parse(Origin)

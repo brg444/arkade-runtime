@@ -27,9 +27,6 @@ func (l *Ledger) CreateVault(in CreateVaultInput) error {
 	if err := validateCreateVaultInput(in); err != nil {
 		return err
 	}
-	if err := ensureMultiTenantSchema(l.db); err != nil {
-		return err
-	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	tx, err := l.db.Begin()
@@ -86,16 +83,13 @@ func (l *Ledger) PutInvite(tokenHash []byte, expiresAt, createdAt string) error 
 	if expiresAt == "" || createdAt == "" {
 		return fmt.Errorf("invite timestamps required")
 	}
-	if err := ensureMultiTenantSchema(l.db); err != nil {
-		return err
-	}
 	_, err := l.db.Exec(`INSERT INTO invite (token_hash, expires_at, created_at) VALUES (?, ?, ?)`,
 		tokenHash, expiresAt, createdAt)
 	return err
 }
 
 func validateCreateVaultInput(in CreateVaultInput) error {
-	if in.Record.VaultID == "" || in.Record.VaultID == LegacyFirstVaultID {
+	if in.Record.VaultID == "" {
 		return fmt.Errorf("create vault requires a new opaque vault id")
 	}
 	if in.Record.CosignerMode != CosignerModeHKDFSHA256V1 {
@@ -151,9 +145,6 @@ DELETE FROM pending_enrollment
 
 // ListVaultIDs returns every persisted tenant id in stable order.
 func (l *Ledger) ListVaultIDs() ([]string, error) {
-	if !v4TableExists(l.db) {
-		return nil, nil
-	}
 	rows, err := l.db.Query(`SELECT vault_id FROM vault ORDER BY vault_id`)
 	if err != nil {
 		return nil, err

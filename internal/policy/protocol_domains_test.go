@@ -2,32 +2,25 @@ package policy
 
 import "testing"
 
-// TestFrozenProtocolDomains pins each HMAC/HKDF string as its own
-// contract. The suffix is not a release. credential-record/v3 and
-// schema 7 and template …-v5 are independent axes — see docs/versions.md.
+// TestFrozenProtocolDomains pins each current HMAC/HKDF string as its own
+// contract. Domain suffixes are not release numbers.
 func TestFrozenProtocolDomains(t *testing.T) {
 	pairs := []struct {
 		got, want string
 	}{
-		{credentialIntegrityDomain, "arkade-2fa-vault/credential-record/v3"},
-		{issuanceIntegrityDomain, "arkade-2fa-vault/issuance-record/v3"},
-		{issuanceMACSalt, "arkade-2fa-vault/issuance-mac/v3"},
-		{vaultRecordMACDomain, "arkade-2fa-vault/vault-record/v4"},
-		{vaultCredentialMACDomain, "arkade-2fa-vault/vault-credential/v1"},
+		{vaultRecordMACDomain, "arkade-vault/vault-record/v1"},
+		{vaultCredentialMACDomain, "arkade-vault/vault-credential/v1"},
 		{sessionMACDomain, "arkade-2fa-vault/recovery-session/v2"},
-		{credentialEnvelopeDomain, "arkade-2fa-vault/credential-envelope/v1"},
-		{vaultEnvelopeDomain, "arkade-2fa-vault/vault-envelope/v4"},
-		{vaultEnvelopeMACSalt, "arkade-2fa-vault/vault-envelope-mac/v4"},
+		{vaultEnvelopeDomain, "arkade-vault/vault-envelope/v2"},
+		{vaultEnvelopeMACSalt, "arkade-vault/vault-envelope-mac/v2"},
 		{vaultCosignerHKDFSalt, "arkade-2fa-vault/vault-cosigner/hkdf-sha256-v1"},
 		{vaultCosignerHKDFInfo, "vault-cosigner/v1"},
-		{CosignerModeLegacyDirectV0, "legacy-direct-v0"},
 		{CosignerModeHKDFSHA256V1, "hkdf-sha256-v1"},
 		{CosignerModeVtxoHKDFSHA256V1, "vtxo-hkdf-sha256-v1"},
 		{vtxoVaultCosignerHKDFSalt, "arkade-2fa-vault/vtxo-vault-cosigner/hkdf-sha256-v1"},
 		{vtxoVaultCosignerHKDFInfo, "vtxo-vault-cosigner/v1"},
 		{vtxoOperationMACDomain, "arkade-2fa-vault/vtxo-operation/v1"},
 		{vtxoBundleDigestTag, "arkade-2fa-vault/vtxo-bundle/v1"},
-		{LegacyFirstVaultID, "operational-vault-v1"},
 	}
 	for _, p := range pairs {
 		if p.got != p.want {
