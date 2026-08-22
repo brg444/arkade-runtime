@@ -4,6 +4,12 @@ import "net/http"
 
 const testGatewaySecret = "test-gateway-secret"
 
+type rpcDoerFunc func(*http.Request) (*http.Response, error)
+
+func (f rpcDoerFunc) Do(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 // testAuthorizer is the HTTP handler used by package tests. It fail-closes
 // like production (a configured gateway secret) and injects that secret so
 // existing request builders stay focused on the route under test.

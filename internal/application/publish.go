@@ -213,59 +213,6 @@ func (s *Service) publishResult(ctx context.Context, vaultID, txid string, conf 
 	}, nil
 }
 
-// NodeBroadcaster adapts Bitcoin RPC to Broadcaster. Mempool-already-there
-// is treated as a successful idempotent publish.
-type NodeBroadcaster struct {
-	Chain Chain
-}
-
-func (n *NodeBroadcaster) Broadcast(ctx context.Context, rawTx []byte) (string, error) {
-	if n == nil || n.Chain == nil {
-		return "", fmt.Errorf("publisher not configured")
-	}
-	ok, reason, err := n.Chain.TestMempoolAccept(ctx, rawTx)
-	if err != nil {
-		return "", err
-	}
-	txid, decErr := rawTxid(rawTx)
-	if !ok {
-		if alreadyPublished(reason) && decErr == nil {
-			return txid, nil
-		}
-		return "", fmt.Errorf("mempool rejected: %s", reason)
-	}
-	sent, err := n.Chain.SendRawTransaction(ctx, rawTx)
-	if err != nil {
-		return "", err
-	}
-	if sent == "" {
-		return "", fmt.Errorf("empty returned txid")
-	}
-	return sent, nil
-}
-
-func (n *NodeBroadcaster) Lookup(ctx context.Context, txid string) (int64, bool, error) {
-	if n == nil || n.Chain == nil {
-		return 0, false, fmt.Errorf("publisher not configured")
-	}
-	return n.Chain.LookupTx(ctx, txid)
-}
-
-func alreadyPublished(reason string) bool {
-	r := fmt.Sprintf("%s", reason)
-	return containsAny(r, "txn-already-in-mempool", "txn-already-known", "already in block")
-}
-
-func containsAny(s string, parts ...string) bool {
-	low := bytes.ToLower([]byte(s))
-	for _, p := range parts {
-		if bytes.Contains(low, bytes.ToLower([]byte(p))) {
-			return true
-		}
-	}
-	return false
-}
-
 func rawTxid(raw []byte) (string, error) {
 	tx := wire.NewMsgTx(2)
 	if err := tx.Deserialize(bytes.NewReader(raw)); err != nil {
