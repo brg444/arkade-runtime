@@ -62,6 +62,12 @@ in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md). The Arkade
 Operator is `https://arkade.computer`; this deployment does not include or
 modify `arkd`.
 
+Before enabling boarding, inject a lost settlement response and an
+unacknowledged intent deletion for a boarding input. The deployed Operator must
+either complete that exact attempt or acknowledge its cancellation before the
+wallet can select the input again. A duplicate-input rejection confirms the
+input is still locked; it does not complete recovery.
+
 The public edge must also enforce a shared rate limit by client address and
 vault identifier on passkey challenge issuance and VTXO reservation. Phone
 authentication protects the reservation mutation, but it does not replace
