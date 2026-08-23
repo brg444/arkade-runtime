@@ -224,29 +224,34 @@ func TestArkResolverMatchesArkTxidInsteadOfCheckpointSpentBy(t *testing.T) {
 		t.Fatal(err)
 	}
 	reserved := []ports.ResolvedVtxo{{Txid: inputTxid, Vout: 1, ValueSats: 1234, Script: pkScript}}
-	if err := resolver.ReservedSpentByArkTxid(context.Background(), pkScript, reserved, arkTxid); err != nil {
-		t.Fatalf("valid Arkade transaction rejected: %v", err)
+	state, err := resolver.SubmittedVtxoState(context.Background(), pkScript, reserved, arkTxid, nil, 0)
+	if err != nil || state != ports.SubmittedVtxoFinalized {
+		t.Fatalf("valid Arkade transaction = %v err=%v", state, err)
 	}
-	if err := resolver.ReservedSpentByArkTxid(context.Background(), pkScript, reserved, strings.Repeat("01", 32)); err == nil {
-		t.Fatal("unrelated Arkade transaction accepted")
+	state, err = resolver.SubmittedVtxoState(context.Background(), pkScript, reserved, strings.Repeat("01", 32), nil, 0)
+	if err != nil || state != ports.SubmittedVtxoConflict {
+		t.Fatalf("unrelated Arkade transaction = %v err=%v", state, err)
 	}
 }
 
 func TestArkResolverRequiresChangeVtxoAfterFinalize(t *testing.T) {
 	pkScript := []byte{0x51, 0x20}
+	inputTxid := strings.Repeat("ab", 32)
 	arkTxid := strings.Repeat("cd", 32)
 	origin := deployment.MutinynetArkIndexerOrigin
+	vtxoQueries := 0
 	doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
 		case "/v1/info":
 			return jsonResponse(http.StatusOK, happyIndexerInfo()), nil
 		case "/v1/indexer/vtxos":
+			vtxoQueries++
 			if req.URL.Query().Get("spendableOnly") == "true" {
 				t.Fatalf("change lookup must include later-spent outputs: %s", req.URL)
 			}
 			body := fmt.Sprintf(
-				`{"vtxos":[{"outpoint":{"txid":%q,"vout":1},"amount":"8766","script":%q,"createdAt":"100","expiresAt":null,"isSwept":false,"commitmentTxids":["%s"],"isSpent":true}]}`,
-				arkTxid, hex.EncodeToString(pkScript), strings.Repeat("ab", 32),
+				`{"vtxos":[{"outpoint":{"txid":%q,"vout":0},"amount":"10000","script":%q,"isSpent":true,"arkTxid":%q},{"outpoint":{"txid":%q,"vout":1},"amount":"8766","script":%q,"createdAt":"100","expiresAt":null,"isSwept":false,"commitmentTxids":["%s"],"isSpent":true}]}`,
+				inputTxid, hex.EncodeToString(pkScript), arkTxid, arkTxid, hex.EncodeToString(pkScript), strings.Repeat("ef", 32),
 			)
 			return jsonResponse(http.StatusOK, body), nil
 		default:
@@ -258,10 +263,16 @@ func TestArkResolverRequiresChangeVtxoAfterFinalize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := resolver.ChangeVtxoFromArkTx(context.Background(), pkScript, arkTxid, 1, 8766); err != nil {
-		t.Fatalf("finalized change rejected: %v", err)
+	reserved := []ports.ResolvedVtxo{{Txid: inputTxid, Vout: 0, ValueSats: 10000, Script: pkScript}}
+	changeVout := uint32(1)
+	state, err := resolver.SubmittedVtxoState(context.Background(), pkScript, reserved, arkTxid, &changeVout, 8766)
+	if err != nil || state != ports.SubmittedVtxoFinalized {
+		t.Fatalf("finalized change = %v err=%v", state, err)
 	}
-	if err := resolver.ChangeVtxoFromArkTx(context.Background(), pkScript, arkTxid, 1, 1); err == nil {
+	if vtxoQueries != 1 {
+		t.Fatalf("submitted reconciliation made %d indexer queries, want 1", vtxoQueries)
+	}
+	if _, err := resolver.SubmittedVtxoState(context.Background(), pkScript, reserved, arkTxid, &changeVout, 1); err == nil {
 		t.Fatal("wrong change amount accepted")
 	}
 }

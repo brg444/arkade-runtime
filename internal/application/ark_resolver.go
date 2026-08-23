@@ -174,16 +174,20 @@ func (r *arkResolver) IntentFeePolicy(ctx context.Context) (ports.IntentFeePolic
 	return validatedIntentFeePolicy(info)
 }
 
-func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
+func (r *arkResolver) SubmittedVtxoState(ctx context.Context, pkScript []byte, reserved []ports.ResolvedVtxo, arkTxid string, changeVout *uint32, changeValueSats uint64) (ports.SubmittedVtxoState, error) {
 	if len(reserved) == 0 {
-		return fmt.Errorf("reserved outpoints required")
+		return ports.SubmittedVtxoPending, fmt.Errorf("reserved outpoints required")
 	}
-	if err := requireTxid(strings.ToLower(strings.TrimSpace(arkTxid))); err != nil {
-		return fmt.Errorf("arkTxid")
+	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
+	if err := requireTxid(wantTx); err != nil {
+		return ports.SubmittedVtxoPending, fmt.Errorf("arkTxid")
+	}
+	if (changeVout == nil) != (changeValueSats == 0) {
+		return ports.SubmittedVtxoPending, fmt.Errorf("change projection")
 	}
 	listed, err := r.listVtxos(ctx, pkScript, false)
 	if err != nil {
-		return err
+		return ports.SubmittedVtxoPending, err
 	}
 	byOut := make(map[string]indexerVtxo, len(listed))
 	for _, vtxo := range listed {
@@ -195,52 +199,43 @@ func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byt
 		}
 		byOut[vtxo.Outpoint.Txid+":"+strconv.FormatUint(uint64(*vtxo.Outpoint.Vout), 10)] = vtxo
 	}
-	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
+	pending := false
 	for _, want := range reserved {
 		got, ok := byOut[want.Txid+":"+strconv.FormatUint(uint64(want.Vout), 10)]
 		if !ok {
-			return fmt.Errorf("reserved outpoint missing from indexer")
+			pending = true
+			continue
 		}
 		if !got.IsSpent {
-			return fmt.Errorf("reserved outpoints not spent")
+			pending = true
+			continue
 		}
 		// arkd records the checkpoint transaction ID in spentBy and the
 		// offchain transaction ID in arkTxid. Finalization is bound to the
 		// latter; comparing spentBy to an Arkade transaction ID rejects every
 		// otherwise valid collaborative spend.
 		if strings.ToLower(strings.TrimSpace(got.ArkTxid)) != wantTx {
-			return fmt.Errorf("reserved outpoint not spent by ark txid")
+			return ports.SubmittedVtxoConflict, nil
 		}
 	}
-	return nil
-}
-
-func (r *arkResolver) ChangeVtxoFromArkTx(ctx context.Context, changeScript []byte, arkTxid string, vout uint32, valueSats uint64) error {
-	if err := requireTxid(strings.ToLower(strings.TrimSpace(arkTxid))); err != nil {
-		return fmt.Errorf("arkTxid")
+	if pending {
+		return ports.SubmittedVtxoPending, nil
 	}
-	listed, err := r.listVtxos(ctx, changeScript, false)
+	if changeVout == nil {
+		return ports.SubmittedVtxoFinalized, nil
+	}
+	change, ok := byOut[wantTx+":"+strconv.FormatUint(uint64(*changeVout), 10)]
+	if !ok {
+		return ports.SubmittedVtxoPending, nil
+	}
+	item, err := parseResolvedVtxo(change, pkScript)
 	if err != nil {
-		return err
+		return ports.SubmittedVtxoPending, err
 	}
-	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
-	for _, vtxo := range listed {
-		if vtxo.Outpoint.Vout == nil {
-			continue
-		}
-		if strings.ToLower(strings.TrimSpace(vtxo.Outpoint.Txid)) != wantTx || *vtxo.Outpoint.Vout != vout {
-			continue
-		}
-		item, err := parseResolvedVtxo(vtxo, changeScript)
-		if err != nil {
-			return err
-		}
-		if item.ValueSats != valueSats {
-			return fmt.Errorf("change vtxo amount")
-		}
-		return nil
+	if item.ValueSats != changeValueSats {
+		return ports.SubmittedVtxoPending, fmt.Errorf("change vtxo amount")
 	}
-	return fmt.Errorf("change vtxo not yet projected")
+	return ports.SubmittedVtxoFinalized, nil
 }
 
 func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]ports.ResolvedVtxo, error) {

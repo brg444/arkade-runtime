@@ -3,6 +3,7 @@ package application
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
 
@@ -29,6 +30,9 @@ func TestAuthorizerRequiresGatewaySecretOnV1WhenConfigured(t *testing.T) {
 	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
 	e := newEnv(t)
 	handler := AuthorizerHandler(e.svc)
+	if err := os.Unsetenv("VAULT_GATEWAY_SECRET"); err != nil {
+		t.Fatal(err)
+	}
 	denied := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 	denied.Header.Set("Origin", fixture.Origin)
 	rec := httptest.NewRecorder()

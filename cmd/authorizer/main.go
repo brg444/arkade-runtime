@@ -42,6 +42,10 @@ func main() {
 		log.Fatal(err)
 	}
 	defer runtime.Close()
+	if err := clearGatewaySecretEnv(); err != nil {
+		_ = runtime.Close()
+		log.Fatalf("clear gateway secret environment: %v", err)
+	}
 
 	server := httpapi.NewServer(*addr, runtime.Handler())
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -64,6 +68,10 @@ func main() {
 			log.Printf("authorizer shutdown: %v", err)
 		}
 	}
+}
+
+func clearGatewaySecretEnv() error {
+	return os.Unsetenv("VAULT_GATEWAY_SECRET")
 }
 
 func envOr(key, fallback string) string {

@@ -195,8 +195,8 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, _ *http.Request) {
-		st := svc.Ready()
+	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) {
+		st := svc.Ready(r.Context())
 		if !st.Ok {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
