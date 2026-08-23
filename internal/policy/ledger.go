@@ -140,7 +140,8 @@ func scanVtxoOperationWith(row rowScanner, trailing ...any) (VtxoOperation, erro
 		&rec.OperationID, &rec.VaultID, &rec.Purpose, &rec.BundleDigest, &rec.State,
 		&rec.AmountSats, &rec.FeeSats, &rec.FeePolicyDigest, &rec.DestScript, &rec.ChangeScript,
 		&rec.ChangeSats, &changeVout,
-		&rec.UnsignedPSBT, &rec.AuthorizedPSBT, &rec.CheckpointPSBTs, &rec.CheckpointRequestPSBTs,
+		&rec.UnsignedPSBT, &rec.AuthorizedPSBT, &rec.PendingProofDigest, &rec.AuthorizedPendingProof,
+		&rec.CheckpointPSBTs, &rec.CheckpointRequestPSBTs,
 		&rec.CheckpointTapscript, &rec.ArkTxid, &rec.ExpiresAt, &rec.CreatedAt,
 		&rec.LastDestScript, &rec.IntegrityMAC,
 	}
@@ -161,6 +162,13 @@ func nullableVtxoVout(vout *uint32) any {
 		return nil
 	}
 	return int64(*vout)
+}
+
+func nullableVtxoDigest(digest []byte) any {
+	if len(digest) == 0 {
+		return nil
+	}
+	return digest
 }
 
 // SpentInPeriod returns authenticated VTXO outflow reserved during the rolling

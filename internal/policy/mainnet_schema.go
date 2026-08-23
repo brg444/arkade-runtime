@@ -40,6 +40,8 @@ CREATE TABLE vtxo_operation (
   change_vout INTEGER CHECK (change_vout >= 0),
   unsigned_psbt TEXT,
   authorized_psbt TEXT,
+  pending_proof_digest BLOB CHECK (pending_proof_digest IS NULL OR length(pending_proof_digest) = 32),
+  authorized_pending_proof TEXT,
   checkpoint_psbts TEXT,
   checkpoint_request_psbts TEXT,
   checkpoint_tapscript BLOB,
@@ -51,6 +53,10 @@ CREATE TABLE vtxo_operation (
   CHECK (
     (change_sats = 0 AND change_vout IS NULL AND (change_script IS NULL OR length(change_script) = 0))
     OR (change_sats >= 330 AND change_vout = 1 AND change_script IS NOT NULL AND length(change_script) > 0)
+  ),
+  CHECK (
+    (pending_proof_digest IS NULL AND (authorized_pending_proof IS NULL OR length(authorized_pending_proof) = 0))
+    OR (length(pending_proof_digest) = 32 AND authorized_pending_proof IS NOT NULL AND length(authorized_pending_proof) > 0)
   )
 );
 CREATE TABLE vtxo_operation_input (

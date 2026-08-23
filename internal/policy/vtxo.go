@@ -34,7 +34,7 @@ const (
 	VtxoStateAborted    = vtxoStateAborted
 	VtxoStateUnresolved = vtxoStateUnresolved
 
-	vtxoOperationCanonicalVer = 1
+	vtxoOperationCanonicalVer = 2
 	vtxoOperationInputKind    = "input"
 )
 
@@ -54,6 +54,8 @@ type VtxoOperation struct {
 	ChangeVout             *uint32
 	UnsignedPSBT           string
 	AuthorizedPSBT         string
+	PendingProofDigest     []byte
+	AuthorizedPendingProof string
 	CheckpointPSBTs        string
 	CheckpointRequestPSBTs string
 	CheckpointTapscript    []byte
@@ -378,6 +380,12 @@ func canonicalVtxoOperation(rec VtxoOperation) ([]byte, error) {
 	if len(rec.FeePolicyDigest) != sha256.Size {
 		return nil, fmt.Errorf("fee policy digest must be 32 bytes")
 	}
+	if (len(rec.PendingProofDigest) == 0) != (rec.AuthorizedPendingProof == "") {
+		return nil, fmt.Errorf("pending proof persistence must be all-or-nothing")
+	}
+	if len(rec.PendingProofDigest) != 0 && len(rec.PendingProofDigest) != sha256.Size {
+		return nil, fmt.Errorf("pending proof digest must be 32 bytes")
+	}
 	if rec.ChangeSats == 0 {
 		if rec.ChangeVout != nil || len(rec.ChangeScript) != 0 {
 			return nil, fmt.Errorf("invalid no-change shape")
@@ -396,6 +404,7 @@ func canonicalVtxoOperation(rec VtxoOperation) ([]byte, error) {
 		[]byte(rec.OperationID), []byte(rec.VaultID), []byte(rec.Purpose),
 		rec.BundleDigest, []byte(rec.State), rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript,
 		[]byte(rec.UnsignedPSBT), []byte(rec.AuthorizedPSBT),
+		rec.PendingProofDigest, []byte(rec.AuthorizedPendingProof),
 		[]byte(rec.CheckpointPSBTs), []byte(rec.CheckpointRequestPSBTs), rec.CheckpointTapscript,
 		[]byte(rec.ArkTxid), []byte(rec.ExpiresAt), []byte(rec.CreatedAt), rec.LastDestScript,
 	} {

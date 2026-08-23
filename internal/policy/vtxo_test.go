@@ -36,14 +36,16 @@ INSERT INTO vtxo_operation (
   operation_id, vault_id, purpose, bundle_digest, state,
   amount_sats, fee_sats, fee_policy_digest, dest_script, change_script,
   change_sats, change_vout,
-  unsigned_psbt, authorized_psbt, checkpoint_psbts, checkpoint_request_psbts,
+  unsigned_psbt, authorized_psbt, pending_proof_digest, authorized_pending_proof,
+  checkpoint_psbts, checkpoint_request_psbts,
   checkpoint_tapscript, ark_txid, expires_at, created_at, last_dest_script,
   integrity_mac
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.OperationID, rec.VaultID, rec.Purpose, rec.BundleDigest, rec.State,
 		rec.AmountSats, rec.FeeSats, rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript,
 		rec.ChangeSats, nullableVtxoVout(rec.ChangeVout),
-		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
+		rec.UnsignedPSBT, rec.AuthorizedPSBT, nullableVtxoDigest(rec.PendingProofDigest), rec.AuthorizedPendingProof,
+		rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
 		rec.CheckpointTapscript, rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt,
 		rec.LastDestScript, rec.IntegrityMAC,
 	); err != nil {
@@ -68,6 +70,8 @@ INSERT INTO vtxo_operation_input (
 
 func TestVtxoOperationMACCoversPolicyFields(t *testing.T) {
 	rec := testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, time.Unix(0, 0))
+	rec.PendingProofDigest = bytes.Repeat([]byte{0x23}, 32)
+	rec.AuthorizedPendingProof = "proof"
 	if err := SealVtxoOperation(&rec, testIntegrityKey()); err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +85,8 @@ func TestVtxoOperationMACCoversPolicyFields(t *testing.T) {
 		func(op *VtxoOperation) { op.State = vtxoStateAborted },
 		func(op *VtxoOperation) { op.CheckpointPSBTs = `["other"]` },
 		func(op *VtxoOperation) { op.CheckpointRequestPSBTs = "mutated" },
+		func(op *VtxoOperation) { op.PendingProofDigest[0]++ },
+		func(op *VtxoOperation) { op.AuthorizedPendingProof = "other-proof" },
 		func(op *VtxoOperation) { op.CheckpointTapscript = []byte{0xff} },
 	}
 	for _, mutate := range mutations {
