@@ -43,8 +43,12 @@ signing endpoint.
 Every mutating operation has one durable identifier, one canonical digest, and
 an explicit state machine. The wallet persists its VTXO operation ID before
 requesting a reservation and authenticates the canonical reservation with the
-phone key. An ambiguous response is reconciled by reading that operation. An
-exact client retry cannot allocate a second allowance or reuse an input.
+phone key. An ambiguous Vault-service response is reconciled by reading that
+operation. Before the first Operator submission, `authorize` persists a
+phone-and-VaultCosigner proof bound to the exact reserved inputs. The wallet
+submits once, then uses the deployed pending-transaction interface after an
+ambiguous response. An exact client retry cannot allocate a second allowance
+or reuse an input.
 
 Every newly reserved VTXO outflow also advances an authenticated sequence
 outside SQLite. Startup
@@ -61,36 +65,33 @@ Lightning is a separate durable saga binding the payment request, quote,
 solver, amount, fees, expiry, VHTLC, and policy refund destination. Lightning
 receive is a different program and release gate.
 
-Mainnet code remains fail-closed until the Operator origin, network identity,
-signer keys, supported versions, delay units, fee bounds, and rotation policy
-are frozen. The arkd intent lifecycle corrections and Redis concurrency tests
-must be upstream, released, deployed, and qualified before boarding is enabled.
-Candidate SDK changes durably retain the exact registration request and the
-Operator intent identifier, fail closed when durable intent state is unreadable,
-and keep nonterminal intent inputs out of ordinary settlement and boarding.
-Candidate arkd also exposes exact-identifier lifecycle state and the active
-batch tuple for selected and in-progress intents. These changes must be released
-and pinned by the wallet. Mainnet v1 does not reconstruct a lost MuSig2
-session. Every failure before the Operator's durable `PREPARED` boundary must
-atomically restore the exact selected intents with both lock classes intact. A
-`PREPARED` batch must retain its exact signed commitment, forfeits, membership,
-and projection inputs, then re-broadcast and reconcile that transaction after
-restart or an ambiguous broadcast response. It can never return those intents
-to `LIVE`.
+Mainnet uses `https://arkade.computer` and the official Arkade SDK as existing
+dependencies. Vault code must stay within the deployed `getInfo`, indexer,
+`submitTx`, `finalizeTx`, and pending-transaction interfaces. Vault-specific
+changes to `arkd`, exact intent-release endpoints, replayable event streams,
+and private Operator lifecycle state are outside the deployment boundary.
+
+The remaining unavailable external dependency is the private mainnet Emulator
+endpoint. Mainnet code remains fail-closed until that endpoint is supplied and
+the deployed Operator origin, network identity, signer keys, checkpoint policy,
+delay units, fee bounds, and rotation policy are pinned in both Contract Packs.
+
+Vault Program parameters and policy adjustments are deliberately deferred
+until ordinary Mutinynet Spending and recovery are qualified. The current
+cleanup retains the current Mutinynet policy values.
 
 The resolver is startup-critical for the VTXO-first release. Readiness requires
 the exact release-pinned Operator signer and checkpoint unroll closure. Remote
 GetInfo data cannot change the checkpoint key, closure type, or CSV delay that
 the VaultCosigner will authorize.
 
-## Boarding trust window
+## Boarding trust assumption
 
 The current boarding intermediate is a phone-plus-Operator contract. The
 VaultCosigner and rolling allowance begin governing the value only after the
 Operator settles it into `vault-policy-v1`. A compromised phone and Operator
-can therefore collude during that interval. Mainnet boarding remains blocked
-until a reviewed construction either proves an acceptable bound on that
-interval or includes the VaultCosigner policy before settlement.
+can therefore collude during that interval. This is an explicit property of the
+standard SDK boarding path and must remain visible in the release threat model.
 
 ## Ordinary Spending qualification
 
@@ -99,9 +100,10 @@ change, and the Operator's bounded intent fee policy. Reservation digests bind
 every input, the exact fee-policy digest and fee, and the optional change
 shape. Both signing stages reject fee-policy drift.
 
-Mainnet remains blocked until live tests cover fragmented balances, exact
-no-change sends, nonzero and amount-dependent fees, reloads, dropped responses,
-checkpoint reordering, and concurrent retries against the release Operator.
+Mainnet qualification covers fragmented balances, exact no-change sends,
+nonzero and amount-dependent fees, reloads, dropped responses, ambiguous
+Operator submissions, empty and mismatched pending lookups, checkpoint
+reordering, and concurrent attempts against `arkade.computer`.
 
 The client-generated operation ID closes lost reserve responses, the phone
 signature prevents a caller who only knows a vault ID from creating a
@@ -139,5 +141,6 @@ nonempty deployment's sequence file is fatal. Restoring the database and
 sequence together to an earlier point defeats rollback detection.
 
 The Mutinynet 4,608-second guardian delay is not a mainnet pin. Mainnet tree
-vectors and both contract packs must be regenerated only after a reviewed
-delay and Operator identity are frozen.
+vectors and both Contract Packs must be regenerated from the deployed Operator
+identity and reviewed mainnet parameters after the Emulator endpoint is
+available.
