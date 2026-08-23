@@ -1,0 +1,8 @@
+.env
+.railway
+secrets/
+*.sqlite
+*.sqlite-*
+.DS_Store
+/vault-authorizer
+*.test

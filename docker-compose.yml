@@ -1,0 +1,43 @@
+name: arkade-vault-server
+
+services:
+  vault-authorizer:
+    build:
+      context: .
+      dockerfile: Dockerfile.mutinynet
+    command:
+      - -addr=0.0.0.0:8788
+      - -db=/app/data/vault.sqlite
+      - -policy-sequence=/app/sequence/policy-sequence
+      - -vault-cosigner-key-file=/run/secrets/vault_cosigner_key
+      - -enrollment-token-file=/run/secrets/vault_enrollment_token
+    environment:
+      VAULT_NETWORK: ${VAULT_NETWORK:-mutinynet}
+      VAULT_CLIENT_ORIGIN: ${VAULT_CLIENT_ORIGIN:?set VAULT_CLIENT_ORIGIN}
+      VAULT_RP_ID: ${VAULT_RP_ID:?set VAULT_RP_ID}
+      VAULT_GATEWAY_SECRET: ${VAULT_GATEWAY_SECRET:?set VAULT_GATEWAY_SECRET}
+    secrets:
+      - vault_cosigner_key
+      - vault_enrollment_token
+    volumes:
+      - vault-data:/app/data
+      - vault-sequence:/app/sequence
+    ports:
+      - "127.0.0.1:8788:8788"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  vault_cosigner_key:
+    file: ./secrets/vault-cosigner-key
+  vault_enrollment_token:
+    file: ./secrets/enrollment-token
+
+volumes:
+  vault-data:
+  vault-sequence:

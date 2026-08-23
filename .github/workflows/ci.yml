@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: server-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify modules
+        run: go mod verify
+      - name: Test
+        run: go test ./...
+      - name: Race
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.1
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Railway image
+        run: docker build -f Dockerfile.railway -t arkade-vault-server:railway .
+      - name: Build Mutinynet image
+        run: docker build -f Dockerfile.mutinynet -t arkade-vault-server:mutinynet .

@@ -1,0 +1,68 @@
+[
+  {
+    "name": "with-recovery",
+    "recovery": true,
+    "descriptorHash": "be28faaa9480e9eec214311bdd060bdb4d0c07ff30730971610df326a8962ea1",
+    "savings": {
+      "address": "tb1pgwr9uyhn2ylwygxym2eydfyf37rlly3ag679ffsqjhxgpyker4kqkx2m2h",
+      "script": "512043865e12f3513ee220c4dab246a4898f87ff923d46bc54a60095cc8092d91d6c"
+    },
+    "pending": {
+      "savings-phone": {
+        "address": "tb1pp5agdzvca9qm2jf6k2ahxdqkms9v72lc4d2tum493lrqwtvfwprspdhz80",
+        "script": "51200d3a868998e941b5493ab2bb733416dc0acf2bf8ab54be6ea58fc6072d897047"
+      },
+      "savings-hardware": {
+        "address": "tb1p5le4jtw6l234040qmn405cgsan38cuhxullewhd774whypg4txcqae3jyu",
+        "script": "5120a7f3592ddafaa357d5e0dceafa6110ece27c72e6e7ff975dbef55d72051559b0"
+      },
+      "savings-recovery": {
+        "address": "tb1pu5w260engdutwzy6rcm59nttmp6y3sm4gkn08u69puy9wf82havs0mp65x",
+        "script": "5120e51cad3f334378b7089a1e3742cd6bd87448c37545a6f3f3450f085724eabf59"
+      }
+    },
+    "quarantine": {
+      "savings-phone": {
+        "address": "tb1pwhdhf7xm4ns689tsf7cy2raw7mxtt54yhf9sa2duvmpj82lnwqps8g6shu",
+        "script": "512075db74f8dbace1a395704fb0450faef6ccb5d2a4ba4b0ea9bc66c323abf37003"
+      },
+      "savings-hardware": {
+        "address": "tb1ptud88pw5waed36f6r3wwhth7h2j5hskucqvkshrrse8kvuqkve3q92h4fn",
+        "script": "51205f1a7385d47772d8e93a1c5cebaefebaa54bc2dcc019685c63864f6670166662"
+      },
+      "savings-recovery": {
+        "address": "tb1p7xwlzy07qyttlj9h2n97d3uyjfv8eqf39ec3lqwsgyrztukmuvrsm4kvrn",
+        "script": "5120f19df111fe0116bfc8b754cbe6c78492587c81312e711f81d0410625f2dbe307"
+      }
+    }
+  },
+  {
+    "name": "without-recovery",
+    "recovery": false,
+    "descriptorHash": "2c28241456a7d05b9d604e72fdaf96276c22c34012bb6e22fbbdb1a0fe784543",
+    "savings": {
+      "address": "tb1pfth3d3jq2je2k5qr3ttqwlk8ehtaxu5p484fyl38t3ph3gh2gkqqzdzy80",
+      "script": "51204aef16c64054b2ab50038ad6077ec7cdd7d37281a9ea927e275c4378a2ea4580"
+    },
+    "pending": {
+      "savings-phone": {
+        "address": "tb1pv4ns37crg64ea6eqhsznukfxwl8m9fyxd0twr53r3wz3jw3efs9q8y507v",
+        "script": "5120656708fb0346ab9eeb20bc053e592677cfb2a4866bd6e1d2238b85193a394c0a"
+      },
+      "savings-hardware": {
+        "address": "tb1p6zc45m0v6pz3stqqhle78d74dy2w6snf8ujezjlmejdmpcn3vl5stjm4ry",
+        "script": "5120d0b15a6decd045182c00bff3e3b7d56914ed42693f25914bfbcc9bb0e27167e9"
+      }
+    },
+    "quarantine": {
+      "savings-phone": {
+        "address": "tb1pldvfqxrpp5srghc94q0gp84wkpc9fjz8yzq47guzd824rhzfmscsncrffr",
+        "script": "5120fb589018610d20345f05a81e809eaeb07054c84720815f238269d551dc49dc31"
+      },
+      "savings-hardware": {
+        "address": "tb1py5hk2lk9vqxvahpcgz4wztd3je5p7g84qnufge7wf99ylx46fwvq7zgakv",
+        "script": "5120252f657ec5600ccedc3840aae12db196681f20f504f89467ce494a4f9aba4b98"
+      }
+    }
+  }
+]
