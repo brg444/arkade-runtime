@@ -77,7 +77,7 @@
     "vaultRecord": "arkade-vault/vault-record/v1",
     "vaultCredential": "arkade-vault/vault-credential/v1",
     "recoverySession": "arkade-2fa-vault/recovery-session/v2",
-    "recoveryBinding": "arkade-vault/recovery-binding/v2",
+    "recoveryBinding": "arkade-vault/recovery-binding/v3",
     "passkeyProof": "arkade-2fa-vault/passkey-proof/v1",
     "vtxoReserve": "arkade-vault/vtxo-reserve/v1"
   }

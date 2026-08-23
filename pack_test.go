@@ -160,6 +160,9 @@ func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
 	if _, ok := pack.Domains["enrollmentPop"]; ok {
 		t.Fatal("contract pack must not publish an enrollment proof domain")
 	}
+	if pack.Domains["recoveryBinding"] != "arkade-vault/recovery-binding/v3" {
+		t.Fatalf("recovery binding domain = %q", pack.Domains["recoveryBinding"])
+	}
 	if _, ok := pack.Programs["savings-recovery-v1"]["recoveryPopTag"]; ok {
 		t.Fatal("Savings recovery program must not publish a recovery proof tag")
 	}
