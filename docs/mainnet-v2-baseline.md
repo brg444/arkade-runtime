@@ -72,7 +72,10 @@ Candidate arkd also exposes exact-identifier lifecycle state and the active
 batch tuple for selected and in-progress intents. These changes must be released
 and pinned by the wallet; reload must restore the same signing session and
 settlement handler before it replays that request, and an event-stream reconnect
-must recover every missed signing-stage event.
+must recover every missed signing-stage event. Current arkd stores cannot
+reconstruct the full ordered prefix after tree signing starts. Mainnet requires
+a persist-before-publish, exact-intent event journal with batch-generation
+binding and a gap-free replay-to-live cursor.
 
 The resolver is startup-critical for the VTXO-first release. Readiness requires
 the exact release-pinned Operator signer and checkpoint unroll closure. Remote
