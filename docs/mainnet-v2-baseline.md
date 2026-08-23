@@ -64,9 +64,15 @@ receive is a different program and release gate.
 Mainnet code remains fail-closed until the Operator origin, network identity,
 signer keys, supported versions, delay units, fee bounds, and rotation policy
 are frozen. The arkd intent lifecycle corrections and Redis concurrency tests
-must be upstream and deployed before boarding is enabled. The SDK must durably
-retain the Operator intent identifier before returning success, and an
-EventSource reconnect must recover missed lifecycle events.
+must be upstream, released, deployed, and qualified before boarding is enabled.
+Candidate SDK changes durably retain the exact registration request and the
+Operator intent identifier, fail closed when durable intent state is unreadable,
+and keep nonterminal intent inputs out of ordinary settlement and boarding.
+Candidate arkd also exposes exact-identifier lifecycle state and the active
+batch tuple for selected and in-progress intents. These changes must be released
+and pinned by the wallet; reload must restore the same signing session and
+settlement handler before it replays that request, and an event-stream reconnect
+must recover every missed signing-stage event.
 
 The resolver is startup-critical for the VTXO-first release. Readiness requires
 the exact release-pinned Operator signer and checkpoint unroll closure. Remote
@@ -113,9 +119,9 @@ bound this scan safely. Mainnet load testing must establish a supported ledger
 bound, or the ledger must gain an authenticated accumulator before that bound
 is exceeded.
 
-Wallet send and boarding locks currently depend on the browser Web Locks API.
-Mainnet either requires that capability and fails closed when it is absent, or
-adds a durable IndexedDB lease with deterministic two-context race tests.
+Wallet send and boarding locks depend on the browser Web Locks API and fail
+closed when it is absent. Mainnet qualification must define the supported
+browser boundary and cover deterministic two-context race tests.
 
 Hardware and recovery signing use external PSBT exchange. Mainnet qualification
 must prove that supported devices preserve the custom tapscript fields and
