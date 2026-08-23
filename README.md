@@ -161,7 +161,7 @@ The complete gate and operations posture are recorded in
 [deploy/ops.md](deploy/ops.md). The release remains blocked by the boarding
 trust window, live ordinary-send qualification, a mainnet-specific
 guardian delay, release and live qualification of the candidate arkd and SDK
-intent-lifecycle changes, resumable boarding after reload, independent
+intent-lifecycle changes, fail-closed interrupted boarding, independent
 rollback-control storage, shared durable edge rate limiting, and the
 authenticated ledger performance bound.
 
