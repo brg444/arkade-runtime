@@ -93,6 +93,13 @@ Operator settles it into `vault-policy-v1`. A compromised phone and Operator
 can therefore collude during that interval. This is an explicit property of the
 standard SDK boarding path and must remain visible in the release threat model.
 
+Boarding also has an external availability gate. The stock SDK may record a
+settlement intent as cancelled after its best-effort delete was not
+acknowledged. The current deployed Operator does not match that deletion by a
+boarding input, so a later retry can collide with the retained intent. Mainnet
+boarding requires qualification of the deployed cancellation path for boarding
+inputs. The Vault service exposes no substitute intent lifecycle.
+
 ## Ordinary Spending qualification
 
 The Mutinynet implementation supports up to 50 canonical VTXO inputs, optional
