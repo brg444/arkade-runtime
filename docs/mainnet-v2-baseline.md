@@ -55,12 +55,20 @@ permissions, backups, and restore decisions. Separate paths or named volumes
 under one authority fail to establish independent failure domains. Restoring
 both to the same earlier point defeats rollback detection.
 
+The recovery envelope uses `arkade-vault/recovery-binding/v3`. Its signed
+preimage includes the authenticated credential, complete Savings descriptor,
+and every immutable Spending and boarding field. The server rebuilds those
+fields from its release-pinned policy when it creates or installs the binding;
+substituted or incomplete descriptors fail closed.
+
 ## Release gates
 
-Ordinary VTXO transfers and boarding must stabilize before Lightning. Outbound BOLT11
-Lightning is a separate durable saga binding the payment request, quote,
-solver, amount, fees, expiry, VHTLC, and policy refund destination. Lightning
-receive is a different program and release gate.
+Ordinary VTXO transfers and boarding must stabilize before Lightning. Outbound
+BOLT11 delegates invoice, RFQ, VHTLC, and contract-registration semantics to
+the published swap package in the wallet. Funding is an ordinary VTXO transfer
+to the package-verified lockup address, so this service applies its existing
+allowance and transaction policy without Lightning-specific routes, schema, or
+signing logic. Lightning receive is a different program and release gate.
 
 Mainnet uses `https://arkade.computer` and the official Arkade SDK as existing
 dependencies. Vault code must stay within the deployed `getInfo`, indexer,
@@ -129,6 +137,11 @@ bound this scan safely. Mainnet load testing must establish a supported ledger
 bound, or the ledger must gain an authenticated accumulator before that bound
 is exceeded.
 
+The indexer adapter paginates spendable VTXOs through the deployed response
+contract and fails closed above 3,200 results. Submitted-operation recovery
+uses the official exact-outpoint filter for at most 50 reserved inputs plus the
+expected change output, avoiding a full script-history scan.
+
 Wallet send and boarding locks depend on the browser Web Locks API and fail
 closed when it is absent. Mainnet qualification must define the supported
 browser boundary and cover deterministic two-context race tests.
@@ -148,3 +161,27 @@ The Mutinynet 4,608-second guardian delay is not a mainnet pin. Mainnet tree
 vectors and both Contract Packs must be regenerated from the deployed Operator
 identity and reviewed mainnet parameters after the Emulator endpoint is
 available.
+
+The current Go module replaces the official Emulator signing package with a
+narrow fork that adds packet-entry binding, previous-output bounds, and scalar
+edge-case checks. Mainnet distribution requires those checks in a reviewed
+official Emulator release, followed by removal of the private module replace.
+This package gate does not require or authorize any change to `arkd`.
+
+The server repository also requires an explicit distribution license before a
+public mainnet release.
+
+## Current qualification evidence
+
+The release branch passes the full Go test suite, full race suite, `go vet`,
+and `govulncheck`. The allowance benchmark records approximately 1.1 ms for 100
+authenticated historical rows, 16 ms for 1,000 rows, and 115 ms for 10,000 rows
+on an Apple M1. These measurements confirm linear work and keep the supported
+history bound open until deployment load tests establish the initial limit.
+
+On August 23, 2026, `https://arkade.computer/v1/info` reported network
+`bitcoin`, version `v0.9.16-rc.11`, signer
+`038202...779c`, a 605,184-second unilateral exit delay, and a 200-sat onchain
+output intent fee. These are observed compatibility facts, not release pins.
+The final manifest must capture and verify the complete values immediately
+before Contract Pack generation.

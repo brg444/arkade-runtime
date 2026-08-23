@@ -171,8 +171,10 @@ deliberately deferred until the current Mutinynet lifecycle is stable.
 
 Ordinary VTXO send and boarding still require live qualification against
 `arkade.computer`, along with the documented storage, rate-limit, and hardware
-checks. Lightning remains a later workflow and cannot share the ordinary-send
-operation by adding optional fields.
+checks. Outbound Lightning uses the wallet's published swap-package adapter;
+its funding transaction is an ordinary VTXO send, so this service adds no
+Lightning endpoint or schema. Invoice, quote, solver, refund, and live-payment
+qualification remain wallet release gates.
 
 ## Repository map
 
