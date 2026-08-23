@@ -2,8 +2,6 @@ module github.com/brg444/arkade-vault-server
 
 go 1.26.6
 
-replace github.com/btcsuite/btcd/btcec/v2 => github.com/btcsuite/btcd/btcec/v2 v2.3.3
-
 // Script engine only. Do not vendor the emulator monorepo.
 replace github.com/arkade-os/emulator/pkg/arkade => github.com/brg444/arkade-2fa-vault-poc/pkg/arkade v0.0.0-20260818081800-1b511fd273c7
 
