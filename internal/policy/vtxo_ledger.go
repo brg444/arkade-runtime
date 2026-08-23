@@ -12,6 +12,7 @@ const vtxoSelectColumns = `operation_id, vault_id, purpose, bundle_digest, state
 		        amount_sats, fee_sats, fee_policy_digest, dest_script, change_script,
 		        change_sats, change_vout,
 		        IFNULL(unsigned_psbt, ''), IFNULL(authorized_psbt, ''),
+		        pending_proof_digest, IFNULL(authorized_pending_proof, ''),
 		        IFNULL(checkpoint_psbts, ''), IFNULL(checkpoint_request_psbts, ''),
 		        checkpoint_tapscript, IFNULL(ark_txid, ''), IFNULL(expires_at, ''),
 		        created_at, last_dest_script, integrity_mac`
@@ -20,6 +21,7 @@ const vtxoOverlapSelectColumns = `o.operation_id, o.vault_id, o.purpose, o.bundl
 		        o.amount_sats, o.fee_sats, o.fee_policy_digest, o.dest_script, o.change_script,
 		        o.change_sats, o.change_vout,
 		        IFNULL(o.unsigned_psbt, ''), IFNULL(o.authorized_psbt, ''),
+		        o.pending_proof_digest, IFNULL(o.authorized_pending_proof, ''),
 		        IFNULL(o.checkpoint_psbts, ''), IFNULL(o.checkpoint_request_psbts, ''),
 		        o.checkpoint_tapscript, IFNULL(o.ark_txid, ''), IFNULL(o.expires_at, ''),
 		        o.created_at, o.last_dest_script, o.integrity_mac`
@@ -154,14 +156,16 @@ INSERT INTO vtxo_operation (
   operation_id, vault_id, purpose, bundle_digest, state,
   amount_sats, fee_sats, fee_policy_digest, dest_script, change_script,
   change_sats, change_vout,
-  unsigned_psbt, authorized_psbt, checkpoint_psbts, checkpoint_request_psbts,
+  unsigned_psbt, authorized_psbt, pending_proof_digest, authorized_pending_proof,
+  checkpoint_psbts, checkpoint_request_psbts,
   checkpoint_tapscript, ark_txid, expires_at, created_at, last_dest_script,
   integrity_mac
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.OperationID, rec.VaultID, rec.Purpose, rec.BundleDigest, rec.State,
 		rec.AmountSats, rec.FeeSats, rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript,
 		rec.ChangeSats, nullableVtxoVout(rec.ChangeVout),
-		rec.UnsignedPSBT, rec.AuthorizedPSBT, rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
+		rec.UnsignedPSBT, rec.AuthorizedPSBT, nullableVtxoDigest(rec.PendingProofDigest), rec.AuthorizedPendingProof,
+		rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs,
 		rec.CheckpointTapscript, rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt,
 		rec.LastDestScript, rec.IntegrityMAC,
 	); err != nil {
@@ -221,6 +225,7 @@ UPDATE vtxo_operation SET
   purpose = ?, bundle_digest = ?, state = ?, amount_sats = ?, fee_sats = ?,
   fee_policy_digest = ?, dest_script = ?, change_script = ?, change_sats = ?, change_vout = ?,
   unsigned_psbt = ?, authorized_psbt = ?,
+  pending_proof_digest = ?, authorized_pending_proof = ?,
   checkpoint_psbts = ?, checkpoint_request_psbts = ?, checkpoint_tapscript = ?,
   ark_txid = ?, expires_at = ?, created_at = ?, last_dest_script = ?,
   integrity_mac = ?
@@ -228,6 +233,7 @@ UPDATE vtxo_operation SET
 		rec.Purpose, rec.BundleDigest, rec.State, rec.AmountSats, rec.FeeSats,
 		rec.FeePolicyDigest, rec.DestScript, rec.ChangeScript, rec.ChangeSats, nullableVtxoVout(rec.ChangeVout),
 		rec.UnsignedPSBT, rec.AuthorizedPSBT,
+		nullableVtxoDigest(rec.PendingProofDigest), rec.AuthorizedPendingProof,
 		rec.CheckpointPSBTs, rec.CheckpointRequestPSBTs, rec.CheckpointTapscript,
 		rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt, rec.LastDestScript,
 		rec.IntegrityMAC, rec.OperationID, rec.VaultID, expectedState,

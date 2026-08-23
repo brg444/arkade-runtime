@@ -22,6 +22,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
 
@@ -68,6 +69,7 @@ type VtxoAuthorizeRequest struct {
 	BundleDigest            string   `json:"bundleDigest"`
 	UnsignedArkPsbt         string   `json:"unsignedArkPsbt"`
 	UnsignedCheckpointPsbts []string `json:"unsignedCheckpointPsbts"`
+	PendingProof            string   `json:"pendingProof"`
 	CredentialID            string   `json:"credentialId"`
 	ClientDataJSON          string   `json:"clientDataJSON"`
 	AuthenticatorData       string   `json:"authenticatorData"`
@@ -75,13 +77,15 @@ type VtxoAuthorizeRequest struct {
 	DirectSig               string   `json:"directSig"`
 }
 
-// VtxoAuthorizeResponse returns the VaultCosigner-authorized Ark PSBT. The
+// VtxoAuthorizeResponse returns the VaultCosigner-authorized Ark PSBT and the
+// dual-signed proof that can recover an ambiguous Operator SubmitTx result. The
 // Operator-returned checkpoints use the separate post-submit endpoint.
 type VtxoAuthorizeResponse struct {
-	OperationID    string `json:"operationId"`
-	BundleDigest   string `json:"bundleDigest"`
-	AuthorizedPsbt string `json:"authorizedPsbt"`
-	ArkTxid        string `json:"arkTxid"`
+	OperationID            string `json:"operationId"`
+	BundleDigest           string `json:"bundleDigest"`
+	AuthorizedPsbt         string `json:"authorizedPsbt"`
+	AuthorizedPendingProof string `json:"authorizedPendingProof"`
+	ArkTxid                string `json:"arkTxid"`
 }
 
 // VtxoCheckpointAuthorizeRequest is the post-submit signing stage. The
@@ -688,18 +692,19 @@ func vtxoFinalizableState(state string) bool {
 // Signed and submitted rows include the PSBT material needed to resume a lost
 // authorize or checkpoint-authorize response.
 type VtxoOperationView struct {
-	OperationID     string   `json:"operationId"`
-	BundleDigest    string   `json:"bundleDigest"`
-	State           string   `json:"state"`
-	ArkTxid         string   `json:"arkTxid,omitempty"`
-	ExpiresAt       string   `json:"expiresAt,omitempty"`
-	FeeSats         uint64   `json:"feeSats"`
-	FeePolicyDigest string   `json:"feePolicyDigest"`
-	ChangeSats      uint64   `json:"changeSats"`
-	ChangeVout      *uint32  `json:"changeVout,omitempty"`
-	ChangeScript    string   `json:"changeScript"`
-	AuthorizedPsbt  string   `json:"authorizedPsbt,omitempty"`
-	CheckpointPsbts []string `json:"checkpointPsbts,omitempty"`
+	OperationID            string   `json:"operationId"`
+	BundleDigest           string   `json:"bundleDigest"`
+	State                  string   `json:"state"`
+	ArkTxid                string   `json:"arkTxid,omitempty"`
+	ExpiresAt              string   `json:"expiresAt,omitempty"`
+	FeeSats                uint64   `json:"feeSats"`
+	FeePolicyDigest        string   `json:"feePolicyDigest"`
+	ChangeSats             uint64   `json:"changeSats"`
+	ChangeVout             *uint32  `json:"changeVout,omitempty"`
+	ChangeScript           string   `json:"changeScript"`
+	AuthorizedPsbt         string   `json:"authorizedPsbt,omitempty"`
+	AuthorizedPendingProof string   `json:"authorizedPendingProof,omitempty"`
+	CheckpointPsbts        []string `json:"checkpointPsbts,omitempty"`
 }
 
 func (s *Service) expireReservedVtxo(ctx context.Context, op policy.VtxoOperation) (policy.VtxoOperation, error) {
@@ -766,8 +771,10 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 	switch op.State {
 	case policy.VtxoStateSigned:
 		view.AuthorizedPsbt = op.AuthorizedPSBT
+		view.AuthorizedPendingProof = op.AuthorizedPendingProof
 	case policy.VtxoStateSubmitted:
 		view.AuthorizedPsbt = op.AuthorizedPSBT
+		view.AuthorizedPendingProof = op.AuthorizedPendingProof
 		view.CheckpointPsbts = decodeJSONStringSlice(op.CheckpointPSBTs)
 	}
 	return view, nil
@@ -886,6 +893,13 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	if err := verifySpendPSBT(arkPkt, op, inputs, tree, checkpoints); err != nil {
 		return nil, apperr.New(apperr.CodeRejected, err.Error())
 	}
+	if err := verifyPhonePendingProof(req.PendingProof, inputs, tree, snap.PhoneBIP340); err != nil {
+		return nil, apperr.New(apperr.CodeRejected, err.Error())
+	}
+	pendingDigest, err := pendingProofDigest(req.PendingProof)
+	if err != nil {
+		return nil, apperr.New(apperr.CodeRejected, err.Error())
+	}
 	if err := s.bindVtxoAuthorization(ctx, vaultID, op.BundleDigest, WebAuthnAssertionRequest{
 		CredentialID: req.CredentialID, ClientDataJSON: req.ClientDataJSON,
 		AuthenticatorData: req.AuthenticatorData, Signature: req.Signature,
@@ -893,18 +907,21 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 		return nil, err
 	}
 	if op.State == policy.VtxoStateSigned {
-		if op.UnsignedPSBT != req.UnsignedArkPsbt || op.CheckpointPSBTs != encodeJSONStringSlice(req.UnsignedCheckpointPsbts) {
+		if op.UnsignedPSBT != req.UnsignedArkPsbt || op.CheckpointPSBTs != encodeJSONStringSlice(req.UnsignedCheckpointPsbts) ||
+			!bytes.Equal(op.PendingProofDigest, pendingDigest) || op.AuthorizedPendingProof == "" {
 			return nil, apperr.New(apperr.CodeRejected, "changed psbt")
 		}
 		return &VtxoAuthorizeResponse{
-			OperationID:    op.OperationID,
-			BundleDigest:   hex.EncodeToString(op.BundleDigest),
-			AuthorizedPsbt: op.AuthorizedPSBT,
-			ArkTxid:        op.ArkTxid,
+			OperationID:            op.OperationID,
+			BundleDigest:           hex.EncodeToString(op.BundleDigest),
+			AuthorizedPsbt:         op.AuthorizedPSBT,
+			AuthorizedPendingProof: op.AuthorizedPendingProof,
+			ArkTxid:                op.ArkTxid,
 		}, nil
 	}
 	arkTxid := arkPkt.UnsignedTx.TxHash().String()
 	op.UnsignedPSBT = req.UnsignedArkPsbt
+	op.PendingProofDigest = bytes.Clone(pendingDigest)
 	op.CheckpointPSBTs = encodeJSONStringSlice(req.UnsignedCheckpointPsbts)
 	op.ArkTxid = arkTxid
 	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
@@ -922,7 +939,20 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	if err != nil {
 		return nil, err
 	}
+	authorizedPendingProof, err := signExactArkStageWithSighash(
+		signCtx, req.PendingProof, cosigner, expected, tree.SpendLeaf, txscript.SigHashAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireOnlyVaultSignatureAdded(req.PendingProof, authorizedPendingProof, expected); err != nil {
+		return nil, apperr.New(apperr.CodeRejected, err.Error())
+	}
+	if err := verifyDualSignedPendingProof(authorizedPendingProof, inputs, tree, snap.PhoneBIP340); err != nil {
+		return nil, apperr.New(apperr.CodeRejected, err.Error())
+	}
 	op.AuthorizedPSBT = signedArk
+	op.AuthorizedPendingProof = authorizedPendingProof
 	// Persist the exact unsigned stage. The Operator reconstructs checkpoints
 	// during submit, so signing these now would only create signatures that are
 	// discarded before finalization.
@@ -934,18 +964,21 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	}
 	if !swapped {
 		if current.State != policy.VtxoStateSigned || current.UnsignedPSBT != req.UnsignedArkPsbt ||
-			current.CheckpointPSBTs != encodeJSONStringSlice(req.UnsignedCheckpointPsbts) {
+			current.CheckpointPSBTs != encodeJSONStringSlice(req.UnsignedCheckpointPsbts) ||
+			!bytes.Equal(current.PendingProofDigest, pendingDigest) || current.AuthorizedPendingProof == "" {
 			return nil, apperr.New(apperr.CodeRejected, "vtxo operation changed concurrently")
 		}
 		op = current
 		signedArk = current.AuthorizedPSBT
+		authorizedPendingProof = current.AuthorizedPendingProof
 		arkTxid = current.ArkTxid
 	}
 	return &VtxoAuthorizeResponse{
-		OperationID:    op.OperationID,
-		BundleDigest:   hex.EncodeToString(op.BundleDigest),
-		AuthorizedPsbt: signedArk,
-		ArkTxid:        arkTxid,
+		OperationID:            op.OperationID,
+		BundleDigest:           hex.EncodeToString(op.BundleDigest),
+		AuthorizedPsbt:         signedArk,
+		AuthorizedPendingProof: authorizedPendingProof,
+		ArkTxid:                arkTxid,
 	}, nil
 }
 

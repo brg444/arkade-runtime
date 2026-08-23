@@ -169,6 +169,8 @@ var expectedCurrentTables = map[string]struct {
 			spec("change_vout", "INTEGER", false, 0),
 			spec("unsigned_psbt", "TEXT", false, 0),
 			spec("authorized_psbt", "TEXT", false, 0),
+			spec("pending_proof_digest", "BLOB", false, 0),
+			spec("authorized_pending_proof", "TEXT", false, 0),
 			spec("checkpoint_psbts", "TEXT", false, 0),
 			spec("checkpoint_request_psbts", "TEXT", false, 0),
 			spec("checkpoint_tapscript", "BLOB", false, 0),
