@@ -70,12 +70,13 @@ Operator intent identifier, fail closed when durable intent state is unreadable,
 and keep nonterminal intent inputs out of ordinary settlement and boarding.
 Candidate arkd also exposes exact-identifier lifecycle state and the active
 batch tuple for selected and in-progress intents. These changes must be released
-and pinned by the wallet; reload must restore the same signing session and
-settlement handler before it replays that request, and an event-stream reconnect
-must recover every missed signing-stage event. Current arkd stores cannot
-reconstruct the full ordered prefix after tree signing starts. Mainnet requires
-a persist-before-publish, exact-intent event journal with batch-generation
-binding and a gap-free replay-to-live cursor.
+and pinned by the wallet. Mainnet v1 does not reconstruct a lost MuSig2
+session. Every failure before the Operator's durable `PREPARED` boundary must
+atomically restore the exact selected intents with both lock classes intact. A
+`PREPARED` batch must retain its exact signed commitment, forfeits, membership,
+and projection inputs, then re-broadcast and reconcile that transaction after
+restart or an ambiguous broadcast response. It can never return those intents
+to `LIVE`.
 
 The resolver is startup-critical for the VTXO-first release. Readiness requires
 the exact release-pinned Operator signer and checkpoint unroll closure. Remote
