@@ -125,11 +125,6 @@ type recoveryBinding struct {
 	PolicyVersion             string `json:"policyVersion"`
 	SavingsAddress            string `json:"savingsAddress"`
 	SavingsScript             string `json:"savingsScript"`
-	RecipientDustSats         int64  `json:"recipientDustSats"`
-	TxRecipientCapSats        int64  `json:"txRecipientCapSats"`
-	PeriodAllowanceSats       int64  `json:"periodAllowanceSats"`
-	AbsoluteFeeCapSats        int64  `json:"absoluteFeeCapSats"`
-	FeerateCapSatPerV         int64  `json:"feerateCapSatVb"`
 	VtxoVaultCosignerPub      string `json:"vtxoVaultCosignerPub"`
 	VtxoExitDelay             uint32 `json:"vtxoExitDelay"`
 	VtxoExitDelayUnit         string `json:"vtxoExitDelayUnit"`
@@ -142,6 +137,11 @@ type recoveryBinding struct {
 	VtxoBoardingScript        string `json:"vtxoBoardingScript"`
 	VtxoBoardingExitDelay     uint32 `json:"vtxoBoardingExitDelay"`
 	VtxoBoardingExitDelayUnit string `json:"vtxoBoardingExitDelayUnit"`
+	RecipientDustSats         int64  `json:"recipientDustSats"`
+	TxRecipientCapSats        int64  `json:"txRecipientCapSats"`
+	PeriodAllowanceSats       int64  `json:"periodAllowanceSats"`
+	AbsoluteFeeCapSats        int64  `json:"absoluteFeeCapSats"`
+	FeerateCapSatPerV         int64  `json:"feerateCapSatVb"`
 	EnvelopeNonce             string `json:"envelopeNonce"`
 	EnvelopeCiphertext        string `json:"envelopeCiphertext"`
 }
@@ -428,9 +428,6 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		ClientOrigin: cred.Origin, RPID: cred.RPID, Network: cred.Network, VaultID: cred.VaultID,
 		TemplateVersion: cred.TemplateVersion, PolicyVersion: cred.PolicyVersion,
 		SavingsAddress: cred.SavingsAddress, SavingsScript: hex.EncodeToString(cred.SavingsScript),
-		RecipientDustSats: cred.RecipientDustSats, TxRecipientCapSats: cred.TxRecipientCapSats,
-		PeriodAllowanceSats: cred.PeriodAllowanceSats, AbsoluteFeeCapSats: cred.AbsoluteFeeCapSats,
-		FeerateCapSatPerV:         cred.FeerateCapSatPerV,
 		VtxoVaultCosignerPub:      hex.EncodeToString(spending.CosignerPub.SerializeCompressed()),
 		VtxoExitDelay:             program.VaultPolicyV1ExitDelay,
 		VtxoExitDelayUnit:         program.VaultPolicyV1ExitDelayUnit,
@@ -443,6 +440,11 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		VtxoBoardingScript:        hex.EncodeToString(boarding.PkScript),
 		VtxoBoardingExitDelay:     program.VaultBoardV1ExitDelay,
 		VtxoBoardingExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
+		RecipientDustSats:         cred.RecipientDustSats,
+		TxRecipientCapSats:        cred.TxRecipientCapSats,
+		PeriodAllowanceSats:       cred.PeriodAllowanceSats,
+		AbsoluteFeeCapSats:        cred.AbsoluteFeeCapSats,
+		FeerateCapSatPerV:         cred.FeerateCapSatPerV,
 		EnvelopeNonce:             hex.EncodeToString(nonce), EnvelopeCiphertext: hex.EncodeToString(ciphertext),
 	}
 	raw, err := json.Marshal(binding)

@@ -116,6 +116,36 @@ func TestRecoveryBindingV3BindsDerivedSpendingAndBoardingDescriptor(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	decoder := json.NewDecoder(strings.NewReader(response.Binding))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+		t.Fatalf("recovery binding opening token = %v, %v", token, err)
+	}
+	var keys []string
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, key.(string))
+		if _, err := decoder.Token(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantKeys := strings.Join([]string{
+		"version", "credentialId", "webauthnP256", "phoneDirectP256", "phoneBip340Pub",
+		"externalOwnerWalletPub", "vaultCosignerBasePub", "arkadeCosignerBasePub",
+		"arkadeCosignerOrigin", "arkadeCosignerVersion", "clientOrigin", "rpId", "network",
+		"vaultId", "templateVersion", "policyVersion", "savingsAddress", "savingsScript",
+		"vtxoVaultCosignerPub", "vtxoExitDelay", "vtxoExitDelayUnit", "spendingArkAddress",
+		"spendingArkScript", "vtxoDelegatePub", "vtxoBoardingActive", "vtxoBoardingProgram",
+		"vtxoBoardingAddress", "vtxoBoardingScript", "vtxoBoardingExitDelay",
+		"vtxoBoardingExitDelayUnit", "recipientDustSats", "txRecipientCapSats",
+		"periodAllowanceSats", "absoluteFeeCapSats", "feerateCapSatVb", "envelopeNonce",
+		"envelopeCiphertext",
+	}, ",")
+	if got := strings.Join(keys, ","); got != wantKeys {
+		t.Fatalf("recovery binding field order = %s, want %s", got, wantKeys)
+	}
 	var got recoveryBinding
 	if err := json.Unmarshal([]byte(response.Binding), &got); err != nil {
 		t.Fatal(err)
