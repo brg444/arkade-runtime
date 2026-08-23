@@ -2,10 +2,10 @@
 
 > [!WARNING]
 > This branch is the mainnet v2 refactor, not a production custody service.
-> The current binary remains pinned to Mutinynet while mainnet
-> identities, delays, and upstream lifecycle fixes are reviewed. Its
-> VaultCosigner key is file-backed, without hardware isolation. Real-fund use
-> remains blocked.
+> The current binary remains pinned to Mutinynet. Mainnet uses the existing
+> `https://arkade.computer` deployment and the official Arkade SDK without
+> protocol extensions. The private mainnet Emulator endpoint is not yet
+> available. Its VaultCosigner key is file-backed, without hardware isolation.
 
 Arkade Vault Server is the protected policy and signing service for
 [Arkade Wallet Vault](https://github.com/brg444/arkade-wallet-vault). It owns
@@ -46,15 +46,21 @@ requests:
    key, then calls `reserve`. The server verifies that proof before selecting
    and locking VTXOs and debiting the rolling allowance. An exact retry returns
    the original reservation.
-2. `authorize` validates the unsigned checkpoints and user-signed Arkade PSBT,
-   then adds the VaultCosigner signature to the Arkade transaction.
-3. The wallet submits the operation to the Operator. The Operator rebuilds and
-   signs the checkpoints.
+2. `authorize` validates the unsigned checkpoints, user-signed Arkade PSBT, and
+   a canonical phone-signed pending-transaction proof for the exact reserved
+   inputs. It adds the VaultCosigner signature to the Arkade transaction and
+   proof, then stores both before returning them.
+3. The wallet submits the operation to the Operator once. If the response is
+   ambiguous, it presents the dual-signed proof through the official pending-
+   transaction interface and accepts only the exact Arkade transaction and
+   checkpoints recorded by the reservation.
 4. `checkpoints/authorize` requires those checkpoints to match the stored
    operation and adds the VaultCosigner checkpoint signatures.
 5. `finalize` verifies that the authorized Arkade transaction spent the
-   reserved VTXOs. `GET /v1/vtxo/operation` lets the wallet resume after any
-   ambiguous response.
+   reserved VTXOs. `GET /v1/vtxo/operation` lets the wallet recover ambiguous
+   Vault-service responses. Operator submission recovery uses the deployed
+   pending-transaction interface, which makes a second `submitTx` call
+   ineligible.
 
 The current Mutinynet slice accepts between one and 50 canonical inputs and a
 `tark` destination for the same release-pinned Operator. It supports exact
@@ -93,7 +99,7 @@ authorization.
 | `POST /v1/enroll/propose` | Return the descriptor for wallet review. |
 | `POST /v1/enroll/finish` | Verify enrollment and consume the invitation. |
 | `POST /v1/vtxo/reserve` | Authenticate and create an immutable VTXO operation. |
-| `POST /v1/vtxo/authorize` | Validate and sign the Arkade transaction. |
+| `POST /v1/vtxo/authorize` | Validate and sign the Arkade transaction and its pending-transaction recovery proof. |
 | `POST /v1/vtxo/checkpoints/authorize` | Validate and sign Operator checkpoints. |
 | `POST /v1/vtxo/finalize` | Verify the recorded spend and finalize the operation. |
 | `GET /v1/vtxo/operation` | Read one operation for retry reconciliation. |
@@ -158,16 +164,18 @@ server.
 
 The complete gate and operations posture are recorded in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md) and
-[deploy/ops.md](deploy/ops.md). The release remains blocked by the boarding
-trust window, live ordinary-send qualification, a mainnet-specific
-guardian delay, release and live qualification of the candidate arkd and SDK
-intent-lifecycle changes, fail-closed interrupted boarding, independent
-rollback-control storage, shared durable edge rate limiting, and the
-authenticated ledger performance bound.
+[deploy/ops.md](deploy/ops.md). The unavailable external dependency is the
+private mainnet Emulator endpoint. The release uses `arkade.computer` and the
+official Arkade SDK as deployed; it does not require a modified `arkd` or a
+Vault-specific Operator API. Mainnet configuration must pin the deployed
+Operator identity, checkpoint policy, delays, and fee bounds before the
+Contract Packs are regenerated. Vault Program and policy adjustments are
+deliberately deferred until the current Mutinynet lifecycle is stable.
 
-Ordinary VTXO send and recovery behavior must stabilize before boarding is
-enabled. Both precede real-fund mainnet use. Lightning is a later durable saga
-and cannot share the ordinary-send operation by adding optional fields.
+Ordinary VTXO send and boarding still require live qualification against
+`arkade.computer`, along with the documented storage, rate-limit, and hardware
+checks. Lightning remains a later workflow and cannot share the ordinary-send
+operation by adding optional fields.
 
 ## Repository map
 

@@ -57,9 +57,10 @@ VTXO routes remain unavailable indefinitely.
    failure drills.
 6. Enable outbound BOLT11 only after its separate durable-saga gate passes.
 
-Mainnet deployment remains blocked until every release pin and upstream
-Operator gate in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md)
-closes.
+Mainnet deployment requires the private Emulator endpoint and every release pin
+in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md). The Arkade
+Operator is `https://arkade.computer`; this deployment does not include or
+modify `arkd`.
 
 The public edge must also enforce a shared rate limit by client address and
 vault identifier on passkey challenge issuance and VTXO reservation. Phone

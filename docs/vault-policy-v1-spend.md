@@ -35,9 +35,14 @@ The live sequence is:
 1. The wallet persists a random operation ID, phone-signs the operation ID,
    vault, purpose, destination script, and amount, then calls `reserve`. An
    exact retry returns the same inputs, fee, and change facts.
-2. `authorize` validates the user-signed Arkade PSBT and unsigned checkpoints,
-   then adds the VaultCosigner signature to the Arkade PSBT.
-3. The Operator signs one checkpoint per reserved input.
+2. The wallet builds a canonical pending-transaction proof for the exact
+   reserved inputs. `authorize` validates the phone-signed proof, user-signed
+   Arkade PSBT, and unsigned checkpoints, then adds the VaultCosigner signature
+   to the proof and Arkade PSBT. Both are persisted before the response.
+3. The wallet submits to the Operator once. If the response is ambiguous, it
+   uses the dual-signed proof with the deployed pending-transaction interface
+   and accepts only the exact Arkade transaction and checkpoints committed by
+   the reservation.
 4. The wallet signs those checkpoints, and `checkpoints/authorize` verifies
    their identity and canonical alignment before adding the VaultCosigner.
 5. After Operator finalization, `finalize` verifies that every reserved input
@@ -45,10 +50,13 @@ The live sequence is:
    only when the reservation committed one.
 
 State changes use compare-and-swap updates. `GET /v1/vtxo/operation` exposes
-the persisted fee and change facts with the signed transaction stages so an
-ambiguous response can resume the same operation.
+the persisted fee, change facts, signed transaction stages, and authorized
+pending proof so an ambiguous Vault-service response can resume the same
+operation. An empty or mismatched Operator lookup remains locked and never
+triggers a second submission.
 
 Mutinynet qualification must cover fragmented inputs, exact no-change spends,
-nonzero and amount-dependent fees, reloads, dropped responses, checkpoint
-reordering, and concurrent exact retries before this path is considered for
-mainnet.
+nonzero and amount-dependent fees, reloads, dropped Vault-service responses,
+ambiguous Operator submissions, empty and mismatched pending lookups,
+checkpoint reordering, and concurrent exact retries before this path is
+considered for mainnet.
