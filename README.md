@@ -151,7 +151,7 @@ VaultCosigner scalar and enrollment token in `0600` files. Replacing the token
 file provisions one additional invitation on the next restart; reusing the
 same token is idempotent. Hosted
 deployment may materialize them from the platform secret store at entrypoint,
-then removes the raw values from the process environment before starting the
+then remove the raw values from the process environment before starting the
 server.
 
 ## Mainnet release gates
@@ -160,7 +160,8 @@ The complete gate and operations posture are recorded in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md) and
 [deploy/ops.md](deploy/ops.md). The release remains blocked by the boarding
 trust window, live ordinary-send qualification, a mainnet-specific
-guardian delay, upstream arkd/SDK intent lifecycle defects, independent
+guardian delay, release and live qualification of the candidate arkd and SDK
+intent-lifecycle changes, resumable boarding after reload, independent
 rollback-control storage, shared durable edge rate limiting, and the
 authenticated ledger performance bound.
 
