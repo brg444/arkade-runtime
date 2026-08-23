@@ -130,16 +130,22 @@ type rowScanner interface {
 }
 
 func scanVtxoOperation(row rowScanner) (VtxoOperation, error) {
+	return scanVtxoOperationWith(row)
+}
+
+func scanVtxoOperationWith(row rowScanner, trailing ...any) (VtxoOperation, error) {
 	var rec VtxoOperation
 	var changeVout sql.NullInt64
-	err := row.Scan(
+	dest := []any{
 		&rec.OperationID, &rec.VaultID, &rec.Purpose, &rec.BundleDigest, &rec.State,
 		&rec.AmountSats, &rec.FeeSats, &rec.FeePolicyDigest, &rec.DestScript, &rec.ChangeScript,
 		&rec.ChangeSats, &changeVout,
 		&rec.UnsignedPSBT, &rec.AuthorizedPSBT, &rec.CheckpointPSBTs, &rec.CheckpointRequestPSBTs,
 		&rec.CheckpointTapscript, &rec.ArkTxid, &rec.ExpiresAt, &rec.CreatedAt,
 		&rec.LastDestScript, &rec.IntegrityMAC,
-	)
+	}
+	dest = append(dest, trailing...)
+	err := row.Scan(dest...)
 	if err == nil && changeVout.Valid {
 		if changeVout.Int64 < 0 || changeVout.Int64 > 1<<32-1 {
 			return VtxoOperation{}, fmt.Errorf("vtxo operation change vout")

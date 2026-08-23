@@ -51,6 +51,21 @@ INSERT INTO vtxo_operation (
 	}
 }
 
+func insertTestVtxoOperationInput(t *testing.T, led *Ledger, rec VtxoOperationInput) {
+	t.Helper()
+	if err := SealVtxoOperationInput(&rec, testIntegrityKey()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := led.db.Exec(`
+INSERT INTO vtxo_operation_input (
+  operation_id, txid, vout, value_sats, script, integrity_mac
+) VALUES (?, ?, ?, ?, ?, ?)`,
+		rec.OperationID, rec.Txid, rec.Vout, rec.ValueSats, rec.Script, rec.IntegrityMAC,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestVtxoOperationMACCoversPolicyFields(t *testing.T) {
 	rec := testVtxoOperation("vault-a", "op-1", vtxoPurposeSpend, vtxoStateReserved, 1_000, 50, time.Unix(0, 0))
 	if err := SealVtxoOperation(&rec, testIntegrityKey()); err != nil {
@@ -316,20 +331,190 @@ func TestVtxoTransitionCompareAndSwap(t *testing.T) {
 	}
 }
 
-func TestVtxoReservationRejectsOverlappingOutpoint(t *testing.T) {
+func TestVtxoReservationRejectsMultiInputOverlap(t *testing.T) {
 	now := time.Now().UTC()
 	led := openPolicyTestLedger(t, func() time.Time { return now })
 	createPolicyTestVault(t, led, "vault-a", 0x64)
-	input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x44}, 32), ValueSats: 20_000, Script: []byte{0x51}}
-	for i, opID := range []string{"op-a", "op-b"} {
-		rec := testVtxoOperation("vault-a", opID, vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
-		rec.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
-		err := led.ReserveVtxoOperation(context.Background(), rec, []VtxoOperationInput{input}, 100_000)
-		if i == 0 && err != nil {
-			t.Fatal(err)
+	shared := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x44}, 32), Vout: 1, ValueSats: 20_000, Script: []byte{0x51}}
+	firstOnly := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x45}, 32), Vout: 2, ValueSats: 20_000, Script: []byte{0x51}}
+	secondOnly := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x46}, 32), Vout: 3, ValueSats: 20_000, Script: []byte{0x51}}
+	first := testVtxoOperation("vault-a", "op-a", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	first.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+	if err := led.ReserveVtxoOperation(context.Background(), first, []VtxoOperationInput{firstOnly, shared}, 100_000); err != nil {
+		t.Fatal(err)
+	}
+	second := testVtxoOperation("vault-a", "op-b", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	second.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+	if err := led.ReserveVtxoOperation(context.Background(), second, []VtxoOperationInput{secondOnly, shared}, 100_000); err == nil || !strings.Contains(err.Error(), "already reserved") {
+		t.Fatalf("overlapping input accepted: %v", err)
+	}
+}
+
+func TestVtxoReservationRejectsOverlapForEveryCountingState(t *testing.T) {
+	now := time.Now().UTC()
+	for i, state := range []string{
+		vtxoStateReserved, vtxoStateSigned, vtxoStateSubmitted,
+		vtxoStateFinalized, vtxoStateUnresolved,
+	} {
+		t.Run(state, func(t *testing.T) {
+			led := openPolicyTestLedger(t, func() time.Time { return now })
+			createPolicyTestVault(t, led, "vault-a", byte(0x70+i))
+			input := VtxoOperationInput{
+				OperationID: "existing", Txid: bytes.Repeat([]byte{byte(0x50 + i)}, 32),
+				Vout: 1, ValueSats: 20_000, Script: []byte{0x51},
+			}
+			insertTestVtxoOperation(t, led, testVtxoOperation(
+				"vault-a", input.OperationID, vtxoPurposeSpend, state, 10_000, 0, now,
+			))
+			insertTestVtxoOperationInput(t, led, input)
+
+			candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+			if err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000); err == nil || !strings.Contains(err.Error(), "already reserved") {
+				t.Fatalf("state %s accepted overlapping input: %v", state, err)
+			}
+		})
+	}
+}
+
+func TestVtxoOverlapAllowsAuthenticatedAbortedRow(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x76)
+	input := VtxoOperationInput{
+		OperationID: "aborted", Txid: bytes.Repeat([]byte{0x61}, 32),
+		Vout: 2, ValueSats: 20_000, Script: []byte{0x51},
+	}
+	insertTestVtxoOperation(t, led, testVtxoOperation(
+		"vault-a", input.OperationID, vtxoPurposeSpend, vtxoStateAborted, 10_000, 0, now,
+	))
+	insertTestVtxoOperationInput(t, led, input)
+
+	candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	if err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000); err != nil {
+		t.Fatalf("authenticated aborted input remained reserved: %v", err)
+	}
+}
+
+func TestVtxoOverlapAuthenticatesCurrentOperationBeforeReplayExclusion(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x77)
+	input := VtxoOperationInput{
+		OperationID: "current", Txid: bytes.Repeat([]byte{0x62}, 32),
+		Vout: 3, ValueSats: 20_000, Script: []byte{0x51},
+	}
+	insertTestVtxoOperation(t, led, testVtxoOperation(
+		"vault-a", input.OperationID, vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now,
+	))
+	insertTestVtxoOperationInput(t, led, input)
+
+	led.mu.Lock()
+	defer led.mu.Unlock()
+	conn, err := led.db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(context.Background(), `BEGIN IMMEDIATE`); err != nil {
+		t.Fatal(err)
+	}
+	defer conn.ExecContext(context.Background(), `ROLLBACK`)
+	if err := led.rejectOverlappingVtxoInputs(
+		context.Background(), conn, input.OperationID, []VtxoOperationInput{input},
+	); err != nil {
+		t.Fatalf("authenticated current-operation replay rejected: %v", err)
+	}
+}
+
+func TestVtxoOverlapFailsClosedForTamperedMatchingRows(t *testing.T) {
+	now := time.Now().UTC()
+	for _, test := range []struct {
+		name   string
+		mutate string
+		want   string
+	}{
+		{
+			name: "operation", mutate: `UPDATE vtxo_operation SET state = 'aborted' WHERE operation_id = 'z-tampered'`,
+			want: "vtxo operation integrity",
+		},
+		{
+			name: "input", mutate: `UPDATE vtxo_operation_input SET value_sats = value_sats + 1 WHERE operation_id = 'z-tampered'`,
+			want: "vtxo operation input integrity",
+		},
+		{
+			name: "operation vault", mutate: `UPDATE vtxo_operation SET vault_id = 'vault-b' WHERE operation_id = 'z-tampered'`,
+			want: "vtxo operation integrity",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			led := openPolicyTestLedger(t, func() time.Time { return now })
+			createPolicyTestVault(t, led, "vault-a", 0x78)
+			createPolicyTestVault(t, led, "vault-b", 0x7b)
+			input := VtxoOperationInput{
+				Txid: bytes.Repeat([]byte{0x63}, 32),
+				Vout: 4, ValueSats: 20_000, Script: []byte{0x51},
+			}
+			// The valid live match sorts first. The check must still authenticate
+			// every later matching row before deciding that an overlap exists.
+			for _, operationID := range []string{"a-valid", "z-tampered"} {
+				insertTestVtxoOperation(t, led, testVtxoOperation(
+					"vault-a", operationID, vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now,
+				))
+				input.OperationID = operationID
+				insertTestVtxoOperationInput(t, led, input)
+			}
+			if _, err := led.db.Exec(test.mutate); err != nil {
+				t.Fatal(err)
+			}
+
+			candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+			err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("tampered matching %s did not fail closed: %v", test.name, err)
+			}
+		})
+	}
+}
+
+func TestVtxoOverlapDoesNotLoadUnrelatedVaultInputs(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x79)
+	unrelated := VtxoOperationInput{
+		OperationID: "existing", Txid: bytes.Repeat([]byte{0x64}, 32),
+		Vout: 5, ValueSats: 20_000, Script: []byte{0x51},
+	}
+	insertTestVtxoOperation(t, led, testVtxoOperation(
+		"vault-a", unrelated.OperationID, vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now,
+	))
+	insertTestVtxoOperationInput(t, led, unrelated)
+	if _, err := led.db.Exec(`UPDATE vtxo_operation_input SET value_sats = value_sats + 1 WHERE operation_id = ?`, unrelated.OperationID); err != nil {
+		t.Fatal(err)
+	}
+
+	candidateInput := VtxoOperationInput{
+		Txid: bytes.Repeat([]byte{0x65}, 32), Vout: 6,
+		ValueSats: 20_000, Script: []byte{0x51},
+	}
+	candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	if err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{candidateInput}, 100_000); err != nil {
+		t.Fatalf("unrelated vault input was loaded by overlap check: %v", err)
+	}
+}
+
+func TestVtxoOverlapLookupAcceptsMaximumCandidateSet(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x7a)
+	inputs := make([]VtxoOperationInput, MaxVtxoOperationInputs)
+	for i := range inputs {
+		inputs[i] = VtxoOperationInput{
+			Txid: bytes.Repeat([]byte{byte(i + 1)}, 32), Vout: i,
+			ValueSats: 1_000, Script: []byte{0x51},
 		}
-		if i == 1 && (err == nil || !strings.Contains(err.Error(), "already reserved")) {
-			t.Fatalf("overlapping input accepted: %v", err)
-		}
+	}
+	candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	if err := led.ReserveVtxoOperation(context.Background(), candidate, inputs, 100_000); err != nil {
+		t.Fatalf("maximum candidate lookup exceeded SQLite parameter budget: %v", err)
 	}
 }

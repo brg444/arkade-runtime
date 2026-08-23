@@ -3,8 +3,8 @@ package policy
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -15,6 +15,14 @@ const vtxoSelectColumns = `operation_id, vault_id, purpose, bundle_digest, state
 		        IFNULL(checkpoint_psbts, ''), IFNULL(checkpoint_request_psbts, ''),
 		        checkpoint_tapscript, IFNULL(ark_txid, ''), IFNULL(expires_at, ''),
 		        created_at, last_dest_script, integrity_mac`
+
+const vtxoOverlapSelectColumns = `o.operation_id, o.vault_id, o.purpose, o.bundle_digest, o.state,
+		        o.amount_sats, o.fee_sats, o.fee_policy_digest, o.dest_script, o.change_script,
+		        o.change_sats, o.change_vout,
+		        IFNULL(o.unsigned_psbt, ''), IFNULL(o.authorized_psbt, ''),
+		        IFNULL(o.checkpoint_psbts, ''), IFNULL(o.checkpoint_request_psbts, ''),
+		        o.checkpoint_tapscript, IFNULL(o.ark_txid, ''), IFNULL(o.expires_at, ''),
+		        o.created_at, o.last_dest_script, o.integrity_mac`
 
 const maxReservedVtxoInputs = MaxVtxoOperationInputs
 
@@ -116,7 +124,7 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 	if err := l.abortExpiredVtxoLocked(ctx, conn, rec.VaultID, l.clock().UTC()); err != nil {
 		return err
 	}
-	if err := l.rejectOverlappingVtxoInputs(ctx, conn, rec.VaultID, rec.OperationID, inputs); err != nil {
+	if err := l.rejectOverlappingVtxoInputs(ctx, conn, rec.OperationID, inputs); err != nil {
 		return err
 	}
 	usedAmt, err := l.spentInWindow(ctx, conn, rec.VaultID)
@@ -352,32 +360,60 @@ UPDATE vtxo_operation SET state = ?, integrity_mac = ? WHERE operation_id = ? AN
 	return nil
 }
 
-func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext, vaultID, operationID string, inputs []VtxoOperationInput) error {
+func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext, operationID string, inputs []VtxoOperationInput) error {
+	if len(inputs) == 0 || len(inputs) > maxReservedVtxoInputs {
+		return fmt.Errorf("vtxo overlap input count must be 1..%d", maxReservedVtxoInputs)
+	}
 	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return err
 	}
 	defer zeroBytes(key)
-	rows, err := q.QueryContext(ctx, `SELECT `+vtxoSelectColumns+` FROM vtxo_operation WHERE vault_id = ?`, vaultID)
+
+	var predicates strings.Builder
+	args := make([]any, 0, 2*len(inputs))
+	for i := range inputs {
+		if i > 0 {
+			predicates.WriteString(" OR ")
+		}
+		predicates.WriteString("(i.txid = ? AND i.vout = ?)")
+		args = append(args, inputs[i].Txid, inputs[i].Vout)
+	}
+	rows, err := q.QueryContext(ctx, `
+SELECT `+vtxoOverlapSelectColumns+`,
+       i.operation_id, i.txid, i.vout, i.value_sats, i.script, i.integrity_mac
+  FROM vtxo_operation_input AS i
+  JOIN vtxo_operation AS o ON o.operation_id = i.operation_id
+ WHERE `+predicates.String()+`
+ ORDER BY i.txid, i.vout, i.operation_id`, args...)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-	liveOperations := make(map[string]struct{})
+	type authenticatedMatch struct {
+		operationID string
+		state       string
+	}
+	matches := make([]authenticatedMatch, 0)
 	for rows.Next() {
-		rec, err := scanVtxoOperation(rows)
+		var in VtxoOperationInput
+		rec, err := scanVtxoOperationWith(
+			rows,
+			&in.OperationID, &in.Txid, &in.Vout, &in.ValueSats, &in.Script, &in.IntegrityMAC,
+		)
 		if err != nil {
 			return err
 		}
 		if err := VerifyVtxoOperation(&rec, key); err != nil {
 			return fmt.Errorf("vtxo operation integrity: %w", err)
 		}
-		if rec.OperationID == operationID {
-			continue
+		if err := VerifyVtxoOperationInput(&in, key); err != nil {
+			return fmt.Errorf("vtxo operation input integrity: %w", err)
 		}
-		if vtxoStateCountsTowardAllowance(rec.State) {
-			liveOperations[rec.OperationID] = struct{}{}
+		if in.OperationID != rec.OperationID {
+			return fmt.Errorf("vtxo operation input parent mismatch")
 		}
+		matches = append(matches, authenticatedMatch{operationID: rec.OperationID, state: rec.State})
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -385,51 +421,16 @@ func (l *Ledger) rejectOverlappingVtxoInputs(ctx context.Context, q queryContext
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	allInputs, err := l.loadVtxoOperationInputsForVault(ctx, q, vaultID)
-	if err != nil {
-		return err
-	}
-	reserved := make(map[string]struct{}, len(allInputs))
-	for _, in := range allInputs {
-		if _, ok := liveOperations[in.OperationID]; !ok {
+	for _, match := range matches {
+		// The current operation is excluded only after both joined records have
+		// authenticated. This permits exact replay without trusting its row key.
+		if match.operationID == operationID {
 			continue
 		}
-		reserved[hex.EncodeToString(in.Txid)+":"+fmt.Sprintf("%d", in.Vout)] = struct{}{}
-	}
-	for _, in := range inputs {
-		key := hex.EncodeToString(in.Txid) + ":" + fmt.Sprintf("%d", in.Vout)
-		if _, ok := reserved[key]; ok {
+		// State is deliberately evaluated only after the operation MAC verifies.
+		if vtxoStateCountsTowardAllowance(match.state) {
 			return fmt.Errorf("vtxo outpoint already reserved")
 		}
 	}
 	return nil
-}
-
-func (l *Ledger) loadVtxoOperationInputsForVault(ctx context.Context, q queryContext, vaultID string) ([]VtxoOperationInput, error) {
-	key, err := l.integrityKeyCopy()
-	if err != nil {
-		return nil, err
-	}
-	defer zeroBytes(key)
-	rows, err := q.QueryContext(ctx, `
-SELECT i.operation_id, i.txid, i.vout, i.value_sats, i.script, i.integrity_mac
-  FROM vtxo_operation_input AS i
-  JOIN vtxo_operation AS o ON o.operation_id = i.operation_id
- WHERE o.vault_id = ?`, vaultID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []VtxoOperationInput
-	for rows.Next() {
-		var rec VtxoOperationInput
-		if err := rows.Scan(&rec.OperationID, &rec.Txid, &rec.Vout, &rec.ValueSats, &rec.Script, &rec.IntegrityMAC); err != nil {
-			return nil, err
-		}
-		if err := VerifyVtxoOperationInput(&rec, key); err != nil {
-			return nil, fmt.Errorf("vtxo operation input integrity: %w", err)
-		}
-		out = append(out, rec)
-	}
-	return out, rows.Err()
 }
