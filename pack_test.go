@@ -109,6 +109,7 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	}
 	note, ok := delegate["note"].(string)
 	if !ok ||
+		!strings.Contains(note, "SDK 0.4.65") ||
 		!strings.Contains(note, "DelegatorManager matches any Multisig containing the delegate pub") ||
 		!strings.Contains(note, "4-key delegate-forfeit") ||
 		!strings.Contains(note, "Not OP_TUNNEL") ||
