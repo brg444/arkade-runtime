@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -58,6 +60,42 @@ func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(st.Warnings, " "), "cosigners") {
 		t.Fatalf("warnings = %v", st.Warnings)
+	}
+}
+
+func TestSignTransitionUnknownVaultDoesNotGrowRateLimiter(t *testing.T) {
+	e := newEnv(t)
+	transitionRateMu.Lock()
+	previous := transitionRateHits
+	transitionRateHits = map[string][]time.Time{}
+	transitionRateMu.Unlock()
+	t.Cleanup(func() {
+		transitionRateMu.Lock()
+		transitionRateHits = previous
+		transitionRateMu.Unlock()
+	})
+
+	for i := 0; i < 20; i++ {
+		_, _ = e.svc.SignTransition(context.Background(), TransitionRequest{
+			VaultID: fmt.Sprintf("unknown-vault-%d", i), Purpose: "initiate",
+		})
+	}
+	transitionRateMu.Lock()
+	if len(transitionRateHits) != 0 {
+		t.Fatalf("unknown vault IDs entered rate state: %v", transitionRateHits)
+	}
+	transitionRateMu.Unlock()
+
+	if _, err := e.svc.SignTransition(context.Background(), TransitionRequest{
+		VaultID: fixture.VaultID, Purpose: "initiate",
+	}); err == nil {
+		t.Fatal("invalid transition unexpectedly signed")
+	}
+	transitionRateMu.Lock()
+	_, limited := transitionRateHits[fixture.VaultID]
+	transitionRateMu.Unlock()
+	if !limited {
+		t.Fatal("enrolled canonical vault ID did not enter rate state")
 	}
 }
 

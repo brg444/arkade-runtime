@@ -51,15 +51,15 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err := s.attachLedgerIntegrity(); err != nil {
 		return nil, err
 	}
-	if err := s.allowTransition(req.VaultID); err != nil {
-		return nil, err
-	}
 	cred, err := s.loadVerifiedCredentialFor(req.VaultID)
 	if err != nil {
 		return nil, err
 	}
 	if cred == nil || cred.TemplateVersion != savings.Template {
 		return nil, fmt.Errorf("current vault template required")
+	}
+	if err := s.allowTransition(cred.VaultID); err != nil {
+		return nil, err
 	}
 	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
 	if err != nil {
