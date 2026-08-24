@@ -190,7 +190,7 @@ type parsedRegisterRequest struct {
 	vaultID                           string
 }
 
-func (s *Service) attachLedgerIntegrity() error {
+func (s *Service) requireLedgerIntegrity() error {
 	if s == nil || s.Ledger == nil {
 		return fmt.Errorf("ledger required")
 	}
@@ -199,7 +199,7 @@ func (s *Service) attachLedgerIntegrity() error {
 		return err
 	}
 	defer zeroServiceBytes(key)
-	return s.Ledger.SetIntegrityKey(key)
+	return s.Ledger.RequireIntegrityKey(key)
 }
 
 // CreateTenantVault atomically persists a new HKDF-derived vault and consumes
@@ -378,7 +378,7 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 func (s *Service) LoadVaults() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return err
 	}
 	if err := s.runtimeConfig().Validate(); err != nil {
@@ -760,7 +760,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if vaultID == "" {
 		return Status{}, fmt.Errorf("vault id required")
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return Status{}, err
 	}
 	cfg := s.runtimeConfig()
@@ -1034,7 +1034,7 @@ func (s *Service) advanceSignCount(vaultID string, credID []byte, count uint32) 
 	if s == nil || s.Ledger == nil {
 		return nil
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return err
 	}
 	return s.Ledger.AdvanceSignCount(vaultID, credID, count)

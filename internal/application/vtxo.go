@@ -146,7 +146,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err != nil {
 		return nil, err
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -731,7 +731,7 @@ func (s *Service) expireReservedVtxo(ctx context.Context, op policy.VtxoOperatio
 }
 
 func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID string) (*VtxoOperationView, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	id, _, _, err := s.resolveSpendVaultRecord(vaultID)
@@ -839,7 +839,7 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 }
 
 func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeRequest) (*VtxoAuthorizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -980,7 +980,7 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 }
 
 func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpointAuthorizeRequest) (*VtxoCheckpointAuthorizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -1081,7 +1081,7 @@ func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpoi
 }
 
 func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*VtxoFinalizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {

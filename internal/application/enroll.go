@@ -144,7 +144,7 @@ func (s *Service) previewTenantDescriptor(vaultID string, req RegisterRequest) (
 
 // FinishEnrollment verifies the create ceremony and CAS-consumes the invite.
 func (s *Service) FinishEnrollment(ctx context.Context, token string, req EnrollFinishRequest) (*Status, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	hash, err := HashEnrollmentToken(token)

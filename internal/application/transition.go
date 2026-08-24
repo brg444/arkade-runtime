@@ -48,7 +48,7 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if strings.TrimSpace(req.VaultID) == "" {
 		return nil, fmt.Errorf("vault id required")
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	cred, err := s.loadVerifiedCredentialFor(req.VaultID)
