@@ -59,10 +59,11 @@ VTXO routes remain unavailable indefinitely.
    contract registration, refund, and ordinary VTXO funding gates pass. This
    service adds no Lightning-specific API or ledger state.
 
-Mainnet deployment requires the private Emulator endpoint and every release pin
-in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md). The Arkade
-Operator is `https://arkade.computer`; this deployment does not include or
-modify `arkd`.
+Mainnet deployment uses the confirmed Emulator discovery endpoint at
+`https://emulator.arkade.computer/v1/info` and requires every release pin in
+[the mainnet v2 baseline](../docs/mainnet-v2-baseline.md). The Arkade Operator
+is `https://arkade.computer`; this deployment does not include or modify
+`arkd`.
 
 Before enabling boarding, inject a lost settlement response and an
 unacknowledged intent deletion for a boarding input. The deployed Operator must

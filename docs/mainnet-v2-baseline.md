@@ -76,10 +76,14 @@ dependencies. Vault code must stay within the deployed `getInfo`, indexer,
 changes to `arkd`, exact intent-release endpoints, replayable event streams,
 and private Operator lifecycle state are outside the deployment boundary.
 
-The remaining unavailable external dependency is the private mainnet Emulator
-endpoint. Mainnet code remains fail-closed until that endpoint is supplied and
-the deployed Operator origin, network identity, signer keys, checkpoint policy,
-delay units, fee bounds, and rotation policy are pinned in both Contract Packs.
+The confirmed mainnet Emulator discovery endpoint is
+`https://emulator.arkade.computer/v1/info`. Its
+advertised signer,
+`0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e`,
+matches the official SDK pin. Mainnet remains fail-closed until that identity
+and the deployed Operator origin, network identity, signer keys, checkpoint
+policy, delay units, fee bounds, and rotation policy are qualified and pinned
+in both Contract Packs.
 
 Vault Program parameters and policy adjustments are deliberately deferred
 until ordinary Mutinynet Spending and recovery are qualified. The current
@@ -159,8 +163,7 @@ sequence together to an earlier point defeats rollback detection.
 
 The Mutinynet 4,608-second guardian delay is not a mainnet pin. Mainnet tree
 vectors and both Contract Packs must be regenerated from the deployed Operator
-identity and reviewed mainnet parameters after the Emulator endpoint is
-available.
+identity, qualified Emulator signer, and reviewed mainnet parameters.
 
 The current Go module replaces the official Emulator signing package with a
 narrow fork that adds packet-entry binding, previous-output bounds, and scalar
