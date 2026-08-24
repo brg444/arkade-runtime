@@ -3,14 +3,29 @@ package application
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
+	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
+	"github.com/arkade-os/emulator/pkg/arkade"
+	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
+	"github.com/btcsuite/btcd/btcutil/psbt"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
 )
+
+type unavailableSigner struct{}
+
+func (unavailableSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
+	return nil, errors.New("signer unavailable")
+}
 
 func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 	svc, token, start := enrollReady(t)
@@ -44,4 +59,152 @@ func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 	if !strings.Contains(strings.Join(st.Warnings, " "), "cosigners") {
 		t.Fatalf("warnings = %v", st.Warnings)
 	}
+}
+
+func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
+	e := newEnv(t)
+	encoded := hardwareInitiatePSBT(t, e.svc, e.externalOwner)
+	transition := TransitionRequest{VaultID: fixture.VaultID, Purpose: "initiate", PSBT: encoded}
+
+	e.svc.ArkadeCosignerSigner = unavailableSigner{}
+	if _, err := e.svc.SignTransition(context.Background(), transition); err == nil || !strings.Contains(err.Error(), "signer unavailable") {
+		t.Fatalf("first sign did not fail at the external signer: %v", err)
+	}
+	pending, err := e.svc.Ledger.GetRecoverySession(fixture.VaultID, transitionPrevTxID(t, encoded), 0, "initiate")
+	if err != nil || pending == nil || len(pending.Signature) != 0 {
+		t.Fatalf("pending session was not persisted: %+v %v", pending, err)
+	}
+	if err := e.svc.Ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := policy.OpenMainnetLedger(e.dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if err := reopened.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
+		t.Fatal(err)
+	}
+	restarted := New(Deps{
+		Ledger: reopened, Deployment: e.svc.Deployment,
+		IntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
+		MasterIKM:    e.master, VaultCosignerPub: e.master.PubKey(), ArkadeCosignerPub: e.operator.PubKey(),
+		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
+		ArkadeSigner: LocalSigner{Priv: e.operator},
+	})
+	if err := restarted.LoadVaults(); err != nil {
+		t.Fatal(err)
+	}
+	response, err := restarted.SignTransition(context.Background(), transition)
+	if err != nil {
+		t.Fatalf("exact retry after restart: %v", err)
+	}
+	if response.SignedPSBT == "" || response.Replay {
+		t.Fatalf("unexpected exact retry response: %+v", response)
+	}
+	replay, err := restarted.SignTransition(context.Background(), transition)
+	if err != nil {
+		t.Fatalf("signed replay after restart: %v", err)
+	}
+	if !replay.Replay || replay.SignedPSBT != response.SignedPSBT {
+		t.Fatalf("signed replay changed the result: %+v", replay)
+	}
+}
+
+func transitionPrevTxID(t *testing.T, encoded string) string {
+	t.Helper()
+	packet, err := parsePSBT(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return packet.UnsignedTx.TxIn[0].PreviousOutPoint.Hash.String()
+}
+
+func hardwareInitiatePSBT(t *testing.T, svc *Service, owner *btcec.PrivateKey) string {
+	t.Helper()
+	cred, err := svc.loadVerifiedCredentialFor(fixture.VaultID)
+	if err != nil || cred == nil {
+		t.Fatalf("credential: %+v %v", cred, err)
+	}
+	fam, err := svc.transitionFamily(cred)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair := fam.Initiate["hardware"]
+	leaf, err := savings.Checksig(owner.PubKey(), pair.Vault, pair.Arkade)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone, err := btcec.ParsePubKey(cred.PhoneBIP340)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := savings.Checksig(phone, owner.PubKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	phoneLeaf, err := savings.Checksig(phone, fam.Initiate["phone"].Vault, fam.Initiate["phone"].Arkade)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaves := []txscript.TapLeaf{
+		txscript.NewBaseTapLeaf(admin),
+		txscript.NewBaseTapLeaf(phoneLeaf),
+		txscript.NewBaseTapLeaf(leaf),
+	}
+	tree := txscript.AssembleTaprootScriptTree(leaves...)
+	leafHash := leaves[2].TapHash()
+	proofIndex, ok := tree.LeafProofIndex[leafHash]
+	if !ok {
+		t.Fatal("hardware initiate proof missing")
+	}
+	internal, err := savings.ContextInternalKeyTemplate(fixture.VaultID, "savings", "", savings.Template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := tree.LeafMerkleProofs[proofIndex].ToControlBlock(internal)
+	controlBytes, err := control.ToBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prev := wire.NewMsgTx(2)
+	prev.AddTxIn(&wire.TxIn{Sequence: wire.MaxTxInSequenceNum})
+	prev.AddTxOut(&wire.TxOut{Value: 100_000, PkScript: fam.Savings.PkScript})
+	tx := wire.NewMsgTx(2)
+	tx.AddTxIn(&wire.TxIn{PreviousOutPoint: wire.OutPoint{Hash: prev.TxHash(), Index: 0}, Sequence: savings.TransitionSequence})
+	tx.AddTxOut(&wire.TxOut{Value: 98_760, PkScript: fam.Pending[savings.FamilyKey("hardware")].PkScript})
+	tx.AddTxOut(&wire.TxOut{Value: savings.P2AValueSats, PkScript: mustDecode(t, savings.P2AScriptHex)})
+	emulatorPacket, err := arkade.NewPacket(arkade.EmulatorEntry{Vin: 0, Script: fam.InitiateAuth["savings-hardware"]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packetScript, err := (extension.Extension{emulatorPacket}).Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx.AddTxOut(&wire.TxOut{Value: 0, PkScript: packetScript})
+	packet, err := psbt.NewFromUnsignedTx(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet.Inputs[0].WitnessUtxo = prev.TxOut[0]
+	packet.Inputs[0].SighashType = txscript.SigHashDefault
+	packet.Inputs[0].TaprootLeafScript = []*psbt.TaprootTapLeafScript{{
+		ControlBlock: controlBytes, Script: leaf, LeafVersion: txscript.BaseLeafVersion,
+	}}
+	if err := txutils.SetArkPsbtField(packet, 0, arkade.PrevoutTxField, *prev); err != nil {
+		t.Fatal(err)
+	}
+	claimantSig, err := signTapLeafAt(packet, 0, owner, leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet.Inputs[0].TaprootScriptSpendSig = append(packet.Inputs[0].TaprootScriptSpendSig, claimantSig)
+	encoded, err := packet.B64Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }

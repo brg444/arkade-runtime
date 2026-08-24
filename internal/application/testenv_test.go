@@ -17,12 +17,16 @@ import (
 )
 
 type env struct {
-	svc     *Service
-	savings *savingsSnapshot
-	hot     *btcec.PrivateKey
-	p256    *ecdsa.PrivateKey
-	direct  *ecdsa.PrivateKey
-	credID  []byte
+	svc           *Service
+	savings       *savingsSnapshot
+	hot           *btcec.PrivateKey
+	externalOwner *btcec.PrivateKey
+	master        *btcec.PrivateKey
+	operator      *btcec.PrivateKey
+	p256          *ecdsa.PrivateKey
+	direct        *ecdsa.PrivateKey
+	credID        []byte
+	dbPath        string
 }
 
 const (
@@ -46,7 +50,8 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ledger, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "policy.sqlite"), nil)
+	dbPath := filepath.Join(t.TempDir(), "policy.sqlite")
+	ledger, err := policy.OpenMainnetLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +95,7 @@ func newEnv(t *testing.T) *env {
 	}
 	return &env{
 		svc: service, savings: snapshot.Savings,
-		hot: hot, p256: passkey, direct: direct, credID: credentialID,
+		hot: hot, externalOwner: externalOwner, master: master, operator: operator,
+		p256: passkey, direct: direct, credID: credentialID, dbPath: dbPath,
 	}
 }
