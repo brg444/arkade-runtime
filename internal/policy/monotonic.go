@@ -16,8 +16,9 @@ const monotonicFileVersion = "arkade-vault-policy-sequence/v2"
 
 // Monotonic is the policy-ledger sequence stored outside SQLite. Every new
 // economic-outflow reservation advances it. Restoring an older database while
-// retaining this file is refused. Restoring both files together defeats this
-// control, so production must protect them as separate failure domains.
+// retaining this file is refused. A matched rollback of both files defeats
+// this in-process control, so restore tooling treats them as one coherent unit
+// while operations retain an external accepted-count record.
 type Monotonic struct {
 	path string
 	key  []byte
@@ -57,6 +58,31 @@ func (m *Monotonic) Observe(dbCount uint64) error {
 		return nil
 	}
 	return m.write(dbCount)
+}
+
+// VerifyExact authenticates the persisted policy sequence and requires it to
+// match the database without repairing or advancing either artifact. Restore
+// tooling uses this read-only check before a state unit can be accepted.
+func (m *Monotonic) VerifyExact(dbCount uint64) (uint64, error) {
+	if m == nil {
+		return 0, fmt.Errorf("monotonic policy sequence required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	fileCount, exists, err := m.read()
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, fmt.Errorf("policy sequence is missing")
+	}
+	if dbCount < fileCount {
+		return fileCount, fmt.Errorf("policy ledger is behind the external sequence (%d < %d); refuse to restore a rolled-back database", dbCount, fileCount)
+	}
+	if dbCount > fileCount {
+		return fileCount, fmt.Errorf("policy sequence is behind the policy ledger (%d < %d); refuse to restore a rolled-back sequence", fileCount, dbCount)
+	}
+	return fileCount, nil
 }
 
 func (m *Monotonic) read() (uint64, bool, error) {
