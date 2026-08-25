@@ -22,7 +22,6 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
 
@@ -927,24 +926,24 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	op.PendingProofDigest = bytes.Clone(pendingDigest)
 	op.CheckpointPSBTs = encodeJSONStringSlice(req.UnsignedCheckpointPsbts)
 	op.ArkTxid = arkTxid
-	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
+	keyContext, err := s.vtxoKeyContext(vaultID)
 	if err != nil {
 		return nil, err
 	}
-	expected := schnorr.SerializePubKey(cosigner.PubKey())
+	expected := schnorr.SerializePubKey(tree.CosignerPub)
 	timeout := s.SignTimeout
 	if timeout == 0 {
 		timeout = 15 * time.Second
 	}
 	signCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	signedArk, err := signExactArkStage(signCtx, req.UnsignedArkPsbt, cosigner, expected, tree.SpendLeaf)
+	authorization, err := newVtxoTransactionAuthorization(
+		keyContext, req.UnsignedArkPsbt, req.PendingProof, tree.SpendLeaf, expected,
+	)
 	if err != nil {
 		return nil, err
 	}
-	authorizedPendingProof, err := signExactArkStageWithSighash(
-		signCtx, req.PendingProof, cosigner, expected, tree.SpendLeaf, txscript.SigHashAll,
-	)
+	signedArk, authorizedPendingProof, err := s.keys.vtxoTransactionAuthorization(signCtx, authorization)
 	if err != nil {
 		return nil, err
 	}
@@ -1047,24 +1046,24 @@ func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpoi
 			CheckpointPsbts: storedRaw, ArkTxid: op.ArkTxid,
 		}, nil
 	}
-	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
+	keyContext, err := s.vtxoKeyContext(vaultID)
 	if err != nil {
 		return nil, err
 	}
-	expected := schnorr.SerializePubKey(cosigner.PubKey())
+	expected := schnorr.SerializePubKey(tree.CosignerPub)
 	timeout := s.SignTimeout
 	if timeout == 0 {
 		timeout = 15 * time.Second
 	}
 	signCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	authorized := make([]string, len(req.CheckpointPsbts))
-	for i, raw := range req.CheckpointPsbts {
-		signed, err := signExactArkStage(signCtx, raw, cosigner, expected, tree.SpendLeaf)
-		if err != nil {
-			return nil, err
-		}
-		authorized[i] = signed
+	authorization, err := newVtxoCheckpointAuthorization(keyContext, req.CheckpointPsbts, tree.SpendLeaf, expected)
+	if err != nil {
+		return nil, err
+	}
+	authorized, err := s.keys.vtxoCheckpointAuthorization(signCtx, authorization)
+	if err != nil {
+		return nil, err
 	}
 	op.CheckpointPSBTs = encodeJSONStringSlice(authorized)
 	op.CheckpointRequestPSBTs = requestBinding

@@ -104,7 +104,7 @@ func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
 	encoded := hardwareInitiatePSBT(t, e.svc, e.externalOwner)
 	transition := TransitionRequest{VaultID: fixture.VaultID, Purpose: "initiate", PSBT: encoded}
 
-	e.svc.ArkadeCosignerSigner = unavailableSigner{}
+	e.svc.keys = testKeys(t, e.master, unavailableSigner{})
 	if _, err := e.svc.SignTransition(context.Background(), transition); err == nil || !strings.Contains(err.Error(), "signer unavailable") {
 		t.Fatalf("first sign did not fail at the external signer: %v", err)
 	}
@@ -127,9 +127,8 @@ func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
 	restarted := New(Deps{
 		Stores: testStores(t, reopened), Deployment: e.svc.Deployment,
 		IntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
-		MasterIKM:    e.master, VaultCosignerPub: e.master.PubKey(), ArkadeCosignerPub: e.operator.PubKey(),
+		Keys:         testKeys(t, e.master, LocalSigner{Priv: e.operator}), VaultCosignerPub: e.master.PubKey(), ArkadeCosignerPub: e.operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
-		ArkadeSigner: LocalSigner{Priv: e.operator},
 	})
 	if err := restarted.LoadVaults(); err != nil {
 		t.Fatal(err)
