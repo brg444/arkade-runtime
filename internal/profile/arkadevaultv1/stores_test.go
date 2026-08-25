@@ -1,6 +1,8 @@
 package arkadevaultv1
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"reflect"
 	"testing"
 
@@ -30,6 +32,28 @@ func TestStoresFromLedgerKeepsOnePhysicalDatabase(t *testing.T) {
 		if got := reflect.ValueOf(store).Pointer(); got != want {
 			t.Fatalf("%s store uses a different backend: %x != %x", name, got, want)
 		}
+	}
+}
+
+func TestStoresRetainLedgerAuthenticationBoundary(t *testing.T) {
+	ledger, err := policy.OpenMainnetLedger(t.TempDir()+"/vault.db", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	stores, err := StoresFromLedger(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := bytes.Repeat([]byte{0x5a}, sha256.Size)
+	if err := stores.Identity.RequireIntegrityKey(key); err == nil {
+		t.Fatal("unkeyed ledger accepted through the identity store")
+	}
+	if err := ledger.SetIntegrityKey(key); err != nil {
+		t.Fatal(err)
+	}
+	if err := stores.Identity.RequireIntegrityKey(key); err != nil {
+		t.Fatalf("authenticated ledger rejected through the identity store: %v", err)
 	}
 }
 

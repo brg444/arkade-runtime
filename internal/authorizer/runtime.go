@@ -230,7 +230,7 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		return nil, err
 	}
 
-	registry, err := arkaderuntime.Compile(arkadevaultv1.Definition())
+	registry, err := compiledRegistry()
 	if err != nil {
 		return nil, err
 	}
@@ -280,6 +280,13 @@ func signerUnavailable(signer application.Signer) bool {
 	default:
 		return false
 	}
+}
+
+// compiledRegistry is the single production composition point. Profiles are
+// linked here at build time; there is no configuration or discovery path that
+// can add another profile at runtime.
+func compiledRegistry() (*arkaderuntime.Registry, error) {
+	return arkaderuntime.Compile(arkadevaultv1.Definition())
 }
 
 // provisionEnrollmentInvite turns one operator-supplied secret file into one
