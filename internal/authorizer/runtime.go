@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -303,8 +302,10 @@ func LoadVaultCosignerKey(path string) (*btcec.PrivateKey, error) {
 		return nil, fmt.Errorf("VaultCosigner key must be exactly 32-byte hex")
 	}
 	defer zero(raw)
-	scalar := new(big.Int).SetBytes(raw)
-	if scalar.Sign() <= 0 || scalar.Cmp(btcec.S256().N) >= 0 {
+	var scalar btcec.ModNScalar
+	overflow := scalar.SetByteSlice(raw)
+	defer scalar.Zero()
+	if overflow || scalar.IsZero() {
 		return nil, fmt.Errorf("VaultCosigner key scalar must be in [1, secp256k1.N-1]")
 	}
 	priv, _ := btcec.PrivKeyFromBytes(raw)

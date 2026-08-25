@@ -2,12 +2,14 @@ package application
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/apperr"
 )
 
 func TestHTTPBoundaryDoesNotExposeRawEmulatorSigningRoute(t *testing.T) {
@@ -123,6 +125,53 @@ func TestHTTPBoundaryAllowsExpectedVtxoPreflight(t *testing.T) {
 	}
 	if got := response.Header().Get("Access-Control-Allow-Origin"); got != fixture.Origin {
 		t.Fatalf("allow-origin: got %q, want %q", got, fixture.Origin)
+	}
+}
+
+func TestRequestLogAcceptsOnlyBoundedSafeRequestIDs(t *testing.T) {
+	handler := withRequestLog(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	tests := []struct {
+		name      string
+		requestID string
+		wantSame  bool
+	}{
+		{name: "valid trace id", requestID: "trace_01.ab-CD", wantSame: true},
+		{name: "oversized", requestID: strings.Repeat("a", maxRequestIDLength+1)},
+		{name: "whitespace", requestID: "trace id"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req.Header.Set("X-Request-Id", test.requestID)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, req)
+			got := response.Header().Get("X-Request-Id")
+			if got == "" || len(got) > maxRequestIDLength {
+				t.Fatalf("generated request id = %q", got)
+			}
+			if test.wantSame && got != test.requestID {
+				t.Fatalf("valid request id changed: got %q, want %q", got, test.requestID)
+			}
+			if !test.wantSame && got == test.requestID {
+				t.Fatalf("unsafe request id accepted: %q", got)
+			}
+		})
+	}
+}
+
+func TestMutationDecoderErrorsAreGenericAndCoded(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeMutationError(response, errors.New(`json: unknown field "sqlitePassword"`))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.Code)
+	}
+	if got := response.Header().Get("X-Vault-Error-Code"); got != string(apperr.CodeRejected) {
+		t.Fatalf("error code = %q, want %q", got, apperr.CodeRejected)
+	}
+	if got := strings.TrimSpace(response.Body.String()); got != "invalid request" {
+		t.Fatalf("decoder error leaked: %q", got)
 	}
 }
 

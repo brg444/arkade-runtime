@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
@@ -447,6 +449,19 @@ func TestSelectSpendVtxosRejectsUnsafeEconomicShapes(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, test.wantError)
 			}
 		})
+	}
+}
+
+func TestSolveVtxoSpendStopsWhenRequestIsCancelled(t *testing.T) {
+	estimator, _, err := newVtxoFeeEstimator(ports.IntentFeePolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, _, err = solveVtxoSpend(ctx, []reservedCoin{{ValueSats: 30_000}}, []byte{0x51}, []byte{0x52}, 20_000, uint64(program.AbsoluteFeeCeiling), estimator)
+	if !errors.Is(err, apperr.ErrBusy) {
+		t.Fatalf("cancelled fee selection = %v, want BUSY", err)
 	}
 }
 

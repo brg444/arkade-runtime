@@ -20,6 +20,7 @@ import (
 const GatewaySecretHeader = "X-Vault-Gateway-Secret"
 
 const maxJSONBody = 1 << 20
+const maxRequestIDLength = 64
 const EnrollmentTokenHeader = "X-Vault-Enrollment-Token"
 
 const (
@@ -103,7 +104,7 @@ func safeVaultID(id string) string {
 
 func withRequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimSpace(r.Header.Get("X-Request-Id"))
+		id := validRequestID(r.Header.Get("X-Request-Id"))
 		if id == "" {
 			id = fmt.Sprintf("%d", time.Now().UnixNano())
 		}
@@ -124,6 +125,20 @@ func withRequestLog(next http.Handler) http.Handler {
 		}
 		log.Printf("request id=%s op=%s path=%s vault=%s status=%d code=%s", id, r.Method, r.URL.Path, vault, status, code)
 	})
+}
+
+func validRequestID(raw string) string {
+	id := strings.TrimSpace(raw)
+	if id == "" || len(id) > maxRequestIDLength {
+		return ""
+	}
+	for _, c := range id {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') &&
+			(c < '0' || c > '9') && c != '.' && c != '_' && c != '-' {
+			return ""
+		}
+	}
+	return id
 }
 
 func requireGatewaySecret(next http.Handler) http.Handler {
@@ -242,6 +257,7 @@ func decodeMutation(r *http.Request, dst any, expectedOrigin string) error {
 }
 
 func writeMutationError(w http.ResponseWriter, err error) {
+	w.Header().Set("X-Vault-Error-Code", string(apperr.CodeRejected))
 	var me *mutationError
 	if errors.As(err, &me) {
 		http.Error(w, me.msg, me.status)
@@ -252,7 +268,7 @@ func writeMutationError(w http.ResponseWriter, err error) {
 		http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
 		return
 	}
-	http.Error(w, err.Error(), http.StatusBadRequest)
+	http.Error(w, "invalid request", http.StatusBadRequest)
 }
 
 func writeJSON(w http.ResponseWriter, v any, err error) {
