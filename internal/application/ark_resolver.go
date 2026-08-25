@@ -20,6 +20,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const (
@@ -82,23 +83,9 @@ func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer
 	if err != nil {
 		return nil, fmt.Errorf("ark indexer info: %w", err)
 	}
-	gotNetwork := strings.TrimSpace(info.Network)
-	if gotNetwork != deployment.NetworkMutinynet {
-		return nil, fmt.Errorf("ark indexer network %q does not match %s", gotNetwork, deployment.NetworkMutinynet)
-	}
-	checkpoint, err := decodeHex(strings.TrimSpace(info.CheckpointTapscript))
-	if err != nil || len(checkpoint) == 0 {
-		return nil, fmt.Errorf("incomplete ark indexer GetInfo")
-	}
-	signerPub, err := decodeHex(strings.TrimSpace(info.SignerPubkey))
+	checkpoint, signerPub, _, err := validateArkResolverReleaseInfo(network, info)
 	if err != nil {
-		return nil, fmt.Errorf("incomplete ark indexer GetInfo")
-	}
-	if err := validateArkResolverPolicy(network, checkpoint, signerPub); err != nil {
 		return nil, err
-	}
-	if _, err := validatedIntentFeePolicy(info); err != nil {
-		return nil, fmt.Errorf("ark indexer fee policy: %w", err)
 	}
 	client.checkpoint = checkpoint
 	client.signerPub = signerPub
@@ -137,6 +124,55 @@ func validateArkResolverPolicy(network string, checkpoint, signerPub []byte) err
 	return nil
 }
 
+func validateArkResolverReleaseInfo(network string, info arkIndexerInfo) ([]byte, []byte, ports.IntentFeePolicy, error) {
+	gotNetwork := strings.TrimSpace(info.Network)
+	if gotNetwork != deployment.NetworkMutinynet || network != deployment.NetworkMutinynet {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("ark indexer network %q does not match %s", gotNetwork, deployment.NetworkMutinynet)
+	}
+	checkpoint, err := decodeHex(strings.TrimSpace(info.CheckpointTapscript))
+	if err != nil || len(checkpoint) == 0 {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("incomplete ark indexer GetInfo")
+	}
+	signerPub, err := decodeHex(strings.TrimSpace(info.SignerPubkey))
+	if err != nil {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("incomplete ark indexer GetInfo")
+	}
+	if err := validateArkResolverPolicy(network, checkpoint, signerPub); err != nil {
+		return nil, nil, ports.IntentFeePolicy{}, err
+	}
+	if info.ForfeitPubkey != deployment.MutinynetCheckpointForfeitPubHex {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("Operator forfeit key does not match the release policy")
+	}
+	unilateralExitDelay, err := parseCanonicalReleaseUint32(info.UnilateralExitDelay, "unilateral exit delay")
+	if err != nil || unilateralExitDelay != program.VaultPolicyV1ArkdMinExitDelay {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("Operator unilateral exit delay does not match the release policy")
+	}
+	boardingExitDelay, err := parseCanonicalReleaseUint32(info.BoardingExitDelay, "boarding exit delay")
+	if err != nil || boardingExitDelay != program.VaultBoardV1ExitDelay {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("Operator boarding exit delay does not match the release policy")
+	}
+	dust, err := parseCanonicalReleaseUint32(info.Dust, "dust")
+	if err != nil || int64(dust) != program.DustSats {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("Operator dust does not match the release policy")
+	}
+	fee, err := validatedIntentFeePolicy(info)
+	if err != nil {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("ark indexer fee policy: %w", err)
+	}
+	return checkpoint, signerPub, fee, nil
+}
+
+func parseCanonicalReleaseUint32(raw, name string) (uint32, error) {
+	if raw == "" || raw != strings.TrimSpace(raw) || strings.HasPrefix(raw, "+") {
+		return 0, fmt.Errorf("%s", name)
+	}
+	value, err := strconv.ParseUint(raw, 10, 32)
+	if err != nil || strconv.FormatUint(value, 10) != raw {
+		return 0, fmt.Errorf("%s", name)
+	}
+	return uint32(value), nil
+}
+
 func (r *arkResolver) Network() string {
 	if r == nil {
 		return ""
@@ -163,21 +199,8 @@ func (r *arkResolver) IntentFeePolicy(ctx context.Context) (ports.IntentFeePolic
 	if err != nil {
 		return ports.IntentFeePolicy{}, err
 	}
-	if strings.TrimSpace(info.Network) != r.network {
-		return ports.IntentFeePolicy{}, fmt.Errorf("ark indexer network changed")
-	}
-	checkpoint, err := decodeHex(strings.TrimSpace(info.CheckpointTapscript))
-	if err != nil {
-		return ports.IntentFeePolicy{}, fmt.Errorf("checkpoint tapscript")
-	}
-	signerPub, err := decodeHex(strings.TrimSpace(info.SignerPubkey))
-	if err != nil {
-		return ports.IntentFeePolicy{}, fmt.Errorf("Operator signer")
-	}
-	if err := validateArkResolverPolicy(r.network, checkpoint, signerPub); err != nil {
-		return ports.IntentFeePolicy{}, err
-	}
-	return validatedIntentFeePolicy(info)
+	_, _, fee, err := validateArkResolverReleaseInfo(r.network, info)
+	return fee, err
 }
 
 func (r *arkResolver) SubmittedVtxoState(ctx context.Context, pkScript []byte, reserved []ports.ResolvedVtxo, arkTxid string, changeVout *uint32, changeValueSats uint64) (ports.SubmittedVtxoState, error) {
@@ -367,6 +390,10 @@ type arkIndexerInfo struct {
 	Network             string `json:"network"`
 	CheckpointTapscript string `json:"checkpointTapscript"`
 	SignerPubkey        string `json:"signerPubkey"`
+	ForfeitPubkey       string `json:"forfeitPubkey"`
+	UnilateralExitDelay string `json:"unilateralExitDelay"`
+	BoardingExitDelay   string `json:"boardingExitDelay"`
+	Dust                string `json:"dust"`
 	Fees                *struct {
 		IntentFee *struct {
 			OffchainInput  *string `json:"offchainInput"`
