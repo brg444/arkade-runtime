@@ -27,6 +27,12 @@ func (stubEmulatorSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, err
 	return nil, errors.New("stub public signer must not be called")
 }
 
+type nilEmulatorSigner struct{}
+
+func (*nilEmulatorSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
+	return nil, errors.New("nil public signer must not be called")
+}
+
 func TestLoadVaultCosignerKeyRejectsNormalizedAndOutOfRangeScalars(t *testing.T) {
 	order := btcec.S256().N
 	orderMinusOne := new(big.Int).Sub(new(big.Int).Set(order), big.NewInt(1))
@@ -110,6 +116,71 @@ func TestCredentialIntegrityKeyUsesDomainSeparatedHKDF(t *testing.T) {
 	if bytes.Equal(a, c) {
 		t.Fatal("distinct provider scalars derived the same MAC key")
 	}
+}
+
+func TestProtectedRuntimeRevalidatesEmulatorDialResult(t *testing.T) {
+	expectedRaw, err := hex.DecodeString(deployment.MutinynetArkadeCosignerPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := btcec.ParsePubKey(expectedRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := application.PublicEmulatorIdentity{
+		Origin: deployment.MutinynetArkadeCosignerOrigin, Version: deployment.MutinynetArkadeCosignerVersion, BasePub: expected,
+	}
+	if err := validateArkadeDialResult(stubEmulatorSigner{}, valid, expected); err != nil {
+		t.Fatal(err)
+	}
+	var typedNil *nilEmulatorSigner
+	other, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		signer   application.Signer
+		identity application.PublicEmulatorIdentity
+	}{
+		"missing signer": {identity: valid},
+		"typed nil signer": {
+			signer: typedNil, identity: valid,
+		},
+		"wrong origin": {
+			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
+				Origin: "https://attacker.example", Version: valid.Version, BasePub: valid.BasePub,
+			},
+		},
+		"wrong version": {
+			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
+				Origin: valid.Origin, Version: "v0.0.0", BasePub: valid.BasePub,
+			},
+		},
+		"wrong key": {
+			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
+				Origin: valid.Origin, Version: valid.Version, BasePub: other.PubKey(),
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateArkadeDialResult(test.signer, test.identity, expected); err == nil {
+				t.Fatal("untrusted dial result accepted")
+			}
+		})
+	}
+}
+
+func TestWipePrivateKeyZerosScalar(t *testing.T) {
+	key, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wipePrivateKey(key)
+	if !bytes.Equal(key.Serialize(), make([]byte, 32)) {
+		t.Fatal("private scalar was not zeroed")
+	}
+	// Cleanup must be nil-safe for partial startup failures.
+	wipePrivateKey(nil)
 }
 
 func TestDeploymentKeyRejectsFixtureEncodings(t *testing.T) {

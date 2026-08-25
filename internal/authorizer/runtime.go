@@ -15,10 +15,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/application"
+	"github.com/brg444/arkade-vault-server/internal/contractpack"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
 	"github.com/brg444/arkade-vault-server/internal/policy"
@@ -110,11 +112,20 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 	if dialArkade == nil {
 		return nil, fmt.Errorf("public arkade emulator dialer required")
 	}
+	if err := contractpack.Validate(); err != nil {
+		return nil, fmt.Errorf("release Contract Pack: %w", err)
+	}
 
 	vaultCosignerKey, err := LoadVaultCosignerKey(cfg.VaultCosignerKeyFile)
 	if err != nil {
 		return nil, err
 	}
+	keyOwnedByService := false
+	defer func() {
+		if !keyOwnedByService {
+			wipePrivateKey(vaultCosignerKey)
+		}
+	}()
 	arkadeBase, err := parseCanonicalCompressedPub("ArkadeCosigner", deployment.MutinynetArkadeCosignerPubHex)
 	if err != nil {
 		return nil, err
@@ -177,6 +188,10 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
+	if err := validateArkadeDialResult(arkadeSigner, arkadeIdentity, arkadeBase); err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
+	}
 	svc := application.New(application.Deps{
 		Ledger:                ledger,
 		Deployment:            cfg.Deployment,
@@ -188,6 +203,7 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		ArkadeCosignerVersion: arkadeIdentity.Version,
 		ArkadeSigner:          arkadeSigner,
 	})
+	keyOwnedByService = true
 	defer func() {
 		if closeOnError {
 			svc.WipeSecrets()
@@ -202,6 +218,32 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 
 	closeOnError = false
 	return &Runtime{handler: httpapi.Authorizer(svc), service: svc, ledger: ledger}, nil
+}
+
+func validateArkadeDialResult(signer application.Signer, identity application.PublicEmulatorIdentity, expected *btcec.PublicKey) error {
+	if signerUnavailable(signer) {
+		return fmt.Errorf("public arkade emulator signer capability required")
+	}
+	if identity.Origin != deployment.MutinynetArkadeCosignerOrigin ||
+		identity.Version != deployment.MutinynetArkadeCosignerVersion ||
+		identity.BasePub == nil || expected == nil ||
+		!bytes.Equal(identity.BasePub.SerializeCompressed(), expected.SerializeCompressed()) {
+		return fmt.Errorf("public arkade emulator identity does not match the release pin")
+	}
+	return nil
+}
+
+func signerUnavailable(signer application.Signer) bool {
+	if signer == nil {
+		return true
+	}
+	value := reflect.ValueOf(signer)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // provisionEnrollmentInvite turns one operator-supplied secret file into one
@@ -310,9 +352,17 @@ func LoadVaultCosignerKey(path string) (*btcec.PrivateKey, error) {
 	}
 	priv, _ := btcec.PrivKeyFromBytes(raw)
 	if role, known := knownPublicFixtureRole(priv.PubKey()); known {
+		wipePrivateKey(priv)
 		return nil, fmt.Errorf("public %s fixture VaultCosigner key is forbidden", role)
 	}
 	return priv, nil
+}
+
+func wipePrivateKey(priv *btcec.PrivateKey) {
+	if priv == nil {
+		return
+	}
+	priv.Key.Zero()
 }
 
 func parseDeploymentPub(role, encoded string) (*btcec.PublicKey, error) {

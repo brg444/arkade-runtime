@@ -144,6 +144,17 @@ func TestEmbeddedContractPackMatchesRootFile(t *testing.T) {
 	if string(raw) != string(contractpack.JSON) {
 		t.Fatal("embedded contract pack drifted from repo root")
 	}
+	if err := contractpack.ValidateBytes(raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := contractpack.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	mutated := append([]byte(nil), raw...)
+	mutated[0] ^= 1
+	if err := contractpack.ValidateBytes(mutated); err == nil {
+		t.Fatal("modified Contract Pack matched the release digest")
+	}
 }
 
 func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
