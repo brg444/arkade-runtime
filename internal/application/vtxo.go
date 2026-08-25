@@ -391,7 +391,7 @@ func (s *Service) selectSpendVtxos(ctx context.Context, pkScript, destScript []b
 		limit = maxVtxoSpendInputs
 	}
 	for count := 1; count <= limit; count++ {
-		fee, change, ok, solveErr := solveVtxoSpend(coins[:count], destScript, pkScript, amountSats, feeCap, estimator)
+		fee, change, ok, solveErr := solveVtxoSpend(ctx, coins[:count], destScript, pkScript, amountSats, feeCap, estimator)
 		if solveErr != nil {
 			return nil, 0, 0, solveErr
 		}
@@ -491,7 +491,10 @@ func exactFeeSats(fee arkfee.FeeAmount) (uint64, error) {
 	return uint64(rounded), nil
 }
 
-func solveVtxoSpend(coins []reservedCoin, destScript, changeScript []byte, amount, feeCap uint64, estimator *arkfee.Estimator) (fee, change uint64, ok bool, err error) {
+func solveVtxoSpend(ctx context.Context, coins []reservedCoin, destScript, changeScript []byte, amount, feeCap uint64, estimator *arkfee.Estimator) (fee, change uint64, ok bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return 0, 0, false, apperr.New(apperr.CodeBusy, "fee selection cancelled")
+	}
 	var total uint64
 	feeInputs := make([]arkfee.OffchainInput, len(coins))
 	for i, coin := range coins {
@@ -521,6 +524,9 @@ func solveVtxoSpend(coins []reservedCoin, destScript, changeScript []byte, amoun
 		maxCandidate = available
 	}
 	for candidate := uint64(0); candidate <= maxCandidate; candidate++ {
+		if err := ctx.Err(); err != nil {
+			return 0, 0, false, apperr.New(apperr.CodeBusy, "fee selection cancelled")
+		}
 		candidateChange := total - amount - candidate
 		if candidateChange < uint64(program.DustSats) {
 			continue

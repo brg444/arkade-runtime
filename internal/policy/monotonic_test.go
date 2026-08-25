@@ -239,3 +239,13 @@ func TestSignCountAndVaultMapCurrentSchema(t *testing.T) {
 		t.Fatalf("vault map round trip: %+v %v", got, err)
 	}
 }
+
+func TestAdvanceSignCountFailsClosedWhenTableDisappears(t *testing.T) {
+	led := openPolicyTestLedger(t, nil)
+	if _, err := led.db.Exec(`DROP TABLE webauthn_sign_count`); err != nil {
+		t.Fatal(err)
+	}
+	if err := led.AdvanceSignCount("vault-a", []byte("credential"), 1); err == nil {
+		t.Fatal("missing WebAuthn sign-count table was accepted")
+	}
+}

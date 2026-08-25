@@ -79,6 +79,14 @@ func decodeCBOR(in []byte) (cborValue, []byte, error) {
 			if err != nil {
 				return cborValue{}, nil, err
 			}
+			if k.kind != cborInt && k.kind != cborText {
+				return cborValue{}, nil, fmt.Errorf("unsupported cbor map key")
+			}
+			for _, pair := range pairs {
+				if sameCBORMapKey(pair.key, k) {
+					return cborValue{}, nil, fmt.Errorf("duplicate cbor map key")
+				}
+			}
 			v, next, err := decodeCBOR(next)
 			if err != nil {
 				return cborValue{}, nil, err
@@ -100,14 +108,36 @@ func decodeCBORLen(ai byte, rest []byte) (uint64, []byte, error) {
 		if len(rest) < 1 {
 			return 0, nil, fmt.Errorf("truncated cbor length")
 		}
-		return uint64(rest[0]), rest[1:], nil
+		n := uint64(rest[0])
+		if n < 24 {
+			return 0, nil, fmt.Errorf("non-minimal cbor length")
+		}
+		return n, rest[1:], nil
 	case ai == 25:
 		if len(rest) < 2 {
 			return 0, nil, fmt.Errorf("truncated cbor length")
 		}
-		return uint64(binary.BigEndian.Uint16(rest[:2])), rest[2:], nil
+		n := uint64(binary.BigEndian.Uint16(rest[:2]))
+		if n <= 0xff {
+			return 0, nil, fmt.Errorf("non-minimal cbor length")
+		}
+		return n, rest[2:], nil
 	default:
 		return 0, nil, fmt.Errorf("unsupported cbor additional info")
+	}
+}
+
+func sameCBORMapKey(a, b cborValue) bool {
+	if a.kind != b.kind {
+		return false
+	}
+	switch a.kind {
+	case cborInt:
+		return a.intVal == b.intVal
+	case cborText:
+		return a.text == b.text
+	default:
+		return false
 	}
 }
 
