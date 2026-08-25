@@ -34,9 +34,9 @@ func TestDialArkResolverPinsMutinynet(t *testing.T) {
 
 	origin := deployment.MutinynetArkIndexerOrigin
 	info := fmt.Sprintf(
-		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"unilateralExitDelay":"2048","fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
+		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"forfeitPubkey":%q,"unilateralExitDelay":"2048","boardingExitDelay":"604672","dust":"330","fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
 		deployment.NetworkMutinynet, testCheckpointTapscript,
-		deployment.MutinynetOperatorSignerPubHex,
+		deployment.MutinynetOperatorSignerPubHex, deployment.MutinynetCheckpointForfeitPubHex,
 	)
 	doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host != "mutinynet.arkade.sh" {
@@ -148,6 +148,40 @@ func TestDialArkResolverRejectsCheckpointPolicySubstitution(t *testing.T) {
 				t.Fatalf("substituted checkpoint policy was accepted: %v", err)
 			}
 		})
+	}
+}
+
+func TestArkResolverRejectsOperatorReleaseProfileDrift(t *testing.T) {
+	happy := happyIndexerInfo()
+	for name, body := range map[string]string{
+		"forfeit key":           strings.Replace(happy, deployment.MutinynetCheckpointForfeitPubHex, strings.Repeat("02", 33), 1),
+		"unilateral exit delay": strings.Replace(happy, `"2048"`, `"2049"`, 1),
+		"boarding exit delay":   strings.Replace(happy, `"604672"`, `"604160"`, 1),
+		"dust":                  strings.Replace(happy, `"330"`, `"331"`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			doer := rpcDoerFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, body), nil
+			})
+			if err := mustDialErr(t, doer); err == nil || !strings.Contains(err.Error(), "release policy") {
+				t.Fatalf("Operator profile drift was accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestArkResolverRechecksOperatorReleaseProfile(t *testing.T) {
+	body := happyIndexerInfo()
+	doer := rpcDoerFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, body), nil
+	})
+	resolver, err := dialArkResolver(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = strings.Replace(body, `"330"`, `"331"`, 1)
+	if _, err := resolver.IntentFeePolicy(context.Background()); err == nil || !strings.Contains(err.Error(), "release policy") {
+		t.Fatalf("runtime Operator profile drift was accepted: %v", err)
 	}
 }
 
@@ -511,8 +545,9 @@ func TestSpendableVtxosRejectsEmptyScriptAndSpent(t *testing.T) {
 
 func happyIndexerInfo() string {
 	return fmt.Sprintf(
-		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
+		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"forfeitPubkey":%q,"unilateralExitDelay":"2048","boardingExitDelay":"604672","dust":"330","fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
 		deployment.NetworkMutinynet, testCheckpointTapscript, deployment.MutinynetOperatorSignerPubHex,
+		deployment.MutinynetCheckpointForfeitPubHex,
 	)
 }
 
