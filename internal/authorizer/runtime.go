@@ -24,7 +24,9 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-vault-server/internal/program"
+	arkaderuntime "github.com/brg444/arkade-vault-server/internal/runtime"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -43,7 +45,7 @@ type Config struct {
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
 type Runtime struct {
-	handler http.Handler
+	host    *arkaderuntime.Host
 	service *application.Service
 	ledger  *policy.Ledger
 }
@@ -51,16 +53,19 @@ type Runtime struct {
 // Handler returns the constrained HTTP API. The underlying Service and its
 // policy-agnostic final signer stay private to this package.
 func (r *Runtime) Handler() http.Handler {
-	if r == nil {
+	if r == nil || r.host == nil {
 		return http.NotFoundHandler()
 	}
-	return r.handler
+	return r.host.Handler()
 }
 
 // Close releases the authoritative ledger.
 func (r *Runtime) Close() error {
 	if r == nil {
 		return nil
+	}
+	if r.host != nil {
+		return r.host.Close()
 	}
 	if r.service != nil {
 		r.service.WipeSecrets()
@@ -86,9 +91,9 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 		return nil, fmt.Errorf("required Arkade resolver: %w", err)
 	}
 	rt.service.ArkResolver = resolver
-	if ready := rt.service.Ready(ctx); !ready.Ok {
+	if err := rt.host.Ready(ctx); err != nil {
 		_ = rt.Close()
-		return nil, fmt.Errorf("authorizer readiness: %s", ready.Error)
+		return nil, fmt.Errorf("authorizer readiness: %w", err)
 	}
 	return rt, nil
 }
@@ -216,8 +221,30 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		return nil, err
 	}
 
+	registry, err := arkaderuntime.Compile(arkadevaultv1.Definition())
+	if err != nil {
+		return nil, err
+	}
+	host, err := arkaderuntime.Open(registry, arkadevaultv1.ProfileID, arkaderuntime.Mount{
+		Handler: httpapi.Authorizer(svc),
+		Readiness: func(ctx context.Context) error {
+			ready := svc.Ready(ctx)
+			if !ready.Ok {
+				return fmt.Errorf("%s", ready.Error)
+			}
+			return nil
+		},
+		Shutdown: func() error {
+			svc.WipeSecrets()
+			return ledger.Close()
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	closeOnError = false
-	return &Runtime{handler: httpapi.Authorizer(svc), service: svc, ledger: ledger}, nil
+	return &Runtime{host: host, service: svc, ledger: ledger}, nil
 }
 
 func validateArkadeDialResult(signer application.Signer, identity application.PublicEmulatorIdentity, expected *btcec.PublicKey) error {
