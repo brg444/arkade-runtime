@@ -35,10 +35,12 @@ func pendingProofForInputs(
 	t.Helper()
 	proofInputs := make([]intent.Input, len(inputs))
 	for i, input := range inputs {
-		var hash chainhash.Hash
-		copy(hash[:], input.Txid)
+		hash, err := chainhash.NewHashFromStr(hex.EncodeToString(input.Txid))
+		if err != nil {
+			t.Fatal(err)
+		}
 		proofInputs[i] = intent.Input{
-			OutPoint:    &wire.OutPoint{Hash: hash, Index: uint32(input.Vout)},
+			OutPoint:    &wire.OutPoint{Hash: *hash, Index: uint32(input.Vout)},
 			Sequence:    wire.MaxTxInSequenceNum,
 			WitnessUtxo: &wire.TxOut{Value: input.ValueSats, PkScript: bytes.Clone(input.Script)},
 		}
