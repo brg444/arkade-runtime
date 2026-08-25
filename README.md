@@ -115,11 +115,12 @@ schema. Every new economic-outflow reservation also advances an authenticated
 policy sequence outside SQLite. Startup fails when the database is behind that
 sequence.
 
-The database and policy sequence require independently controlled storage,
-permissions, backup jobs, and restore decisions. Two paths or two named volumes
-under one restore authority leave a single failure domain. Losing sequence
-persistence is a fail-closed event and never permits recreation from a database
-backup.
+The database and policy sequence remain distinct authenticated files, but a
+backup or restore selects them as one coherent state unit. Their manifest and
+policy-count high-water mark must also be recorded outside that unit: restoring
+both files to the same older point cannot be detected in process. Losing
+sequence persistence is a fail-closed event and never permits recreation from
+a database backup. See the [operations runbook](deploy/ops.md).
 
 Allowance evaluation authenticates ledger rows before trusting their state or
 time. The current implementation therefore has a bounded-history mainnet gate:
@@ -182,6 +183,7 @@ qualification remain wallet release gates.
 | Path | Responsibility |
 | --- | --- |
 | `cmd/authorizer` | Process configuration and shutdown. |
+| `cmd/runtime-state` | Offline coherent snapshot, verification, and restore tooling. |
 | `internal/authorizer` | Protected runtime assembly, secrets, ledger, and release-pinned adapters. |
 | `internal/application` | Enrollment, VTXO, Savings transition, and recovery workflows. |
 | `internal/policy` | Fresh ledger, authenticated records, allowance, and policy sequence. |

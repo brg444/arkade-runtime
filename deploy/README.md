@@ -8,7 +8,8 @@ binary.
 | [Dockerfile.railway](../Dockerfile.railway) | Hosted image that binds `$PORT` |
 | [Dockerfile.mutinynet](../Dockerfile.mutinynet) | Local Mutinynet image |
 | [entrypoint.railway.sh](entrypoint.railway.sh) | Key-file materialization and privilege drop |
-| [ops.md](ops.md) | Mainnet v2 state, restore, readiness, and release procedure |
+| [ops.md](ops.md) | Runtime snapshot, restore, rollback, rotation, monitoring, and release procedure |
+| [mainnet-poc-checklist.md](mainnet-poc-checklist.md) | Preparation gates only; no mainnet deployment or policy values |
 
 The mainnet v2 service is a greenfield deployment. It does not open or migrate
 the existing Mutinynet ledger. Use fresh database and policy-sequence volumes,

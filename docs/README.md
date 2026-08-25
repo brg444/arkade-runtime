@@ -7,6 +7,8 @@
 | [`vault-policy-v1` Spending](vault-policy-v1-spend.md) | Canonical multi-input transaction, fee, change, and retry contract. |
 | [`vault-policy-v1` guardian delay](vault-policy-v1-guardian-delay.md) | Mutinynet delay pin and the separate mainnet decision. |
 | [Deployment](../deploy/README.md) | Image, secret, persistence, readiness, and operations entry points. |
+| [Runtime operations](../deploy/ops.md) | Coherent state units, restore drills, rollback, rotations, and monitoring. |
+| [Mainnet POC checklist](../deploy/mainnet-poc-checklist.md) | Preparation gates only; no mainnet deployment authorization. |
 | [Contract pack](../contract-pack.json) | Machine-readable programs shared byte-for-byte with the wallet. |
 
 The wallet owns transaction coordination, device ceremonies, user-facing

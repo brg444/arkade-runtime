@@ -50,10 +50,11 @@ or reuse an input.
 Every newly reserved VTXO outflow also advances an authenticated sequence
 outside SQLite. Startup
 refuses a database whose durable outflow count is behind that sequence. The
-database and sequence must use independently controlled durable storage,
-permissions, backups, and restore decisions. Separate paths or named volumes
-under one authority fail to establish independent failure domains. Restoring
-both to the same earlier point defeats rollback detection.
+database and sequence remain distinct authenticated files and must be captured
+and selected as one coherent restore unit. The accepted manifest digest and
+policy-count high-water mark require a separate continuity record, because
+restoring both state files to the same earlier point defeats in-process
+rollback detection.
 
 The recovery envelope uses `arkade-vault/recovery-binding/v3`. Its signed
 preimage includes the authenticated credential, complete Savings descriptor,
@@ -156,10 +157,11 @@ sign the intended leaves without exposing private keys to the browser.
 
 ## Deployment gates
 
-The database and authenticated policy sequence require separate storage
-permissions, backup jobs, restore authorities, and failure drills. Deleting a
-nonempty deployment's sequence file is fatal. Restoring the database and
-sequence together to an earlier point defeats rollback detection.
+The database and authenticated policy sequence require restrictive storage
+permissions, coherent state-unit backups, an external policy-count high-water
+record, restore approvals, and failure drills. Deleting a nonempty deployment's
+sequence file is fatal. Restoring a matched older database and sequence defeats
+in-process rollback detection and therefore requires the external record.
 
 The Mutinynet 4,608-second guardian delay is not a mainnet pin. Mainnet tree
 vectors and both Contract Packs must be regenerated from the deployed Operator
