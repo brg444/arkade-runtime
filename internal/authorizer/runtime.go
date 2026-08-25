@@ -197,8 +197,13 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
+	stores, err := arkadevaultv1.StoresFromLedger(ledger)
+	if err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
+	}
 	svc := application.New(application.Deps{
-		Ledger:                ledger,
+		Stores:                stores,
 		Deployment:            cfg.Deployment,
 		IntegrityKey:          credentialIntegrityKey,
 		MasterIKM:             vaultCosignerKey,

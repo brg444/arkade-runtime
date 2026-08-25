@@ -18,6 +18,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
+	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
@@ -30,7 +31,7 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
-	Ledger     *policy.Ledger
+	Stores     arkadevaultv1.Stores
 	Deployment deployment.Config
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
@@ -66,7 +67,7 @@ type Service struct {
 
 // Deps is the constructor input. The master scalar is IKM only.
 type Deps struct {
-	Ledger                *policy.Ledger
+	Stores                arkadevaultv1.Stores
 	Deployment            deployment.Config
 	IntegrityKey          []byte
 	MasterIKM             *btcec.PrivateKey
@@ -82,7 +83,7 @@ type Deps struct {
 // never a transaction signer.
 func New(d Deps) *Service {
 	s := &Service{
-		Ledger:                 d.Ledger,
+		Stores:                 d.Stores,
 		Deployment:             d.Deployment,
 		CredentialIntegrityKey: d.IntegrityKey,
 		VaultCosignerPub:       d.VaultCosignerPub,
@@ -191,7 +192,7 @@ type parsedRegisterRequest struct {
 }
 
 func (s *Service) requireLedgerIntegrity() error {
-	if s == nil || s.Ledger == nil {
+	if s == nil || s.Stores.Identity == nil {
 		return fmt.Errorf("ledger required")
 	}
 	key, err := s.credentialIntegrityKey()
@@ -199,7 +200,7 @@ func (s *Service) requireLedgerIntegrity() error {
 		return err
 	}
 	defer zeroServiceBytes(key)
-	return s.Ledger.RequireIntegrityKey(key)
+	return s.Stores.Identity.RequireIntegrityKey(key)
 }
 
 // CreateTenantVault atomically persists a new HKDF-derived vault and consumes
@@ -258,7 +259,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err := sealVaultCredentialForService(&vcred, s); err != nil {
 		return err
 	}
-	if err := s.Ledger.CreateVault(policy.CreateVaultInput{
+	if err := s.Stores.Identity.CreateVault(policy.CreateVaultInput{
 		Record: rec, Credential: vcred, TokenHash: tokenHash, Pending: pending,
 	}); err != nil {
 		return err
@@ -384,7 +385,7 @@ func (s *Service) LoadVaults() error {
 	if err := s.runtimeConfig().Validate(); err != nil {
 		return fmt.Errorf("deployment: %w", err)
 	}
-	ids, err := s.Ledger.ListVaultIDs()
+	ids, err := s.Stores.Identity.ListVaultIDs()
 	if err != nil {
 		return err
 	}
@@ -394,7 +395,7 @@ func (s *Service) LoadVaults() error {
 	}
 	defer zeroServiceBytes(key)
 	for _, id := range ids {
-		rec, vcred, err := s.Ledger.LoadVerifiedVault(id, key)
+		rec, vcred, err := s.Stores.Identity.LoadVerifiedVault(id, key)
 		if err != nil {
 			return err
 		}
@@ -674,7 +675,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	if snap.Savings == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
-	if s.Ledger == nil {
+	if s.Stores.Identity == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("ledger unavailable")
 	}
 	key, err := s.credentialIntegrityKey()
@@ -682,7 +683,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, err
 	}
 	defer zeroServiceBytes(key)
-	rec, _, err := s.Ledger.LoadVerifiedVault(id, key)
+	rec, _, err := s.Stores.Identity.LoadVerifiedVault(id, key)
 	if err != nil {
 		return "", enrolledSnapshot{}, nil, err
 	}
@@ -774,7 +775,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if cred == nil {
 		return Status{}, fmt.Errorf("not enrolled")
 	}
-	spent, err := s.Ledger.SpentInPeriod(ctx, vaultID, s.Ledger.PeriodStart())
+	spent, err := s.Stores.Allowance.SpentInPeriod(ctx, vaultID, s.Stores.Allowance.PeriodStart())
 	if err != nil {
 		return Status{}, err
 	}
@@ -941,7 +942,7 @@ func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (
 	if err != nil {
 		return nil, err
 	}
-	envelope, err := s.Ledger.GetVaultEnvelope(vaultID)
+	envelope, err := s.Stores.Identity.GetVaultEnvelope(vaultID)
 	if err != nil || envelope == nil {
 		return envelope, err
 	}
@@ -961,7 +962,7 @@ func (s *Service) loadVerifiedCredentialFor(vaultID string) (*policy.Credential,
 	if err != nil {
 		return nil, err
 	}
-	rec, vcred, err := s.Ledger.LoadVerifiedVault(vaultID, key)
+	rec, vcred, err := s.Stores.Identity.LoadVerifiedVault(vaultID, key)
 	if err != nil || rec == nil || vcred == nil {
 		return nil, err
 	}
@@ -1031,13 +1032,13 @@ func verifyDirectAuth(directPub, digest, compact []byte) error {
 }
 
 func (s *Service) advanceSignCount(vaultID string, credID []byte, count uint32) error {
-	if s == nil || s.Ledger == nil {
+	if s == nil || s.Stores.Identity == nil {
 		return nil
 	}
 	if err := s.requireLedgerIntegrity(); err != nil {
 		return err
 	}
-	return s.Ledger.AdvanceSignCount(vaultID, credID, count)
+	return s.Stores.Identity.AdvanceSignCount(vaultID, credID, count)
 }
 
 func rejectPRF(clientDataJSON []byte) error {

@@ -91,7 +91,7 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err != nil {
 		return nil, err
 	}
-	action, stored, err := s.Ledger.ApplyRecoveryReplay(policy.RecoverySession{
+	action, stored, err := s.Stores.RecoveryOperations.ApplyRecoveryReplay(policy.RecoverySession{
 		VaultID:     req.VaultID,
 		Purpose:     purpose,
 		InputTxid:   txid,
@@ -131,7 +131,7 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err != nil {
 		return nil, err
 	}
-	_, _, err = s.Ledger.ApplyRecoveryReplay(policy.RecoverySession{
+	_, _, err = s.Stores.RecoveryOperations.ApplyRecoveryReplay(policy.RecoverySession{
 		VaultID:     req.VaultID,
 		Purpose:     purpose,
 		InputTxid:   txid,

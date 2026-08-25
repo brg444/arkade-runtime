@@ -21,7 +21,7 @@ func (s *Service) GetMap(vaultID string) (json.RawMessage, error) {
 	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
-	rec, err := s.Ledger.GetVaultMap(vaultID)
+	rec, err := s.Stores.Maps.GetVaultMap(vaultID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (s *Service) PutMap(ctx context.Context, req MapWriteRequest) error {
 		return fmt.Errorf("map vault id does not match")
 	}
 	sum := sha256.Sum256(req.Payload)
-	return s.Ledger.PutVaultMap(policy.VaultMap{
+	return s.Stores.Maps.PutVaultMap(policy.VaultMap{
 		VaultID: vaultID,
 		KitHash: hex.EncodeToString(sum[:]),
 		Payload: string(req.Payload),

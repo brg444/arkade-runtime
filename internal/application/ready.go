@@ -38,7 +38,7 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "deployment not ready"
 		return st
 	}
-	if s.Ledger == nil {
+	if err := s.Stores.Validate(); err != nil {
 		st.Error = "ledger unavailable"
 		return st
 	}
@@ -46,7 +46,7 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "ledger integrity unavailable"
 		return st
 	}
-	ver, err := s.Ledger.SchemaVersion()
+	ver, err := s.Stores.Identity.SchemaVersion()
 	if err != nil {
 		st.Error = "schema unread"
 		return st

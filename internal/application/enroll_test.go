@@ -63,7 +63,7 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	svc := &Service{
-		Ledger: led, VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
+		Stores: testStores(t, led), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
 		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
 		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
@@ -205,7 +205,7 @@ func TestCurrentSavingsDescriptorRebuildsExactlyAfterRestart(t *testing.T) {
 	}
 
 	restarted := New(Deps{
-		Ledger:                svc.Ledger,
+		Stores:                svc.Stores,
 		Deployment:            svc.Deployment,
 		IntegrityKey:          append([]byte(nil), svc.CredentialIntegrityKey...),
 		MasterIKM:             svc.vaultIKM,
@@ -294,7 +294,7 @@ func TestFinishDoesNotInheritProcessOwnerPubs(t *testing.T) {
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	svc := &Service{
-		Ledger:           led,
+		Stores:           testStores(t, led),
 		VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
 		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
@@ -663,7 +663,7 @@ func enrollService(t *testing.T, led *policy.Ledger) *Service {
 	master, _ := btcec.NewPrivateKey()
 	arkade, _ := btcec.NewPrivateKey()
 	return &Service{
-		Ledger: led, VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
+		Stores: testStores(t, led), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
 		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
 		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
