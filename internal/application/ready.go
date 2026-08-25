@@ -53,7 +53,7 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	}
 	st.Schema = ver
 	if s.VaultCosignerPub == nil || s.ArkadeCosignerOrigin == "" || s.ArkadeCosignerVersion == "" ||
-		s.ArkadeCosignerPub == nil || isNilInterface(s.ArkadeCosignerSigner) {
+		s.ArkadeCosignerPub == nil || s.keys.Validate() != nil {
 		st.Error = "arkade signer not pinned"
 		return st
 	}

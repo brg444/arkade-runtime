@@ -70,8 +70,8 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 	}
 	svc := New(Deps{
 		Stores: testStores(t, ledger), Deployment: cfg, IntegrityKey: integrityKey,
-		MasterIKM: vaultCosigner, VaultCosignerPub: vaultCosigner.PubKey(),
-		ArkadeCosignerPub: arkadeCosignerPub, ArkadeSigner: LocalSigner{Priv: vaultCosigner},
+		Keys:             testKeys(t, vaultCosigner, LocalSigner{Priv: vaultCosigner}),
+		VaultCosignerPub: vaultCosigner.PubKey(), ArkadeCosignerPub: arkadeCosignerPub,
 		ArkadeCosignerOrigin:  deployment.MutinynetArkadeCosignerOrigin,
 		ArkadeCosignerVersion: deployment.MutinynetArkadeCosignerVersion,
 	})
@@ -81,12 +81,12 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
 	}
-	arkadeSigner := svc.ArkadeCosignerSigner
-	svc.ArkadeCosignerSigner = nil
+	keys := svc.keys
+	svc.keys = KeyCapabilities{}
 	if got := svc.Ready(context.Background()); got.Ok || got.Error != "arkade signer not pinned" {
 		t.Fatalf("missing signer capability readiness = %+v", got)
 	}
-	svc.ArkadeCosignerSigner = arkadeSigner
+	svc.keys = keys
 	contractPack := append([]byte(nil), svc.contractPackJSON...)
 	svc.contractPackJSON[0] ^= 1
 	if got := svc.Ready(context.Background()); got.Ok || got.Error != "contract pack mismatch" {
