@@ -17,6 +17,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 )
@@ -270,6 +271,12 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	}
 	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
+	}
+	if runtime.host == nil {
+		t.Fatal("compiled runtime host missing")
+	}
+	if got := runtime.host.Profile().ID(); got != arkadevaultv1.ProfileID {
+		t.Fatalf("compiled runtime profile = %q", got)
 	}
 	tokenHash, err := application.HashEnrollmentToken(token)
 	if err != nil {
