@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -302,6 +303,16 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	if _, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial); err == nil ||
 		!strings.Contains(err.Error(), "enrollment token") {
 		t.Fatalf("empty restart without token: %v", err)
+	}
+}
+
+func TestProductionRegistryCompilesOnlyArkadeVaultV1(t *testing.T) {
+	registry, err := compiledRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := registry.ProfileIDs(), []string{arkadevaultv1.ProfileID}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("compiled production profiles = %v, want %v", got, want)
 	}
 }
 
