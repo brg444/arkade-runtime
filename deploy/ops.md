@@ -38,8 +38,16 @@ Build the operator tool from its reviewed operations revision and record that
 revision separately from the Runtime source and image identity:
 
 ```bash
-go build -trimpath -o ./bin/runtime-state ./cmd/runtime-state
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+  go build -trimpath -o ./bin/runtime-state ./cmd/runtime-state
+file ./bin/runtime-state
+sha256sum ./bin/runtime-state
 ```
+
+The build target must match the maintenance host reported by `uname -m`.
+Railway reported `x86_64` during the disposable drill; an ARM64 verifier was
+rejected before state access. Record the target architecture with the verifier
+source commit and binary digest.
 
 `runtime-state` has no network or signing route. It loads the file-backed
 VaultCosigner only long enough to derive the existing record-integrity key,
@@ -69,8 +77,9 @@ source commit and binary digest beside every operator approval.
 2. Drain wallet traffic at the edge. Confirm the request count is zero, stop
    every Runtime replica, and confirm no process has either state file open.
 3. Confirm the database has no `-journal`, `-wal`, or `-shm` sidecar. A clean
-   shutdown and the absence of sidecars are mandatory; the command refuses a
-   sidecar rather than guessing whether it contains committed state.
+   shutdown and the absence of sidecars are mandatory. The command refuses a
+   sidecar, and operator review must establish whether it contains committed
+   state.
 4. Create a private parent directory on the backup staging filesystem.
 5. Run one snapshot command with the release identity read back from the
    platform:
@@ -108,8 +117,9 @@ secret.
 1. Keep the target stopped and unrouted. Record its service, environment,
    volume, source commit, and intended immutable image digest.
 2. Select one complete state unit. Compare its manifest digest and policy
-   sequence with the external high-water record. Do not proceed if an equal or
-   newer accepted record exists unless the data-loss decision is explicit.
+   sequence with the external high-water record. A candidate below the latest
+   accepted record requires an explicit data-loss decision; a candidate above
+   the record requires incident review before the evidence system is updated.
 3. Verify before writing:
 
 ```bash
@@ -137,7 +147,8 @@ secret.
 The command stages both files before replacement, preserves the prior files
 until the new pair verifies, and rolls the first replacement back if the
 second or final authenticated check fails. Any error keeps the service stopped.
-Do not manually copy one artifact to complete a failed attempt.
+A failed attempt requires a new restore command covering both artifacts;
+manual one-artifact copy is forbidden.
 
 5. Run `verify` again against the installed paths or capture a new key-free
    verification report. Confirm schema version, authenticated row counts, and
@@ -146,8 +157,9 @@ Do not manually copy one artifact to complete a failed attempt.
    `200 ok`, `/ready` `ok: true`, the expected network and release pins, and
    aggregate state counts matching the manifest before routing traffic.
 7. Exercise read-only status and one synthetic, non-fund-bearing workflow in a
-   disposable drill. Production recovery testing must not create a transaction
-   or broadcast funds merely to prove storage recovery.
+   disposable drill. Production recovery testing uses synthetic state and
+   avoids transaction creation or funds broadcast merely to prove storage
+   recovery.
 
 ## Required failure drills
 
@@ -157,7 +169,7 @@ Run these only with disposable copies and a disposable Runtime service:
 | --- | --- |
 | Matched database and sequence from one verified unit | Offline verification and exact-image startup succeed. |
 | Database from an earlier point with the current authenticated sequence | Verifier rejects a rolled-back database; exact Runtime startup fails closed. |
-| Current database with an earlier or missing sequence | Verifier rejects a rolled-back or missing sequence. Runtime startup must not be used to repair a restore candidate. |
+| Current database with an earlier or missing sequence | Verifier rejects a rolled-back or missing sequence. Restore acceptance requires an equal pair before Runtime startup. |
 | Sequence bytes or database authenticated row modified | MAC or artifact-digest verification fails. |
 | Manifest source commit, image digest, Contract Pack, or artifact digest changed | Verification fails before target replacement. |
 | Wrong VaultCosigner key | Database/sequence authentication fails; never substitute a new key. |
@@ -172,16 +184,32 @@ a rollback into a repair.
 ## Image rollback
 
 Source rollback and state rollback are separate approvals. Platform rollback
-must select a deployment whose immutable image digest was previously recorded,
-not rebuild a moving branch. Confirm the digest after rollback. Do not roll a
-binary across a schema or Contract Pack boundary merely because an old image is
-available; its compatible state unit and migration posture must also be
-reviewed.
+must select a deployment whose immutable image digest was previously recorded.
+A moving-branch rebuild is outside rollback. Confirm the digest afterward.
+Binary rollback across a schema or Contract Pack boundary requires a reviewed
+compatible state unit and migration posture.
 
 For the current candidate, rollback qualification uses source
 `36cde909cc2ed745fef3efd4ecafc4371cfd8298` and its recorded Railway image
-digest. A source-upload message is supporting evidence, not a substitute for
-the image digest and clean Git-tree record.
+digest. A source-upload message is supporting evidence; the image digest and
+clean Git-tree record remain authoritative.
+
+Railway's `redeploy` action can rebuild identical source under a new image
+digest. Exact-image rollback selects a prior deployment whose `canRollback`
+field is true, verifies its recorded image digest, and invokes Railway's
+deployment rollback for that exact ID:
+
+```bash
+railway api \
+  'mutation Rollback($id: String!) { deploymentRollback(id: $id) }' \
+  --raw-var id=<reviewed-deployment-id> \
+  --compact
+```
+
+The resulting deployment must report `reason=rollback`, the selected immutable
+digest, successful health and readiness checks, and authenticated state counts
+matching the accepted manifest. A successful Railway `redeploy` is insufficient
+when its digest differs.
 
 ## Credential rotation
 
@@ -202,7 +230,8 @@ token file or platform variable with one 32-byte base64url token and restart.
 Startup provisions exactly one new single-use invitation and is idempotent when
 the same token is presented again. Verify aggregate invitation count, expiry,
 and unused status without logging the token. Expired or consumed invitations
-remain historical rows; do not edit them in SQLite.
+remain historical rows. Rotation uses the supported startup flow; direct SQLite
+editing is forbidden.
 
 ### VaultCosigner
 
