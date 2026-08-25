@@ -47,4 +47,24 @@ func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		response, err := svc.FinishEnrollment(r.Context(), r.Header.Get(EnrollmentTokenHeader), request)
 		writeJSON(w, response, err)
 	})
+	if svc != nil && svc.VaultBoardV2Store != nil {
+		mux.HandleFunc("POST /v1/vtxo/board/enroll/propose", func(w http.ResponseWriter, r *http.Request) {
+			var request EnrollFinishVaultBoardV2Request
+			if err := decodeMutation(r, &request, origin); err != nil {
+				writeMutationError(w, err)
+				return
+			}
+			response, err := svc.ProposeVaultBoardV2Enrollment(r.Header.Get(EnrollmentTokenHeader), request)
+			writeJSON(w, response, err)
+		})
+		mux.HandleFunc("POST /v1/vtxo/board/enroll/finish", func(w http.ResponseWriter, r *http.Request) {
+			var request EnrollFinishVaultBoardV2Request
+			if err := decodeMutation(r, &request, origin); err != nil {
+				writeMutationError(w, err)
+				return
+			}
+			response, err := svc.FinishVaultBoardV2Enrollment(r.Context(), r.Header.Get(EnrollmentTokenHeader), request)
+			writeJSON(w, response, err)
+		})
+	}
 }

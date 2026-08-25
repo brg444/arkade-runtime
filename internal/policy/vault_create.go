@@ -24,8 +24,23 @@ type CreateVaultInput struct {
 // in one transaction. The UPDATE is a compare-and-swap on
 // consumed_vault_id IS NULL; exactly one invite row must change.
 func (l *Ledger) CreateVault(in CreateVaultInput) error {
+	return l.createVault(in, nil)
+}
+
+// CreateVaultWithBoardV2 is the explicit v2 enrollment transaction. Keeping
+// this capability separate from IdentityStore prevents another IdentityStore
+// implementation from accepting v2 while silently dropping its boarding
+// binding.
+func (l *Ledger) CreateVaultWithBoardV2(in CreateVaultInput, board VaultBoardV2Enrollment) error {
+	return l.createVault(in, &board)
+}
+
+func (l *Ledger) createVault(in CreateVaultInput, board *VaultBoardV2Enrollment) error {
 	if err := validateCreateVaultInput(in); err != nil {
 		return err
+	}
+	if board != nil && (board.VaultID != in.Record.VaultID || len(board.IntegrityMAC) != sha256.Size) {
+		return fmt.Errorf("vault-board-v2 enrollment mismatch")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -53,6 +68,11 @@ func (l *Ledger) CreateVault(in CreateVaultInput) error {
 
 	if err := insertVaultTx(tx, in.Record, in.Credential, in.Envelope); err != nil {
 		return fmt.Errorf("create vault: %w", err)
+	}
+	if board != nil {
+		if err := PutVaultBoardV2EnrollmentTx(tx, *board); err != nil {
+			return fmt.Errorf("create vault board v2: %w", err)
+		}
 	}
 	res, err := tx.Exec(`
 UPDATE invite SET consumed_vault_id = ?

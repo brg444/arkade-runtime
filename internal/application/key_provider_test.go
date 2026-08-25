@@ -53,6 +53,25 @@ func TestScopedKeyCapabilitiesPreserveExistingDerivations(t *testing.T) {
 	}
 }
 
+func TestVaultBoardV2CapabilityIsExplicitlyEnabled(t *testing.T) {
+	master, _ := btcec.NewPrivateKey()
+	emulator, _ := btcec.NewPrivateKey()
+	base, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isNilInterface(base.vaultBoardV2) {
+		t.Fatal("ordinary v1 key capabilities retained vault-board-v2 authority")
+	}
+	v2, err := NewFileBackedVaultBoardV2KeyCapabilities(master, LocalSigner{Priv: emulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isNilInterface(v2.vaultBoardV2) {
+		t.Fatal("explicit vault-board-v2 runtime lacks its scoped authorization")
+	}
+}
+
 func TestKeyCapabilitySurfaceIsSealedAndSemantic(t *testing.T) {
 	typ := reflect.TypeOf(KeyCapabilities{})
 	for i := 0; i < typ.NumField(); i++ {

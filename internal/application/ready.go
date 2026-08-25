@@ -61,6 +61,13 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "contract pack mismatch"
 		return st
 	}
+	if s.VaultBoardV2Store != nil {
+		runtime, err := s.requireVaultBoardV2Runtime()
+		if err != nil || runtime.batchExpiry == 0 {
+			st.Error = "vault-board-v2 runtime unavailable"
+			return st
+		}
+	}
 	if isNilInterface(s.ArkResolver) {
 		st.Error = "Arkade resolver unavailable"
 		return st

@@ -13,6 +13,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript"
 )
 
 type vtxoPolicyTree struct {
@@ -33,6 +34,17 @@ type vtxoPolicyTree struct {
 type vtxoBoardTree struct {
 	PkScript       []byte
 	OnchainAddress string
+}
+
+type vtxoBoardV2Tree struct {
+	BoardingPub     *btcec.PublicKey
+	CosignerPub     *btcec.PublicKey
+	OperatorPub     *btcec.PublicKey
+	PkScript        []byte
+	Collaborative   []byte
+	ControlBlock    []byte
+	RevealedScripts []string
+	OnchainAddress  string
 }
 
 func (s *Service) operatorSignerPub() []byte {
@@ -196,6 +208,96 @@ func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, err
 		PkScript:       pkScript,
 		OnchainAddress: address.EncodeAddress(),
 	}, nil
+}
+
+func (s *Service) buildVtxoBoardV2Tree(vaultID string, snap enrolledSnapshot, boarding *btcec.PublicKey) (*vtxoBoardV2Tree, error) {
+	if s.runtimeConfig().Network != program.NetworkMutinynet {
+		return nil, fmt.Errorf("vault-board-v2 is Mutinynet-only")
+	}
+	if vaultID == "" || snap.PhoneBIP340 == nil || boarding == nil {
+		return nil, fmt.Errorf("vault-board-v2 enrolled phone and device keys required")
+	}
+	operator, err := btcec.ParsePubKey(s.operatorSignerPub())
+	if err != nil {
+		return nil, fmt.Errorf("Operator signer pubkey")
+	}
+	keyContext, err := newVaultBoardV2KeyContext(vaultID, program.NetworkMutinynet, operator.SerializeCompressed())
+	if err != nil {
+		return nil, err
+	}
+	cosigner, err := s.keys.vaultBoardV2Public(keyContext)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireDistinctVaultBoardV2Roles(boarding, cosigner, snap.PhoneBIP340, operator); err != nil {
+		return nil, err
+	}
+	exit := &arkscript.CSVMultisigClosure{
+		MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{snap.PhoneBIP340}},
+		Locktime: arklib.RelativeLocktime{
+			Type: arklib.LocktimeTypeSecond, Value: program.VaultBoardV2ExitDelay,
+		},
+	}
+	cooperative := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{boarding, cosigner, operator}}
+	board := &arkscript.TapscriptsVtxoScript{Closures: []arkscript.Closure{exit, cooperative}}
+	tapKey, tapTree, err := board.TapTree()
+	if err != nil {
+		return nil, fmt.Errorf("vault-board-v2 tree: %w", err)
+	}
+	pkScript, err := arkscript.P2TRScript(tapKey)
+	if err != nil {
+		return nil, fmt.Errorf("vault-board-v2 script: %w", err)
+	}
+	leaf, err := cooperative.Script()
+	if err != nil {
+		return nil, err
+	}
+	proof, err := tapTree.GetTaprootMerkleProof(txscript.NewBaseTapLeaf(leaf).TapHash())
+	if err != nil {
+		return nil, err
+	}
+	revealed, err := board.Encode()
+	if err != nil {
+		return nil, err
+	}
+	net, err := vtxoNetworkParams(program.NetworkMutinynet)
+	if err != nil {
+		return nil, err
+	}
+	address, err := btcutil.NewAddressTaproot(pkScript[2:], net)
+	if err != nil {
+		return nil, err
+	}
+	return &vtxoBoardV2Tree{
+		BoardingPub: boarding, CosignerPub: cosigner, OperatorPub: operator,
+		PkScript: pkScript, Collaborative: leaf, ControlBlock: proof.ControlBlock,
+		RevealedScripts: revealed, OnchainAddress: address.EncodeAddress(),
+	}, nil
+}
+
+func requireDistinctVaultBoardV2Roles(boarding, cosigner, phone, operator *btcec.PublicKey) error {
+	roles := []struct {
+		name string
+		pub  *btcec.PublicKey
+	}{
+		{name: "boarding", pub: boarding},
+		{name: "VaultBoardCosigner", pub: cosigner},
+		{name: "phone recovery", pub: phone},
+		{name: "Operator", pub: operator},
+	}
+	for i := range roles {
+		if roles[i].pub == nil {
+			return fmt.Errorf("vault-board-v2 %s key required", roles[i].name)
+		}
+		for j := 0; j < i; j++ {
+			// All four roles sign Taproot script paths, so compare their x-only
+			// identities rather than compressed-key parity.
+			if bytes.Equal(schnorr.SerializePubKey(roles[i].pub), schnorr.SerializePubKey(roles[j].pub)) {
+				return fmt.Errorf("vault-board-v2 %s and %s keys must be distinct", roles[j].name, roles[i].name)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) refuseDefaultVtxoChange(snap enrolledSnapshot, dest []byte) error {

@@ -16,6 +16,7 @@ import (
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -447,6 +448,79 @@ func TestProposeMintsSavingsDescriptor(t *testing.T) {
 		VaultID: start.VaultID, Purpose: "initiate", PSBT: "cHNidP8BAHECAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AQAAAAAAAAAA",
 	}); err == nil {
 		t.Fatal("signed a transition without a verified prevout")
+	}
+}
+
+func TestVaultBoardV2ProposeHashFinishesExactCompositeEnrollment(t *testing.T) {
+	ledger, err := policy.OpenMutinynetVaultBoardV2Ledger(filepath.Join(t.TempDir(), "board-v2-enroll.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	svc := enrollService(t, ledger)
+	v2Master, _ := btcec.NewPrivateKey()
+	v2Emulator, _ := btcec.NewPrivateKey()
+	svc.VaultCosignerPub = v2Master.PubKey()
+	svc.keys, err = NewFileBackedVaultBoardV2KeyCapabilities(v2Master, LocalSigner{Priv: v2Emulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.VaultBoardV2Store = ledger
+	svc.ArkResolver = stubArkResolver{signer: svc.ArkadeCosignerPub.SerializeCompressed()}
+	raw := bytes.Repeat([]byte{0x7c}, 32)
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	hash, _ := HashEnrollmentToken(token)
+	now := time.Now().UTC()
+	if err := ledger.PutInvite(hash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	start, err := svc.StartEnrollment(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pass, _ := webauthn.NewP256()
+	direct, _ := webauthn.NewP256()
+	hot, _ := btcec.NewPrivateKey()
+	owner, _ := btcec.NewPrivateKey()
+	boarding, _ := btcec.NewPrivateKey()
+	base := attestedFinish(t, svc, start, pass, []byte("cred-board-v2"), RegisterRequest{
+		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
+	})
+	request := EnrollFinishVaultBoardV2Request{
+		EnrollFinishRequest: base,
+		VaultBoardV2EnrollmentRequest: VaultBoardV2EnrollmentRequest{
+			VtxoBoardingProgram:           program.VaultBoardV2,
+			VaultBoardV2BoardingBIP340Pub: hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
+		},
+	}
+	colliding := request
+	colliding.VaultBoardV2BoardingBIP340Pub = hex.EncodeToString(schnorr.SerializePubKey(hot.PubKey()))
+	if _, err := svc.ProposeVaultBoardV2Enrollment(token, colliding); err == nil {
+		t.Fatal("v2 enrollment accepted one key for boarding and phone recovery")
+	}
+	proposed, err := svc.ProposeVaultBoardV2Enrollment(token, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := proposed.Descriptor.(vaultBoardV2CompositeDescriptor); !ok {
+		t.Fatalf("v2 descriptor = %T", proposed.Descriptor)
+	}
+	request.DescriptorHash = proposed.DescriptorHash
+	status, err := svc.FinishVaultBoardV2Enrollment(context.Background(), token, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.VtxoBoardingProgram != program.VaultBoardV2 || !status.VtxoBoardingActive || status.VtxoBoardingAddress == "" {
+		t.Fatalf("v2 finish status = %+v", status)
+	}
+	stored, err := ledger.GetVaultBoardV2Enrollment(start.VaultID)
+	if err != nil || stored == nil || stored.Program != program.VaultBoardV2 {
+		t.Fatalf("stored v2 enrollment = %+v, %v", stored, err)
+	}
+	if _, err := svc.FinishEnrollment(context.Background(), token, base); err == nil {
+		t.Fatal("ordinary v1 finish replayed a v2 enrollment")
 	}
 }
 
