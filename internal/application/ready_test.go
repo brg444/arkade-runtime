@@ -69,7 +69,7 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		Network: deployment.NetworkMutinynet,
 	}
 	svc := New(Deps{
-		Ledger: ledger, Deployment: cfg, IntegrityKey: integrityKey,
+		Stores: testStores(t, ledger), Deployment: cfg, IntegrityKey: integrityKey,
 		MasterIKM: vaultCosigner, VaultCosignerPub: vaultCosigner.PubKey(),
 		ArkadeCosignerPub: arkadeCosignerPub, ArkadeSigner: LocalSigner{Priv: vaultCosigner},
 		ArkadeCosignerOrigin:  deployment.MutinynetArkadeCosignerOrigin,
