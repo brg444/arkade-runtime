@@ -1189,18 +1189,12 @@ func (s *Service) bindVtxoAuthorization(ctx context.Context, vaultID string, dig
 }
 
 func matchReservedOutpoint(seen map[string]policy.VtxoOperationInput, op wire.OutPoint) (policy.VtxoOperationInput, bool) {
-	internal := make([]byte, 32)
-	copy(internal, op.Hash[:])
-	if in, ok := seen[outpointKey(internal, op.Index)]; ok {
-		return in, true
-	}
 	display, err := hex.DecodeString(op.Hash.String())
-	if err == nil {
-		if in, ok := seen[outpointKey(display, op.Index)]; ok {
-			return in, true
-		}
+	if err != nil {
+		return policy.VtxoOperationInput{}, false
 	}
-	return policy.VtxoOperationInput{}, false
+	in, ok := seen[outpointKey(display, op.Index)]
+	return in, ok
 }
 
 func encodeJSONStringSlice(v []string) string {
