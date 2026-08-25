@@ -67,9 +67,8 @@ func newEnv(t *testing.T) *env {
 		Stores: stores, Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		}, IntegrityKey: integrityKey,
-		MasterIKM: master, VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
+		Keys: testKeys(t, master, LocalSigner{Priv: operator}), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
-		ArkadeSigner: LocalSigner{Priv: operator},
 	})
 	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
 		t.Fatal(err)
@@ -113,4 +112,13 @@ func testStores(t *testing.T, ledger *policy.Ledger) arkadevaultv1.Stores {
 		t.Fatal(err)
 	}
 	return stores
+}
+
+func testKeys(t *testing.T, master *btcec.PrivateKey, emulator Signer) KeyCapabilities {
+	t.Helper()
+	keys, err := NewFileBackedKeyCapabilities(master, emulator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keys
 }

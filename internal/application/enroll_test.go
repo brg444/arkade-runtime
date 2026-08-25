@@ -64,7 +64,7 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	direct, _ := webauthn.NewP256()
 	svc := &Service{
 		Stores: testStores(t, led), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
-		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		keys:                 testKeys(t, master, LocalSigner{Priv: arkade}),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
 		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
 		Deployment: deployment.Config{
@@ -208,12 +208,11 @@ func TestCurrentSavingsDescriptorRebuildsExactlyAfterRestart(t *testing.T) {
 		Stores:                svc.Stores,
 		Deployment:            svc.Deployment,
 		IntegrityKey:          append([]byte(nil), svc.CredentialIntegrityKey...),
-		MasterIKM:             svc.vaultIKM,
+		Keys:                  svc.keys,
 		VaultCosignerPub:      svc.VaultCosignerPub,
 		ArkadeCosignerPub:     svc.ArkadeCosignerPub,
 		ArkadeCosignerOrigin:  svc.ArkadeCosignerOrigin,
 		ArkadeCosignerVersion: svc.ArkadeCosignerVersion,
-		ArkadeSigner:          svc.ArkadeCosignerSigner,
 		ArkResolver:           svc.ArkResolver,
 	})
 	if err := restarted.LoadVaults(); err != nil {
@@ -296,7 +295,7 @@ func TestFinishDoesNotInheritProcessOwnerPubs(t *testing.T) {
 	svc := &Service{
 		Stores:           testStores(t, led),
 		VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
-		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		keys:                 testKeys(t, master, LocalSigner{Priv: arkade}),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
 		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
 		Deployment: deployment.Config{
@@ -664,7 +663,7 @@ func enrollService(t *testing.T, led *policy.Ledger) *Service {
 	arkade, _ := btcec.NewPrivateKey()
 	return &Service{
 		Stores: testStores(t, led), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: arkade.PubKey(),
-		vaultIKM: master, ArkadeCosignerSigner: LocalSigner{Priv: arkade},
+		keys:                 testKeys(t, master, LocalSigner{Priv: arkade}),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
 		CredentialIntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
 		Deployment: deployment.Config{

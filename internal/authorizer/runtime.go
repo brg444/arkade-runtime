@@ -202,16 +202,20 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
+	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
+	if err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
+	}
 	svc := application.New(application.Deps{
 		Stores:                stores,
 		Deployment:            cfg.Deployment,
 		IntegrityKey:          credentialIntegrityKey,
-		MasterIKM:             vaultCosignerKey,
+		Keys:                  keys,
 		VaultCosignerPub:      vaultCosignerKey.PubKey(),
 		ArkadeCosignerPub:     arkadeIdentity.BasePub,
 		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
 		ArkadeCosignerVersion: arkadeIdentity.Version,
-		ArkadeSigner:          arkadeSigner,
 	})
 	keyOwnedByService = true
 	defer func() {

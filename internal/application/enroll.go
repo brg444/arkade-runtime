@@ -259,15 +259,11 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	if err != nil || req.DescriptorHash == "" || req.DescriptorHash != preview.DescriptorHash {
 		return nil, false
 	}
-	master, err := s.vaultCosignerMaster()
+	childPub, err := s.keys.enrollmentPublic(vaultID)
 	if err != nil {
 		return nil, false
 	}
-	child, err := policy.DeriveVaultCosignerScalar(master, vaultID, policy.CosignerModeHKDFSHA256V1)
-	if err != nil {
-		return nil, false
-	}
-	descriptor, _, err := s.mintSavingsCredential(vaultID, parsed, child.PubKey())
+	descriptor, _, err := s.mintSavingsCredential(vaultID, parsed, childPub)
 	if err != nil {
 		return nil, false
 	}
