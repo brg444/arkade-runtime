@@ -37,6 +37,12 @@ const (
 	VaultBoardV1          = "vault-board-v1"
 	VaultBoardV1Schema    = "arkade-vault/board-v1"
 	VaultBoardV1Template  = "vault-board-v1-phone-and-arkd"
+	VaultBoardV2          = "vault-board-v2"
+	VaultBoardV2Schema    = "arkade-vault/board-v2"
+	VaultBoardV2Template  = "vault-board-v2-device-vault-and-operator"
+	// The string is frozen for the client derivation even though the first v2
+	// key is vault-wide, not an independently enrolled device identity.
+	VaultBoardV2BoardingKeyDomain = "vault-board-v2/device-key"
 
 	// Product-chosen guardian CSV. arkd Validate requires the smallest exit
 	// delay >= GetInfo.unilateralExitDelay (live Mutinynet 2048 seconds) and
@@ -53,6 +59,8 @@ const (
 	// different program from the already-funded L1 Spending tree.
 	VaultBoardV1ExitDelay     = uint32(604672)
 	VaultBoardV1ExitDelayUnit = "seconds"
+	VaultBoardV2ExitDelay     = VaultBoardV1ExitDelay
+	VaultBoardV2ExitDelayUnit = VaultBoardV1ExitDelayUnit
 
 	// Pinned public Fulmine delegator (compressed). The tapleaf stores x-only.
 	VaultPolicyV1PinnedDelegate     = "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a"
@@ -72,6 +80,21 @@ func ValidateVaultBoardV1ExitDelay(delay uint32, unit string) error {
 	}
 	if delay != VaultBoardV1ExitDelay {
 		return fmt.Errorf("vault-board-v1 exit delay is frozen at %d seconds", VaultBoardV1ExitDelay)
+	}
+	return nil
+}
+
+// ValidateVaultBoardV2ExitDelay rejects any vault-board-v2 recovery delay
+// other than the release pin. The v2 contract remains Mutinynet-only.
+func ValidateVaultBoardV2ExitDelay(delay uint32, unit string) error {
+	if unit != VaultBoardV2ExitDelayUnit {
+		return fmt.Errorf("vault-board-v2 exit delay unit must be %s", VaultBoardV2ExitDelayUnit)
+	}
+	if delay%VaultPolicyV1BIP68SecondsMod != 0 {
+		return fmt.Errorf("vault-board-v2 exit delay must be a BIP68 seconds multiple of %d", VaultPolicyV1BIP68SecondsMod)
+	}
+	if delay != VaultBoardV2ExitDelay {
+		return fmt.Errorf("vault-board-v2 exit delay is frozen at %d seconds", VaultBoardV2ExitDelay)
 	}
 	return nil
 }

@@ -29,6 +29,10 @@ const (
 	// MutinynetArkIndexerOrigin is the public Mutinynet arkd HTTPS gateway.
 	// There is no environment override.
 	MutinynetArkIndexerOrigin = "https://mutinynet.arkade.sh"
+	// MutinynetEsploraOrigin is the public Mutinynet Bitcoin indexer used only
+	// to prove confirmed board outpoints and BIP68 Median Time Past. There is no
+	// environment override.
+	MutinynetEsploraOrigin = "https://mempool.mutinynet.arkade.sh/api"
 
 	// MutinynetOperator* pin the Operator identity and checkpoint fallback
 	// policy into the release. GetInfo is discovery data, not a policy oracle.

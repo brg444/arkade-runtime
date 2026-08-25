@@ -56,7 +56,7 @@ func authorizerSurface(svc *Service) http.Handler {
 	attachCoreRoutes(mux, svc, origin)
 	inner := withRequestLog(withCORS(mux, origin))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		methods, known := authorizerRouteMethods[r.URL.Path]
+		methods, known := authorizerRouteMethodsFor(svc)[r.URL.Path]
 		if !known {
 			http.NotFound(w, r)
 			return
@@ -187,6 +187,19 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/operation":             {http.MethodGet: {}, http.MethodOptions: {}},
+}
+
+func authorizerRouteMethodsFor(svc *Service) map[string]map[string]struct{} {
+	if svc == nil || svc.VaultBoardV2Store == nil {
+		return authorizerRouteMethods
+	}
+	out := make(map[string]map[string]struct{}, len(authorizerRouteMethods)+2)
+	for path, methods := range authorizerRouteMethods {
+		out[path] = methods
+	}
+	out["/v1/vtxo/board/enroll/propose"] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
+	out["/v1/vtxo/board/enroll/finish"] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
+	return out
 }
 
 func sortedMethods(methods map[string]struct{}) []string {

@@ -93,6 +93,11 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		t.Fatalf("mutated Contract Pack readiness = %+v", got)
 	}
 	svc.contractPackJSON = contractPack
+	svc.VaultBoardV2Store = ledger
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "vault-board-v2 runtime unavailable" {
+		t.Fatalf("incomplete v2 runtime readiness = %+v", got)
+	}
+	svc.VaultBoardV2Store = nil
 	if got := svc.Ready(context.Background()); !got.Ok || got.Error != "" {
 		t.Fatalf("pinned resolver readiness = %+v", got)
 	}

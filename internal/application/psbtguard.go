@@ -150,6 +150,66 @@ func signExactArkStageWithSighash(
 	return out.B64Encode()
 }
 
+// signExactVaultBoardV2Stage adds the scoped VaultBoardCosigner signature to
+// only the already-validated inputs named by the semantic boarding operation.
+// It deliberately cannot discover or select inputs on its own.
+func signExactVaultBoardV2Stage(
+	ctx context.Context, stored string, priv *btcec.PrivateKey, expectedXOnly, expectedLeaf []byte,
+	inputIndexes []int, wantSigHash txscript.SigHashType,
+) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if priv == nil || len(expectedXOnly) != schnorr.PubKeyBytesLen ||
+		!bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), expectedXOnly) {
+		return "", fmt.Errorf("vault-board-v2 signer key mismatch")
+	}
+	if len(expectedLeaf) == 0 || len(inputIndexes) == 0 {
+		return "", fmt.Errorf("vault-board-v2 authorization required")
+	}
+	submitted, err := parsePSBT(stored)
+	if err != nil {
+		return "", err
+	}
+	work, err := clonePacket(submitted)
+	if err != nil {
+		return "", err
+	}
+	out, err := clonePacket(submitted)
+	if err != nil {
+		return "", err
+	}
+	seen := make(map[int]struct{}, len(inputIndexes))
+	for _, idx := range inputIndexes {
+		if idx < 0 || idx >= len(work.Inputs) || idx >= len(work.UnsignedTx.TxIn) {
+			return "", fmt.Errorf("vault-board-v2 input index")
+		}
+		if _, ok := seen[idx]; ok {
+			return "", fmt.Errorf("vault-board-v2 duplicate input index")
+		}
+		seen[idx] = struct{}{}
+		in := work.Inputs[idx]
+		if len(in.TaprootLeafScript) != 1 || in.TaprootLeafScript[0] == nil ||
+			!bytes.Equal(in.TaprootLeafScript[0].Script, expectedLeaf) || in.SighashType != wantSigHash {
+			return "", fmt.Errorf("vault-board-v2 collaborative leaf")
+		}
+		for _, existing := range in.TaprootScriptSpendSig {
+			if existing != nil && bytes.Equal(existing.XOnlyPubKey, expectedXOnly) {
+				return "", fmt.Errorf("vault-board-v2 signature already present")
+			}
+		}
+		added, err := signTapLeafAtWithSighash(work, idx, priv, expectedLeaf, wantSigHash)
+		if err != nil {
+			return "", err
+		}
+		if err := verifySchnorrOnInputWithSighash(submitted, idx, added.Signature, expectedXOnly, expectedLeaf, wantSigHash); err != nil {
+			return "", fmt.Errorf("vault-board-v2 signature invalid")
+		}
+		out.Inputs[idx].TaprootScriptSpendSig = append(out.Inputs[idx].TaprootScriptSpendSig, added)
+	}
+	return out.B64Encode()
+}
+
 func signTapLeafAt(ptx *psbt.Packet, idx int, priv *btcec.PrivateKey, leafScript []byte) (*psbt.TaprootScriptSpendSig, error) {
 	return signTapLeafAtWithSighash(ptx, idx, priv, leafScript, txscript.SigHashDefault)
 }

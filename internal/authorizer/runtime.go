@@ -25,6 +25,7 @@ import (
 	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
+	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv2"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	arkaderuntime "github.com/brg444/arkade-vault-server/internal/runtime"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -81,7 +82,17 @@ type arkadeSignerDialer func(context.Context, string, *btcec.PublicKey, []string
 // Open constructs the Mutinynet authorizer and pins its external signing
 // identities before it serves traffic.
 func Open(ctx context.Context, cfg Config) (*Runtime, error) {
-	rt, err := openWithArkadeDialer(ctx, cfg, application.DialPublicEmulator)
+	return open(ctx, cfg, false)
+}
+
+// OpenVaultBoardV2 is the explicit fresh Mutinynet v2 release gate. Existing
+// Open callers remain on the byte-compatible v1 schema and profile.
+func OpenVaultBoardV2(ctx context.Context, cfg Config) (*Runtime, error) {
+	return open(ctx, cfg, true)
+}
+
+func open(ctx context.Context, cfg Config, boardV2 bool) (*Runtime, error) {
+	rt, err := openWithArkadeDialerMode(ctx, cfg, application.DialPublicEmulator, boardV2)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +110,10 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 }
 
 func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer) (*Runtime, error) {
+	return openWithArkadeDialerMode(ctx, cfg, dialArkade, false)
+}
+
+func openWithArkadeDialerMode(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer, boardV2 bool) (*Runtime, error) {
 	if err := cfg.Deployment.Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -135,7 +150,12 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := policy.OpenMainnetLedger(cfg.DatabasePath, nil)
+	var ledger *policy.Ledger
+	if boardV2 {
+		ledger, err = policy.OpenMutinynetVaultBoardV2Ledger(cfg.DatabasePath, nil)
+	} else {
+		ledger, err = policy.OpenMainnetLedger(cfg.DatabasePath, nil)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("authoritative ledger: %w", err)
 	}
@@ -202,12 +222,17 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
+	var keys application.KeyCapabilities
+	if boardV2 {
+		keys, err = application.NewFileBackedVaultBoardV2KeyCapabilities(vaultCosignerKey, arkadeSigner)
+	} else {
+		keys, err = application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
+	}
 	if err != nil {
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	svc := application.New(application.Deps{
+	deps := application.Deps{
 		Stores:                stores,
 		Deployment:            cfg.Deployment,
 		IntegrityKey:          credentialIntegrityKey,
@@ -216,7 +241,11 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		ArkadeCosignerPub:     arkadeIdentity.BasePub,
 		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
 		ArkadeCosignerVersion: arkadeIdentity.Version,
-	})
+	}
+	if boardV2 {
+		deps.VaultBoardV2Store = ledger
+	}
+	svc := application.New(deps)
 	keyOwnedByService = true
 	defer func() {
 		if closeOnError {
@@ -230,11 +259,11 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		return nil, err
 	}
 
-	registry, err := compiledRegistry()
+	registry, profileID, err := compiledRegistryFor(boardV2)
 	if err != nil {
 		return nil, err
 	}
-	host, err := arkaderuntime.Open(registry, arkadevaultv1.ProfileID, arkaderuntime.Mount{
+	host, err := arkaderuntime.Open(registry, profileID, arkaderuntime.Mount{
 		Handler: httpapi.Authorizer(svc),
 		Readiness: func(ctx context.Context) error {
 			ready := svc.Ready(ctx)
@@ -287,6 +316,15 @@ func signerUnavailable(signer application.Signer) bool {
 // can add another profile at runtime.
 func compiledRegistry() (*arkaderuntime.Registry, error) {
 	return arkaderuntime.Compile(arkadevaultv1.Definition())
+}
+
+func compiledRegistryFor(boardV2 bool) (*arkaderuntime.Registry, string, error) {
+	if !boardV2 {
+		registry, err := compiledRegistry()
+		return registry, arkadevaultv1.ProfileID, err
+	}
+	registry, err := arkaderuntime.Compile(arkadevaultv2.Definition())
+	return registry, arkadevaultv2.ProfileID, err
 }
 
 // provisionEnrollmentInvite turns one operator-supplied secret file into one
