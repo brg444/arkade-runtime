@@ -45,3 +45,11 @@ jobs:
         run: docker build -f Dockerfile.railway -t arkade-vault-server:railway .
       - name: Build Mutinynet image
         run: docker build -f Dockerfile.mutinynet -t arkade-vault-server:mutinynet .
+      - name: Verify Mutinynet persistent-volume ownership
+        run: |
+          docker run --rm \
+            --entrypoint sh \
+            --mount type=volume,destination=/app/data \
+            --mount type=volume,destination=/app/sequence \
+            arkade-vault-server:mutinynet \
+            -c 'test -w /app/data && test -w /app/sequence'
