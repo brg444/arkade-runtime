@@ -107,14 +107,8 @@ func releaseVaultBoardV2Attempt(t testing.TB, ledger *Ledger, auth VaultBoardV2A
 		RequestDigest: bytes.Repeat([]byte{tag}, sha256.Size), ExpireAt: ledger.NowUTC().Add(time.Minute).Unix(),
 		CreatedAt: ledger.NowUTC().Format(time.RFC3339Nano),
 	}
-	stored, _, err := ledger.AppendVaultBoardV2Authorization(context.Background(), deleteAuth, vaultBoardV2TestChainState(ledger))
+	stored, _, _, err := ledger.AppendVaultBoardV2AuthorizationAndDispatch(context.Background(), deleteAuth, vaultBoardV2TestChainState(ledger))
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := ledger.AppendVaultBoardV2Dispatch(context.Background(), VaultBoardV2Dispatch{
-		OperationID: stored.OperationID, Attempt: stored.Attempt, Phase: VaultBoardV2PhaseDelete,
-		RequestDigest: append([]byte(nil), stored.RequestDigest...),
-	}, vaultBoardV2TestChainState(ledger)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := ledger.AppendVaultBoardV2Submission(context.Background(), VaultBoardV2Submission{
@@ -392,7 +386,7 @@ func TestVaultBoardV2RejectsCorruptRegisterPredecessor(t *testing.T) {
 	if _, err := ledger.db.Exec(`UPDATE vault_board_v2_authorization SET integrity_mac = ? WHERE operation_id = ? AND attempt = 0 AND phase = 'register'`, bytes.Repeat([]byte{0x99}, sha256.Size), register.OperationID); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = ledger.AppendVaultBoardV2Authorization(context.Background(), VaultBoardV2Authorization{
+	_, _, _, err = ledger.AppendVaultBoardV2AuthorizationAndDispatch(context.Background(), VaultBoardV2Authorization{
 		OperationID: register.OperationID, Attempt: 0, Phase: VaultBoardV2PhaseDelete,
 		RequestDigest: bytes.Repeat([]byte{0x53}, sha256.Size), ExpireAt: ledger.NowUTC().Add(time.Minute).Unix(),
 		CreatedAt: ledger.NowUTC().Format(time.RFC3339Nano),

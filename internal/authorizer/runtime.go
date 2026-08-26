@@ -24,6 +24,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv2"
 	"github.com/brg444/arkade-vault-server/internal/program"
@@ -78,6 +79,7 @@ func (r *Runtime) Close() error {
 }
 
 type arkadeSignerDialer func(context.Context, string, *btcec.PublicKey, []string, bool) (application.Signer, application.PublicEmulatorIdentity, error)
+type arkResolverDialer func(context.Context, string) (ports.ArkResolver, error)
 
 // Open constructs the Mutinynet authorizer and pins its external signing
 // identities before it serves traffic.
@@ -92,16 +94,16 @@ func OpenVaultBoardV2(ctx context.Context, cfg Config) (*Runtime, error) {
 }
 
 func open(ctx context.Context, cfg Config, boardV2 bool) (*Runtime, error) {
-	rt, err := openWithArkadeDialerMode(ctx, cfg, application.DialPublicEmulator, boardV2)
+	rt, err := openWithArkadeDialerModeAndResolver(ctx, cfg, application.DialPublicEmulator, application.DialArkResolver, boardV2)
 	if err != nil {
 		return nil, err
 	}
-	resolver, err := application.DialArkResolver(ctx, cfg.Deployment.Network)
-	if err != nil {
-		_ = rt.Close()
-		return nil, fmt.Errorf("required Arkade resolver: %w", err)
+	if boardV2 {
+		if err := rt.service.InstallMutinynetVaultBoardV2Authorization(ctx); err != nil {
+			_ = rt.Close()
+			return nil, fmt.Errorf("vault-board-v2 authorization runtime: %w", err)
+		}
 	}
-	rt.service.ArkResolver = resolver
 	if err := rt.host.Ready(ctx); err != nil {
 		_ = rt.Close()
 		return nil, fmt.Errorf("authorizer readiness: %w", err)
@@ -114,6 +116,10 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 }
 
 func openWithArkadeDialerMode(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer, boardV2 bool) (*Runtime, error) {
+	return openWithArkadeDialerModeAndResolver(ctx, cfg, dialArkade, nil, boardV2)
+}
+
+func openWithArkadeDialerModeAndResolver(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer, dialResolver arkResolverDialer, boardV2 bool) (*Runtime, error) {
 	if err := cfg.Deployment.Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -217,6 +223,17 @@ func openWithArkadeDialerMode(ctx context.Context, cfg Config, dialArkade arkade
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
+	var resolver ports.ArkResolver
+	if dialResolver != nil {
+		resolver, err = dialResolver(ctx, cfg.Deployment.Network)
+		if err != nil {
+			zero(credentialIntegrityKey)
+			return nil, fmt.Errorf("required Arkade resolver: %w", err)
+		}
+	} else if boardV2 {
+		zero(credentialIntegrityKey)
+		return nil, fmt.Errorf("vault-board-v2 requires the release-pinned Arkade resolver before loading vaults")
+	}
 	stores, err := arkadevaultv1.StoresFromLedger(ledger)
 	if err != nil {
 		zero(credentialIntegrityKey)
@@ -241,6 +258,7 @@ func openWithArkadeDialerMode(ctx context.Context, cfg Config, dialArkade arkade
 		ArkadeCosignerPub:     arkadeIdentity.BasePub,
 		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
 		ArkadeCosignerVersion: arkadeIdentity.Version,
+		ArkResolver:           resolver,
 	}
 	if boardV2 {
 		deps.VaultBoardV2Store = ledger

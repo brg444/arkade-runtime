@@ -33,6 +33,14 @@ const (
 	// to prove confirmed board outpoints and BIP68 Median Time Past. There is no
 	// environment override.
 	MutinynetEsploraOrigin = "https://mempool.mutinynet.arkade.sh/api"
+	// MutinynetVtxoTreeExpirySeconds is the immutable Batch Output expiry for
+	// this release. Stock arkd origin/master e2d9ed44 defines the seconds-based
+	// default as 604672. The deployed public Mutinynet Operator independently
+	// emitted 604672 in BatchStarted 289d7586-8f32-4b05-8af8-a5b1cc9295ef,
+	// and indexed batches d9f814... and 15706b... each have createdAt-to-
+	// expiresAt deltas of exactly 604672. It is not inferred from the unrelated
+	// boarding exit delay and has no environment override.
+	MutinynetVtxoTreeExpirySeconds = uint32(604672)
 
 	// MutinynetOperator* pin the Operator identity and checkpoint fallback
 	// policy into the release. GetInfo is discovery data, not a policy oracle.

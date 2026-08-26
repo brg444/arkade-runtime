@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 )
 
@@ -63,7 +64,7 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	}
 	if s.VaultBoardV2Store != nil {
 		runtime, err := s.requireVaultBoardV2Runtime()
-		if err != nil || runtime.batchExpiry == 0 {
+		if err != nil || runtime.batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
 			st.Error = "vault-board-v2 runtime unavailable"
 			return st
 		}

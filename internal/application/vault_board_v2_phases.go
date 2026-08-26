@@ -4,10 +4,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
+
+const vaultBoardV2ResultPersistTimeout = 5 * time.Second
+
+func (s *Service) persistVaultBoardV2Submission(rec policy.VaultBoardV2Submission) error {
+	ctx, cancel := context.WithTimeout(context.Background(), vaultBoardV2ResultPersistTimeout)
+	defer cancel()
+	_, _, err := s.VaultBoardV2Store.AppendVaultBoardV2Submission(ctx, rec)
+	return err
+}
 
 func (s *Service) registerVaultBoardV2(ctx context.Context, req vaultBoardV2RegisterPhaseRequest) (vaultBoardV2RegisterResponse, error) {
 	runtime, err := s.requireVaultBoardV2Runtime()
@@ -25,6 +35,9 @@ func (s *Service) registerVaultBoardV2(ctx context.Context, req vaultBoardV2Regi
 	if err != nil {
 		return vaultBoardV2RegisterResponse{}, err
 	}
+	if err := requireVaultBoardV2MTP(ctxState.chain); err != nil {
+		return vaultBoardV2RegisterResponse{}, err
+	}
 	if ctxState.chain.Spent {
 		return vaultBoardV2RegisterResponse{}, fmt.Errorf("vault-board-v2 boarding outpoint is already spent")
 	}
@@ -32,7 +45,13 @@ func (s *Service) registerVaultBoardV2(ctx context.Context, req vaultBoardV2Regi
 	if err != nil {
 		return vaultBoardV2RegisterResponse{}, err
 	}
-	verified, err := verifyVaultBoardV2RegisterProof(req.PSBT, req.Message, operation, ctxState.boardTree, claims.RegisterExpireAt)
+	releaseVerification, err := s.acquireVerification(ctx)
+	if err != nil {
+		return vaultBoardV2RegisterResponse{}, err
+	}
+	verified, verifyErr := verifyVaultBoardV2RegisterProof(req.PSBT, req.Message, operation, ctxState.boardTree, claims.RegisterExpireAt)
+	releaseVerification()
+	err = verifyErr
 	if err != nil {
 		return vaultBoardV2RegisterResponse{}, err
 	}
@@ -65,17 +84,26 @@ func (s *Service) registerVaultBoardV2(ctx context.Context, req vaultBoardV2Regi
 	if err != nil {
 		return vaultBoardV2RegisterResponse{}, err
 	}
-	signed, err := s.keys.vaultBoardV2Authorization(ctx, signing)
+	releaseVerification, err = s.acquireVerification(ctx)
+	if err != nil {
+		return vaultBoardV2RegisterResponse{}, err
+	}
+	signed, signErr := s.keys.vaultBoardV2Authorization(ctx, signing)
+	releaseVerification()
+	err = signErr
 	if err != nil {
 		return vaultBoardV2RegisterResponse{}, err
 	}
 	defer func() { signed = "" }()
-	chain, err := runtime.chain.confirmedOutpoint(ctx, claims.Txid, claims.Vout)
+	chain, err := revalidateVaultBoardV2Outpoint(runtime, ctxState.chain)
 	if err != nil || chain.Spent || requireSameVaultBoardV2ChainFacts(*storedOperation, chain, operation.ReceiverScript) != nil || requireVaultBoardV2MTP(chain) != nil {
 		return vaultBoardV2RegisterResponse{Status: vaultBoardV2DefinitelyNotSubmitted}, nil
 	}
 	operator, err := runtime.operatorDial(ctx)
 	if err != nil {
+		return vaultBoardV2RegisterResponse{Status: vaultBoardV2DefinitelyNotSubmitted}, nil
+	}
+	if claims.RegisterExpireAt-s.vtxoNow().Unix() < int64(vaultBoardV2DispatchMargin/time.Second) {
 		return vaultBoardV2RegisterResponse{Status: vaultBoardV2DefinitelyNotSubmitted}, nil
 	}
 	if _, created, err := s.VaultBoardV2Store.AppendVaultBoardV2Dispatch(ctx, policy.VaultBoardV2Dispatch{
@@ -91,7 +119,7 @@ func (s *Service) registerVaultBoardV2(ctx context.Context, req vaultBoardV2Regi
 		if !isDefiniteVaultBoardV2RegisterRejection(err) {
 			return vaultBoardV2RegisterResponse{Status: vaultBoardV2RegisterAmbiguous}, nil
 		}
-		if _, _, persistErr := s.VaultBoardV2Store.AppendVaultBoardV2Submission(ctx, policy.VaultBoardV2Submission{
+		if persistErr := s.persistVaultBoardV2Submission(policy.VaultBoardV2Submission{
 			OperationID: auth.OperationID, Attempt: auth.Attempt, Phase: policy.VaultBoardV2PhaseRegister,
 			RequestDigest: bytes.Clone(auth.RequestDigest), Outcome: policy.VaultBoardV2AuthRejected,
 		}); persistErr != nil {
@@ -99,7 +127,7 @@ func (s *Service) registerVaultBoardV2(ctx context.Context, req vaultBoardV2Regi
 		}
 		return vaultBoardV2RegisterResponse{Status: vaultBoardV2DefinitelyNotSubmitted}, nil
 	}
-	if _, _, err := s.VaultBoardV2Store.AppendVaultBoardV2Submission(ctx, policy.VaultBoardV2Submission{
+	if err := s.persistVaultBoardV2Submission(policy.VaultBoardV2Submission{
 		OperationID: auth.OperationID, Attempt: auth.Attempt, Phase: policy.VaultBoardV2PhaseRegister,
 		RequestDigest: bytes.Clone(auth.RequestDigest), Outcome: policy.VaultBoardV2AuthSubmitted, OperatorRef: intentID,
 	}); err != nil {
@@ -146,6 +174,9 @@ func (s *Service) releaseVaultBoardV2(ctx context.Context, req vaultBoardV2Delet
 	if err != nil {
 		return "", err
 	}
+	if err := requireVaultBoardV2MTP(ctxState.chain); err != nil {
+		return "", err
+	}
 	if ctxState.chain.Spent {
 		return vaultBoardV2ReleaseAmbiguous, nil
 	}
@@ -157,7 +188,13 @@ func (s *Service) releaseVaultBoardV2(ctx context.Context, req vaultBoardV2Delet
 	if err != nil || snapshot == nil || snapshot.Register.Attempt != claims.Attempt {
 		return "", fmt.Errorf("vault-board-v2 release attempt is no longer current")
 	}
-	verified, err := verifyVaultBoardV2DeleteProof(req.PSBT, req.Message, operation, ctxState.boardTree, claims.DeleteExpireAt)
+	releaseVerification, err := s.acquireVerification(ctx)
+	if err != nil {
+		return "", err
+	}
+	verified, verifyErr := verifyVaultBoardV2DeleteProof(req.PSBT, req.Message, operation, ctxState.boardTree, claims.DeleteExpireAt)
+	releaseVerification()
+	err = verifyErr
 	if err != nil {
 		return "", fmt.Errorf("vault-board-v2 delete proof: %w", err)
 	}
@@ -183,18 +220,27 @@ func (s *Service) releaseVaultBoardV2(ctx context.Context, req vaultBoardV2Delet
 	if err != nil {
 		return "", err
 	}
-	signed, err := s.keys.vaultBoardV2Authorization(ctx, signing)
+	releaseVerification, err = s.acquireVerification(ctx)
+	if err != nil {
+		return "", err
+	}
+	signed, signErr := s.keys.vaultBoardV2Authorization(ctx, signing)
+	releaseVerification()
+	err = signErr
 	if err != nil {
 		return "", err
 	}
 	defer func() { signed = "" }()
-	chain, err := runtime.chain.confirmedOutpoint(ctx, claims.Txid, claims.Vout)
+	chain, err := revalidateVaultBoardV2Outpoint(runtime, ctxState.chain)
 	if err != nil || chain.Spent || requireSameVaultBoardV2ChainFacts(operation, chain, operation.ReceiverScript) != nil || requireVaultBoardV2MTP(chain) != nil {
 		return vaultBoardV2ReleaseAmbiguous, nil
 	}
 	operator, err := runtime.operatorDial(ctx)
 	if err != nil {
 		return vaultBoardV2ReleaseAmbiguous, nil
+	}
+	if claims.DeleteExpireAt-s.vtxoNow().Unix() < int64(vaultBoardV2DispatchMargin/time.Second) {
+		return "", fmt.Errorf("vault-board-v2 release proof expires too soon")
 	}
 	auth, _, created, err := s.VaultBoardV2Store.AppendVaultBoardV2AuthorizationAndDispatch(ctx, authRequest, vaultBoardV2ChainPolicy(chain))
 	if err != nil || !created {
@@ -203,7 +249,7 @@ func (s *Service) releaseVaultBoardV2(ctx context.Context, req vaultBoardV2Delet
 	if err := operator.deleteIntent(ctx, signed, verified.Message); err != nil {
 		return vaultBoardV2ReleaseAmbiguous, nil
 	}
-	if _, _, err := s.VaultBoardV2Store.AppendVaultBoardV2Submission(ctx, policy.VaultBoardV2Submission{
+	if err := s.persistVaultBoardV2Submission(policy.VaultBoardV2Submission{
 		OperationID: auth.OperationID, Attempt: auth.Attempt, Phase: policy.VaultBoardV2PhaseDelete,
 		RequestDigest: bytes.Clone(auth.RequestDigest), Outcome: policy.VaultBoardV2AuthReleased,
 	}); err != nil {
@@ -232,6 +278,9 @@ func (s *Service) submitVaultBoardV2Commitment(ctx context.Context, req vaultBoa
 	if err != nil {
 		return "", err
 	}
+	if err := requireVaultBoardV2MTP(ctxState.chain); err != nil {
+		return "", err
+	}
 	if ctxState.chain.Spent {
 		return vaultBoardV2CommitmentAmbiguous, nil
 	}
@@ -244,7 +293,13 @@ func (s *Service) submitVaultBoardV2Commitment(ctx context.Context, req vaultBoa
 		snapshot.RegisterSubmission.Outcome != policy.VaultBoardV2AuthSubmitted {
 		return "", fmt.Errorf("vault-board-v2 accepted register attempt required")
 	}
-	verified, err := verifyVaultBoardV2Final(req.Batch, operation, snapshot.Register, ctxState.boardTree, vaultBoardV2FinalExpiry(runtime.batchExpiry))
+	releaseVerification, err := s.acquireVerification(ctx)
+	if err != nil {
+		return "", err
+	}
+	verified, verifyErr := verifyVaultBoardV2Final(req.Batch, operation, snapshot.Register, ctxState.boardTree, vaultBoardV2FinalExpiry(runtime.batchExpiry))
+	releaseVerification()
+	err = verifyErr
 	if err != nil {
 		return "", err
 	}
@@ -268,12 +323,18 @@ func (s *Service) submitVaultBoardV2Commitment(ctx context.Context, req vaultBoa
 	if err != nil {
 		return "", err
 	}
-	signed, err := s.keys.vaultBoardV2Authorization(ctx, signing)
+	releaseVerification, err = s.acquireVerification(ctx)
+	if err != nil {
+		return "", err
+	}
+	signed, signErr := s.keys.vaultBoardV2Authorization(ctx, signing)
+	releaseVerification()
+	err = signErr
 	if err != nil {
 		return "", err
 	}
 	defer func() { signed = "" }()
-	chain, err := runtime.chain.confirmedOutpoint(ctx, claims.Txid, claims.Vout)
+	chain, err := revalidateVaultBoardV2Outpoint(runtime, ctxState.chain)
 	if err != nil || chain.Spent || requireSameVaultBoardV2ChainFacts(operation, chain, operation.ReceiverScript) != nil || requireVaultBoardV2MTP(chain) != nil {
 		return vaultBoardV2CommitmentAmbiguous, nil
 	}
@@ -288,7 +349,7 @@ func (s *Service) submitVaultBoardV2Commitment(ctx context.Context, req vaultBoa
 	if err := operator.submitCommitment(ctx, signed); err != nil {
 		return vaultBoardV2CommitmentAmbiguous, nil
 	}
-	if _, _, err := s.VaultBoardV2Store.AppendVaultBoardV2Submission(ctx, policy.VaultBoardV2Submission{
+	if err := s.persistVaultBoardV2Submission(policy.VaultBoardV2Submission{
 		OperationID: auth.OperationID, Attempt: auth.Attempt, Phase: policy.VaultBoardV2PhaseFinalize,
 		RequestDigest: bytes.Clone(auth.RequestDigest), Outcome: policy.VaultBoardV2AuthSubmitted,
 		CommitmentTxid: verified.CommitmentTxid, ReceiverTxid: verified.ReceiverTxid, ReceiverVout: verified.ReceiverVout,

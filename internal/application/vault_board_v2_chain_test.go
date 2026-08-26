@@ -67,6 +67,13 @@ func TestVaultBoardV2ChainCrossChecksConfirmedOutpointAndMTP(t *testing.T) {
 	if requests["/api/tx/"+txid] != 2 || requests["/api/tx/"+txid+"/outspend/0"] != 2 {
 		t.Fatalf("missing reorg cross-checks: %#v", requests)
 	}
+	if _, err := chain.revalidateOutpoint(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	if requests["/api/tx/"+txid] != 2 || requests["/api/tx/"+txid+"/outspend/0"] != 3 ||
+		requests["/api/block-height/100"] != 2 || requests["/api/blocks/tip/hash"] != 2 || requests["/api/block/"+tipHash] != 2 {
+		t.Fatalf("narrow revalidation performed unexpected requests: %#v", requests)
+	}
 }
 
 func TestVaultBoardV2ChainFailsClosedOnStatusOrOutspendRace(t *testing.T) {

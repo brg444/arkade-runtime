@@ -19,6 +19,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
 	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
+	arkadevaultv2 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv2"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
@@ -32,7 +33,7 @@ import (
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
 	Stores            arkadevaultv1.Stores
-	VaultBoardV2Store arkadevaultv1.VaultBoardV2Store
+	VaultBoardV2Store arkadevaultv2.Store
 	Deployment        deployment.Config
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
@@ -73,7 +74,7 @@ type Deps struct {
 	ArkadeCosignerOrigin  string
 	ArkadeCosignerVersion string
 	ArkResolver           ports.ArkResolver
-	VaultBoardV2Store     arkadevaultv1.VaultBoardV2Store
+	VaultBoardV2Store     arkadevaultv2.Store
 }
 
 // New builds the application service without receiving raw key material or a

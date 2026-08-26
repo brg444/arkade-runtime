@@ -45,6 +45,10 @@ func isDefiniteVaultBoardV2RegisterRejection(err error) bool {
 	return ok
 }
 
+func dialVaultBoardV2Operator(ctx context.Context) (vaultBoardV2Operator, error) {
+	return dialVaultBoardV2OperatorWithClient(ctx, deployment.MutinynetArkIndexerOrigin, newArkResolverHTTPClient())
+}
+
 func dialVaultBoardV2OperatorWithClient(ctx context.Context, rawOrigin string, hc httpDoer) (vaultBoardV2Operator, error) {
 	origin, err := canonicalHTTPSOrigin(rawOrigin)
 	if err != nil || origin != deployment.MutinynetArkIndexerOrigin {

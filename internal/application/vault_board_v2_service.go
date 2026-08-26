@@ -21,10 +21,13 @@ import (
 )
 
 const (
-	vaultBoardV2RegisterTTL  = 2 * time.Minute
-	vaultBoardV2DeleteTTL    = 30 * time.Second
-	vaultBoardV2HandleDomain = "arkade-vault/vault-board-v2-handle/v1"
-	vaultBoardV2HandleMax    = 1536
+	vaultBoardV2RegisterTTL = 2 * time.Minute
+	vaultBoardV2DeleteTTL   = 2 * time.Minute
+	// Covers the 15-second stock Operator timeout plus the five-second SQLite
+	// busy window, with room to fail before a proof can expire.
+	vaultBoardV2DispatchMargin = 30 * time.Second
+	vaultBoardV2HandleDomain   = "arkade-vault/vault-board-v2-handle/v1"
+	vaultBoardV2HandleMax      = 1536
 )
 
 type vaultBoardV2Runtime struct {
@@ -36,20 +39,20 @@ type vaultBoardV2Runtime struct {
 }
 
 type vaultBoardV2PrepareInput struct {
-	Txid string
-	Vout uint32
+	Txid string `json:"txid"`
+	Vout uint32 `json:"vout"`
 }
 
 type vaultBoardV2PrepareRecipient struct {
-	Address    string
-	AmountSats uint64
-	HasAssets  bool
+	Address    string `json:"address"`
+	AmountSats uint64 `json:"amountSats"`
+	HasAssets  bool   `json:"-"`
 }
 
 type vaultBoardV2PrepareRequest struct {
-	VaultID    string
-	Inputs     []vaultBoardV2PrepareInput
-	Recipients []vaultBoardV2PrepareRecipient
+	VaultID    string                         `json:"vaultId"`
+	Inputs     []vaultBoardV2PrepareInput     `json:"inputs"`
+	Recipients []vaultBoardV2PrepareRecipient `json:"recipients"`
 }
 
 type vaultBoardV2HandleClaims struct {
@@ -171,6 +174,11 @@ func (s *Service) prepareVaultBoardV2(ctx context.Context, req vaultBoardV2Prepa
 			return vaultBoardV2PrepareResult{State: vaultBoardV2Finalized, CommitmentTxid: commitment}, nil
 		}
 	}
+	// Final reconciliation above is factual and remains available after the
+	// recovery leaf matures. Only new cooperative signing is cut off by MTP.
+	if err := requireVaultBoardV2MTP(ctxState.chain); err != nil {
+		return vaultBoardV2PrepareResult{}, err
+	}
 	if ctxState.chain.Spent {
 		return vaultBoardV2PrepareResult{State: vaultBoardV2Blocked, Reason: "boarding outpoint is already spent"}, nil
 	}
@@ -239,9 +247,6 @@ func (s *Service) loadVaultBoardV2Context(ctx context.Context, runtime *vaultBoa
 	}
 	if !bytes.Equal(chain.PkScript, boardTree.PkScript) || chain.ValueSats <= 0 {
 		return vaultBoardV2Context{}, fmt.Errorf("confirmed enrolled vault-board-v2 outpoint required")
-	}
-	if err := requireVaultBoardV2MTP(chain); err != nil {
-		return vaultBoardV2Context{}, err
 	}
 	return vaultBoardV2Context{
 		vaultID: id, snapshot: snap, record: rec, boardTree: boardTree,
@@ -428,6 +433,15 @@ func (s *Service) vaultBoardV2OperationFromClaims(ctxState vaultBoardV2Context, 
 
 func vaultBoardV2ChainPolicy(chain vaultBoardV2ConfirmedOutpoint) policy.VaultBoardV2ChainState {
 	return policy.VaultBoardV2ChainState{TipMTP: chain.TipMTP}
+}
+
+func revalidateVaultBoardV2Outpoint(runtime *vaultBoardV2Runtime, prior vaultBoardV2ConfirmedOutpoint) (vaultBoardV2ConfirmedOutpoint, error) {
+	if runtime == nil || runtime.chain == nil {
+		return vaultBoardV2ConfirmedOutpoint{}, fmt.Errorf("vault-board-v2 chain unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), vaultBoardV2ChainTimeout)
+	defer cancel()
+	return runtime.chain.revalidateOutpoint(ctx, prior)
 }
 
 func vaultBoardV2FinalExpiry(value uint32) arklib.RelativeLocktime {
