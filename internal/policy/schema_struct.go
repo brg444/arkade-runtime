@@ -239,7 +239,7 @@ func validateMultiTenantSchemaOn(q schemaQuerier) error {
 }
 
 func canonicalChecksByTable() map[string][]string {
-	return extractChecksByTable(createMultiTenantSchema + createMainnetVtxoSchema)
+	return extractChecksByTable(createMultiTenantSchema + createVtxoSchema)
 }
 
 func matchCheckConstraints(q schemaQuerier, table string) error {

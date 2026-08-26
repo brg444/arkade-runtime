@@ -430,9 +430,22 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 	if err := program.ValidateVaultBoardV1ExitDelay(program.VaultBoardV1ExitDelay, program.VaultBoardV1ExitDelayUnit); err != nil {
 		return "", fmt.Errorf("recovery binding boarding exit: %w", err)
 	}
-	snap := enrolledSnapshot{
-		VaultID: cred.VaultID, PhoneBIP340: phone,
-		ExternalOwnerWallet: externalOwner, RecoveryKey: recovery,
+	snap := s.snapshot(cred.VaultID)
+	snap.PhoneBIP340 = phone
+	snap.ExternalOwnerWallet = externalOwner
+	snap.RecoveryKey = recovery
+	if snap.Board == nil {
+		if s.VaultBoardStore == nil {
+			return "", fmt.Errorf("recovery binding boarding store unavailable")
+		}
+		record, err := s.VaultBoardStore.GetVaultBoardEnrollment(cred.VaultID)
+		if err != nil {
+			return "", fmt.Errorf("recovery binding boarding descriptor: %w", err)
+		}
+		snap.Board, err = boardSnapshotFromRecord(record)
+		if err != nil {
+			return "", fmt.Errorf("recovery binding boarding descriptor: %w", err)
+		}
 	}
 	spending, err := s.buildVtxoPolicyTree(cred.VaultID, snap)
 	if err != nil {
@@ -442,7 +455,10 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		spending.ArkAddress == "" || len(spending.PkScript) == 0 {
 		return "", fmt.Errorf("recovery binding Spending descriptor incomplete")
 	}
-	boarding, err := s.buildVtxoBoardTree(snap)
+	if snap.Board == nil || snap.Board.BoardingPub == nil {
+		return "", fmt.Errorf("recovery binding boarding descriptor unavailable")
+	}
+	boarding, err := s.buildVtxoBoardTree(cred.VaultID, snap, snap.Board.BoardingPub)
 	if err != nil {
 		return "", fmt.Errorf("recovery binding boarding descriptor: %w", err)
 	}

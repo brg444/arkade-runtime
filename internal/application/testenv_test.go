@@ -12,6 +12,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -25,6 +26,7 @@ type env struct {
 	externalOwner *btcec.PrivateKey
 	master        *btcec.PrivateKey
 	operator      *btcec.PrivateKey
+	boarding      *btcec.PrivateKey
 	p256          *ecdsa.PrivateKey
 	direct        *ecdsa.PrivateKey
 	credID        []byte
@@ -44,6 +46,7 @@ func newEnv(t *testing.T) *env {
 	externalOwner, _ := btcec.NewPrivateKey()
 	master, _ := btcec.NewPrivateKey()
 	operator, _ := btcec.NewPrivateKey()
+	boarding, _ := btcec.NewPrivateKey()
 	passkey, err := webauthn.NewP256()
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +56,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	dbPath := filepath.Join(t.TempDir(), "policy.sqlite")
-	ledger, err := policy.OpenMainnetLedger(dbPath, nil)
+	ledger, err := policy.OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +66,18 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	operatorSigner, err := hex.DecodeString(deployment.MutinynetOperatorSignerPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := stubArkResolver{signer: operatorSigner}
 	service := New(Deps{
 		Stores: stores, Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		}, IntegrityKey: integrityKey,
 		Keys: testKeys(t, master, LocalSigner{Priv: operator}), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
+		ArkResolver: resolver, VaultBoardStore: ledger,
 	})
 	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
 		t.Fatal(err)
@@ -85,8 +94,10 @@ func newEnv(t *testing.T) *env {
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
 		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(externalOwner.PubKey())),
+		VtxoBoardingProgram:      program.VaultBoardV1,
+		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
 	}
-	preview, err := service.previewTenantDescriptor(fixture.VaultID, request)
+	preview, err := service.previewVaultBoardEnrollmentDescriptor(fixture.VaultID, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +111,7 @@ func newEnv(t *testing.T) *env {
 	}
 	return &env{
 		svc: service, ledger: ledger, savings: snapshot.Savings,
-		hot: hot, externalOwner: externalOwner, master: master, operator: operator,
+		hot: hot, externalOwner: externalOwner, master: master, operator: operator, boarding: boarding,
 		p256: passkey, direct: direct, credID: credentialID, dbPath: dbPath,
 	}
 }

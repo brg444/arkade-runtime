@@ -23,12 +23,12 @@ const (
 	vtxoVaultCosignerHKDFSalt    = "arkade-2fa-vault/vtxo-vault-cosigner/hkdf-sha256-v1"
 	vtxoVaultCosignerHKDFInfo    = "vtxo-vault-cosigner/v1"
 
-	// CosignerModeVaultBoardV2HKDFSHA256V1 is the vault-board-v2
+	// CosignerModeVaultBoardHKDFSHA256V1 is the vault-board-v1
 	// VaultBoardCosigner domain. It is distinct from both L1 Savings and the
 	// vault-policy-v1 VTXO cosigner.
-	CosignerModeVaultBoardV2HKDFSHA256V1 = "vault-board-v2-hkdf-sha256-v1"
-	vaultBoardV2CosignerHKDFSalt         = "arkade-vault/vault-board-v2-cosigner/hkdf-sha256-v1"
-	vaultBoardV2CosignerHKDFInfo         = "vault-board-cosigner/v2"
+	CosignerModeVaultBoardHKDFSHA256V1 = "vault-board-v1-hkdf-sha256-v1"
+	vaultBoardCosignerHKDFSalt         = "arkade-vault/vault-board-v1-cosigner/hkdf-sha256-v1"
+	vaultBoardCosignerHKDFInfo         = "vault-board-cosigner/v1"
 )
 
 // DeriveVaultCosignerScalar returns the secp256k1 scalar for vaultID.
@@ -117,11 +117,11 @@ func DeriveVtxoVaultCosignerScalar(master *btcec.PrivateKey, vaultID, policyVers
 	return deriveVtxoHKDFVaultCosigner(master, vaultID, policyVersion, network, advertisedServerPub)
 }
 
-// DeriveVaultBoardV2CosignerScalar returns the even-Y scalar for the named
-// vault-board-v2 authorization capability. The Operator key and network are
+// DeriveVaultBoardCosignerScalar returns the even-Y scalar for the named
+// vault-board-v1 authorization capability. The Operator key and network are
 // release identity, so a deployment change cannot silently reinterpret an
 // enrolled boarding output.
-func DeriveVaultBoardV2CosignerScalar(master *btcec.PrivateKey, vaultID, network string, operatorPub []byte) (*btcec.PrivateKey, error) {
+func DeriveVaultBoardCosignerScalar(master *btcec.PrivateKey, vaultID, network string, operatorPub []byte) (*btcec.PrivateKey, error) {
 	if master == nil {
 		return nil, fmt.Errorf("vault cosigner master required")
 	}
@@ -129,7 +129,7 @@ func DeriveVaultBoardV2CosignerScalar(master *btcec.PrivateKey, vaultID, network
 		return nil, fmt.Errorf("vault id required")
 	}
 	if network != program.NetworkMutinynet {
-		return nil, fmt.Errorf("vault-board-v2 is Mutinynet-only")
+		return nil, fmt.Errorf("vault-board-v1 is Mutinynet-only")
 	}
 	if len(operatorPub) != 33 || (operatorPub[0] != 0x02 && operatorPub[0] != 0x03) {
 		return nil, fmt.Errorf("Operator pub must be compressed secp256k1")
@@ -139,14 +139,14 @@ func DeriveVaultBoardV2CosignerScalar(master *btcec.PrivateKey, vaultID, network
 	}
 	ikm := master.Serialize()
 	defer zeroBytes(ikm)
-	extract := hmac.New(sha256.New, []byte(vaultBoardV2CosignerHKDFSalt))
+	extract := hmac.New(sha256.New, []byte(vaultBoardCosignerHKDFSalt))
 	_, _ = extract.Write(ikm)
 	prk := extract.Sum(nil)
 	defer zeroBytes(prk)
 	for counter := 0; counter <= 255; counter++ {
-		info := make([]byte, 0, len(vaultBoardV2CosignerHKDFInfo)+len(vaultID)+len(network)+len(operatorPub)+len(program.VaultBoardV2)+7)
+		info := make([]byte, 0, len(vaultBoardCosignerHKDFInfo)+len(vaultID)+len(network)+len(operatorPub)+len(program.VaultBoardV1)+7)
 		for _, field := range [][]byte{
-			[]byte(vaultBoardV2CosignerHKDFInfo), []byte(vaultID), []byte(program.VaultBoardV2),
+			[]byte(vaultBoardCosignerHKDFInfo), []byte(vaultID), []byte(program.VaultBoardV1),
 			[]byte(network), operatorPub,
 		} {
 			info = append(info, field...)
@@ -166,7 +166,7 @@ func DeriveVaultBoardV2CosignerScalar(master *btcec.PrivateKey, vaultID, network
 		}
 		zeroBytes(okm)
 	}
-	return nil, fmt.Errorf("vault-board-v2 HKDF produced no valid secp256k1 scalar")
+	return nil, fmt.Errorf("vault-board-v1 HKDF produced no valid secp256k1 scalar")
 }
 
 func deriveVtxoHKDFVaultCosigner(master *btcec.PrivateKey, vaultID, policyVersion, network string, advertisedServerPub []byte) (*btcec.PrivateKey, error) {

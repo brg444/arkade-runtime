@@ -306,7 +306,7 @@ func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]po
 }
 
 // exactVtxo resolves one VTXO by its canonical outpoint, including records
-// that are no longer spendable. vault-board-v2 uses this only to reconcile an
+// that are no longer spendable. vault-board-v1 uses this only to reconcile an
 // already-authorized final submission after response loss; it is not a coin
 // selection surface.
 func (r *arkResolver) exactVtxo(ctx context.Context, txid string, vout uint32, pkScript []byte) (*ports.ResolvedVtxo, error) {

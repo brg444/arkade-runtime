@@ -36,10 +36,7 @@ const (
 	VaultPolicyV1Template = "vault-policy-v1-collaborative-3key"
 	VaultBoardV1          = "vault-board-v1"
 	VaultBoardV1Schema    = "arkade-vault/board-v1"
-	VaultBoardV1Template  = "vault-board-v1-phone-and-arkd"
-	VaultBoardV2          = "vault-board-v2"
-	VaultBoardV2Schema    = "arkade-vault/board-v2"
-	VaultBoardV2Template  = "vault-board-v2-device-vault-and-operator"
+	VaultBoardV1Template  = "vault-board-v1-boarding-vault-and-operator"
 
 	// Product-chosen guardian CSV. arkd Validate requires the smallest exit
 	// delay >= GetInfo.unilateralExitDelay (live Mutinynet 2048 seconds) and
@@ -50,14 +47,11 @@ const (
 	VaultPolicyV1ArkdMinExitDelay = uint32(2048)
 	VaultPolicyV1BIP68SecondsMod  = uint32(512)
 
-	// vault-board-v1 uses arkd's standard boarding contract: the phone and
-	// Operator cooperate before expiry, while the phone can recover alone
-	// after the Operator-advertised boarding delay. This is deliberately a
-	// different program from the already-funded L1 Spending tree.
+	// vault-board-v1 requires the enrolled boarding key, VaultBoardCosigner,
+	// and Operator before expiry. The enrolled phone key recovers alone after
+	// the release-pinned delay.
 	VaultBoardV1ExitDelay     = uint32(604672)
 	VaultBoardV1ExitDelayUnit = "seconds"
-	VaultBoardV2ExitDelay     = VaultBoardV1ExitDelay
-	VaultBoardV2ExitDelayUnit = VaultBoardV1ExitDelayUnit
 
 	// Pinned public Fulmine delegator (compressed). The tapleaf stores x-only.
 	VaultPolicyV1PinnedDelegate     = "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a"

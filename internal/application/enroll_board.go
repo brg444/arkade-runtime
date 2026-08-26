@@ -13,22 +13,9 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
-const vaultBoardV2EnrollmentSchema = "arkade-vault/enrollment-with-board-v2"
+const vaultBoardEnrollmentSchema = "arkade-vault/enrollment-with-board-v1"
 
-// VaultBoardV2EnrollmentRequest explicitly opts a fresh enrollment into the
-// named Mutinynet-only boarding capability. The ordinary enrollment request
-// has no v2 fields and continues to create vault-board-v1 byte-for-byte.
-type VaultBoardV2EnrollmentRequest struct {
-	VtxoBoardingProgram           string `json:"vtxoBoardingProgram"`
-	VaultBoardV2BoardingBIP340Pub string `json:"vaultBoardV2BoardingBip340Pub"`
-}
-
-type EnrollFinishVaultBoardV2Request struct {
-	EnrollFinishRequest
-	VaultBoardV2EnrollmentRequest
-}
-
-type vaultBoardV2PublicDescriptor struct {
+type vaultBoardPublicDescriptor struct {
 	Schema           string `json:"schema"`
 	Program          string `json:"program"`
 	Template         string `json:"template"`
@@ -43,14 +30,14 @@ type vaultBoardV2PublicDescriptor struct {
 	Address          string `json:"address"`
 }
 
-type vaultBoardV2CompositeDescriptor struct {
-	Schema   string                       `json:"schema"`
-	VaultID  string                       `json:"vaultId"`
-	Savings  savings.PublicDescriptor     `json:"savings"`
-	Boarding vaultBoardV2PublicDescriptor `json:"boarding"`
+type vaultBoardCompositeDescriptor struct {
+	Schema   string                     `json:"schema"`
+	VaultID  string                     `json:"vaultId"`
+	Savings  savings.PublicDescriptor   `json:"savings"`
+	Boarding vaultBoardPublicDescriptor `json:"boarding"`
 }
 
-func (s *Service) previewVaultBoardV2EnrollmentDescriptor(vaultID string, req RegisterRequest, boardReq VaultBoardV2EnrollmentRequest) (*ProposedEnrollment, error) {
+func (s *Service) previewVaultBoardEnrollmentDescriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
 	base, err := s.previewSavingsDescriptor(vaultID, req)
 	if err != nil {
 		return nil, err
@@ -59,7 +46,7 @@ func (s *Service) previewVaultBoardV2EnrollmentDescriptor(vaultID string, req Re
 	if err != nil {
 		return nil, err
 	}
-	parsed, err = s.applyVaultBoardV2EnrollmentRequest(parsed, boardReq)
+	parsed, err = s.applyVaultBoardEnrollmentRequest(parsed, req)
 	if err != nil {
 		return nil, err
 	}
@@ -67,50 +54,50 @@ func (s *Service) previewVaultBoardV2EnrollmentDescriptor(vaultID string, req Re
 	if !ok {
 		return nil, fmt.Errorf("Savings descriptor type")
 	}
-	board, _, err := s.buildVaultBoardV2Enrollment(vaultID, parsed)
+	board, _, err := s.buildVaultBoardEnrollment(vaultID, parsed)
 	if err != nil {
 		return nil, err
 	}
-	desc := vaultBoardV2CompositeDescriptor{
-		Schema: vaultBoardV2EnrollmentSchema, VaultID: vaultID, Savings: savingsDesc,
+	desc := vaultBoardCompositeDescriptor{
+		Schema: vaultBoardEnrollmentSchema, VaultID: vaultID, Savings: savingsDesc,
 		Boarding: board,
 	}
-	hash, err := hashVaultBoardV2Composite(desc)
+	hash, err := hashVaultBoardComposite(desc)
 	if err != nil {
 		return nil, err
 	}
 	return &ProposedEnrollment{VaultID: vaultID, DescriptorHash: hash, Descriptor: desc}, nil
 }
 
-func (s *Service) applyVaultBoardV2EnrollmentRequest(parsed parsedRegisterRequest, req VaultBoardV2EnrollmentRequest) (parsedRegisterRequest, error) {
-	if req.VtxoBoardingProgram != program.VaultBoardV2 {
-		return parsed, fmt.Errorf("explicit %s enrollment required", program.VaultBoardV2)
+func (s *Service) applyVaultBoardEnrollmentRequest(parsed parsedRegisterRequest, req RegisterRequest) (parsedRegisterRequest, error) {
+	if req.VtxoBoardingProgram != program.VaultBoardV1 {
+		return parsed, fmt.Errorf("explicit %s enrollment required", program.VaultBoardV1)
 	}
-	if s.VaultBoardV2Store == nil {
-		return parsed, fmt.Errorf("vault-board-v2 release store is not active")
+	if s.VaultBoardStore == nil {
+		return parsed, fmt.Errorf("vault-board-v1 release store is not active")
 	}
-	pub, err := s.parseOnboardingKey("vaultBoardV2BoardingBip340Pub", req.VaultBoardV2BoardingBIP340Pub)
+	pub, err := s.parseOnboardingKey("vaultBoardingBip340Pub", req.VaultBoardingBIP340Pub)
 	if err != nil {
 		return parsed, err
 	}
-	parsed.boardingProgram = program.VaultBoardV2
-	parsed.boardV2Pub = pub
+	parsed.boardingProgram = program.VaultBoardV1
+	parsed.boardPub = pub
 	return parsed, nil
 }
 
-func (s *Service) mintVaultBoardV2Enrollment(vaultID string, parsed parsedRegisterRequest) (*policy.VaultBoardV2Enrollment, *vaultBoardV2Snapshot, error) {
-	if parsed.boardingProgram != program.VaultBoardV2 {
+func (s *Service) mintVaultBoardEnrollment(vaultID string, parsed parsedRegisterRequest) (*policy.VaultBoardEnrollment, *vaultBoardSnapshot, error) {
+	if parsed.boardingProgram != program.VaultBoardV1 {
 		return nil, nil, nil
 	}
-	_, tree, err := s.buildVaultBoardV2Enrollment(vaultID, parsed)
+	_, tree, err := s.buildVaultBoardEnrollment(vaultID, parsed)
 	if err != nil {
 		return nil, nil, err
 	}
-	rec := &policy.VaultBoardV2Enrollment{
-		VaultID: vaultID, Program: program.VaultBoardV2,
+	rec := &policy.VaultBoardEnrollment{
+		VaultID: vaultID, Program: program.VaultBoardV1,
 		BoardingPub: tree.BoardingPub.SerializeCompressed(),
 		CosignerPub: tree.CosignerPub.SerializeCompressed(), OperatorPub: tree.OperatorPub.SerializeCompressed(),
-		ExitDelay: program.VaultBoardV2ExitDelay, ExitDelayUnit: program.VaultBoardV2ExitDelayUnit,
+		ExitDelay: program.VaultBoardV1ExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		PkScript: append([]byte(nil), tree.PkScript...), Address: tree.OnchainAddress,
 	}
 	key, err := s.credentialIntegrityKey()
@@ -118,37 +105,37 @@ func (s *Service) mintVaultBoardV2Enrollment(vaultID string, parsed parsedRegist
 		return nil, nil, err
 	}
 	defer zeroServiceBytes(key)
-	if err := policy.SealVaultBoardV2Enrollment(rec, key); err != nil {
+	if err := policy.SealVaultBoardEnrollment(rec, key); err != nil {
 		return nil, nil, err
 	}
-	return rec, &vaultBoardV2Snapshot{
+	return rec, &vaultBoardSnapshot{
 		BoardingPub: tree.BoardingPub, CosignerPub: tree.CosignerPub, OperatorPub: tree.OperatorPub,
 		PkScript: append([]byte(nil), tree.PkScript...), Address: tree.OnchainAddress,
 	}, nil
 }
 
-func (s *Service) buildVaultBoardV2Enrollment(vaultID string, parsed parsedRegisterRequest) (vaultBoardV2PublicDescriptor, *vtxoBoardV2Tree, error) {
-	if parsed.boardingProgram != program.VaultBoardV2 || parsed.boardV2Pub == nil || parsed.phone == nil {
-		return vaultBoardV2PublicDescriptor{}, nil, fmt.Errorf("explicit vault-board-v2 enrollment keys required")
+func (s *Service) buildVaultBoardEnrollment(vaultID string, parsed parsedRegisterRequest) (vaultBoardPublicDescriptor, *vtxoBoardTree, error) {
+	if parsed.boardingProgram != program.VaultBoardV1 || parsed.boardPub == nil || parsed.phone == nil {
+		return vaultBoardPublicDescriptor{}, nil, fmt.Errorf("explicit vault-board-v1 enrollment keys required")
 	}
-	tree, err := s.buildVtxoBoardV2Tree(vaultID, enrolledSnapshot{PhoneBIP340: parsed.phone}, parsed.boardV2Pub)
+	tree, err := s.buildVtxoBoardTree(vaultID, enrolledSnapshot{PhoneBIP340: parsed.phone}, parsed.boardPub)
 	if err != nil {
-		return vaultBoardV2PublicDescriptor{}, nil, err
+		return vaultBoardPublicDescriptor{}, nil, err
 	}
-	desc := vaultBoardV2PublicDescriptor{
-		Schema: program.VaultBoardV2Schema, Program: program.VaultBoardV2, Template: program.VaultBoardV2Template,
+	desc := vaultBoardPublicDescriptor{
+		Schema: program.VaultBoardV1Schema, Program: program.VaultBoardV1, Template: program.VaultBoardV1Template,
 		Network:          program.NetworkMutinynet,
 		BoardingPub:      hex.EncodeToString(tree.BoardingPub.SerializeCompressed()),
 		RecoveryPhonePub: hex.EncodeToString(parsed.phone.SerializeCompressed()),
 		CosignerPub:      hex.EncodeToString(tree.CosignerPub.SerializeCompressed()),
 		OperatorPub:      hex.EncodeToString(tree.OperatorPub.SerializeCompressed()),
-		ExitDelay:        program.VaultBoardV2ExitDelay, ExitDelayUnit: program.VaultBoardV2ExitDelayUnit,
+		ExitDelay:        program.VaultBoardV1ExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		Script: hex.EncodeToString(tree.PkScript), Address: tree.OnchainAddress,
 	}
 	return desc, tree, nil
 }
 
-func hashVaultBoardV2Composite(desc vaultBoardV2CompositeDescriptor) (string, error) {
+func hashVaultBoardComposite(desc vaultBoardCompositeDescriptor) (string, error) {
 	savingsHash, err := savings.HashPublicDescriptor(desc.Savings)
 	if err != nil {
 		return "", err
@@ -170,13 +157,13 @@ func hashVaultBoardV2Composite(desc vaultBoardV2CompositeDescriptor) (string, er
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func (s *Service) statusVaultBoardV2Descriptor(cred *policy.Credential, snap enrolledSnapshot) (vaultBoardV2CompositeDescriptor, string, error) {
-	if cred == nil || snap.BoardV2 == nil || snap.BoardV2.BoardingPub == nil {
-		return vaultBoardV2CompositeDescriptor{}, "", fmt.Errorf("vault-board-v2 enrollment descriptor unavailable")
+func (s *Service) statusVaultBoardDescriptor(cred *policy.Credential, snap enrolledSnapshot) (vaultBoardCompositeDescriptor, string, error) {
+	if cred == nil || snap.Board == nil || snap.Board.BoardingPub == nil {
+		return vaultBoardCompositeDescriptor{}, "", fmt.Errorf("vault-board-v1 enrollment descriptor unavailable")
 	}
 	phone, hardware, recovery, vaultBase, arkadeBase, _, err := s.rebuildSavings(cred)
 	if err != nil {
-		return vaultBoardV2CompositeDescriptor{}, "", err
+		return vaultBoardCompositeDescriptor{}, "", err
 	}
 	in := savings.FamilyInput{
 		VaultID: cred.VaultID, Network: cred.Network, Phone: phone, Hardware: hardware,
@@ -186,27 +173,27 @@ func (s *Service) statusVaultBoardV2Descriptor(cred *policy.Credential, snap enr
 	applySavingsProgram(&in, cred.TemplateVersion)
 	savingsDesc, _, err := savings.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)
 	if err != nil {
-		return vaultBoardV2CompositeDescriptor{}, "", err
+		return vaultBoardCompositeDescriptor{}, "", err
 	}
-	boardTree, err := s.buildVtxoBoardV2Tree(cred.VaultID, snap, snap.BoardV2.BoardingPub)
-	if err != nil || boardTree.OnchainAddress != snap.BoardV2.Address || !bytes.Equal(boardTree.PkScript, snap.BoardV2.PkScript) {
-		return vaultBoardV2CompositeDescriptor{}, "", fmt.Errorf("vault-board-v2 enrollment descriptor mismatch")
+	boardTree, err := s.buildVtxoBoardTree(cred.VaultID, snap, snap.Board.BoardingPub)
+	if err != nil || boardTree.OnchainAddress != snap.Board.Address || !bytes.Equal(boardTree.PkScript, snap.Board.PkScript) {
+		return vaultBoardCompositeDescriptor{}, "", fmt.Errorf("vault-board-v1 enrollment descriptor mismatch")
 	}
-	board := vaultBoardV2PublicDescriptor{
-		Schema: program.VaultBoardV2Schema, Program: program.VaultBoardV2, Template: program.VaultBoardV2Template,
+	board := vaultBoardPublicDescriptor{
+		Schema: program.VaultBoardV1Schema, Program: program.VaultBoardV1, Template: program.VaultBoardV1Template,
 		Network: cred.Network, BoardingPub: hex.EncodeToString(boardTree.BoardingPub.SerializeCompressed()),
 		RecoveryPhonePub: hex.EncodeToString(phone.SerializeCompressed()),
 		CosignerPub:      hex.EncodeToString(boardTree.CosignerPub.SerializeCompressed()),
 		OperatorPub:      hex.EncodeToString(boardTree.OperatorPub.SerializeCompressed()),
-		ExitDelay:        program.VaultBoardV2ExitDelay, ExitDelayUnit: program.VaultBoardV2ExitDelayUnit,
+		ExitDelay:        program.VaultBoardV1ExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		Script: hex.EncodeToString(boardTree.PkScript), Address: boardTree.OnchainAddress,
 	}
-	desc := vaultBoardV2CompositeDescriptor{Schema: vaultBoardV2EnrollmentSchema, VaultID: cred.VaultID, Savings: savingsDesc, Boarding: board}
-	hash, err := hashVaultBoardV2Composite(desc)
+	desc := vaultBoardCompositeDescriptor{Schema: vaultBoardEnrollmentSchema, VaultID: cred.VaultID, Savings: savingsDesc, Boarding: board}
+	hash, err := hashVaultBoardComposite(desc)
 	return desc, hash, err
 }
 
-func boardV2SnapshotFromRecord(rec *policy.VaultBoardV2Enrollment) (*vaultBoardV2Snapshot, error) {
+func boardSnapshotFromRecord(rec *policy.VaultBoardEnrollment) (*vaultBoardSnapshot, error) {
 	if rec == nil {
 		return nil, nil
 	}
@@ -222,7 +209,7 @@ func boardV2SnapshotFromRecord(rec *policy.VaultBoardV2Enrollment) (*vaultBoardV
 	if err != nil {
 		return nil, err
 	}
-	return &vaultBoardV2Snapshot{
+	return &vaultBoardSnapshot{
 		BoardingPub: boarding, CosignerPub: cosigner, OperatorPub: operator,
 		PkScript: append([]byte(nil), rec.PkScript...), Address: rec.Address,
 	}, nil

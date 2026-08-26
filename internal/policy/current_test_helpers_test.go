@@ -14,7 +14,7 @@ func testIntegrityKey() []byte {
 
 func openPolicyTestLedger(t testing.TB, clock Clock) *Ledger {
 	t.Helper()
-	led, err := OpenMainnetLedger(filepath.Join(t.TempDir(), "policy.sqlite"), clock)
+	led, err := OpenLedger(filepath.Join(t.TempDir(), "policy.sqlite"), clock)
 	if err != nil {
 		t.Fatal(err)
 	}

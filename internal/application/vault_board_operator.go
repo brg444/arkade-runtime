@@ -13,65 +13,65 @@ import (
 )
 
 const (
-	vaultBoardV2OperatorResponseLimit = 16 * 1024
-	vaultBoardV2OperatorErrorLimit    = 4 * 1024
+	vaultBoardOperatorResponseLimit = 16 * 1024
+	vaultBoardOperatorErrorLimit    = 4 * 1024
 )
 
-type vaultBoardV2Operator interface {
+type vaultBoardOperator interface {
 	registerIntent(context.Context, string, string) (string, error)
 	deleteIntent(context.Context, string, string) error
 	submitCommitment(context.Context, string) error
 }
 
-type stockVaultBoardV2Operator struct {
+type stockVaultBoardOperator struct {
 	origin string
 	digest string
 	hc     httpDoer
 }
 
-// vaultBoardV2OperatorRejection is limited to HTTP statuses that stock arkd
+// vaultBoardOperatorRejection is limited to HTTP statuses that stock arkd
 // returns before RegisterIntent reaches its cache Push boundary. It is useful
 // only for register: delete no-match and final rejection remain fail-closed.
-type vaultBoardV2OperatorRejection struct {
+type vaultBoardOperatorRejection struct {
 	status int
 }
 
-func (e vaultBoardV2OperatorRejection) Error() string {
-	return fmt.Sprintf("vault-board-v2 Operator rejected request with HTTP %d", e.status)
+func (e vaultBoardOperatorRejection) Error() string {
+	return fmt.Sprintf("vault-board-v1 Operator rejected request with HTTP %d", e.status)
 }
 
-func isDefiniteVaultBoardV2RegisterRejection(err error) bool {
-	_, ok := err.(vaultBoardV2OperatorRejection)
+func isDefiniteVaultBoardRegisterRejection(err error) bool {
+	_, ok := err.(vaultBoardOperatorRejection)
 	return ok
 }
 
-func dialVaultBoardV2Operator(ctx context.Context) (vaultBoardV2Operator, error) {
-	return dialVaultBoardV2OperatorWithClient(ctx, deployment.MutinynetArkIndexerOrigin, newArkResolverHTTPClient())
+func dialVaultBoardOperator(ctx context.Context) (vaultBoardOperator, error) {
+	return dialVaultBoardOperatorWithClient(ctx, deployment.MutinynetArkIndexerOrigin, newArkResolverHTTPClient())
 }
 
-func dialVaultBoardV2OperatorWithClient(ctx context.Context, rawOrigin string, hc httpDoer) (vaultBoardV2Operator, error) {
+func dialVaultBoardOperatorWithClient(ctx context.Context, rawOrigin string, hc httpDoer) (vaultBoardOperator, error) {
 	origin, err := canonicalHTTPSOrigin(rawOrigin)
 	if err != nil || origin != deployment.MutinynetArkIndexerOrigin {
-		return nil, fmt.Errorf("vault-board-v2 Operator origin must be the release pin")
+		return nil, fmt.Errorf("vault-board-v1 Operator origin must be the release pin")
 	}
 	if hc == nil {
-		return nil, fmt.Errorf("vault-board-v2 Operator HTTP client required")
+		return nil, fmt.Errorf("vault-board-v1 Operator HTTP client required")
 	}
 	resolver := &arkResolver{origin: origin, hc: hc, network: deployment.NetworkMutinynet}
 	info, err := resolver.getInfo(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("vault-board-v2 Operator info: %w", err)
+		return nil, fmt.Errorf("vault-board-v1 Operator info: %w", err)
 	}
 	if _, _, _, err := validateArkResolverReleaseInfo(deployment.NetworkMutinynet, info); err != nil {
 		return nil, err
 	}
 	if err := requireTxid(info.Digest); err != nil {
-		return nil, fmt.Errorf("vault-board-v2 Operator digest required")
+		return nil, fmt.Errorf("vault-board-v1 Operator digest required")
 	}
-	return &stockVaultBoardV2Operator{origin: origin, digest: info.Digest, hc: hc}, nil
+	return &stockVaultBoardOperator{origin: origin, digest: info.Digest, hc: hc}, nil
 }
 
-func (o *stockVaultBoardV2Operator) registerIntent(ctx context.Context, proof, message string) (string, error) {
+func (o *stockVaultBoardOperator) registerIntent(ctx context.Context, proof, message string) (string, error) {
 	request := struct {
 		Intent struct {
 			Proof   string `json:"proof"`
@@ -87,12 +87,12 @@ func (o *stockVaultBoardV2Operator) registerIntent(ctx context.Context, proof, m
 		return "", err
 	}
 	if response.IntentID == "" || len(response.IntentID) > 256 {
-		return "", fmt.Errorf("vault-board-v2 Operator returned invalid intent id")
+		return "", fmt.Errorf("vault-board-v1 Operator returned invalid intent id")
 	}
 	return response.IntentID, nil
 }
 
-func (o *stockVaultBoardV2Operator) deleteIntent(ctx context.Context, proof, message string) error {
+func (o *stockVaultBoardOperator) deleteIntent(ctx context.Context, proof, message string) error {
 	request := struct {
 		Intent struct {
 			Proof   string `json:"proof"`
@@ -104,7 +104,7 @@ func (o *stockVaultBoardV2Operator) deleteIntent(ctx context.Context, proof, mes
 	return o.post(ctx, "/v1/batch/deleteIntent", request, nil)
 }
 
-func (o *stockVaultBoardV2Operator) submitCommitment(ctx context.Context, signedCommitment string) error {
+func (o *stockVaultBoardOperator) submitCommitment(ctx context.Context, signedCommitment string) error {
 	request := struct {
 		SignedForfeitTxs   []string `json:"signedForfeitTxs"`
 		SignedCommitmentTx string   `json:"signedCommitmentTx"`
@@ -112,9 +112,9 @@ func (o *stockVaultBoardV2Operator) submitCommitment(ctx context.Context, signed
 	return o.post(ctx, "/v1/batch/submitForfeitTxs", request, nil)
 }
 
-func (o *stockVaultBoardV2Operator) post(ctx context.Context, path string, payload, response any) error {
+func (o *stockVaultBoardOperator) post(ctx context.Context, path string, payload, response any) error {
 	if o == nil || o.hc == nil || o.origin != deployment.MutinynetArkIndexerOrigin || requireTxid(o.digest) != nil {
-		return fmt.Errorf("vault-board-v2 Operator is not release-pinned")
+		return fmt.Errorf("vault-board-v1 Operator is not release-pinned")
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -130,37 +130,37 @@ func (o *stockVaultBoardV2Operator) post(ctx context.Context, path string, paylo
 	req.Header.Set("X-Digest", o.digest)
 	res, err := o.hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("vault-board-v2 Operator outcome ambiguous: %w", err)
+		return fmt.Errorf("vault-board-v1 Operator outcome ambiguous: %w", err)
 	}
 	if res == nil || res.Body == nil {
-		return fmt.Errorf("vault-board-v2 Operator outcome ambiguous: empty response")
+		return fmt.Errorf("vault-board-v1 Operator outcome ambiguous: empty response")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		_, _ = readBoundedResponse(res.Body, vaultBoardV2OperatorErrorLimit)
+		_, _ = readBoundedResponse(res.Body, vaultBoardOperatorErrorLimit)
 		if isStockOperatorPreAcceptanceRejection(res.StatusCode) {
-			return vaultBoardV2OperatorRejection{status: res.StatusCode}
+			return vaultBoardOperatorRejection{status: res.StatusCode}
 		}
-		return fmt.Errorf("vault-board-v2 Operator HTTP %d", res.StatusCode)
+		return fmt.Errorf("vault-board-v1 Operator HTTP %d", res.StatusCode)
 	}
 	mediaType, _, err := mime.ParseMediaType(res.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
-		return fmt.Errorf("vault-board-v2 Operator outcome ambiguous: response content type")
+		return fmt.Errorf("vault-board-v1 Operator outcome ambiguous: response content type")
 	}
-	raw, err := readBoundedResponse(res.Body, vaultBoardV2OperatorResponseLimit)
+	raw, err := readBoundedResponse(res.Body, vaultBoardOperatorResponseLimit)
 	if err != nil {
-		return fmt.Errorf("vault-board-v2 Operator outcome ambiguous: %w", err)
+		return fmt.Errorf("vault-board-v1 Operator outcome ambiguous: %w", err)
 	}
 	defer zeroServiceBytes(raw)
 	if response == nil {
 		var empty map[string]json.RawMessage
-		if err := decodeVaultBoardV2OperatorJSON(raw, &empty); err != nil || len(empty) != 0 {
-			return fmt.Errorf("vault-board-v2 Operator outcome ambiguous: response shape")
+		if err := decodeVaultBoardOperatorJSON(raw, &empty); err != nil || len(empty) != 0 {
+			return fmt.Errorf("vault-board-v1 Operator outcome ambiguous: response shape")
 		}
 		return nil
 	}
-	if err := decodeVaultBoardV2OperatorJSON(raw, response); err != nil {
-		return fmt.Errorf("vault-board-v2 Operator outcome ambiguous: response shape")
+	if err := decodeVaultBoardOperatorJSON(raw, response); err != nil {
+		return fmt.Errorf("vault-board-v1 Operator outcome ambiguous: response shape")
 	}
 	return nil
 }
@@ -176,7 +176,7 @@ func isStockOperatorPreAcceptanceRejection(status int) bool {
 	}
 }
 
-func decodeVaultBoardV2OperatorJSON(raw []byte, dest any) error {
+func decodeVaultBoardOperatorJSON(raw []byte, dest any) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dest); err != nil {
@@ -189,4 +189,4 @@ func decodeVaultBoardV2OperatorJSON(raw []byte, dest any) error {
 	return nil
 }
 
-var _ vaultBoardV2Operator = (*stockVaultBoardV2Operator)(nil)
+var _ vaultBoardOperator = (*stockVaultBoardOperator)(nil)

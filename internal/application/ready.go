@@ -62,12 +62,14 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "contract pack mismatch"
 		return st
 	}
-	if s.VaultBoardV2Store != nil {
-		runtime, err := s.requireVaultBoardV2Runtime()
-		if err != nil || runtime.batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
-			st.Error = "vault-board-v2 runtime unavailable"
-			return st
-		}
+	if s.VaultBoardStore == nil {
+		st.Error = "vault-board-v1 store unavailable"
+		return st
+	}
+	runtime, err := s.requireVaultBoardRuntime()
+	if err != nil || runtime.batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
+		st.Error = "vault-board-v1 runtime unavailable"
+		return st
 	}
 	if isNilInterface(s.ArkResolver) {
 		st.Error = "Arkade resolver unavailable"

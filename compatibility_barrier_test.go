@@ -14,9 +14,9 @@ import (
 // decision rather than an incidental fixture update.
 func TestArkadeVaultV1CompatibilityArtifacts(t *testing.T) {
 	want := map[string]string{
-		"contract-pack.json":                                          "a229aeda7b21ec8e23396cbc16f6b072d3458f22f9c57392f2fc8b46c4745040",
-		"internal/contractpack/contract-pack.json":                    "a229aeda7b21ec8e23396cbc16f6b072d3458f22f9c57392f2fc8b46c4745040",
-		"internal/application/testdata/http-v1-compatibility.json":    "57f0db3d93c376f84eef0a0577d8d5ce81a3c2e483231dc2b5eb7175fbf5ac71",
+		"contract-pack.json":                                          "ef2943e50b3712b47e09f37a9e7cbd4504d042608d5e7795c715b6add2a9e1c3",
+		"internal/contractpack/contract-pack.json":                    "ef2943e50b3712b47e09f37a9e7cbd4504d042608d5e7795c715b6add2a9e1c3",
+		"internal/application/testdata/http-v1-compatibility.json":    "959a6ccaca28358d03936b793d28888b58dc9fa8d899a3cee5dd267c5a922f4b",
 		"internal/policy/testdata/hkdf-sha256-v1.json":                "0739edebb44f122e70aee6153e9aaf6875c73a01412469d8f16124a8f9186cde",
 		"internal/policy/testdata/vtxo-hkdf-sha256-v1.json":           "9b376662c2d33f51981d2e8b1aa1f0134ccb06b556aa2536c5f93ad2c48b1285",
 		"internal/policy/testdata/vault-policy-v1-tree.json":          "2774756345e8cc01aa43743f62afe831baa9cbba0f4f7117e7b9a2f38776e993",

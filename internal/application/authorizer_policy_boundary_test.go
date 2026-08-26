@@ -134,6 +134,10 @@ func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
 		"/v1/vtxo/checkpoints/authorize": {http.MethodOptions, http.MethodPost},
 		"/v1/vtxo/finalize":              {http.MethodOptions, http.MethodPost},
 		"/v1/vtxo/operation":             {http.MethodGet, http.MethodOptions},
+		"/v1/vtxo/board/prepare":         {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/board/register":        {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/board/release":         {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/board/final":           {http.MethodOptions, http.MethodPost},
 	}
 	got := make(map[string][]string, len(authorizerRouteMethods))
 	for path, methods := range authorizerRouteMethods {

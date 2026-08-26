@@ -26,7 +26,6 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
-	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv2"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	arkaderuntime "github.com/brg444/arkade-vault-server/internal/runtime"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -84,25 +83,13 @@ type arkResolverDialer func(context.Context, string) (ports.ArkResolver, error)
 // Open constructs the Mutinynet authorizer and pins its external signing
 // identities before it serves traffic.
 func Open(ctx context.Context, cfg Config) (*Runtime, error) {
-	return open(ctx, cfg, false)
-}
-
-// OpenVaultBoardV2 is the explicit fresh Mutinynet v2 release gate. Existing
-// Open callers remain on the byte-compatible v1 schema and profile.
-func OpenVaultBoardV2(ctx context.Context, cfg Config) (*Runtime, error) {
-	return open(ctx, cfg, true)
-}
-
-func open(ctx context.Context, cfg Config, boardV2 bool) (*Runtime, error) {
-	rt, err := openWithArkadeDialerModeAndResolver(ctx, cfg, application.DialPublicEmulator, application.DialArkResolver, boardV2)
+	rt, err := openWithArkadeDialers(ctx, cfg, application.DialPublicEmulator, application.DialArkResolver)
 	if err != nil {
 		return nil, err
 	}
-	if boardV2 {
-		if err := rt.service.InstallMutinynetVaultBoardV2Authorization(ctx); err != nil {
-			_ = rt.Close()
-			return nil, fmt.Errorf("vault-board-v2 authorization runtime: %w", err)
-		}
+	if err := rt.service.InstallMutinynetVaultBoardAuthorization(ctx); err != nil {
+		_ = rt.Close()
+		return nil, fmt.Errorf("vault-board-v1 authorization runtime: %w", err)
 	}
 	if err := rt.host.Ready(ctx); err != nil {
 		_ = rt.Close()
@@ -111,15 +98,7 @@ func open(ctx context.Context, cfg Config, boardV2 bool) (*Runtime, error) {
 	return rt, nil
 }
 
-func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer) (*Runtime, error) {
-	return openWithArkadeDialerMode(ctx, cfg, dialArkade, false)
-}
-
-func openWithArkadeDialerMode(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer, boardV2 bool) (*Runtime, error) {
-	return openWithArkadeDialerModeAndResolver(ctx, cfg, dialArkade, nil, boardV2)
-}
-
-func openWithArkadeDialerModeAndResolver(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer, dialResolver arkResolverDialer, boardV2 bool) (*Runtime, error) {
+func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer, dialResolver arkResolverDialer) (*Runtime, error) {
 	if err := cfg.Deployment.Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -156,12 +135,7 @@ func openWithArkadeDialerModeAndResolver(ctx context.Context, cfg Config, dialAr
 	if err != nil {
 		return nil, err
 	}
-	var ledger *policy.Ledger
-	if boardV2 {
-		ledger, err = policy.OpenMutinynetVaultBoardV2Ledger(cfg.DatabasePath, nil)
-	} else {
-		ledger, err = policy.OpenMainnetLedger(cfg.DatabasePath, nil)
-	}
+	ledger, err := policy.OpenLedger(cfg.DatabasePath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("authoritative ledger: %w", err)
 	}
@@ -223,28 +197,21 @@ func openWithArkadeDialerModeAndResolver(ctx context.Context, cfg Config, dialAr
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	var resolver ports.ArkResolver
-	if dialResolver != nil {
-		resolver, err = dialResolver(ctx, cfg.Deployment.Network)
-		if err != nil {
-			zero(credentialIntegrityKey)
-			return nil, fmt.Errorf("required Arkade resolver: %w", err)
-		}
-	} else if boardV2 {
+	if dialResolver == nil {
 		zero(credentialIntegrityKey)
-		return nil, fmt.Errorf("vault-board-v2 requires the release-pinned Arkade resolver before loading vaults")
+		return nil, fmt.Errorf("release-pinned Arkade resolver required")
+	}
+	resolver, err := dialResolver(ctx, cfg.Deployment.Network)
+	if err != nil {
+		zero(credentialIntegrityKey)
+		return nil, fmt.Errorf("required Arkade resolver: %w", err)
 	}
 	stores, err := arkadevaultv1.StoresFromLedger(ledger)
 	if err != nil {
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	var keys application.KeyCapabilities
-	if boardV2 {
-		keys, err = application.NewFileBackedVaultBoardV2KeyCapabilities(vaultCosignerKey, arkadeSigner)
-	} else {
-		keys, err = application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
-	}
+	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
 	if err != nil {
 		zero(credentialIntegrityKey)
 		return nil, err
@@ -259,9 +226,7 @@ func openWithArkadeDialerModeAndResolver(ctx context.Context, cfg Config, dialAr
 		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
 		ArkadeCosignerVersion: arkadeIdentity.Version,
 		ArkResolver:           resolver,
-	}
-	if boardV2 {
-		deps.VaultBoardV2Store = ledger
+		VaultBoardStore:       ledger,
 	}
 	svc := application.New(deps)
 	keyOwnedByService = true
@@ -277,11 +242,11 @@ func openWithArkadeDialerModeAndResolver(ctx context.Context, cfg Config, dialAr
 		return nil, err
 	}
 
-	registry, profileID, err := compiledRegistryFor(boardV2)
+	registry, err := compiledRegistry()
 	if err != nil {
 		return nil, err
 	}
-	host, err := arkaderuntime.Open(registry, profileID, arkaderuntime.Mount{
+	host, err := arkaderuntime.Open(registry, arkadevaultv1.ProfileID, arkaderuntime.Mount{
 		Handler: httpapi.Authorizer(svc),
 		Readiness: func(ctx context.Context) error {
 			ready := svc.Ready(ctx)
@@ -334,15 +299,6 @@ func signerUnavailable(signer application.Signer) bool {
 // can add another profile at runtime.
 func compiledRegistry() (*arkaderuntime.Registry, error) {
 	return arkaderuntime.Compile(arkadevaultv1.Definition())
-}
-
-func compiledRegistryFor(boardV2 bool) (*arkaderuntime.Registry, string, error) {
-	if !boardV2 {
-		registry, err := compiledRegistry()
-		return registry, arkadevaultv1.ProfileID, err
-	}
-	registry, err := arkaderuntime.Compile(arkadevaultv2.Definition())
-	return registry, arkadevaultv2.ProfileID, err
 }
 
 // provisionEnrollmentInvite turns one operator-supplied secret file into one

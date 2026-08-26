@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/authorizer"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
-	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 func main() {
@@ -27,7 +25,6 @@ func main() {
 		origin    = flag.String("client-origin", os.Getenv("VAULT_CLIENT_ORIGIN"), "exact HTTPS signing-client origin")
 		rpID      = flag.String("rp-id", os.Getenv("VAULT_RP_ID"), "exact WebAuthn relying-party ID")
 		network   = flag.String("network", envOr("VAULT_NETWORK", deployment.NetworkMutinynet), "must be mutinynet")
-		boarding  = flag.String("vtxo-boarding-program", envOr("VAULT_VTXO_BOARDING_PROGRAM", program.VaultBoardV1), "explicit vtxo boarding program")
 	)
 	flag.Parse()
 
@@ -39,7 +36,7 @@ func main() {
 		EnrollmentTokenFile:  *tokenFile,
 	}
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 40*time.Second)
-	runtime, err := openRuntime(startupCtx, cfg, *boarding)
+	runtime, err := authorizer.Open(startupCtx, cfg)
 	startupCancel()
 	if err != nil {
 		log.Fatal(err)
@@ -70,28 +67,6 @@ func main() {
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Printf("authorizer shutdown: %v", err)
 		}
-	}
-}
-
-func openRuntime(ctx context.Context, cfg authorizer.Config, boardingProgram string) (*authorizer.Runtime, error) {
-	boardV2, err := selectVaultBoardV2(boardingProgram)
-	if err != nil {
-		return nil, err
-	}
-	if boardV2 {
-		return authorizer.OpenVaultBoardV2(ctx, cfg)
-	}
-	return authorizer.Open(ctx, cfg)
-}
-
-func selectVaultBoardV2(boardingProgram string) (bool, error) {
-	switch boardingProgram {
-	case program.VaultBoardV1:
-		return false, nil
-	case program.VaultBoardV2:
-		return true, nil
-	default:
-		return false, fmt.Errorf("unsupported vtxo boarding program %q", boardingProgram)
 	}
 }
 

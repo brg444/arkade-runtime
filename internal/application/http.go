@@ -56,7 +56,7 @@ func authorizerSurface(svc *Service) http.Handler {
 	attachCoreRoutes(mux, svc, origin)
 	inner := withRequestLog(withCORS(mux, origin))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		methods, known := authorizerRouteMethodsFor(svc)[r.URL.Path]
+		methods, known := authorizerRouteMethods[r.URL.Path]
 		if !known {
 			http.NotFound(w, r)
 			return
@@ -187,25 +187,10 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/operation":             {http.MethodGet: {}, http.MethodOptions: {}},
-}
-
-func authorizerRouteMethodsFor(svc *Service) map[string]map[string]struct{} {
-	if svc == nil || svc.VaultBoardV2Store == nil {
-		return authorizerRouteMethods
-	}
-	out := make(map[string]map[string]struct{}, len(authorizerRouteMethods)+6)
-	for path, methods := range authorizerRouteMethods {
-		if path == "/v1/enroll/propose" || path == "/v1/enroll/finish" {
-			continue
-		}
-		out[path] = methods
-	}
-	out["/v1/vtxo/board/enroll/propose"] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
-	out["/v1/vtxo/board/enroll/finish"] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
-	for _, path := range []string{"/v1/vtxo/board/prepare", "/v1/vtxo/board/register", "/v1/vtxo/board/release", "/v1/vtxo/board/final"} {
-		out[path] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
-	}
-	return out
+	"/v1/vtxo/board/prepare":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/register":        {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/release":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/final":           {http.MethodPost: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -239,7 +224,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
-	attachVaultBoardV2Routes(mux, svc, origin)
+	attachVaultBoardRoutes(mux, svc, origin)
 }
 
 type mutationError struct {

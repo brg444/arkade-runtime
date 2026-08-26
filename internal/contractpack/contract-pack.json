@@ -58,16 +58,16 @@
       "status": "live",
       "module": "boarding",
       "schema": "arkade-vault/board-v1",
-      "template": "vault-board-v1-phone-and-arkd",
+      "template": "vault-board-v1-boarding-vault-and-operator",
       "source": "onchain-receive-or-savings-transfer",
       "destination": "vault-policy-v1",
-      "forfeit": "device-and-arkd",
+      "forfeit": "boarding-key-and-vault-board-cosigner-and-arkade-operator",
       "exit": {
         "delay": "604672",
         "delayUnit": "seconds",
-        "owner": "device-after-exitDelay"
+        "owner": "phone-after-exitDelay"
       },
-      "notes": "A distinct confirmed L1 intermediate and the only L1 entry into Spending. An onchain receive or a Savings transfer funds it, then the SDK settles it only to vault-policy-v1. If settlement never completes, the device can recover after the pinned boarding delay."
+      "notes": "A confirmed L1 intermediate and the only L1 entry into Spending. The persistent SDK worker settles it only to the fixed vault-policy-v1 destination. The phone can recover after the pinned boarding delay."
     }
   },
   "domains": {
