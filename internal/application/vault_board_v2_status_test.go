@@ -41,7 +41,7 @@ func TestClassifyVaultBoardV2AttemptFailsClosedAcrossNetworkBoundaries(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			snapshot := base()
 			test.mutate(snapshot)
-			got := classifyVaultBoardV2Attempt("op", snapshot)
+			got := classifyVaultBoardV2Attempt(snapshot)
 			if got.State != test.state {
 				t.Fatalf("state = %q, want %q", got.State, test.state)
 			}
@@ -50,7 +50,7 @@ func TestClassifyVaultBoardV2AttemptFailsClosedAcrossNetworkBoundaries(t *testin
 			}
 		})
 	}
-	if got := classifyVaultBoardV2Attempt("new", nil); got.State != vaultBoardV2Ready || got.OperationID != "new" {
+	if got := classifyVaultBoardV2Attempt(nil); got.State != vaultBoardV2Ready {
 		t.Fatalf("new operation = %+v", got)
 	}
 }

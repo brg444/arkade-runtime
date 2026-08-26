@@ -89,12 +89,11 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 	if ledger == nil {
 		return Stores{}, fmt.Errorf("arkade-vault-v1 ledger required")
 	}
-	stores := Stores{
+	return Stores{
 		Identity:           ledger,
 		Allowance:          ledger,
 		VtxoOperations:     ledger,
 		RecoveryOperations: ledger,
 		Maps:               ledger,
-	}
-	return stores, nil
+	}, nil
 }
