@@ -12,47 +12,36 @@ const (
 )
 
 type vaultBoardV2Preparation struct {
-	State          vaultBoardV2PrepareState
-	OperationID    string
-	Attempt        uint32
-	RegisterExpiry int64
-	Reason         string
-	CommitmentTxid string
+	State   vaultBoardV2PrepareState
+	Attempt uint32
+	Reason  string
 }
 
-func classifyVaultBoardV2Attempt(operationID string, snapshot *policy.VaultBoardV2AttemptSnapshot) vaultBoardV2Preparation {
+func classifyVaultBoardV2Attempt(snapshot *policy.VaultBoardV2AttemptSnapshot) vaultBoardV2Preparation {
 	if snapshot == nil {
-		return vaultBoardV2Preparation{State: vaultBoardV2Ready, OperationID: operationID}
+		return vaultBoardV2Preparation{State: vaultBoardV2Ready}
 	}
 	out := vaultBoardV2Preparation{
-		OperationID:    snapshot.Operation.OperationID,
-		Attempt:        snapshot.Register.Attempt,
-		RegisterExpiry: snapshot.Register.ExpireAt,
+		Attempt: snapshot.Register.Attempt,
 	}
 	if snapshot.FinalSubmission != nil {
 		out.State = vaultBoardV2Blocked
 		out.Reason = "final submission awaits exact VTXO evidence"
-		out.CommitmentTxid = snapshot.FinalSubmission.CommitmentTxid
 		return out
 	}
 	if snapshot.FinalAuthorization != nil || snapshot.FinalDispatch != nil {
 		out.State = vaultBoardV2Blocked
 		out.Reason = "final authorization cannot be released"
-		if snapshot.FinalAuthorization != nil {
-			out.CommitmentTxid = snapshot.FinalAuthorization.CommitmentTxid
-		}
 		return out
 	}
 	if snapshot.RegisterSubmission != nil && snapshot.RegisterSubmission.Outcome == policy.VaultBoardV2AuthRejected {
 		out.State = vaultBoardV2Ready
 		out.Attempt++
-		out.RegisterExpiry = 0
 		return out
 	}
 	if snapshot.DeleteSubmission != nil {
 		out.State = vaultBoardV2Ready
 		out.Attempt++
-		out.RegisterExpiry = 0
 		return out
 	}
 	if snapshot.DeleteDispatch != nil {
@@ -77,6 +66,5 @@ func classifyVaultBoardV2Attempt(operationID string, snapshot *policy.VaultBoard
 	// server-owned attempt instead of returning the dead session's generation.
 	out.State = vaultBoardV2Ready
 	out.Attempt++
-	out.RegisterExpiry = 0
 	return out
 }

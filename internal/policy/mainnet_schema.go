@@ -71,7 +71,6 @@ CREATE TABLE vtxo_operation_input (
 CREATE INDEX vtxo_operation_vault_state_created ON vtxo_operation(vault_id, state, created_at);
 CREATE INDEX vtxo_operation_vault_state_expiry ON vtxo_operation(vault_id, state, expires_at);
 CREATE INDEX vtxo_operation_input_outpoint ON vtxo_operation_input(txid, vout, operation_id);
-
 `
 
 // OpenMainnetLedger opens the fresh mainnet persistence baseline. It never

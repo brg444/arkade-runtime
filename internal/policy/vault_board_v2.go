@@ -19,10 +19,9 @@ const (
 	VaultBoardV2PhaseDelete   = "delete"
 	VaultBoardV2PhaseFinalize = "finalize"
 
-	VaultBoardV2AuthAuthorized = "authorized"
-	VaultBoardV2AuthSubmitted  = "submitted"
-	VaultBoardV2AuthReleased   = "released"
-	VaultBoardV2AuthRejected   = "rejected"
+	VaultBoardV2AuthSubmitted = "submitted"
+	VaultBoardV2AuthReleased  = "released"
+	VaultBoardV2AuthRejected  = "rejected"
 
 	vaultBoardV2EnrollmentMACDomain = "arkade-vault/vault-board-v2-enrollment/v1"
 	vaultBoardV2OperationMACDomain  = "arkade-vault/vault-board-v2-operation/v1"
