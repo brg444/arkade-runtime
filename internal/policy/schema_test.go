@@ -7,29 +7,29 @@ import (
 	"testing"
 )
 
-func TestOpenMainnetLedgerCreatesAndReopensOnlyTheCurrentBaseline(t *testing.T) {
+func TestOpenLedgerCreatesAndReopensOnlyTheCurrentBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vault.sqlite")
-	ledger, err := OpenMainnetLedger(path, nil)
+	ledger, err := OpenLedger(path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if hasTable(ledger.db, "credential") || hasTable(ledger.db, "credential_envelope") {
 		t.Fatal("fresh baseline created singleton compatibility tables")
 	}
-	if got, err := ledger.SchemaVersion(); err != nil || got != mainnetSchemaVersion {
+	if got, err := ledger.SchemaVersion(); err != nil || got != schemaVersion {
 		t.Fatalf("schema version = %d, %v", got, err)
 	}
 	if err := ledger.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if reopened, err := OpenMainnetLedger(path, nil); err != nil {
+	if reopened, err := OpenLedger(path, nil); err != nil {
 		t.Fatal(err)
 	} else if err := reopened.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestOpenMainnetLedgerRefusesLegacyOrUnknownFilesWithoutChangingThem(t *testing.T) {
+func TestOpenLedgerRefusesLegacyOrUnknownFilesWithoutChangingThem(t *testing.T) {
 	for _, schema := range []string{
 		`CREATE TABLE credential (id INTEGER PRIMARY KEY)`,
 		`CREATE TABLE unrelated (value TEXT)`,
@@ -44,9 +44,9 @@ func TestOpenMainnetLedgerRefusesLegacyOrUnknownFilesWithoutChangingThem(t *test
 		}
 		_ = db.Close()
 
-		_, err = OpenMainnetLedger(path, nil)
-		if err == nil || !strings.Contains(err.Error(), "not the mainnet v2 baseline") {
-			t.Fatalf("OpenMainnetLedger error = %v", err)
+		_, err = OpenLedger(path, nil)
+		if err == nil || !strings.Contains(err.Error(), "not the current vault baseline") {
+			t.Fatalf("OpenLedger error = %v", err)
 		}
 		db, err = sql.Open("sqlite", path)
 		if err != nil {
@@ -63,7 +63,7 @@ func TestOpenMainnetLedgerRefusesLegacyOrUnknownFilesWithoutChangingThem(t *test
 	}
 }
 
-func TestOpenMainnetLedgerRefusesVtxoSchemaDrift(t *testing.T) {
+func TestOpenLedgerRefusesVtxoSchemaDrift(t *testing.T) {
 	mutations := []struct {
 		name string
 		sql  string
@@ -76,7 +76,7 @@ func TestOpenMainnetLedgerRefusesVtxoSchemaDrift(t *testing.T) {
 	for _, mutation := range mutations {
 		t.Run(mutation.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "vault.sqlite")
-			ledger, err := OpenMainnetLedger(path, nil)
+			ledger, err := OpenLedger(path, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +94,7 @@ func TestOpenMainnetLedgerRefusesVtxoSchemaDrift(t *testing.T) {
 			if err := db.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if accepted, err := OpenMainnetLedger(path, nil); err == nil {
+			if accepted, err := OpenLedger(path, nil); err == nil {
 				_ = accepted.Close()
 				t.Fatal("altered mainnet schema was accepted")
 			}

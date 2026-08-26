@@ -46,7 +46,7 @@ func TestPinsMatchPublishedNames(t *testing.T) {
 	if VaultBoardV1 != "vault-board-v1" || VaultBoardV1Schema != "arkade-vault/board-v1" {
 		t.Fatal("vault-board-v1 program pin drifted")
 	}
-	if VaultBoardV1Template != "vault-board-v1-phone-and-arkd" {
+	if VaultBoardV1Template != "vault-board-v1-boarding-vault-and-operator" {
 		t.Fatal(VaultBoardV1Template)
 	}
 	if err := ValidateVaultBoardV1ExitDelay(604672, "seconds"); err != nil {

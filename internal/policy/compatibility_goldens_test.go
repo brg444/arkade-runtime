@@ -11,19 +11,19 @@ import (
 	"testing"
 )
 
-// TestMainnetSchemaV1CompatibilityGolden pins the physical SQLite contract.
+// TestSchemaCompatibilityGolden pins the physical SQLite contract.
 // The structural startup validator remains the enforcement mechanism; this
 // digest catches intentional-looking SQL edits that preserve coarse column
 // types while changing stored bytes, constraints, or object definitions.
-func TestMainnetSchemaV1CompatibilityGolden(t *testing.T) {
-	ledger, err := OpenMainnetLedger(filepath.Join(t.TempDir(), "vault.sqlite"), nil)
+func TestSchemaCompatibilityGolden(t *testing.T) {
+	ledger, err := OpenLedger(filepath.Join(t.TempDir(), "vault.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ledger.Close()
 
 	var canonical bytes.Buffer
-	fmt.Fprintf(&canonical, "schema_meta=%d\n", mainnetSchemaVersion)
+	fmt.Fprintf(&canonical, "schema_meta=%d\n", schemaVersion)
 	rows, err := ledger.db.Query(`
 SELECT type, name, tbl_name, IFNULL(sql, '')
   FROM sqlite_schema
@@ -44,9 +44,9 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(canonical.Bytes())
-	const want = "218a89a1f4001a1544b3acea30d72271bcae55cbe2572c42fb256663a75e496c"
+	const want = "1e28fb91a0872947e95978884965e3448f26b71b722006885684ff02339ae7a6"
 	if got := hex.EncodeToString(sum[:]); got != want {
-		t.Fatalf("mainnet schema v1 digest = %s, want %s\ncanonical schema:\n%s", got, want, canonical.String())
+		t.Fatalf("schema digest = %s, want %s\ncanonical schema:\n%s", got, want, canonical.String())
 	}
 }
 

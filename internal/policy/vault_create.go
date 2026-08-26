@@ -27,20 +27,17 @@ func (l *Ledger) CreateVault(in CreateVaultInput) error {
 	return l.createVault(in, nil)
 }
 
-// CreateVaultWithBoardV2 is the explicit v2 enrollment transaction. Keeping
-// this capability separate from IdentityStore prevents another IdentityStore
-// implementation from accepting v2 while silently dropping its boarding
-// binding.
-func (l *Ledger) CreateVaultWithBoardV2(in CreateVaultInput, board VaultBoardV2Enrollment) error {
+// CreateVaultWithBoard atomically persists identity and boarding enrollment.
+func (l *Ledger) CreateVaultWithBoard(in CreateVaultInput, board VaultBoardEnrollment) error {
 	return l.createVault(in, &board)
 }
 
-func (l *Ledger) createVault(in CreateVaultInput, board *VaultBoardV2Enrollment) error {
+func (l *Ledger) createVault(in CreateVaultInput, board *VaultBoardEnrollment) error {
 	if err := validateCreateVaultInput(in); err != nil {
 		return err
 	}
 	if board != nil && (board.VaultID != in.Record.VaultID || len(board.IntegrityMAC) != sha256.Size) {
-		return fmt.Errorf("vault-board-v2 enrollment mismatch")
+		return fmt.Errorf("vault-board-v1 enrollment mismatch")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -70,8 +67,8 @@ func (l *Ledger) createVault(in CreateVaultInput, board *VaultBoardV2Enrollment)
 		return fmt.Errorf("create vault: %w", err)
 	}
 	if board != nil {
-		if err := PutVaultBoardV2EnrollmentTx(tx, *board); err != nil {
-			return fmt.Errorf("create vault board v2: %w", err)
+		if err := PutVaultBoardEnrollmentTx(tx, *board); err != nil {
+			return fmt.Errorf("create vault board: %w", err)
 		}
 	}
 	res, err := tx.Exec(`

@@ -18,6 +18,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
@@ -33,6 +34,42 @@ type nilEmulatorSigner struct{}
 
 func (*nilEmulatorSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
 	return nil, errors.New("nil public signer must not be called")
+}
+
+type testArkResolver struct {
+	checkpoint []byte
+	operator   []byte
+}
+
+func (r testArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.ResolvedVtxo, error) {
+	return nil, nil
+}
+
+func (r testArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy, error) {
+	return ports.IntentFeePolicy{}, nil
+}
+
+func (r testArkResolver) SubmittedVtxoState(context.Context, []byte, []ports.ResolvedVtxo, string, *uint32, uint64) (ports.SubmittedVtxoState, error) {
+	return ports.SubmittedVtxoFinalized, nil
+}
+
+func (r testArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), r.checkpoint...) }
+func (r testArkResolver) OperatorSignerPub() []byte   { return append([]byte(nil), r.operator...) }
+func (testArkResolver) Network() string               { return deployment.NetworkMutinynet }
+
+func openWithTestArkadeDialer(t *testing.T, ctx context.Context, cfg Config, dialArkade arkadeSignerDialer) (*Runtime, error) {
+	t.Helper()
+	checkpoint, err := hex.DecodeString(deployment.MutinynetCheckpointTapscriptHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator, err := hex.DecodeString(deployment.MutinynetOperatorSignerPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return openWithArkadeDialers(ctx, cfg, dialArkade, func(context.Context, string) (ports.ArkResolver, error) {
+		return testArkResolver{checkpoint: checkpoint, operator: operator}, nil
+	})
 }
 
 func TestLoadVaultCosignerKeyRejectsNormalizedAndOutOfRangeScalars(t *testing.T) {
@@ -258,7 +295,7 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 		}, nil
 	}
 
-	if _, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial); err == nil || !strings.Contains(err.Error(), "enrollment token file") {
+	if _, err := openWithTestArkadeDialer(t, context.Background(), cfg, emulatorDial); err == nil || !strings.Contains(err.Error(), "enrollment token file") {
 		t.Fatalf("fresh ledger without enrollment secret: %v", err)
 	}
 	if emulatorDials != 0 {
@@ -266,7 +303,7 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	}
 
 	cfg.EnrollmentTokenFile = tokenPath
-	runtime, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial)
+	runtime, err := openWithTestArkadeDialer(t, context.Background(), cfg, emulatorDial)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +337,7 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	// An empty deployment still requires the token file on every restart. The
 	// persisted row is authoritative, but startup never recovers the plaintext.
 	cfg.EnrollmentTokenFile = filepath.Join(dir, "already-removed-token")
-	if _, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial); err == nil ||
+	if _, err := openWithTestArkadeDialer(t, context.Background(), cfg, emulatorDial); err == nil ||
 		!strings.Contains(err.Error(), "enrollment token") {
 		t.Fatalf("empty restart without token: %v", err)
 	}
@@ -318,7 +355,7 @@ func TestProductionRegistryCompilesOnlyArkadeVaultV1(t *testing.T) {
 
 func TestProvisionEnrollmentInviteSupportsOfflineTokenRotation(t *testing.T) {
 	dir := t.TempDir()
-	ledger, err := policy.OpenMainnetLedger(filepath.Join(dir, "vault.sqlite"), nil)
+	ledger, err := policy.OpenLedger(filepath.Join(dir, "vault.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +440,7 @@ func TestRuntimeRequiresGatewaySecret(t *testing.T) {
 		VaultCosignerKeyFile: vaultCosignerPath,
 		EnrollmentTokenFile:  filepath.Join(dir, "enrollment-token"),
 	}
-	_, err = openWithArkadeDialer(context.Background(), cfg,
+	_, err = openWithTestArkadeDialer(t, context.Background(), cfg,
 		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (application.Signer, application.PublicEmulatorIdentity, error) {
 			return stubEmulatorSigner{}, application.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
 		},

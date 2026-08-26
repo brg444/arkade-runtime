@@ -13,8 +13,8 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-func TestVaultBoardV2HTTPUsesNamedEnrollmentAndExactPhaseWire(t *testing.T) {
-	fixtureState := newVaultBoardV2ServiceFixture(t)
+func TestVaultBoardHTTPUsesNamedEnrollmentAndExactPhaseWire(t *testing.T) {
+	fixtureState := newVaultBoardServiceFixture(t)
 	handler := testAuthorizer(fixtureState.svc)
 
 	for _, path := range []string{"/v1/enroll/propose", "/v1/enroll/finish"} {
@@ -23,8 +23,8 @@ func TestVaultBoardV2HTTPUsesNamedEnrollmentAndExactPhaseWire(t *testing.T) {
 		req.Header.Set("Origin", fixture.Origin)
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, req)
-		if res.Code != http.StatusNotFound {
-			t.Fatalf("v2 downgrade route %s = %d", path, res.Code)
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("mandatory enrollment route %s = %d", path, res.Code)
 		}
 	}
 
@@ -32,40 +32,40 @@ func TestVaultBoardV2HTTPUsesNamedEnrollmentAndExactPhaseWire(t *testing.T) {
 		VtxoBoardingProgram string `json:"vtxoBoardingProgram"`
 	}
 	decodeHTTPJSON(t, httpJSON(t, handler, http.MethodGet, "/v1/status", nil), &public)
-	if public.VtxoBoardingProgram != program.VaultBoardV2 {
+	if public.VtxoBoardingProgram != program.VaultBoardV1 {
 		t.Fatalf("public named program = %q", public.VtxoBoardingProgram)
 	}
 	var tenant struct {
-		VtxoBoardingDescriptor     vaultBoardV2PublicDescriptor `json:"vtxoBoardingDescriptor"`
-		VtxoBoardingDescriptorHash string                       `json:"vtxoBoardingDescriptorHash"`
+		VtxoBoardingDescriptor     vaultBoardPublicDescriptor `json:"vtxoBoardingDescriptor"`
+		VtxoBoardingDescriptorHash string                     `json:"vtxoBoardingDescriptorHash"`
 	}
 	decodeHTTPJSON(t, httpJSON(t, handler, http.MethodGet, "/v1/status?vault="+fixtureState.vaultID, nil), &tenant)
-	if tenant.VtxoBoardingDescriptor.Program != program.VaultBoardV2 || tenant.VtxoBoardingDescriptorHash == "" ||
+	if tenant.VtxoBoardingDescriptor.Program != program.VaultBoardV1 || tenant.VtxoBoardingDescriptorHash == "" ||
 		tenant.VtxoBoardingDescriptor.Address != fixtureState.proof.tree.OnchainAddress {
 		t.Fatalf("tenant descriptor = %+v", tenant)
 	}
 
-	var prepared vaultBoardV2PrepareHTTPResponse
-	decodeHTTPJSON(t, httpJSON(t, handler, http.MethodPost, "/v1/vtxo/board/prepare", vaultBoardV2PrepareRequest{
+	var prepared vaultBoardPrepareHTTPResponse
+	decodeHTTPJSON(t, httpJSON(t, handler, http.MethodPost, "/v1/vtxo/board/prepare", vaultBoardPrepareRequest{
 		VaultID:    fixtureState.vaultID,
-		Inputs:     []vaultBoardV2PrepareInput{{Txid: hex.EncodeToString(fixtureState.proof.operation.Txid), Vout: fixtureState.proof.operation.Vout}},
-		Recipients: []vaultBoardV2PrepareRecipient{{Address: fixtureState.receiver, AmountSats: uint64(fixtureState.proof.receiver.Value)}},
+		Inputs:     []vaultBoardPrepareInput{{Txid: hex.EncodeToString(fixtureState.proof.operation.Txid), Vout: fixtureState.proof.operation.Vout}},
+		Recipients: []vaultBoardPrepareRecipient{{Address: fixtureState.receiver, AmountSats: uint64(fixtureState.proof.receiver.Value)}},
 	}), &prepared)
-	if prepared.Status != string(vaultBoardV2Ready) || prepared.Handle == "" || prepared.RegisterExpireAt == 0 {
+	if prepared.Status != string(vaultBoardReady) || prepared.Handle == "" || prepared.RegisterExpireAt == 0 {
 		t.Fatalf("prepare response = %+v", prepared)
 	}
 	fixtureState.proof.expireAt = prepared.RegisterExpireAt
 	message := fixtureState.proof.registerMessage(t)
-	var messageDTO vaultBoardV2RegisterMessageDTO
+	var messageDTO vaultBoardRegisterMessageDTO
 	if err := json.Unmarshal([]byte(message), &messageDTO); err != nil {
 		t.Fatal(err)
 	}
-	var registered vaultBoardV2RegisterHTTPResponse
-	decodeHTTPJSON(t, httpJSON(t, handler, http.MethodPost, "/v1/vtxo/board/register", vaultBoardV2PhaseDTO[vaultBoardV2RegisterMessageDTO]{
+	var registered vaultBoardRegisterHTTPResponse
+	decodeHTTPJSON(t, httpJSON(t, handler, http.MethodPost, "/v1/vtxo/board/register", vaultBoardPhaseDTO[vaultBoardRegisterMessageDTO]{
 		Handle: prepared.Handle, PSBT: fixtureState.proof.proof(t, message, []*wire.TxOut{fixtureState.proof.receiver}),
 		InputIndexes: []int{0, 1}, Message: messageDTO,
 	}), &registered)
-	if registered.Status != string(vaultBoardV2Registered) || registered.IntentID == "" {
+	if registered.Status != string(vaultBoardRegistered) || registered.IntentID == "" {
 		t.Fatalf("register response = %+v", registered)
 	}
 }

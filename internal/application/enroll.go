@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
-	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 )
 
@@ -118,16 +117,6 @@ func (s *Service) StartEnrollment(token string) (*EnrollStartResponse, error) {
 // ProposeEnrollment returns the descriptor that Finish will persist. It does
 // not consume the invite or write a vault row.
 func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*ProposedEnrollment, error) {
-	return s.proposeEnrollment(token, req, nil)
-}
-
-// ProposeVaultBoardV2Enrollment previews the distinct v2 descriptor. It cannot
-// be reached by omitting fields from the ordinary v1 enrollment request.
-func (s *Service) ProposeVaultBoardV2Enrollment(token string, req EnrollFinishVaultBoardV2Request) (*ProposedEnrollment, error) {
-	return s.proposeEnrollment(token, req.EnrollFinishRequest, &req.VaultBoardV2EnrollmentRequest)
-}
-
-func (s *Service) proposeEnrollment(token string, req EnrollFinishRequest, boardReq *VaultBoardV2EnrollmentRequest) (*ProposedEnrollment, error) {
 	hash, err := HashEnrollmentToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
@@ -146,28 +135,11 @@ func (s *Service) proposeEnrollment(token string, req EnrollFinishRequest, board
 	if req.VaultID != "" && req.VaultID != pending.VaultID {
 		return nil, fmt.Errorf("vault id does not match pending enrollment")
 	}
-	if boardReq != nil {
-		return s.previewVaultBoardV2EnrollmentDescriptor(pending.VaultID, req.RegisterRequest, *boardReq)
-	}
-	return s.previewTenantDescriptor(pending.VaultID, req.RegisterRequest)
-}
-
-func (s *Service) previewTenantDescriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
-	return s.previewSavingsDescriptor(vaultID, req)
+	return s.previewVaultBoardEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
 }
 
 // FinishEnrollment verifies the create ceremony and CAS-consumes the invite.
 func (s *Service) FinishEnrollment(ctx context.Context, token string, req EnrollFinishRequest) (*Status, error) {
-	return s.finishEnrollment(ctx, token, req, nil)
-}
-
-// FinishVaultBoardV2Enrollment is the only enrollment path that can create a
-// vault-board-v2 binding.
-func (s *Service) FinishVaultBoardV2Enrollment(ctx context.Context, token string, req EnrollFinishVaultBoardV2Request) (*Status, error) {
-	return s.finishEnrollment(ctx, token, req.EnrollFinishRequest, &req.VaultBoardV2EnrollmentRequest)
-}
-
-func (s *Service) finishEnrollment(ctx context.Context, token string, req EnrollFinishRequest, boardReq *VaultBoardV2EnrollmentRequest) (*Status, error) {
 	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
@@ -180,7 +152,7 @@ func (s *Service) finishEnrollment(ctx context.Context, token string, req Enroll
 		return nil, fmt.Errorf("pending enrollment not found")
 	}
 	if pending == nil {
-		if status, ok := s.acceptDuplicateFinishFromToken(hash, req, boardReq); ok {
+		if status, ok := s.acceptDuplicateFinishFromToken(hash, req); ok {
 			return status, nil
 		}
 		return nil, fmt.Errorf("pending enrollment not found")
@@ -239,13 +211,9 @@ func (s *Service) finishEnrollment(ctx context.Context, token string, req Enroll
 	if s.afterLoadPending != nil {
 		s.afterLoadPending()
 	}
-	if boardReq == nil {
-		err = s.createTenantVault(pending.VaultID, pending.TokenHash, req.RegisterRequest, pending)
-	} else {
-		err = s.createTenantVault(pending.VaultID, pending.TokenHash, req.RegisterRequest, pending, *boardReq)
-	}
+	err = s.createTenantVault(pending.VaultID, pending.TokenHash, req.RegisterRequest, pending)
 	if err != nil {
-		if status, ok := s.acceptDuplicateFinish(pending.VaultID, req.RegisterRequest, boardReq); ok {
+		if status, ok := s.acceptDuplicateFinish(pending.VaultID, req.RegisterRequest); ok {
 			return status, nil
 		}
 		return nil, err
@@ -257,7 +225,7 @@ func (s *Service) finishEnrollment(ctx context.Context, token string, req Enroll
 	return &st, nil
 }
 
-func (s *Service) acceptDuplicateFinishFromToken(tokenHash []byte, req EnrollFinishRequest, boardReq *VaultBoardV2EnrollmentRequest) (*Status, bool) {
+func (s *Service) acceptDuplicateFinishFromToken(tokenHash []byte, req EnrollFinishRequest) (*Status, bool) {
 	inv, err := s.Stores.Identity.GetInvite(tokenHash)
 	if err != nil || inv == nil || inv.ConsumedVaultID == "" {
 		return nil, false
@@ -266,10 +234,10 @@ func (s *Service) acceptDuplicateFinishFromToken(tokenHash []byte, req EnrollFin
 	if err != nil || !bytesEqualConst([]byte(inv.ConsumedVaultID), userHandle) {
 		return nil, false
 	}
-	return s.acceptDuplicateFinish(inv.ConsumedVaultID, req.RegisterRequest, boardReq)
+	return s.acceptDuplicateFinish(inv.ConsumedVaultID, req.RegisterRequest)
 }
 
-func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest, boardReq ...*VaultBoardV2EnrollmentRequest) (*Status, bool) {
+func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*Status, bool) {
 	key, err := s.credentialIntegrityKey()
 	if err != nil {
 		return nil, false
@@ -283,18 +251,11 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest, boa
 	if err != nil {
 		return nil, false
 	}
-	if len(boardReq) > 1 {
+	parsed, err = s.applyVaultBoardEnrollmentRequest(parsed, req)
+	if err != nil {
 		return nil, false
 	}
-	var preview *ProposedEnrollment
-	if len(boardReq) == 1 && boardReq[0] != nil {
-		parsed, err = s.applyVaultBoardV2EnrollmentRequest(parsed, *boardReq[0])
-		if err == nil {
-			preview, err = s.previewVaultBoardV2EnrollmentDescriptor(vaultID, req, *boardReq[0])
-		}
-	} else {
-		preview, err = s.previewTenantDescriptor(vaultID, req)
-	}
+	preview, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil || req.DescriptorHash == "" || req.DescriptorHash != preview.DescriptorHash {
 		return nil, false
 	}
@@ -315,27 +276,17 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest, boa
 		policy.VaultCredentialsCanonicallyEqual(*cred, wantCredential) != nil {
 		return nil, false
 	}
-	if parsed.boardingProgram == program.VaultBoardV2 {
-		if s.VaultBoardV2Store == nil {
-			return nil, false
-		}
-		storedBoard, loadErr := s.VaultBoardV2Store.GetVaultBoardV2Enrollment(vaultID)
-		wantBoard, _, buildErr := s.mintVaultBoardV2Enrollment(vaultID, parsed)
-		if loadErr != nil || buildErr != nil || storedBoard == nil || wantBoard == nil ||
-			storedBoard.Program != wantBoard.Program || !bytesEqualConst(storedBoard.BoardingPub, wantBoard.BoardingPub) ||
-			!bytesEqualConst(storedBoard.CosignerPub, wantBoard.CosignerPub) || !bytesEqualConst(storedBoard.OperatorPub, wantBoard.OperatorPub) ||
-			storedBoard.ExitDelay != wantBoard.ExitDelay || storedBoard.ExitDelayUnit != wantBoard.ExitDelayUnit ||
-			!bytesEqualConst(storedBoard.PkScript, wantBoard.PkScript) || storedBoard.Address != wantBoard.Address {
-			return nil, false
-		}
-	} else if s.VaultBoardV2Store != nil {
-		// A consumed v2 invite may only be replayed through the explicit v2
-		// endpoint. Accepting its ordinary v1 descriptor here would report
-		// success for a materially different boarding contract.
-		storedBoard, loadErr := s.VaultBoardV2Store.GetVaultBoardV2Enrollment(vaultID)
-		if loadErr != nil || storedBoard != nil {
-			return nil, false
-		}
+	if s.VaultBoardStore == nil {
+		return nil, false
+	}
+	storedBoard, loadErr := s.VaultBoardStore.GetVaultBoardEnrollment(vaultID)
+	wantBoard, _, buildErr := s.mintVaultBoardEnrollment(vaultID, parsed)
+	if loadErr != nil || buildErr != nil || storedBoard == nil || wantBoard == nil ||
+		storedBoard.Program != wantBoard.Program || !bytesEqualConst(storedBoard.BoardingPub, wantBoard.BoardingPub) ||
+		!bytesEqualConst(storedBoard.CosignerPub, wantBoard.CosignerPub) || !bytesEqualConst(storedBoard.OperatorPub, wantBoard.OperatorPub) ||
+		storedBoard.ExitDelay != wantBoard.ExitDelay || storedBoard.ExitDelayUnit != wantBoard.ExitDelayUnit ||
+		!bytesEqualConst(storedBoard.PkScript, wantBoard.PkScript) || storedBoard.Address != wantBoard.Address {
+		return nil, false
 	}
 	st, err := s.statusFor(context.Background(), vaultID)
 	if err != nil {

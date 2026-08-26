@@ -18,21 +18,21 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-type vaultBoardV2FinalFixture struct {
-	proof    vaultBoardV2ProofFixture
+type vaultBoardFinalFixture struct {
+	proof    vaultBoardProofFixture
 	forfeit  *btcec.PublicKey
 	expiry   arklib.RelativeLocktime
-	register policy.VaultBoardV2Authorization
-	evidence vaultBoardV2FinalEvidence
+	register policy.VaultBoardAuthorization
+	evidence vaultBoardFinalEvidence
 }
 
-func newVaultBoardV2FinalFixture(t *testing.T) vaultBoardV2FinalFixture {
+func newVaultBoardFinalFixture(t *testing.T) vaultBoardFinalFixture {
 	t.Helper()
-	proof := newVaultBoardV2ProofFixture(t)
-	return newVaultBoardV2FinalFixtureFromProof(t, proof)
+	proof := newVaultBoardProofFixture(t)
+	return newVaultBoardFinalFixtureFromProof(t, proof)
 }
 
-func newVaultBoardV2FinalFixtureFromProof(t *testing.T, proof vaultBoardV2ProofFixture) vaultBoardV2FinalFixture {
+func newVaultBoardFinalFixtureFromProof(t *testing.T, proof vaultBoardProofFixture) vaultBoardFinalFixture {
 	t.Helper()
 	forfeitBytes, err := hex.DecodeString(deployment.MutinynetCheckpointForfeitPubHex)
 	if err != nil {
@@ -105,31 +105,31 @@ func newVaultBoardV2FinalFixtureFromProof(t *testing.T, proof vaultBoardV2ProofF
 	if err != nil {
 		t.Fatal(err)
 	}
-	operationID, err := policy.ComputeVaultBoardV2OperationID(proof.operation.VaultID, proof.operation.Txid, proof.operation.Vout)
+	operationID, err := policy.ComputeVaultBoardOperationID(proof.operation.VaultID, proof.operation.Txid, proof.operation.Vout)
 	if err != nil {
 		t.Fatal(err)
 	}
 	proof.operation.OperationID = operationID
-	register := policy.VaultBoardV2Authorization{
-		OperationID: operationID, Phase: policy.VaultBoardV2PhaseRegister,
+	register := policy.VaultBoardAuthorization{
+		OperationID: operationID, Phase: policy.VaultBoardPhaseRegister,
 		ReceiverSats: proof.receiver.Value, FeeSats: proof.operation.ValueSats - proof.receiver.Value,
 	}
-	return vaultBoardV2FinalFixture{
+	return vaultBoardFinalFixture{
 		proof: proof, forfeit: forfeit, expiry: expiry, register: register,
-		evidence: vaultBoardV2FinalEvidence{
+		evidence: vaultBoardFinalEvidence{
 			BatchID: "round-123", BatchExpiry: expiry.Value,
 			SignedCommitmentPSBT: signed, UnsignedCommitmentPSBT: unsigned,
 			VtxoTree: flat, InputIndexes: []int{0},
-			Recipients: []vaultBoardV2RecipientEvidence{{
+			Recipients: []vaultBoardRecipientEvidence{{
 				Script: bytes.Clone(proof.operation.ReceiverScript), AmountSats: proof.receiver.Value,
 			}},
 		},
 	}
 }
 
-func TestVerifyVaultBoardV2FinalBindsCommitmentTreeAndReceiver(t *testing.T) {
-	fixture := newVaultBoardV2FinalFixture(t)
-	verified, err := verifyVaultBoardV2Final(
+func TestVerifyVaultBoardFinalBindsCommitmentTreeAndReceiver(t *testing.T) {
+	fixture := newVaultBoardFinalFixture(t)
+	verified, err := verifyVaultBoardFinal(
 		fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree,
 		fixture.expiry,
 	)
@@ -145,7 +145,7 @@ func TestVerifyVaultBoardV2FinalBindsCommitmentTreeAndReceiver(t *testing.T) {
 	for i, j := 0, len(reordered.VtxoTree)-1; i < j; i, j = i+1, j-1 {
 		reordered.VtxoTree[i], reordered.VtxoTree[j] = reordered.VtxoTree[j], reordered.VtxoTree[i]
 	}
-	again, err := verifyVaultBoardV2Final(
+	again, err := verifyVaultBoardFinal(
 		reordered, fixture.proof.operation, fixture.register, fixture.proof.tree,
 		fixture.expiry,
 	)
@@ -154,29 +154,29 @@ func TestVerifyVaultBoardV2FinalBindsCommitmentTreeAndReceiver(t *testing.T) {
 	}
 }
 
-func TestVerifyVaultBoardV2FinalRejectsUnpinnedOrMutatedEvidence(t *testing.T) {
-	fixture := newVaultBoardV2FinalFixture(t)
+func TestVerifyVaultBoardFinalRejectsUnpinnedOrMutatedEvidence(t *testing.T) {
+	fixture := newVaultBoardFinalFixture(t)
 	tests := []struct {
 		name   string
-		mutate func(*vaultBoardV2FinalEvidence, *policy.VaultBoardV2Authorization)
+		mutate func(*vaultBoardFinalEvidence, *policy.VaultBoardAuthorization)
 		want   string
 	}{
-		{name: "batch expiry", mutate: func(e *vaultBoardV2FinalEvidence, _ *policy.VaultBoardV2Authorization) { e.BatchExpiry++ }, want: "batch policy"},
-		{name: "receiver amount", mutate: func(e *vaultBoardV2FinalEvidence, _ *policy.VaultBoardV2Authorization) { e.Recipients[0].AmountSats-- }, want: "receiver"},
-		{name: "assets", mutate: func(e *vaultBoardV2FinalEvidence, _ *policy.VaultBoardV2Authorization) {
+		{name: "batch expiry", mutate: func(e *vaultBoardFinalEvidence, _ *policy.VaultBoardAuthorization) { e.BatchExpiry++ }, want: "batch policy"},
+		{name: "receiver amount", mutate: func(e *vaultBoardFinalEvidence, _ *policy.VaultBoardAuthorization) { e.Recipients[0].AmountSats-- }, want: "receiver"},
+		{name: "assets", mutate: func(e *vaultBoardFinalEvidence, _ *policy.VaultBoardAuthorization) {
 			e.Recipients[0].HasAssets = true
 		}, want: "receiver"},
-		{name: "register amount", mutate: func(_ *vaultBoardV2FinalEvidence, a *policy.VaultBoardV2Authorization) { a.ReceiverSats-- }, want: "receiver"},
-		{name: "wrong input", mutate: func(e *vaultBoardV2FinalEvidence, _ *policy.VaultBoardV2Authorization) { e.InputIndexes[0] = 1 }, want: "input index"},
+		{name: "register amount", mutate: func(_ *vaultBoardFinalEvidence, a *policy.VaultBoardAuthorization) { a.ReceiverSats-- }, want: "receiver"},
+		{name: "wrong input", mutate: func(e *vaultBoardFinalEvidence, _ *policy.VaultBoardAuthorization) { e.InputIndexes[0] = 1 }, want: "input index"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			evidence := fixture.evidence
-			evidence.Recipients = append([]vaultBoardV2RecipientEvidence(nil), fixture.evidence.Recipients...)
+			evidence.Recipients = append([]vaultBoardRecipientEvidence(nil), fixture.evidence.Recipients...)
 			evidence.InputIndexes = append([]int(nil), fixture.evidence.InputIndexes...)
 			register := fixture.register
 			test.mutate(&evidence, &register)
-			_, err := verifyVaultBoardV2Final(
+			_, err := verifyVaultBoardFinal(
 				evidence, fixture.proof.operation, register, fixture.proof.tree,
 				fixture.expiry,
 			)
@@ -192,7 +192,7 @@ func TestVerifyVaultBoardV2FinalRejectsUnpinnedOrMutatedEvidence(t *testing.T) {
 	}
 	packet.Inputs[0].TaprootScriptSpendSig = nil
 	fixture.evidence.SignedCommitmentPSBT, _ = packet.B64Encode()
-	if _, err := verifyVaultBoardV2Final(
+	if _, err := verifyVaultBoardFinal(
 		fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree,
 		fixture.expiry,
 	); err == nil || !strings.Contains(err.Error(), "signature") {
@@ -200,7 +200,7 @@ func TestVerifyVaultBoardV2FinalRejectsUnpinnedOrMutatedEvidence(t *testing.T) {
 	}
 }
 
-func TestVaultBoardV2OutpointUsesCanonicalDisplayOrder(t *testing.T) {
+func TestVaultBoardOutpointUsesCanonicalDisplayOrder(t *testing.T) {
 	display := make([]byte, chainhash.HashSize)
 	for i := range display {
 		display[i] = byte(i)
@@ -209,21 +209,21 @@ func TestVaultBoardV2OutpointUsesCanonicalDisplayOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	op := policy.VaultBoardV2Operation{Txid: display, Vout: 7}
-	if !vaultBoardV2OutpointMatches(op, wire.OutPoint{Hash: *hash, Index: 7}) {
+	op := policy.VaultBoardOperation{Txid: display, Vout: 7}
+	if !vaultBoardOutpointMatches(op, wire.OutPoint{Hash: *hash, Index: 7}) {
 		t.Fatal("canonical display-order board outpoint did not match")
 	}
 	var reversed chainhash.Hash
 	copy(reversed[:], display)
-	if vaultBoardV2OutpointMatches(op, wire.OutPoint{Hash: reversed, Index: 7}) {
+	if vaultBoardOutpointMatches(op, wire.OutPoint{Hash: reversed, Index: 7}) {
 		t.Fatal("internal-byte-order alias matched a different board outpoint")
 	}
 }
 
-func TestCanonicalVaultBoardV2TreeRejectsDeclaredTxidDrift(t *testing.T) {
-	fixture := newVaultBoardV2FinalFixture(t)
+func TestCanonicalVaultBoardTreeRejectsDeclaredTxidDrift(t *testing.T) {
+	fixture := newVaultBoardFinalFixture(t)
 	fixture.evidence.VtxoTree[0].Txid = strings.Repeat("00", 32)
-	if _, err := canonicalVaultBoardV2Tree(fixture.evidence.VtxoTree); err == nil || !strings.Contains(err.Error(), "txid") {
+	if _, err := canonicalVaultBoardTree(fixture.evidence.VtxoTree); err == nil || !strings.Contains(err.Error(), "txid") {
 		t.Fatalf("declared tree txid drift accepted: %v", err)
 	}
 }

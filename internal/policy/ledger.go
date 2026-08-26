@@ -266,11 +266,11 @@ func economicOutflowCount(q queryContext) (uint64, error) {
 	var n int64
 	query := `SELECT COUNT(*) FROM vtxo_operation`
 	var boardTables int
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('vault_board_v2_authorization','vault_board_v2_dispatch','vault_board_v2_submission')`).Scan(&boardTables); err != nil {
+	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('vault_board_authorization','vault_board_dispatch','vault_board_submission')`).Scan(&boardTables); err != nil {
 		return 0, err
 	}
 	if boardTables == 3 {
-		query = `SELECT (SELECT COUNT(*) FROM vtxo_operation) + (SELECT COUNT(*) FROM vault_board_v2_authorization) + (SELECT COUNT(*) FROM vault_board_v2_dispatch) + (SELECT COUNT(*) FROM vault_board_v2_submission)`
+		query = `SELECT (SELECT COUNT(*) FROM vtxo_operation) + (SELECT COUNT(*) FROM vault_board_authorization) + (SELECT COUNT(*) FROM vault_board_dispatch) + (SELECT COUNT(*) FROM vault_board_submission)`
 	}
 	if err := q.QueryRowContext(context.Background(), query).Scan(&n); err != nil {
 		return 0, err
