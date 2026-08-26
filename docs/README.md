@@ -4,6 +4,7 @@
 | --- | --- |
 | [Mainnet v2 baseline](mainnet-v2-baseline.md) | Fresh persistence and API boundary, threat model, and unresolved release gates. |
 | [Versioned contracts](versions.md) | Database, program, and domain identifiers in the fresh v2 service. |
+| [`vault-board-v2`](vault-board-v2.md) | Mutinynet named boarding program, phase boundary, pins, persistence, and qualification. |
 | [`vault-policy-v1` Spending](vault-policy-v1-spend.md) | Canonical multi-input transaction, fee, change, and retry contract. |
 | [`vault-policy-v1` guardian delay](vault-policy-v1-guardian-delay.md) | Mutinynet delay pin and the separate mainnet decision. |
 | [Deployment](../deploy/README.md) | Image, secret, persistence, readiness, and operations entry points. |
