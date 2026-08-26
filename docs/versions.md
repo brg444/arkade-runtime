@@ -11,7 +11,7 @@ different contracts:
 | Database schema | `schema_meta.version = 1` | The exact v2 SQLite tables, columns, checks, foreign keys, and indexes. |
 | Savings descriptor schema | `arkade-vault/savings-v1` | The canonical L1 Savings descriptor encoding. |
 | Enrollment template | `phone-hww-recovery-savings-v1` | The Savings-only L1 tree family enrolled by this release. |
-| VTXO programs | `vault-board-v1`, `vault-policy-v1` | The boarding intermediate and the Spending VTXO tree. |
+| VTXO programs | `vault-board-v1`, `vault-board-v2`, `vault-policy-v1` | The legacy boarding intermediate, explicit Mutinynet v2 boarding candidate, and Spending VTXO tree. |
 | Recovery binding | `arkade-vault/recovery-binding/v3` | The signed credential envelope, complete Savings descriptor, and release-pinned Spending and boarding descriptors. |
 | Domain strings | Individual `.../vN` literals | One MAC, digest, KDF, or encrypted-envelope preimage. |
 
