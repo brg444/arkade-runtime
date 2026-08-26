@@ -68,21 +68,20 @@ silently fall back to an onchain send or VTXO offboarding. See
 
 ## Boarding boundary
 
-The default `vault-board-v1` path remains available for existing Mutinynet
-qualification. Its cooperative leaf requires the phone and Operator, so its
-known phone-plus-Operator trust window remains unchanged.
+`vault-board-v1` is the only boarding program. Its cooperative leaf requires a
+wallet-worker boarding key, a distinct VaultBoardCosigner, and the pinned
+Arkade Operator. The phone key is reserved for recovery after the enrolled CSV
+delay; routine boarding does not prompt for Face ID.
 
-The explicit Mutinynet `vault-board-v2` candidate adds a worker-owned boarding
-key and a distinct VaultBoardCosigner. Its cooperative leaf requires that key,
-the VaultBoardCosigner, and the pinned Operator. The service verifies and
-submits four exact SDK phases without returning a signature or taking over the
-SDK lifecycle. One confirmed input may settle only into the enrolled
-`vault-policy-v1` Spending contract. See
-[`vault-board-v2`](docs/vault-board-v2.md).
+The official Arkade SDK owns discovery, intent construction, persistence,
+retries, and settlement. The service verifies and submits four exact SDK phases
+without returning its signature or replacing the SDK lifecycle. One confirmed
+input may settle only into the enrolled `vault-policy-v1` Spending contract.
+See [the boarding contract](docs/boarding.md).
 
-Neither boarding program debits the rolling allowance for principal. The
-ordinary Spending policy applies when the resulting VTXO pays another
-destination. Mainnet parameters remain a separate release decision.
+Boarding principal does not debit the rolling allowance. The ordinary Spending
+policy applies when the resulting VTXO pays another destination. Mainnet
+parameters remain a separate release decision.
 
 ## HTTP surface
 
@@ -98,11 +97,9 @@ authorization.
 | `GET /v1/status` | Public service status or one vault's status with `?vault=`. |
 | `GET /v1/invite` | Invitation availability. |
 | `POST /v1/enroll/start` | Reserve a vault ID and create-ceremony challenge. |
-| `POST /v1/enroll/propose` | Return the descriptor for wallet review. |
-| `POST /v1/enroll/finish` | Verify enrollment and consume the invitation. |
-| `POST /v1/vtxo/board/enroll/propose` | Return the explicit `vault-board-v2` descriptor for wallet review. |
-| `POST /v1/vtxo/board/enroll/finish` | Verify and persist a fresh `vault-board-v2` enrollment. |
-| `POST /v1/vtxo/board/prepare` | Reconcile and prepare one exact v2 boarding attempt. |
+| `POST /v1/enroll/propose` | Return the Savings and `vault-board-v1` descriptors for wallet review. |
+| `POST /v1/enroll/finish` | Verify the complete enrollment and consume the invitation. |
+| `POST /v1/vtxo/board/prepare` | Reconcile and prepare one exact boarding attempt. |
 | `POST /v1/vtxo/board/register` | Verify, cosign, and submit the exact registration intent. |
 | `POST /v1/vtxo/board/release` | Verify, cosign, and submit release of a retained prior intent. |
 | `POST /v1/vtxo/board/final` | Verify and submit the SDK-validated final commitment artifacts. |
@@ -116,7 +113,7 @@ authorization.
 | `POST /v1/passkey/*` | Challenge, bind, install, or recover a passkey envelope. |
 | `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
 
-The v2 phase routes use release-pinned public Operator and Esplora adapters;
+The boarding phase routes use release-pinned public Operator and Esplora adapters;
 they accept no runtime origin override. Savings broadcast and ordinary
 Spending submission remain wallet responsibilities.
 
@@ -151,7 +148,6 @@ chmod 0600 ./secrets/*
 
 cp .env.example .env
 # Set VAULT_CLIENT_ORIGIN, VAULT_RP_ID, and VAULT_GATEWAY_SECRET.
-# Set VAULT_VTXO_BOARDING_PROGRAM=vault-board-v2 only for a fresh v2 test deployment.
 docker compose up -d --build
 ```
 

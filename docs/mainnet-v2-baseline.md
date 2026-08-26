@@ -96,19 +96,15 @@ the VaultCosigner will authorize.
 
 ## Boarding programs
 
-`vault-board-v1` retains the standard phone-plus-Operator cooperative leaf and
-its corresponding collusion window. It remains a compatibility path, not the
-mainnet boarding decision.
+`vault-board-v1` is the only boarding program. It requires a worker-owned board
+key, a distinct VaultBoardCosigner, and the pinned Arkade Operator for
+cooperative boarding. The service verifies the exact fixed Spending recipient,
+fees, registration proof, Batch Output expiry, commitment tree, and final
+artifacts. It submits only through the stock public Operator routes and never
+returns its signature. The phone-only 604672-second recovery leaf remains
+available after the cooperative window closes.
 
-The explicit Mutinynet `vault-board-v2` candidate requires a worker-owned board
-key, a distinct VaultBoardCosigner, and the pinned Operator for cooperative
-boarding. The service verifies the exact fixed Spending recipient, fees,
-registration proof, Batch Output expiry, commitment tree, and final artifacts.
-It submits only through the stock public Operator routes and never returns its
-signature. The phone-only 604672-second recovery leaf remains available after
-the cooperative window closes.
-
-The v2 lifecycle records authorization, dispatch, and known Operator outcomes.
+The lifecycle records authorization, dispatch, and known Operator outcomes.
 An unacknowledged submission remains ambiguous, while a retained intent must be
 released before another registration attempt. Live response-loss, reload,
 worker wake, retained-intent, and CSV-cutoff qualification remain mainnet gates.

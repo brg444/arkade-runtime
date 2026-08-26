@@ -50,12 +50,12 @@ VTXO routes remain unavailable indefinitely.
 
 1. Run `go test ./... -count=1`, `go vet ./...`, and the targeted race suites
    documented in the repository README.
-2. Start the Mutinynet v2 candidate against empty volumes and new key material
-   with `VAULT_VTXO_BOARDING_PROGRAM=vault-board-v2`. The selector is not a
-   migration switch and must never point at a v1 database.
+2. Start the Mutinynet candidate against empty volumes and new key material.
+   `vault-board-v1` is the only boarding program and has no runtime selector or
+   compatibility database.
 3. Require `/ready` to return `ok: true` before routing wallet traffic.
 4. Exercise VTXO receive, send, ambiguous-response recovery, and restart.
-5. Exercise Savings-to-Spending boarding, response loss at all four v2 phases,
+5. Exercise Savings-to-Spending boarding, response loss at all four phases,
    retained-intent release, invitation rotation, CSV cutoff, and rollback
    failure drills.
 6. Enable outbound BOLT11 only after the wallet's package-native quote,
@@ -69,7 +69,7 @@ is `https://arkade.computer`; this deployment does not include or modify
 `arkd`.
 
 Before enabling boarding, inject lost responses after registration, release,
-and final submission. The v2 service must reconcile the exact attempt or keep
+and final submission. The service must reconcile the exact attempt or keep
 the input ambiguous; it may never rotate an unknown dispatch into another
 attempt. A retained intent must receive an acknowledged release through the
 stock public Operator API before the SDK can register a replacement.

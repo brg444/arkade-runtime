@@ -1,20 +1,14 @@
-# `vault-board-v2`
+# `vault-board-v1`
 
-`vault-board-v2` is the Mutinynet candidate for moving confirmed Bitcoin into
-the enrolled `vault-policy-v1` Spending contract. The official Arkade SDK owns
-input discovery, intent construction, batch participation, persistence,
-retries, and settlement. The Vault service supplies one narrow policy and
-cosigning adapter for the named boarding program.
+`vault-board-v1` is the sole program for moving confirmed Bitcoin into the
+enrolled `vault-policy-v1` Spending contract. The official Arkade SDK owns
+input discovery, intent construction, Batch Output participation, persistence,
+retries, and settlement. The Vault service supplies a narrow policy and
+cosigning adapter for this named program.
 
-The candidate is selected explicitly with:
-
-```text
-VAULT_VTXO_BOARDING_PROGRAM=vault-board-v2
-```
-
-The default remains `vault-board-v1`. A v2 process accepts only the named v2
-enrollment routes and requires a fresh database. It does not upgrade a v1
-deployment or silently change an enrolled vault.
+There is no boarding selector, legacy compatibility path, or alternative
+enrollment flow. A fresh vault enrolls Savings and boarding together through
+`/v1/enroll/propose` and `/v1/enroll/finish`.
 
 ## Program
 
@@ -27,12 +21,13 @@ The cooperative leaf requires three distinct keys:
 The recovery leaf is the enrolled phone key behind a 604672-second CSV delay.
 The wallet and service reconstruct the exact tree independently from the
 enrollment record and release pins. A changed key, role, delay, script, address,
-or destination fails before signing.
+or destination fails before signing. Routine boarding does not use or unlock
+the phone key.
 
-The first release accepts one confirmed boarding input and one BTC recipient.
-That recipient must be the enrolled `vault-policy-v1` Spending address. The
-boarding principal does not debit the rolling spending allowance. A later
-payment from the resulting VTXO uses the ordinary Spending authorization and
+The Mutinynet release accepts one confirmed boarding input and one BTC
+recipient. That recipient must be the enrolled `vault-policy-v1` Spending
+address. Boarding principal does not debit the rolling allowance. A later
+payment from the resulting VTXO uses ordinary Spending authorization and the
 allowance ledger.
 
 ## Phase boundary
@@ -59,7 +54,7 @@ Operator state, a replay endpoint, or a Vault-specific Operator deployment.
 
 ## Release pins
 
-The Mutinynet candidate pins:
+The Mutinynet release pins:
 
 - Operator origin: `https://mutinynet.arkade.sh`;
 - Operator signer: `03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a`;
@@ -67,8 +62,8 @@ The Mutinynet candidate pins:
 - Batch Output expiry: exactly 604672 seconds.
 
 Startup installs the resolver, Operator identity, chain adapter, and expiry
-policy before persisted v2 vaults are loaded. `/ready` remains false when any
-pin or dependency is unavailable.
+policy before persisted vaults are loaded. `/ready` remains false when any pin
+or dependency is unavailable.
 
 ## Persistence and recovery
 
@@ -85,7 +80,7 @@ qualification must exercise both sides of the cutoff.
 
 ## Qualification
 
-Deployment remains blocked until a fresh v2 vault passes enrollment, onchain
+Deployment remains blocked until a fresh vault passes enrollment, onchain
 receive, Savings-to-Spending, reload, worker wake, offline recovery, response
 loss at every phase, retained-intent release, exact final reconciliation,
 balance and activity convergence, and recovery after the CSV cutoff. Mainnet
