@@ -193,12 +193,18 @@ func authorizerRouteMethodsFor(svc *Service) map[string]map[string]struct{} {
 	if svc == nil || svc.VaultBoardV2Store == nil {
 		return authorizerRouteMethods
 	}
-	out := make(map[string]map[string]struct{}, len(authorizerRouteMethods)+2)
+	out := make(map[string]map[string]struct{}, len(authorizerRouteMethods)+6)
 	for path, methods := range authorizerRouteMethods {
+		if path == "/v1/enroll/propose" || path == "/v1/enroll/finish" {
+			continue
+		}
 		out[path] = methods
 	}
 	out["/v1/vtxo/board/enroll/propose"] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
 	out["/v1/vtxo/board/enroll/finish"] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
+	for _, path := range []string{"/v1/vtxo/board/prepare", "/v1/vtxo/board/register", "/v1/vtxo/board/release", "/v1/vtxo/board/final"} {
+		out[path] = map[string]struct{}{http.MethodPost: {}, http.MethodOptions: {}}
+	}
 	return out
 }
 
@@ -233,6 +239,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
+	attachVaultBoardV2Routes(mux, svc, origin)
 }
 
 type mutationError struct {

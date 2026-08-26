@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -21,10 +22,11 @@ import (
 )
 
 type vaultBoardV2TestChain struct {
-	state vaultBoardV2ConfirmedOutpoint
-	err   error
-	errAt int
-	calls int
+	state       vaultBoardV2ConfirmedOutpoint
+	err         error
+	errAt       int
+	calls       int
+	sawDeadline bool
 }
 
 func (c *vaultBoardV2TestChain) confirmedOutpoint(context.Context, string, uint32) (vaultBoardV2ConfirmedOutpoint, error) {
@@ -38,13 +40,19 @@ func (c *vaultBoardV2TestChain) confirmedOutpoint(context.Context, string, uint3
 	return out, c.err
 }
 
+func (c *vaultBoardV2TestChain) revalidateOutpoint(ctx context.Context, prior vaultBoardV2ConfirmedOutpoint) (vaultBoardV2ConfirmedOutpoint, error) {
+	_, c.sawDeadline = ctx.Deadline()
+	return c.confirmedOutpoint(ctx, hex.EncodeToString(prior.Txid), prior.Vout)
+}
+
 type vaultBoardV2TestOperator struct {
-	registerErr error
-	deleteErr   error
-	finalErr    error
-	registers   int
-	deletes     int
-	finals      int
+	registerErr        error
+	deleteErr          error
+	finalErr           error
+	registers          int
+	deletes            int
+	finals             int
+	beforeDeleteReturn func()
 }
 
 func (o *vaultBoardV2TestOperator) registerIntent(context.Context, string, string) (string, error) {
@@ -57,6 +65,9 @@ func (o *vaultBoardV2TestOperator) registerIntent(context.Context, string, strin
 
 func (o *vaultBoardV2TestOperator) deleteIntent(context.Context, string, string) error {
 	o.deletes++
+	if o.beforeDeleteReturn != nil {
+		o.beforeDeleteReturn()
+	}
 	return o.deleteErr
 }
 
@@ -91,12 +102,16 @@ type vaultBoardV2ServiceFixture struct {
 	vaultID  string
 	receiver string
 	now      time.Time
+	dbPath   string
+	master   *btcec.PrivateKey
+	emulator *btcec.PrivateKey
 }
 
 func newVaultBoardV2ServiceFixture(t *testing.T) vaultBoardV2ServiceFixture {
 	t.Helper()
 	now := time.Unix(1_800_000_000, 0).UTC()
-	ledger, err := policy.OpenMutinynetVaultBoardV2Ledger(filepath.Join(t.TempDir(), "board-v2-service.sqlite"), func() time.Time { return now })
+	dbPath := filepath.Join(t.TempDir(), "board-v2-service.sqlite")
+	ledger, err := policy.OpenMutinynetVaultBoardV2Ledger(dbPath, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,6 +208,7 @@ func newVaultBoardV2ServiceFixture(t *testing.T) vaultBoardV2ServiceFixture {
 	return vaultBoardV2ServiceFixture{
 		svc: svc, ledger: ledger, chain: chain, operator: op, resolver: resolver,
 		proof: proof, vaultID: start.VaultID, receiver: receiverTree.ArkAddress, now: now,
+		dbPath: dbPath, master: master, emulator: emulator,
 	}
 }
 
@@ -304,6 +320,91 @@ func TestVaultBoardV2HandleIsAuthenticatedAndExact(t *testing.T) {
 	}
 }
 
+func TestVaultBoardV2RegisterUsesSharedVerificationCapacity(t *testing.T) {
+	fixture := newVaultBoardV2ServiceFixture(t)
+	fixture.svc.MaxConcurrentVerifications = 1
+	prepared := fixture.prepare(t)
+	fixture.proof.expireAt = prepared.RegisterExpireAt
+	message := fixture.proof.registerMessage(t)
+	release, err := fixture.svc.acquireVerification(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	_, err = fixture.svc.registerVaultBoardV2(context.Background(), vaultBoardV2RegisterPhaseRequest{
+		Handle: prepared.Handle, PSBT: fixture.proof.proof(t, message, []*wire.TxOut{fixture.proof.receiver}),
+		Message: message, InputIndexes: []int{0, 1},
+	})
+	if !errors.Is(err, ErrVerificationBusy) {
+		t.Fatalf("busy verifier = %v", err)
+	}
+}
+
+func TestVaultBoardV2NarrowRevalidationIsBounded(t *testing.T) {
+	fixture := newVaultBoardV2ServiceFixture(t)
+	state, err := revalidateVaultBoardV2Outpoint(fixture.svc.vaultBoardV2Runtime, fixture.chain.state)
+	if err != nil || !fixture.chain.sawDeadline || state.TipMTP != fixture.chain.state.TipMTP {
+		t.Fatalf("bounded revalidation = %+v, %v, deadline=%v", state, err, fixture.chain.sawDeadline)
+	}
+}
+
+func TestVaultBoardV2RegisterRefusesProofInsideDispatchMargin(t *testing.T) {
+	fixture := newVaultBoardV2ServiceFixture(t)
+	prepared := fixture.prepare(t)
+	claims, err := fixture.svc.openVaultBoardV2Handle(prepared.Handle, string(vaultBoardV2Ready))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims.RegisterExpireAt = fixture.svc.vtxoNow().Add(vaultBoardV2DispatchMargin - time.Second).Unix()
+	prepared.Handle, err = fixture.svc.sealVaultBoardV2Handle(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.proof.expireAt = claims.RegisterExpireAt
+	message := fixture.proof.registerMessage(t)
+	result, err := fixture.svc.registerVaultBoardV2(context.Background(), vaultBoardV2RegisterPhaseRequest{
+		Handle: prepared.Handle, PSBT: fixture.proof.proof(t, message, []*wire.TxOut{fixture.proof.receiver}),
+		Message: message, InputIndexes: []int{0, 1},
+	})
+	if err != nil || result.Status != vaultBoardV2DefinitelyNotSubmitted || fixture.operator.registers != 0 {
+		t.Fatalf("near-expiry register = %+v, %v, calls=%d", result, err, fixture.operator.registers)
+	}
+	operationID, _ := policy.ComputeVaultBoardV2OperationID(fixture.vaultID, fixture.proof.operation.Txid, fixture.proof.operation.Vout)
+	snapshot, err := fixture.ledger.GetCurrentVaultBoardV2Attempt(context.Background(), operationID)
+	if err != nil || snapshot == nil || snapshot.RegisterDispatch != nil {
+		t.Fatalf("near-expiry request crossed dispatch: %+v, %v", snapshot, err)
+	}
+}
+
+func TestVaultBoardV2ReleaseRefusesProofInsideDispatchMargin(t *testing.T) {
+	fixture := newVaultBoardV2ServiceFixture(t)
+	fixture.register(t, fixture.prepare(t))
+	release := fixture.prepare(t)
+	claims, err := fixture.svc.openVaultBoardV2Handle(release.Handle, string(vaultBoardV2ReleaseRequired))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims.DeleteExpireAt = fixture.svc.vtxoNow().Add(vaultBoardV2DispatchMargin - time.Second).Unix()
+	release.Handle, err = fixture.svc.sealVaultBoardV2Handle(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, _ := (intent.DeleteMessage{
+		BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: claims.DeleteExpireAt,
+	}).Encode()
+	result, err := fixture.svc.releaseVaultBoardV2(context.Background(), vaultBoardV2DeletePhaseRequest{
+		Handle: release.Handle, PSBT: fixture.proof.proof(t, message, nil), Message: message, InputIndexes: []int{0, 1},
+	})
+	if err == nil || result != "" || fixture.operator.deletes != 0 {
+		t.Fatalf("near-expiry release = %q, %v, calls=%d", result, err, fixture.operator.deletes)
+	}
+	operationID, _ := policy.ComputeVaultBoardV2OperationID(fixture.vaultID, fixture.proof.operation.Txid, fixture.proof.operation.Vout)
+	snapshot, err := fixture.ledger.GetCurrentVaultBoardV2Attempt(context.Background(), operationID)
+	if err != nil || snapshot == nil || snapshot.DeleteAuthorization != nil || snapshot.DeleteDispatch != nil {
+		t.Fatalf("near-expiry release crossed dispatch: %+v, %v", snapshot, err)
+	}
+}
+
 func TestVaultBoardV2RestartBeforeDispatchRotatesServerAttempt(t *testing.T) {
 	fixture := newVaultBoardV2ServiceFixture(t)
 	prepared := fixture.prepare(t)
@@ -406,9 +507,68 @@ func TestVaultBoardV2LostFinalResponseReconcilesExactVtxo(t *testing.T) {
 		Txid: auth.ReceiverTxid, Vout: auth.ReceiverVout, ValueSats: uint64(snapshot.Register.ReceiverSats),
 		Script: bytes.Clone(snapshot.Operation.ReceiverScript), CommitmentTxids: []string{auth.CommitmentTxid},
 	}
+	fixture.chain.state.TipMTP = fixture.chain.state.SequenceAnchorMTP + int64(program.VaultBoardV2ExitDelay)
 	finalized := fixture.prepare(t)
 	if finalized.State != vaultBoardV2Finalized || finalized.CommitmentTxid != auth.CommitmentTxid {
 		t.Fatalf("final reconcile = %+v", finalized)
+	}
+}
+
+func TestVaultBoardV2DeleteResultPersistsAfterCallerCancellation(t *testing.T) {
+	fixture := newVaultBoardV2ServiceFixture(t)
+	fixture.register(t, fixture.prepare(t))
+	release := fixture.prepare(t)
+	deleteMessage, _ := (intent.DeleteMessage{
+		BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: release.DeleteExpireAt,
+	}).Encode()
+	ctx, cancel := context.WithCancel(context.Background())
+	fixture.operator.beforeDeleteReturn = cancel
+	result, err := fixture.svc.releaseVaultBoardV2(ctx, vaultBoardV2DeletePhaseRequest{
+		Handle: release.Handle, PSBT: fixture.proof.proof(t, deleteMessage, nil),
+		Message: deleteMessage, InputIndexes: []int{0, 1},
+	})
+	if err != nil || result != vaultBoardV2Released {
+		t.Fatalf("release after cancellation = %q, %v", result, err)
+	}
+	next := fixture.prepare(t)
+	if next.State != vaultBoardV2Ready {
+		t.Fatalf("prepare after durable release = %+v", next)
+	}
+}
+
+func TestVaultBoardV2PersistedEnrollmentRequiresResolverBeforeReload(t *testing.T) {
+	fixture := newVaultBoardV2ServiceFixture(t)
+	if err := fixture.ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := policy.OpenMutinynetVaultBoardV2Ledger(fixture.dbPath, func() time.Time { return fixture.now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if err := reopened.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := NewFileBackedVaultBoardV2KeyCapabilities(fixture.master, LocalSigner{Priv: fixture.emulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded := New(Deps{
+		Stores: testStores(t, reopened), VaultBoardV2Store: reopened,
+		Deployment: fixture.svc.Deployment, IntegrityKey: append([]byte(nil), testCredentialIntegrityKey...), Keys: keys,
+		VaultCosignerPub: fixture.master.PubKey(), ArkadeCosignerPub: fixture.svc.ArkadeCosignerPub,
+		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
+	})
+	if err := reloaded.LoadVaults(); err == nil {
+		t.Fatal("persisted v2 enrollment loaded before release-pinned resolver")
+	}
+	reloaded.ArkResolver = fixture.resolver
+	if err := reloaded.LoadVaults(); err != nil {
+		t.Fatal(err)
+	}
+	status, err := reloaded.StatusFor(context.Background(), fixture.vaultID)
+	if err != nil || status.VtxoBoardingProgram != program.VaultBoardV2 || status.VtxoBoardingAddress == "" {
+		t.Fatalf("reloaded v2 status = %+v, %v", status, err)
 	}
 }
 

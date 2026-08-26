@@ -28,11 +28,26 @@ func Definition() arkaderuntime.ProfileDefinition {
 	}
 	module.Stores = append(module.Stores, "vault-board-v2-store")
 	module.KeyScopes = append(module.KeyScopes, "vault-board-v2-authorization")
-	definition.Routes = append(definition.Routes,
+	routes := definition.Routes[:0]
+	for _, route := range definition.Routes {
+		if route.Path == "/v1/enroll/propose" || route.Path == "/v1/enroll/finish" {
+			continue
+		}
+		routes = append(routes, route)
+	}
+	definition.Routes = append(routes,
 		arkaderuntime.Route{Method: http.MethodPost, Path: "/v1/vtxo/board/enroll/propose"},
 		arkaderuntime.Route{Method: http.MethodOptions, Path: "/v1/vtxo/board/enroll/propose"},
 		arkaderuntime.Route{Method: http.MethodPost, Path: "/v1/vtxo/board/enroll/finish"},
 		arkaderuntime.Route{Method: http.MethodOptions, Path: "/v1/vtxo/board/enroll/finish"},
+		arkaderuntime.Route{Method: http.MethodPost, Path: "/v1/vtxo/board/prepare"},
+		arkaderuntime.Route{Method: http.MethodOptions, Path: "/v1/vtxo/board/prepare"},
+		arkaderuntime.Route{Method: http.MethodPost, Path: "/v1/vtxo/board/register"},
+		arkaderuntime.Route{Method: http.MethodOptions, Path: "/v1/vtxo/board/register"},
+		arkaderuntime.Route{Method: http.MethodPost, Path: "/v1/vtxo/board/release"},
+		arkaderuntime.Route{Method: http.MethodOptions, Path: "/v1/vtxo/board/release"},
+		arkaderuntime.Route{Method: http.MethodPost, Path: "/v1/vtxo/board/final"},
+		arkaderuntime.Route{Method: http.MethodOptions, Path: "/v1/vtxo/board/final"},
 	)
 	return definition
 }

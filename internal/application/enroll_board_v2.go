@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -167,6 +168,42 @@ func hashVaultBoardV2Composite(desc vaultBoardV2CompositeDescriptor) (string, er
 	sum := sha256.Sum256(payload)
 	zeroServiceBytes(payload)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func (s *Service) statusVaultBoardV2Descriptor(cred *policy.Credential, snap enrolledSnapshot) (vaultBoardV2CompositeDescriptor, string, error) {
+	if cred == nil || snap.BoardV2 == nil || snap.BoardV2.BoardingPub == nil {
+		return vaultBoardV2CompositeDescriptor{}, "", fmt.Errorf("vault-board-v2 enrollment descriptor unavailable")
+	}
+	phone, hardware, recovery, vaultBase, arkadeBase, _, err := s.rebuildSavings(cred)
+	if err != nil {
+		return vaultBoardV2CompositeDescriptor{}, "", err
+	}
+	in := savings.FamilyInput{
+		VaultID: cred.VaultID, Network: cred.Network, Phone: phone, Hardware: hardware,
+		Recovery: recovery, PhoneDirectP256: append([]byte(nil), cred.PhoneDirectP256...),
+		VaultCosignerBase: vaultBase, ArkadeCosignerBase: arkadeBase,
+	}
+	applySavingsProgram(&in, cred.TemplateVersion)
+	savingsDesc, _, err := savings.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)
+	if err != nil {
+		return vaultBoardV2CompositeDescriptor{}, "", err
+	}
+	boardTree, err := s.buildVtxoBoardV2Tree(cred.VaultID, snap, snap.BoardV2.BoardingPub)
+	if err != nil || boardTree.OnchainAddress != snap.BoardV2.Address || !bytes.Equal(boardTree.PkScript, snap.BoardV2.PkScript) {
+		return vaultBoardV2CompositeDescriptor{}, "", fmt.Errorf("vault-board-v2 enrollment descriptor mismatch")
+	}
+	board := vaultBoardV2PublicDescriptor{
+		Schema: program.VaultBoardV2Schema, Program: program.VaultBoardV2, Template: program.VaultBoardV2Template,
+		Network: cred.Network, BoardingPub: hex.EncodeToString(boardTree.BoardingPub.SerializeCompressed()),
+		RecoveryPhonePub: hex.EncodeToString(phone.SerializeCompressed()),
+		CosignerPub:      hex.EncodeToString(boardTree.CosignerPub.SerializeCompressed()),
+		OperatorPub:      hex.EncodeToString(boardTree.OperatorPub.SerializeCompressed()),
+		ExitDelay:        program.VaultBoardV2ExitDelay, ExitDelayUnit: program.VaultBoardV2ExitDelayUnit,
+		Script: hex.EncodeToString(boardTree.PkScript), Address: boardTree.OnchainAddress,
+	}
+	desc := vaultBoardV2CompositeDescriptor{Schema: vaultBoardV2EnrollmentSchema, VaultID: cred.VaultID, Savings: savingsDesc, Boarding: board}
+	hash, err := hashVaultBoardV2Composite(desc)
+	return desc, hash, err
 }
 
 func boardV2SnapshotFromRecord(rec *policy.VaultBoardV2Enrollment) (*vaultBoardV2Snapshot, error) {

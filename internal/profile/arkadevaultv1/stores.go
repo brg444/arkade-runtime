@@ -44,22 +44,6 @@ type VtxoOperationStore interface {
 	TransitionVtxoOperation(context.Context, string, policy.VtxoOperation) (policy.VtxoOperation, bool, error)
 }
 
-// VaultBoardV2Store owns only the named v2 enrollment and phase lifecycle.
-// It exposes no generic signing artifact or allowance mutation.
-type VaultBoardV2Store interface {
-	CreateVaultWithBoardV2(policy.CreateVaultInput, policy.VaultBoardV2Enrollment) error
-	GetVaultBoardV2Enrollment(string) (*policy.VaultBoardV2Enrollment, error)
-	GetVaultBoardV2Operation(context.Context, string) (*policy.VaultBoardV2Operation, error)
-	GetVaultBoardV2Authorization(context.Context, string, uint32, string) (*policy.VaultBoardV2Authorization, error)
-	GetVaultBoardV2Submission(context.Context, string, uint32, string) (*policy.VaultBoardV2Submission, error)
-	GetCurrentVaultBoardV2Attempt(context.Context, string) (*policy.VaultBoardV2AttemptSnapshot, error)
-	BeginVaultBoardV2Attempt(context.Context, policy.VaultBoardV2Operation, policy.VaultBoardV2RegisterRequest, policy.VaultBoardV2ChainState) (*policy.VaultBoardV2Operation, *policy.VaultBoardV2Authorization, bool, error)
-	AppendVaultBoardV2Authorization(context.Context, policy.VaultBoardV2Authorization, policy.VaultBoardV2ChainState) (*policy.VaultBoardV2Authorization, bool, error)
-	AppendVaultBoardV2AuthorizationAndDispatch(context.Context, policy.VaultBoardV2Authorization, policy.VaultBoardV2ChainState) (*policy.VaultBoardV2Authorization, *policy.VaultBoardV2Dispatch, bool, error)
-	AppendVaultBoardV2Dispatch(context.Context, policy.VaultBoardV2Dispatch, policy.VaultBoardV2ChainState) (*policy.VaultBoardV2Dispatch, bool, error)
-	AppendVaultBoardV2Submission(context.Context, policy.VaultBoardV2Submission) (*policy.VaultBoardV2Submission, bool, error)
-}
-
 // RecoveryOperationStore is the replay-safe Savings recovery operation store.
 type RecoveryOperationStore interface {
 	ApplyRecoveryReplay(policy.RecoverySession) (policy.ReplayAction, *policy.RecoverySession, error)

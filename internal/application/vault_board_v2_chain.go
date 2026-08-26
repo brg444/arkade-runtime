@@ -25,23 +25,35 @@ const (
 )
 
 type vaultBoardV2ConfirmedOutpoint struct {
-	Txid              []byte
-	Vout              uint32
-	ValueSats         int64
-	PkScript          []byte
-	SequenceAnchorMTP int64
-	TipMTP            int64
-	Spent             bool
-	SpendingTxid      string
+	Txid               []byte
+	Vout               uint32
+	ValueSats          int64
+	PkScript           []byte
+	SequenceAnchorMTP  int64
+	TipMTP             int64
+	Spent              bool
+	SpendingTxid       string
+	FundingBlockHash   string
+	FundingBlockHeight int64
 }
 
 type vaultBoardV2Chain interface {
 	confirmedOutpoint(context.Context, string, uint32) (vaultBoardV2ConfirmedOutpoint, error)
+	revalidateOutpoint(context.Context, vaultBoardV2ConfirmedOutpoint) (vaultBoardV2ConfirmedOutpoint, error)
 }
 
 type esploraVaultBoardV2Chain struct {
 	origin string
 	hc     httpDoer
+}
+
+func dialVaultBoardV2Chain() (vaultBoardV2Chain, error) {
+	return dialVaultBoardV2ChainWithClient(deployment.MutinynetEsploraOrigin, &http.Client{
+		Timeout: vaultBoardV2ChainTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return fmt.Errorf("vault-board-v2 Esplora redirects are disabled")
+		},
+	})
 }
 
 func dialVaultBoardV2ChainWithClient(rawOrigin string, hc httpDoer) (vaultBoardV2Chain, error) {
@@ -169,7 +181,45 @@ func (e *esploraVaultBoardV2Chain) confirmedOutpoint(ctx context.Context, txid s
 		Txid: display, Vout: vout, ValueSats: funding.Vout[vout].Value, PkScript: script,
 		SequenceAnchorMTP: predecessor.MedianTime, TipMTP: tip.MedianTime,
 		Spent: outspend.Spent, SpendingTxid: outspend.Txid,
+		FundingBlockHash: funding.Status.BlockHash, FundingBlockHeight: funding.Status.BlockHeight,
 	}, nil
+}
+
+func (e *esploraVaultBoardV2Chain) revalidateOutpoint(ctx context.Context, prior vaultBoardV2ConfirmedOutpoint) (vaultBoardV2ConfirmedOutpoint, error) {
+	txid := hex.EncodeToString(prior.Txid)
+	if e == nil || e.hc == nil || e.origin != deployment.MutinynetEsploraOrigin || requireTxid(txid) != nil ||
+		requireTxid(prior.FundingBlockHash) != nil || prior.FundingBlockHeight <= 0 {
+		return vaultBoardV2ConfirmedOutpoint{}, fmt.Errorf("vault-board-v2 release-pinned chain revalidation required")
+	}
+	canonical, err := e.getText(ctx, "/block-height/"+strconv.FormatInt(prior.FundingBlockHeight, 10), vaultBoardV2ChainTextLimit)
+	if err != nil || canonical != prior.FundingBlockHash {
+		return vaultBoardV2ConfirmedOutpoint{}, fmt.Errorf("vault-board-v2 funding block is no longer canonical")
+	}
+	tipHash, err := e.getText(ctx, "/blocks/tip/hash", vaultBoardV2ChainTextLimit)
+	if err != nil || requireTxid(tipHash) != nil {
+		return vaultBoardV2ConfirmedOutpoint{}, fmt.Errorf("vault-board-v2 chain tip")
+	}
+	var tip vaultBoardV2EsploraBlock
+	if err := e.getJSON(ctx, "/block/"+tipHash, vaultBoardV2ChainBlockLimit, &tip); err != nil ||
+		validateVaultBoardV2Block(tip, tipHash, tip.Height) != nil || tip.Height < prior.FundingBlockHeight || tip.MedianTime < prior.SequenceAnchorMTP {
+		return vaultBoardV2ConfirmedOutpoint{}, fmt.Errorf("vault-board-v2 chain tip does not contain funding block")
+	}
+	var outspend vaultBoardV2EsploraOutspend
+	if err := e.getJSON(ctx, "/tx/"+txid+"/outspend/"+strconv.FormatUint(uint64(prior.Vout), 10), vaultBoardV2ChainOutspendLimit, &outspend); err != nil {
+		return vaultBoardV2ConfirmedOutpoint{}, err
+	}
+	if outspend.Spent {
+		if requireTxid(outspend.Txid) != nil || outspend.Vin < 0 {
+			return vaultBoardV2ConfirmedOutpoint{}, fmt.Errorf("vault-board-v2 invalid outspend")
+		}
+	} else if outspend.Txid != "" || outspend.Vin != 0 {
+		return vaultBoardV2ConfirmedOutpoint{}, fmt.Errorf("vault-board-v2 contradictory outspend")
+	}
+	current := prior
+	current.TipMTP = tip.MedianTime
+	current.Spent = outspend.Spent
+	current.SpendingTxid = outspend.Txid
+	return current, nil
 }
 
 func validateVaultBoardV2FundingTx(tx vaultBoardV2EsploraTx, txid string, vout uint32) error {

@@ -435,72 +435,6 @@ func (l *Ledger) GetVaultBoardV2Enrollment(vaultID string) (*VaultBoardV2Enrollm
 	return &rec, nil
 }
 
-func (l *Ledger) GetVaultBoardV2Operation(ctx context.Context, operationID string) (*VaultBoardV2Operation, error) {
-	if operationID == "" {
-		return nil, fmt.Errorf("operation id required")
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	key, err := l.integrityKeyCopy()
-	if err != nil {
-		return nil, err
-	}
-	defer zeroBytes(key)
-	rec, err := loadVaultBoardV2Operation(ctx, l.db, operationID)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := VerifyVaultBoardV2Operation(&rec, key); err != nil {
-		return nil, err
-	}
-	return &rec, nil
-}
-
-func (l *Ledger) GetVaultBoardV2Authorization(ctx context.Context, operationID string, attempt uint32, phase string) (*VaultBoardV2Authorization, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	key, err := l.integrityKeyCopy()
-	if err != nil {
-		return nil, err
-	}
-	defer zeroBytes(key)
-	rec, err := loadVaultBoardV2Authorization(ctx, l.db, operationID, attempt, phase)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := VerifyVaultBoardV2Authorization(&rec, key); err != nil {
-		return nil, err
-	}
-	return &rec, nil
-}
-
-func (l *Ledger) GetVaultBoardV2Submission(ctx context.Context, operationID string, attempt uint32, phase string) (*VaultBoardV2Submission, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	key, err := l.integrityKeyCopy()
-	if err != nil {
-		return nil, err
-	}
-	defer zeroBytes(key)
-	rec, err := loadVaultBoardV2Submission(ctx, l.db, operationID, attempt, phase)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := VerifyVaultBoardV2Submission(&rec, key); err != nil {
-		return nil, err
-	}
-	return &rec, nil
-}
-
 func (l *Ledger) GetCurrentVaultBoardV2Attempt(ctx context.Context, operationID string) (*VaultBoardV2AttemptSnapshot, error) {
 	if operationID == "" {
 		return nil, fmt.Errorf("vault-board-v2 operation id required")
@@ -699,85 +633,6 @@ func (l *Ledger) BeginVaultBoardV2Attempt(ctx context.Context, operation VaultBo
 	}
 	committed = true
 	return &stored, &auth, true, nil
-}
-
-// AppendVaultBoardV2Authorization stores the immutable operation (on first
-// register) and exact phase result atomically with rollback-sequence advance.
-func (l *Ledger) AppendVaultBoardV2Authorization(ctx context.Context, auth VaultBoardV2Authorization, chain VaultBoardV2ChainState) (*VaultBoardV2Authorization, bool, error) {
-	if auth.Phase == VaultBoardV2PhaseRegister {
-		return nil, false, fmt.Errorf("vault-board-v2 register attempt must be server-allocated")
-	}
-	if auth.OperationID == "" {
-		return nil, false, fmt.Errorf("vault-board-v2 operation required")
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	conn, err := l.db.Conn(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
-		return nil, false, err
-	}
-	commit := false
-	defer func() {
-		if !commit {
-			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
-		}
-	}()
-	key, err := l.integrityKeyCopy()
-	if err != nil {
-		return nil, false, err
-	}
-	defer zeroBytes(key)
-	if existing, err := loadVaultBoardV2Authorization(ctx, conn, auth.OperationID, auth.Attempt, auth.Phase); err == nil {
-		if err := VerifyVaultBoardV2Authorization(&existing, key); err != nil {
-			return nil, false, err
-		}
-		if !sameVaultBoardV2AuthorizationRequest(existing, auth) {
-			return nil, false, fmt.Errorf("vault-board-v2 phase is bound to a different exact request")
-		}
-		if _, err := conn.ExecContext(context.Background(), `COMMIT`); err != nil {
-			return nil, false, err
-		}
-		commit = true
-		return &existing, false, nil
-	} else if err != sql.ErrNoRows {
-		return nil, false, err
-	}
-	if _, err := loadVaultBoardV2Operation(ctx, conn, auth.OperationID); err != nil {
-		return nil, false, err
-	}
-	currentOperation, err := loadVaultBoardV2Operation(ctx, conn, auth.OperationID)
-	if err != nil {
-		return nil, false, err
-	}
-	if err := VerifyVaultBoardV2Operation(&currentOperation, key); err != nil {
-		return nil, false, err
-	}
-	if err := requireVaultBoardV2CooperativeWindow(currentOperation, chain); err != nil {
-		return nil, false, err
-	}
-	if err := validateVaultBoardV2PhaseOrder(ctx, conn, key, auth); err != nil {
-		return nil, false, err
-	}
-	auth.CreatedAt = l.NowUTC().Format(time.RFC3339Nano)
-	if err := SealVaultBoardV2Authorization(&auth, key); err != nil {
-		return nil, false, err
-	}
-	_, err = conn.ExecContext(ctx, `INSERT INTO vault_board_v2_authorization (operation_id, attempt, phase, request_digest, tree_session_pub, receiver_sats, fee_sats, expire_at, commitment_txid, receiver_txid, receiver_vout, created_at, integrity_mac) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, auth.OperationID, auth.Attempt, auth.Phase, auth.RequestDigest, nullableVaultBoardV2Bytes(auth.TreeSessionPub), auth.ReceiverSats, auth.FeeSats, auth.ExpireAt, auth.CommitmentTxid, auth.ReceiverTxid, auth.ReceiverVout, auth.CreatedAt, auth.IntegrityMAC)
-	if err != nil {
-		return nil, false, err
-	}
-	if err := l.observeEconomicOutflowsLocked(conn); err != nil {
-		return nil, false, fmt.Errorf("policy sequence: %w", err)
-	}
-	if _, err := conn.ExecContext(context.Background(), `COMMIT`); err != nil {
-		return nil, false, err
-	}
-	commit = true
-	return &auth, true, nil
 }
 
 // AppendVaultBoardV2AuthorizationAndDispatch closes the delete/final crash
@@ -1275,46 +1130,6 @@ func validateVaultBoardV2PhaseOrder(ctx context.Context, q queryContext, key []b
 		}
 	}
 	switch auth.Phase {
-	case VaultBoardV2PhaseRegister:
-		if auth.Attempt == 0 {
-			return nil
-		}
-		prev, err := loadVaultBoardV2Submission(ctx, q, auth.OperationID, auth.Attempt-1, VaultBoardV2PhaseDelete)
-		if err != nil || prev.Outcome != VaultBoardV2AuthReleased {
-			return fmt.Errorf("previous vault-board-v2 attempt not authoritatively released")
-		}
-		if err := VerifyVaultBoardV2Submission(&prev, key); err != nil {
-			return err
-		}
-		if priorFinal, err := loadVaultBoardV2Authorization(ctx, q, auth.OperationID, auth.Attempt-1, VaultBoardV2PhaseFinalize); err == nil {
-			if err := VerifyVaultBoardV2Authorization(&priorFinal, key); err != nil {
-				return err
-			}
-			return fmt.Errorf("finalized vault-board-v2 attempt cannot rotate")
-		} else if err != sql.ErrNoRows {
-			return err
-		}
-		rows, err := q.QueryContext(ctx, `SELECT operation_id, attempt, phase, request_digest, tree_session_pub, receiver_sats, fee_sats, expire_at, commitment_txid, receiver_txid, receiver_vout, created_at, integrity_mac FROM vault_board_v2_authorization WHERE operation_id = ? AND phase = 'register' AND attempt < ?`, auth.OperationID, auth.Attempt)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var prior VaultBoardV2Authorization
-			if err := rows.Scan(&prior.OperationID, &prior.Attempt, &prior.Phase, &prior.RequestDigest, &prior.TreeSessionPub, &prior.ReceiverSats, &prior.FeeSats, &prior.ExpireAt, &prior.CommitmentTxid, &prior.ReceiverTxid, &prior.ReceiverVout, &prior.CreatedAt, &prior.IntegrityMAC); err != nil {
-				return err
-			}
-			if err := VerifyVaultBoardV2Authorization(&prior, key); err != nil {
-				return err
-			}
-			if bytes.Equal(prior.RequestDigest, auth.RequestDigest) || bytes.Equal(prior.TreeSessionPub, auth.TreeSessionPub) {
-				return fmt.Errorf("vault-board-v2 attempt must rotate register digest and tree session key")
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		return nil
 	case VaultBoardV2PhaseDelete, VaultBoardV2PhaseFinalize:
 		if regErr != nil {
 			return fmt.Errorf("vault-board-v2 register authorization required")
