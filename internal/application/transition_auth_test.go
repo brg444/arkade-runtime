@@ -63,7 +63,7 @@ func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 	}
 }
 
-func TestSignTransitionUnknownVaultDoesNotGrowRateLimiter(t *testing.T) {
+func TestSignTransitionOnlyVerifiedClaimantsConsumeRateLimiter(t *testing.T) {
 	e := newEnv(t)
 	transitionRateMu.Lock()
 	previous := transitionRateHits
@@ -86,16 +86,44 @@ func TestSignTransitionUnknownVaultDoesNotGrowRateLimiter(t *testing.T) {
 	}
 	transitionRateMu.Unlock()
 
-	if _, err := e.svc.SignTransition(context.Background(), TransitionRequest{
-		VaultID: fixture.VaultID, Purpose: "initiate",
-	}); err == nil {
-		t.Fatal("invalid transition unexpectedly signed")
+	valid := hardwareInitiatePSBT(t, e.svc, e.externalOwner)
+	unsigned, err := parsePSBT(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsigned.Inputs[0].TaprootScriptSpendSig = nil
+	invalid, err := unsigned.B64Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < maxTransitionsPerVaultPerMinute+1; i++ {
+		if _, err := e.svc.SignTransition(context.Background(), TransitionRequest{
+			VaultID: fixture.VaultID, Purpose: "initiate", PSBT: invalid,
+		}); err == nil {
+			t.Fatal("transition without a claimant signature unexpectedly signed")
+		}
 	}
 	transitionRateMu.Lock()
 	_, limited := transitionRateHits[fixture.VaultID]
 	transitionRateMu.Unlock()
-	if !limited {
-		t.Fatal("enrolled canonical vault ID did not enter rate state")
+	if limited {
+		t.Fatal("unverified requests consumed the enrolled vault rate limit")
+	}
+
+	response, err := e.svc.SignTransition(context.Background(), TransitionRequest{
+		VaultID: fixture.VaultID, Purpose: "initiate", PSBT: valid,
+	})
+	if err != nil {
+		t.Fatalf("verified claimant was blocked after invalid requests: %v", err)
+	}
+	if response == nil || response.SignedPSBT == "" {
+		t.Fatalf("verified claimant response = %+v", response)
+	}
+	transitionRateMu.Lock()
+	hits := len(transitionRateHits[fixture.VaultID])
+	transitionRateMu.Unlock()
+	if hits != 1 {
+		t.Fatalf("verified claimant rate hits = %d, want 1", hits)
 	}
 }
 

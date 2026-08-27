@@ -58,9 +58,6 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if cred == nil || cred.TemplateVersion != savings.Template {
 		return nil, fmt.Errorf("current vault template required")
 	}
-	if err := s.allowTransition(cred.VaultID); err != nil {
-		return nil, err
-	}
 	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
 	if err != nil {
 		return nil, err
@@ -77,6 +74,9 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 		return nil, err
 	}
 	if err := verifyTransitionClaimantSig(ptx, bound); err != nil {
+		return nil, err
+	}
+	if err := s.allowTransition(cred.VaultID); err != nil {
 		return nil, err
 	}
 	if bound.Role == "phone" {
