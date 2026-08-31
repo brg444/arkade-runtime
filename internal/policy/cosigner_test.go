@@ -41,7 +41,7 @@ func TestHKDFSHA256V1MatchesRFC5869OneBlockExpand(t *testing.T) {
 	_, _ = expand.Write(info)
 	_, _ = expand.Write([]byte{1})
 	want := expand.Sum(nil)
-	if !scalarInRange(want, btcec.S256().N) {
+	if !scalarInRange(want) {
 		t.Fatal("test vector did not produce a scalar")
 	}
 	if !bytes.Equal(got.Serialize(), want) {

@@ -51,7 +51,7 @@ func (s *Service) InviteStatus(token string) (InviteView, error) {
 	if err != nil {
 		return InviteView{}, fmt.Errorf("invite not available")
 	}
-	inv, err := s.Ledger.GetInvite(hash)
+	inv, err := s.Stores.Identity.GetInvite(hash)
 	if err != nil {
 		return InviteView{}, fmt.Errorf("invite not available")
 	}
@@ -90,7 +90,7 @@ func (s *Service) StartEnrollment(token string) (*EnrollStartResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	pending, err := s.Ledger.ReservePendingEnrollment(policy.PendingEnrollment{
+	pending, err := s.Stores.Identity.ReservePendingEnrollment(policy.PendingEnrollment{
 		Handle:    handle,
 		VaultID:   vaultID,
 		TokenHash: hash,
@@ -121,7 +121,7 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
 	}
-	pending, err := s.Ledger.GetPendingByHandle(req.Handle)
+	pending, err := s.Stores.Identity.GetPendingByHandle(req.Handle)
 	if err != nil || pending == nil {
 		return nil, fmt.Errorf("pending enrollment not found")
 	}
@@ -151,7 +151,7 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
 	}
-	pending, err := s.Ledger.GetPendingByHandle(req.Handle)
+	pending, err := s.Stores.Identity.GetPendingByHandle(req.Handle)
 	if err != nil {
 		return nil, fmt.Errorf("pending enrollment not found")
 	}
@@ -230,7 +230,7 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 }
 
 func (s *Service) acceptDuplicateFinishFromToken(tokenHash []byte, req EnrollFinishRequest) (*Status, bool) {
-	inv, err := s.Ledger.GetInvite(tokenHash)
+	inv, err := s.Stores.Identity.GetInvite(tokenHash)
 	if err != nil || inv == nil || inv.ConsumedVaultID == "" {
 		return nil, false
 	}
@@ -247,7 +247,7 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 		return nil, false
 	}
 	defer zeroServiceBytes(key)
-	rec, cred, err := s.Ledger.LoadVerifiedVault(vaultID, key)
+	rec, cred, err := s.Stores.Identity.LoadVerifiedVault(vaultID, key)
 	if err != nil || rec == nil || cred == nil {
 		return nil, false
 	}
@@ -259,15 +259,11 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	if err != nil || req.DescriptorHash == "" || req.DescriptorHash != preview.DescriptorHash {
 		return nil, false
 	}
-	master, err := s.vaultCosignerMaster()
+	childPub, err := s.keys.enrollmentPublic(vaultID)
 	if err != nil {
 		return nil, false
 	}
-	child, err := policy.DeriveVaultCosignerScalar(master, vaultID, policy.CosignerModeHKDFSHA256V1)
-	if err != nil {
-		return nil, false
-	}
-	descriptor, _, err := s.mintSavingsCredential(vaultID, parsed, child.PubKey())
+	descriptor, _, err := s.mintSavingsCredential(vaultID, parsed, childPub)
 	if err != nil {
 		return nil, false
 	}

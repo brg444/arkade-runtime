@@ -27,6 +27,31 @@ type sdkSpendFixture struct {
 	arkTx      *psbt.Packet
 }
 
+func TestMatchReservedOutpointUsesCanonicalDisplayTxid(t *testing.T) {
+	display := make([]byte, chainhash.HashSize)
+	for i := range display {
+		display[i] = byte(i)
+	}
+	hash, err := chainhash.NewHashFromStr(hex.EncodeToString(display))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const vout = uint32(7)
+	want := policy.VtxoOperationInput{Txid: bytes.Clone(display), Vout: int(vout)}
+	seen := map[string]policy.VtxoOperationInput{outpointKey(want.Txid, vout): want}
+	if got, ok := matchReservedOutpoint(seen, wire.OutPoint{Hash: *hash, Index: vout}); !ok || !bytes.Equal(got.Txid, want.Txid) {
+		t.Fatalf("canonical display-order outpoint did not match: %+v, %v", got, ok)
+	}
+
+	// A different transaction whose internal chainhash bytes happen to equal
+	// the stored display bytes must not match the reservation.
+	var byteReversed chainhash.Hash
+	copy(byteReversed[:], display)
+	if _, ok := matchReservedOutpoint(seen, wire.OutPoint{Hash: byteReversed, Index: vout}); ok {
+		t.Fatal("internal-byte-order alias matched a different displayed txid")
+	}
+}
+
 func newSDKSpendFixture(t *testing.T) sdkSpendFixture {
 	t.Helper()
 	user := mustVtxoTestKey(t)
@@ -112,6 +137,10 @@ func newSDKSpendFixture(t *testing.T) sdkSpendFixture {
 	}
 	arkPacket.Inputs[0].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{userArkSig}
 
+	displayTxid, err := hex.DecodeString(original.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	return sdkSpendFixture{
 		user: user,
 		arkd: arkd,
@@ -122,7 +151,7 @@ func newSDKSpendFixture(t *testing.T) sdkSpendFixture {
 			FeePolicyDigest: bytes.Repeat([]byte{0x44}, 32), CheckpointTapscript: unroll,
 		},
 		input: policy.VtxoOperationInput{
-			Txid: bytes.Clone(original.Hash[:]), Vout: int(original.Index),
+			Txid: displayTxid, Vout: int(original.Index),
 			ValueSats: inputValue, Script: tree.PkScript,
 		},
 		checkpoint: cp,
@@ -157,7 +186,10 @@ func TestVerifyMultiInputSpendRequiresCanonicalCheckpointAlignment(t *testing.T)
 	secondCheckpoint.UnsignedTx.TxIn[0].PreviousOutPoint.Hash[0]++
 	secondCheckpoint.Inputs[0].TaprootScriptSpendSig = nil
 	secondInput := f.input
-	secondInput.Txid = bytes.Clone(secondCheckpoint.UnsignedTx.TxIn[0].PreviousOutPoint.Hash[:])
+	secondInput.Txid, err = hex.DecodeString(secondCheckpoint.UnsignedTx.TxIn[0].PreviousOutPoint.Hash.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	checkpointScript, arkControl, err := checkpointDestScript(f.operation.CheckpointTapscript, f.tree.SpendLeaf)
 	if err != nil {

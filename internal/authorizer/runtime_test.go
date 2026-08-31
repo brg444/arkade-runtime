@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/application"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 )
@@ -25,6 +27,12 @@ type stubEmulatorSigner struct{}
 
 func (stubEmulatorSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
 	return nil, errors.New("stub public signer must not be called")
+}
+
+type nilEmulatorSigner struct{}
+
+func (*nilEmulatorSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
+	return nil, errors.New("nil public signer must not be called")
 }
 
 func TestLoadVaultCosignerKeyRejectsNormalizedAndOutOfRangeScalars(t *testing.T) {
@@ -110,6 +118,71 @@ func TestCredentialIntegrityKeyUsesDomainSeparatedHKDF(t *testing.T) {
 	if bytes.Equal(a, c) {
 		t.Fatal("distinct provider scalars derived the same MAC key")
 	}
+}
+
+func TestProtectedRuntimeRevalidatesEmulatorDialResult(t *testing.T) {
+	expectedRaw, err := hex.DecodeString(deployment.MutinynetArkadeCosignerPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := btcec.ParsePubKey(expectedRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := application.PublicEmulatorIdentity{
+		Origin: deployment.MutinynetArkadeCosignerOrigin, Version: deployment.MutinynetArkadeCosignerVersion, BasePub: expected,
+	}
+	if err := validateArkadeDialResult(stubEmulatorSigner{}, valid, expected); err != nil {
+		t.Fatal(err)
+	}
+	var typedNil *nilEmulatorSigner
+	other, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		signer   application.Signer
+		identity application.PublicEmulatorIdentity
+	}{
+		"missing signer": {identity: valid},
+		"typed nil signer": {
+			signer: typedNil, identity: valid,
+		},
+		"wrong origin": {
+			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
+				Origin: "https://attacker.example", Version: valid.Version, BasePub: valid.BasePub,
+			},
+		},
+		"wrong version": {
+			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
+				Origin: valid.Origin, Version: "v0.0.0", BasePub: valid.BasePub,
+			},
+		},
+		"wrong key": {
+			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
+				Origin: valid.Origin, Version: valid.Version, BasePub: other.PubKey(),
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateArkadeDialResult(test.signer, test.identity, expected); err == nil {
+				t.Fatal("untrusted dial result accepted")
+			}
+		})
+	}
+}
+
+func TestWipePrivateKeyZerosScalar(t *testing.T) {
+	key, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wipePrivateKey(key)
+	if !bytes.Equal(key.Serialize(), make([]byte, 32)) {
+		t.Fatal("private scalar was not zeroed")
+	}
+	// Cleanup must be nil-safe for partial startup failures.
+	wipePrivateKey(nil)
 }
 
 func TestDeploymentKeyRejectsFixtureEncodings(t *testing.T) {
@@ -200,6 +273,12 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
 	}
+	if runtime.host == nil {
+		t.Fatal("compiled runtime host missing")
+	}
+	if got := runtime.host.Profile().ID(); got != arkadevaultv1.ProfileID {
+		t.Fatalf("compiled runtime profile = %q", got)
+	}
 	tokenHash, err := application.HashEnrollmentToken(token)
 	if err != nil {
 		t.Fatal(err)
@@ -224,6 +303,16 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	if _, err := openWithArkadeDialer(context.Background(), cfg, emulatorDial); err == nil ||
 		!strings.Contains(err.Error(), "enrollment token") {
 		t.Fatalf("empty restart without token: %v", err)
+	}
+}
+
+func TestProductionRegistryCompilesOnlyArkadeVaultV1(t *testing.T) {
+	registry, err := compiledRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := registry.ProfileIDs(), []string{arkadevaultv1.ProfileID}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("compiled production profiles = %v, want %v", got, want)
 	}
 }
 

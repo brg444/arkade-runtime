@@ -18,6 +18,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
+	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
@@ -30,7 +31,7 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
-	Ledger     *policy.Ledger
+	Stores     arkadevaultv1.Stores
 	Deployment deployment.Config
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
@@ -41,10 +42,8 @@ type Service struct {
 	ArkadeCosignerPub      *btcec.PublicKey
 	ArkadeCosignerOrigin   string
 	ArkadeCosignerVersion  string
-	// ArkadeCosignerSigner is the independent Operator signing stage. The
-	// VaultCosigner always comes from the per-vault child derived from vaultIKM.
-	ArkadeCosignerSigner Signer
-	SignTimeout          time.Duration
+	keys                   KeyCapabilities
+	SignTimeout            time.Duration
 	// MaxConcurrentVerifications bounds the CPU-heavy WebAuthn, P-256 and
 	// Schnorr verification stage. Zero uses the conservative default.
 	MaxConcurrentVerifications int
@@ -59,39 +58,34 @@ type Service struct {
 	sessionChallenges          map[string]passkeyChallenge
 	SessionNow                 func() time.Time
 	afterLoadPending           func()
-	// vaultIKM is the long-lived master scalar. It is never a Taproot signer.
-	// Per-vault keys are HKDF children.
-	vaultIKM *btcec.PrivateKey
 }
 
-// Deps is the constructor input. The master scalar is IKM only.
+// Deps is the constructor input. Private keys stay behind scoped capabilities.
 type Deps struct {
-	Ledger                *policy.Ledger
+	Stores                arkadevaultv1.Stores
 	Deployment            deployment.Config
 	IntegrityKey          []byte
-	MasterIKM             *btcec.PrivateKey
+	Keys                  KeyCapabilities
 	VaultCosignerPub      *btcec.PublicKey
 	ArkadeCosignerPub     *btcec.PublicKey
 	ArkadeCosignerOrigin  string
 	ArkadeCosignerVersion string
-	ArkadeSigner          Signer
 	ArkResolver           ports.ArkResolver
 }
 
-// New builds the application service. The master scalar is derivation input,
-// never a transaction signer.
+// New builds the application service without receiving raw key material or a
+// generic signer.
 func New(d Deps) *Service {
 	s := &Service{
-		Ledger:                 d.Ledger,
+		Stores:                 d.Stores,
 		Deployment:             d.Deployment,
 		CredentialIntegrityKey: d.IntegrityKey,
 		VaultCosignerPub:       d.VaultCosignerPub,
 		ArkadeCosignerPub:      d.ArkadeCosignerPub,
 		ArkadeCosignerOrigin:   d.ArkadeCosignerOrigin,
 		ArkadeCosignerVersion:  d.ArkadeCosignerVersion,
-		ArkadeCosignerSigner:   d.ArkadeSigner,
+		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
-		vaultIKM:               d.MasterIKM,
 	}
 	if raw, err := liveContractPackJSON(); err == nil {
 		s.contractPackJSON = raw
@@ -122,12 +116,7 @@ func (s *Service) WipeSecrets() {
 	}
 	zeroServiceBytes(s.CredentialIntegrityKey)
 	s.CredentialIntegrityKey = nil
-	if s.vaultIKM != nil {
-		raw := s.vaultIKM.Serialize()
-		zeroServiceBytes(raw)
-		s.vaultIKM.Key = btcec.ModNScalar{}
-		s.vaultIKM = nil
-	}
+	s.keys.Wipe()
 }
 
 const defaultConcurrentVerifications = 4
@@ -191,7 +180,7 @@ type parsedRegisterRequest struct {
 }
 
 func (s *Service) requireLedgerIntegrity() error {
-	if s == nil || s.Ledger == nil {
+	if s == nil || s.Stores.Identity == nil {
 		return fmt.Errorf("ledger required")
 	}
 	key, err := s.credentialIntegrityKey()
@@ -199,7 +188,7 @@ func (s *Service) requireLedgerIntegrity() error {
 		return err
 	}
 	defer zeroServiceBytes(key)
-	return s.Ledger.RequireIntegrityKey(key)
+	return s.Stores.Identity.RequireIntegrityKey(key)
 }
 
 // CreateTenantVault atomically persists a new HKDF-derived vault and consumes
@@ -220,11 +209,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if req.ExternalOwnerWalletXOnly == "" {
 		return fmt.Errorf("tenant owner pub required")
 	}
-	master, err := s.vaultCosignerMaster()
-	if err != nil {
-		return err
-	}
-	child, err := policy.DeriveVaultCosignerScalar(master, vaultID, policy.CosignerModeHKDFSHA256V1)
+	childPub, err := s.keys.enrollmentPublic(vaultID)
 	if err != nil {
 		return err
 	}
@@ -239,7 +224,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if req.DescriptorHash == "" || req.DescriptorHash != proposed.DescriptorHash {
 		return fmt.Errorf("enrollment descriptor hash does not match the proposed vault")
 	}
-	descriptor, sv, err := s.mintSavingsCredential(vaultID, parsed, child.PubKey())
+	descriptor, sv, err := s.mintSavingsCredential(vaultID, parsed, childPub)
 	if err != nil {
 		return err
 	}
@@ -258,20 +243,13 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err := sealVaultCredentialForService(&vcred, s); err != nil {
 		return err
 	}
-	if err := s.Ledger.CreateVault(policy.CreateVaultInput{
+	if err := s.Stores.Identity.CreateVault(policy.CreateVaultInput{
 		Record: rec, Credential: vcred, TokenHash: tokenHash, Pending: pending,
 	}); err != nil {
 		return err
 	}
 	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv)
 	return nil
-}
-
-func (s *Service) vaultCosignerMaster() (*btcec.PrivateKey, error) {
-	if s.vaultIKM != nil {
-		return s.vaultIKM, nil
-	}
-	return nil, fmt.Errorf("vault cosigner IKM required")
 }
 
 func vaultRecordFromDescriptor(c policy.Credential) policy.VaultRecord {
@@ -384,7 +362,7 @@ func (s *Service) LoadVaults() error {
 	if err := s.runtimeConfig().Validate(); err != nil {
 		return fmt.Errorf("deployment: %w", err)
 	}
-	ids, err := s.Ledger.ListVaultIDs()
+	ids, err := s.Stores.Identity.ListVaultIDs()
 	if err != nil {
 		return err
 	}
@@ -394,7 +372,7 @@ func (s *Service) LoadVaults() error {
 	}
 	defer zeroServiceBytes(key)
 	for _, id := range ids {
-		rec, vcred, err := s.Ledger.LoadVerifiedVault(id, key)
+		rec, vcred, err := s.Stores.Identity.LoadVerifiedVault(id, key)
 		if err != nil {
 			return err
 		}
@@ -674,7 +652,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	if snap.Savings == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
-	if s.Ledger == nil {
+	if s.Stores.Identity == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("ledger unavailable")
 	}
 	key, err := s.credentialIntegrityKey()
@@ -682,7 +660,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, err
 	}
 	defer zeroServiceBytes(key)
-	rec, _, err := s.Ledger.LoadVerifiedVault(id, key)
+	rec, _, err := s.Stores.Identity.LoadVerifiedVault(id, key)
 	if err != nil {
 		return "", enrolledSnapshot{}, nil, err
 	}
@@ -690,24 +668,6 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
 	return id, snap, rec, nil
-}
-
-func (s *Service) vaultCosignerSigner(rec *policy.VaultRecord) (Signer, error) {
-	if rec == nil || rec.CosignerMode != policy.CosignerModeHKDFSHA256V1 {
-		return nil, fmt.Errorf("vault cosigner mode is not supported")
-	}
-	master, err := s.vaultCosignerMaster()
-	if err != nil {
-		return nil, err
-	}
-	if err := policy.VerifyVaultCosignerPub(master, *rec); err != nil {
-		return nil, err
-	}
-	child, err := policy.DeriveVaultCosignerScalar(master, rec.VaultID, rec.CosignerMode)
-	if err != nil {
-		return nil, err
-	}
-	return LocalSigner{Priv: child}, nil
 }
 
 func (s *Service) rejectCrossVaultCredential(vaultID string, credID []byte) error {
@@ -774,7 +734,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if cred == nil {
 		return Status{}, fmt.Errorf("not enrolled")
 	}
-	spent, err := s.Ledger.SpentInPeriod(ctx, vaultID, s.Ledger.PeriodStart())
+	spent, err := s.Stores.Allowance.SpentInPeriod(ctx, vaultID, s.Stores.Allowance.PeriodStart())
 	if err != nil {
 		return Status{}, err
 	}
@@ -861,9 +821,12 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	if vaultID == "" || snap.PhoneBIP340 == nil {
 		return
 	}
-	priv, err := s.deriveVtxoVaultCosigner(vaultID)
-	if err == nil && priv != nil {
-		st.VtxoVaultCosignerPub = hex.EncodeToString(priv.PubKey().SerializeCompressed())
+	keyContext, err := s.vtxoKeyContext(vaultID)
+	if err == nil {
+		pub, keyErr := s.keys.vtxoPublic(keyContext)
+		if keyErr == nil && pub != nil {
+			st.VtxoVaultCosignerPub = hex.EncodeToString(pub.SerializeCompressed())
+		}
 	}
 	tree, err := s.buildVtxoPolicyTree(vaultID, snap)
 	if err != nil || tree == nil {
@@ -941,7 +904,7 @@ func (s *Service) loadVerifiedEnvelopeFor(vaultID string, credentialID []byte) (
 	if err != nil {
 		return nil, err
 	}
-	envelope, err := s.Ledger.GetVaultEnvelope(vaultID)
+	envelope, err := s.Stores.Identity.GetVaultEnvelope(vaultID)
 	if err != nil || envelope == nil {
 		return envelope, err
 	}
@@ -961,7 +924,7 @@ func (s *Service) loadVerifiedCredentialFor(vaultID string) (*policy.Credential,
 	if err != nil {
 		return nil, err
 	}
-	rec, vcred, err := s.Ledger.LoadVerifiedVault(vaultID, key)
+	rec, vcred, err := s.Stores.Identity.LoadVerifiedVault(vaultID, key)
 	if err != nil || rec == nil || vcred == nil {
 		return nil, err
 	}
@@ -1031,13 +994,13 @@ func verifyDirectAuth(directPub, digest, compact []byte) error {
 }
 
 func (s *Service) advanceSignCount(vaultID string, credID []byte, count uint32) error {
-	if s == nil || s.Ledger == nil {
+	if s == nil || s.Stores.Identity == nil {
 		return nil
 	}
 	if err := s.requireLedgerIntegrity(); err != nil {
 		return err
 	}
-	return s.Ledger.AdvanceSignCount(vaultID, credID, count)
+	return s.Stores.Identity.AdvanceSignCount(vaultID, credID, count)
 }
 
 func rejectPRF(clientDataJSON []byte) error {

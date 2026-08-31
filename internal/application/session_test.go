@@ -114,7 +114,7 @@ func TestPasskeyEnvelopeAuthenticatedV2Upgrade(t *testing.T) {
 	if err := e.svc.sealVaultEnvelope(&oldEnvelope, fixture.VaultID, e.credID); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.Ledger.StoreVaultEnvelopeIfAbsent(fixture.VaultID, oldEnvelope); err != nil {
+	if err := e.ledger.StoreVaultEnvelopeIfAbsent(fixture.VaultID, oldEnvelope); err != nil {
 		t.Fatal(err)
 	}
 
@@ -453,7 +453,7 @@ func TestPasskeyEnvelopeRejectsBindingAndSignatureSubstitution(t *testing.T) {
 			if err := e.svc.InstallCredentialEnvelope(context.Background(), req); err == nil {
 				t.Fatal("substitution accepted")
 			}
-			envelope, err := e.svc.Ledger.GetVaultEnvelope(fixture.VaultID)
+			envelope, err := e.ledger.GetVaultEnvelope(fixture.VaultID)
 			if err != nil {
 				t.Fatal(err)
 			}

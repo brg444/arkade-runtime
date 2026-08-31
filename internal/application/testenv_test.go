@@ -11,6 +11,7 @@ import (
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -18,6 +19,7 @@ import (
 
 type env struct {
 	svc           *Service
+	ledger        *policy.Ledger
 	savings       *savingsSnapshot
 	hot           *btcec.PrivateKey
 	externalOwner *btcec.PrivateKey
@@ -57,13 +59,16 @@ func newEnv(t *testing.T) *env {
 	}
 	t.Cleanup(func() { _ = ledger.Close() })
 	integrityKey := append([]byte(nil), testCredentialIntegrityKey...)
+	stores, err := arkadevaultv1.StoresFromLedger(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	service := New(Deps{
-		Ledger: ledger, Deployment: deployment.Config{
+		Stores: stores, Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		}, IntegrityKey: integrityKey,
-		MasterIKM: master, VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
+		Keys: testKeys(t, master, LocalSigner{Priv: operator}), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
-		ArkadeSigner: LocalSigner{Priv: operator},
 	})
 	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
 		t.Fatal(err)
@@ -94,8 +99,26 @@ func newEnv(t *testing.T) *env {
 		t.Fatal("current Vault enrollment was not published")
 	}
 	return &env{
-		svc: service, savings: snapshot.Savings,
+		svc: service, ledger: ledger, savings: snapshot.Savings,
 		hot: hot, externalOwner: externalOwner, master: master, operator: operator,
 		p256: passkey, direct: direct, credID: credentialID, dbPath: dbPath,
 	}
+}
+
+func testStores(t *testing.T, ledger *policy.Ledger) arkadevaultv1.Stores {
+	t.Helper()
+	stores, err := arkadevaultv1.StoresFromLedger(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return stores
+}
+
+func testKeys(t *testing.T, master *btcec.PrivateKey, emulator Signer) KeyCapabilities {
+	t.Helper()
+	keys, err := NewFileBackedKeyCapabilities(master, emulator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keys
 }

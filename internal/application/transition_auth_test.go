@@ -104,15 +104,15 @@ func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
 	encoded := hardwareInitiatePSBT(t, e.svc, e.externalOwner)
 	transition := TransitionRequest{VaultID: fixture.VaultID, Purpose: "initiate", PSBT: encoded}
 
-	e.svc.ArkadeCosignerSigner = unavailableSigner{}
+	e.svc.keys = testKeys(t, e.master, unavailableSigner{})
 	if _, err := e.svc.SignTransition(context.Background(), transition); err == nil || !strings.Contains(err.Error(), "signer unavailable") {
 		t.Fatalf("first sign did not fail at the external signer: %v", err)
 	}
-	pending, err := e.svc.Ledger.GetRecoverySession(fixture.VaultID, transitionPrevTxID(t, encoded), 0, "initiate")
+	pending, err := e.ledger.GetRecoverySession(fixture.VaultID, transitionPrevTxID(t, encoded), 0, "initiate")
 	if err != nil || pending == nil || len(pending.Signature) != 0 {
 		t.Fatalf("pending session was not persisted: %+v %v", pending, err)
 	}
-	if err := e.svc.Ledger.Close(); err != nil {
+	if err := e.ledger.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,11 +125,10 @@ func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := New(Deps{
-		Ledger: reopened, Deployment: e.svc.Deployment,
+		Stores: testStores(t, reopened), Deployment: e.svc.Deployment,
 		IntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
-		MasterIKM:    e.master, VaultCosignerPub: e.master.PubKey(), ArkadeCosignerPub: e.operator.PubKey(),
+		Keys:         testKeys(t, e.master, LocalSigner{Priv: e.operator}), VaultCosignerPub: e.master.PubKey(), ArkadeCosignerPub: e.operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
-		ArkadeSigner: LocalSigner{Priv: e.operator},
 	})
 	if err := restarted.LoadVaults(); err != nil {
 		t.Fatal(err)

@@ -42,24 +42,21 @@ func (s *Service) operatorSignerPub() []byte {
 	return s.ArkResolver.OperatorSignerPub()
 }
 
-func (s *Service) deriveVtxoVaultCosigner(vaultID string) (*btcec.PrivateKey, error) {
-	master, err := s.vaultCosignerMaster()
-	if err != nil {
-		return nil, err
-	}
+func (s *Service) vtxoKeyContext(vaultID string) (vtxoKeyContext, error) {
 	operator := s.operatorSignerPub()
-	if len(operator) != 33 {
-		return nil, fmt.Errorf("Operator signer pubkey required")
-	}
 	cfg := s.runtimeConfig()
-	return policy.DeriveVtxoVaultCosignerScalar(master, vaultID, program.VaultPolicyV1, cfg.Network, operator)
+	return newVtxoKeyContext(vaultID, cfg.Network, operator)
 }
 
 func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*vtxoPolicyTree, error) {
 	if snap.PhoneBIP340 == nil || snap.ExternalOwnerWallet == nil {
 		return nil, fmt.Errorf("enrolled keys required")
 	}
-	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
+	keyContext, err := s.vtxoKeyContext(vaultID)
+	if err != nil {
+		return nil, err
+	}
+	cosigner, err := s.keys.vtxoPublic(keyContext)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +71,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	}
 	params := policy.VaultPolicyV1Params{
 		UserPub:              schnorr.SerializePubKey(snap.PhoneBIP340),
-		VtxoVaultCosignerPub: schnorr.SerializePubKey(cosigner.PubKey()),
+		VtxoVaultCosignerPub: schnorr.SerializePubKey(cosigner),
 		ArkdServerPub:        schnorr.SerializePubKey(arkd),
 		DelegatePub:          schnorr.SerializePubKey(delegate),
 		ExitDevicePub:        schnorr.SerializePubKey(snap.PhoneBIP340),
@@ -109,7 +106,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		return nil, err
 	}
 	return &vtxoPolicyTree{
-		CosignerPub:     cosigner.PubKey(),
+		CosignerPub:     cosigner,
 		DelegatePub:     delegate,
 		ArkdPub:         arkd,
 		TapKey:          tapKey,
