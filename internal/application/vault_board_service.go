@@ -186,11 +186,12 @@ func (s *Service) prepareVaultBoard(ctx context.Context, req vaultBoardPrepareRe
 	if err != nil {
 		return vaultBoardPrepareResult{}, err
 	}
-	preparation := classifyVaultBoardAttempt(snapshot)
-	now := s.vtxoNow().Unix()
+	now := s.vtxoNow()
+	preparation := classifyVaultBoardAttempt(snapshot, now)
+	nowUnix := now.Unix()
 	switch preparation.State {
 	case vaultBoardReady:
-		expireAt := now + int64(vaultBoardRegisterTTL/time.Second)
+		expireAt := nowUnix + int64(vaultBoardRegisterTTL/time.Second)
 		claims := vaultBoardHandleClaims{
 			Version: 1, Kind: string(vaultBoardReady), VaultID: ctxState.vaultID,
 			OperationID: operationID, Txid: req.Inputs[0].Txid, Vout: req.Inputs[0].Vout,
@@ -200,7 +201,7 @@ func (s *Service) prepareVaultBoard(ctx context.Context, req vaultBoardPrepareRe
 		handle, err := s.sealVaultBoardHandle(claims)
 		return vaultBoardPrepareResult{State: vaultBoardReady, Handle: handle, RegisterExpireAt: expireAt}, err
 	case vaultBoardReleaseRequired:
-		expireAt := now + int64(vaultBoardDeleteTTL/time.Second)
+		expireAt := nowUnix + int64(vaultBoardDeleteTTL/time.Second)
 		claims := vaultBoardHandleClaims{
 			Version: 1, Kind: string(vaultBoardReleaseRequired), VaultID: ctxState.vaultID,
 			OperationID: operationID, Txid: req.Inputs[0].Txid, Vout: req.Inputs[0].Vout,

@@ -145,7 +145,7 @@ func TestVaultBoardAttemptIsServerAllocatedAndRotatesOnlyAfterRelease(t *testing
 	}, vaultBoardTestChainState(ledger)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x42), vaultBoardTestChainState(ledger)); err == nil || !strings.Contains(err.Error(), "released") {
+	if _, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x42), vaultBoardTestChainState(ledger)); err == nil || !strings.Contains(err.Error(), "still active") {
 		t.Fatalf("rotated dispatched attempt: %v", err)
 	}
 	submitVaultBoardRegister(t, ledger, *first)
@@ -203,7 +203,7 @@ func TestVaultBoardUndispatchedRegisterRotatesAfterRestart(t *testing.T) {
 	}, vaultBoardTestChainState(restarted)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := restarted.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(restarted, 0x75), vaultBoardTestChainState(restarted)); err == nil || !strings.Contains(err.Error(), "released") {
+	if _, _, _, err := restarted.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(restarted, 0x75), vaultBoardTestChainState(restarted)); err == nil || !strings.Contains(err.Error(), "still active") {
 		t.Fatalf("post-dispatch restart rotated ambiguous attempt: %v", err)
 	}
 }
@@ -270,6 +270,64 @@ func TestVaultBoardDefiniteRegisterRejectionAllowsFreshAttempt(t *testing.T) {
 	_, second, created, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x6b), vaultBoardTestChainState(ledger))
 	if err != nil || !created || second.Attempt != first.Attempt+1 {
 		t.Fatalf("fresh attempt = %+v created=%v err=%v", second, created, err)
+	}
+}
+
+func TestVaultBoardExpiredSupersessionSerializesWithFinalAuthorization(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		finalFirst    bool
+		wantFinal     bool
+		wantSupersede bool
+	}{
+		{name: "final wins", finalFirst: true, wantFinal: true},
+		{name: "supersession wins", wantSupersede: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+			clock := now
+			ledger, err := OpenLedger(filepath.Join(t.TempDir(), "board.sqlite"), func() time.Time { return clock })
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ledger.Close() })
+			if err := ledger.SetIntegrityKey(testIntegrityKey()); err != nil {
+				t.Fatal(err)
+			}
+			createVaultBoardTestEnrollment(t, ledger, "vault-race", 0x79)
+			op := vaultBoardTestOperation(t, ledger, "vault-race", 0x7a)
+			firstRequest := vaultBoardRegisterRequest(ledger, 0x7b)
+			_, first, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, firstRequest, vaultBoardTestChainState(ledger))
+			if err != nil {
+				t.Fatal(err)
+			}
+			submitVaultBoardRegister(t, ledger, *first)
+			clock = time.Unix(first.ExpireAt, 0).UTC().Add(vaultBoardRegisterQuarantine)
+			final := VaultBoardAuthorization{
+				OperationID: first.OperationID, Attempt: first.Attempt, Phase: VaultBoardPhaseFinalize,
+				RequestDigest:  bytes.Repeat([]byte{0x7c}, sha256.Size),
+				CommitmentTxid: strings.Repeat("a", 64), ReceiverTxid: strings.Repeat("b", 64), ReceiverVout: 1,
+			}
+			finalize := func() error {
+				_, _, _, err := ledger.AppendVaultBoardAuthorizationAndDispatch(context.Background(), final, vaultBoardTestChainState(ledger))
+				return err
+			}
+			supersede := func() error {
+				_, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x7d), vaultBoardTestChainState(ledger))
+				return err
+			}
+			var finalErr, supersedeErr error
+			if test.finalFirst {
+				finalErr = finalize()
+				supersedeErr = supersede()
+			} else {
+				supersedeErr = supersede()
+				finalErr = finalize()
+			}
+			if (finalErr == nil) != test.wantFinal || (supersedeErr == nil) != test.wantSupersede {
+				t.Fatalf("final=%v supersede=%v", finalErr, supersedeErr)
+			}
+		})
 	}
 }
 

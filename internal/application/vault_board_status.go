@@ -1,6 +1,10 @@
 package application
 
-import "github.com/brg444/arkade-vault-server/internal/policy"
+import (
+	"time"
+
+	"github.com/brg444/arkade-vault-server/internal/policy"
+)
 
 type vaultBoardPrepareState string
 
@@ -17,7 +21,7 @@ type vaultBoardPreparation struct {
 	Reason  string
 }
 
-func classifyVaultBoardAttempt(snapshot *policy.VaultBoardAttemptSnapshot) vaultBoardPreparation {
+func classifyVaultBoardAttempt(snapshot *policy.VaultBoardAttemptSnapshot, now time.Time) vaultBoardPreparation {
 	if snapshot == nil {
 		return vaultBoardPreparation{State: vaultBoardReady}
 	}
@@ -39,25 +43,19 @@ func classifyVaultBoardAttempt(snapshot *policy.VaultBoardAttemptSnapshot) vault
 		out.Attempt++
 		return out
 	}
-	if snapshot.DeleteSubmission != nil {
+	if snapshot.DeleteSubmission != nil && snapshot.DeleteSubmission.Outcome == policy.VaultBoardAuthReleased {
 		out.State = vaultBoardReady
 		out.Attempt++
 		return out
 	}
-	if snapshot.DeleteDispatch != nil {
-		out.State = vaultBoardBlocked
-		out.Reason = "release outcome is ambiguous"
-		return out
-	}
-	if snapshot.DeleteAuthorization != nil {
-		out.State = vaultBoardReleaseRequired
-		return out
-	}
 	if snapshot.RegisterSubmission != nil || snapshot.RegisterDispatch != nil {
-		// Direct DeleteIntent is the only safe reconciliation: HTTP 200 proves
-		// release; no-match or a network failure stays blocked because the
-		// intent may already be selected into a batch.
-		out.State = vaultBoardReleaseRequired
+		if policy.VaultBoardRegisterCanSupersede(snapshot.Register.ExpireAt, now) {
+			out.State = vaultBoardReady
+			out.Attempt++
+			return out
+		}
+		out.State = vaultBoardBlocked
+		out.Reason = "existing registration is still active"
 		return out
 	}
 	// The previous register authorization never crossed the durable dispatch
