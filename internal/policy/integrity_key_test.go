@@ -9,7 +9,7 @@ import (
 )
 
 func TestIntegrityKeyIsStartupImmutable(t *testing.T) {
-	led, err := OpenMainnetLedger(filepath.Join(t.TempDir(), "integrity.sqlite"), nil)
+	led, err := OpenLedger(filepath.Join(t.TempDir(), "integrity.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

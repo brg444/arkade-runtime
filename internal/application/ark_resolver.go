@@ -305,6 +305,31 @@ func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]po
 	return resolved, nil
 }
 
+// exactVtxo resolves one VTXO by its canonical outpoint, including records
+// that are no longer spendable. vault-board-v1 uses this only to reconcile an
+// already-authorized final submission after response loss; it is not a coin
+// selection surface.
+func (r *arkResolver) exactVtxo(ctx context.Context, txid string, vout uint32, pkScript []byte) (*ports.ResolvedVtxo, error) {
+	if requireTxid(txid) != nil || len(pkScript) == 0 {
+		return nil, fmt.Errorf("exact VTXO identity required")
+	}
+	listed, err := r.listVtxosByOutpoint(ctx, []string{txid + ":" + strconv.FormatUint(uint64(vout), 10)})
+	if err != nil {
+		return nil, err
+	}
+	if len(listed) == 0 {
+		return nil, nil
+	}
+	if len(listed) != 1 || listed[0].Outpoint.Vout == nil || listed[0].Outpoint.Txid != txid || *listed[0].Outpoint.Vout != vout {
+		return nil, fmt.Errorf("exact VTXO query returned conflicting records")
+	}
+	resolved, err := parseResolvedVtxo(listed[0], pkScript)
+	if err != nil {
+		return nil, err
+	}
+	return &resolved, nil
+}
+
 func (r *arkResolver) listSpendableVtxos(ctx context.Context, pkScript []byte) ([]indexerVtxo, error) {
 	if r == nil || r.hc == nil || r.origin == "" {
 		return nil, fmt.Errorf("ark indexer not configured")
@@ -394,6 +419,7 @@ type arkIndexerInfo struct {
 	UnilateralExitDelay string `json:"unilateralExitDelay"`
 	BoardingExitDelay   string `json:"boardingExitDelay"`
 	Dust                string `json:"dust"`
+	Digest              string `json:"digest"`
 	Fees                *struct {
 		IntentFee *struct {
 			OffchainInput  *string `json:"offchainInput"`

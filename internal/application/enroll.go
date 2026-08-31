@@ -135,11 +135,7 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	if req.VaultID != "" && req.VaultID != pending.VaultID {
 		return nil, fmt.Errorf("vault id does not match pending enrollment")
 	}
-	return s.previewTenantDescriptor(pending.VaultID, req.RegisterRequest)
-}
-
-func (s *Service) previewTenantDescriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
-	return s.previewSavingsDescriptor(vaultID, req)
+	return s.previewVaultBoardEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
 }
 
 // FinishEnrollment verifies the create ceremony and CAS-consumes the invite.
@@ -255,7 +251,11 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	if err != nil {
 		return nil, false
 	}
-	preview, err := s.previewTenantDescriptor(vaultID, req)
+	parsed, err = s.applyVaultBoardEnrollmentRequest(parsed, req)
+	if err != nil {
+		return nil, false
+	}
+	preview, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil || req.DescriptorHash == "" || req.DescriptorHash != preview.DescriptorHash {
 		return nil, false
 	}
@@ -274,6 +274,18 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	}
 	if policy.VaultRecordsCanonicallyEqual(*rec, wantRecord) != nil ||
 		policy.VaultCredentialsCanonicallyEqual(*cred, wantCredential) != nil {
+		return nil, false
+	}
+	if s.VaultBoardStore == nil {
+		return nil, false
+	}
+	storedBoard, loadErr := s.VaultBoardStore.GetVaultBoardEnrollment(vaultID)
+	wantBoard, _, buildErr := s.mintVaultBoardEnrollment(vaultID, parsed)
+	if loadErr != nil || buildErr != nil || storedBoard == nil || wantBoard == nil ||
+		storedBoard.Program != wantBoard.Program || !bytesEqualConst(storedBoard.BoardingPub, wantBoard.BoardingPub) ||
+		!bytesEqualConst(storedBoard.CosignerPub, wantBoard.CosignerPub) || !bytesEqualConst(storedBoard.OperatorPub, wantBoard.OperatorPub) ||
+		storedBoard.ExitDelay != wantBoard.ExitDelay || storedBoard.ExitDelayUnit != wantBoard.ExitDelayUnit ||
+		!bytesEqualConst(storedBoard.PkScript, wantBoard.PkScript) || storedBoard.Address != wantBoard.Address {
 		return nil, false
 	}
 	st, err := s.statusFor(context.Background(), vaultID)

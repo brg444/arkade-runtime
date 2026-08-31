@@ -18,7 +18,11 @@
     "/v1/vtxo/authorize": ["OPTIONS", "POST"],
     "/v1/vtxo/checkpoints/authorize": ["OPTIONS", "POST"],
     "/v1/vtxo/finalize": ["OPTIONS", "POST"],
-    "/v1/vtxo/operation": ["GET", "OPTIONS"]
+    "/v1/vtxo/operation": ["GET", "OPTIONS"],
+    "/v1/vtxo/board/prepare": ["OPTIONS", "POST"],
+    "/v1/vtxo/board/register": ["OPTIONS", "POST"],
+    "/v1/vtxo/board/release": ["OPTIONS", "POST"],
+    "/v1/vtxo/board/final": ["OPTIONS", "POST"]
   },
   "shapes": {
     "ReadyStatus": [
@@ -56,6 +60,7 @@
       "handle:string", "userHandle:string", "clientDataJSON:string", "authenticatorData:string",
       "attestationObject:string,omitempty", "credentialId:string", "webauthnP256:string",
       "phoneDirectP256:string", "phoneBip340Pub:string",
+      "vtxoBoardingProgram:string", "vaultBoardingBip340Pub:string",
       "externalOwnerWalletXOnly:string,omitempty", "recoveryXOnly:string,omitempty",
       "recoveryKeyXOnly:string,omitempty", "vaultId:string,omitempty", "descriptorHash:string,omitempty"
     ],

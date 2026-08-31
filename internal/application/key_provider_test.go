@@ -53,6 +53,18 @@ func TestScopedKeyCapabilitiesPreserveExistingDerivations(t *testing.T) {
 	}
 }
 
+func TestVaultBoardCapabilityIsAlwaysAvailable(t *testing.T) {
+	master, _ := btcec.NewPrivateKey()
+	emulator, _ := btcec.NewPrivateKey()
+	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if isNilInterface(keys.vaultBoard) {
+		t.Fatal("runtime lacks mandatory vault-board-v1 authorization")
+	}
+}
+
 func TestKeyCapabilitySurfaceIsSealedAndSemantic(t *testing.T) {
 	typ := reflect.TypeOf(KeyCapabilities{})
 	for i := 0; i < typ.NumField(); i++ {

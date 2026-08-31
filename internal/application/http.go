@@ -187,6 +187,10 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/operation":             {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/prepare":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/register":        {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/release":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/final":           {http.MethodPost: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -220,6 +224,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
+	attachVaultBoardRoutes(mux, svc, origin)
 }
 
 type mutationError struct {

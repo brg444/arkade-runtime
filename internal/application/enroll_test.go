@@ -16,6 +16,7 @@ import (
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -39,7 +40,15 @@ func proposedDescriptor(t *testing.T, svc *Service, vaultID string, req Register
 	if req.RecoveryXOnly == "" && req.RecoveryKeyXOnly != "" {
 		req.RecoveryXOnly = req.RecoveryKeyXOnly
 	}
-	preview, err := svc.previewTenantDescriptor(vaultID, req)
+	if req.VtxoBoardingProgram == "" {
+		boarding, err := btcec.NewPrivateKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.VtxoBoardingProgram = program.VaultBoardV1
+		req.VaultBoardingBIP340Pub = hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey()))
+	}
+	preview, err := svc.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +57,7 @@ func proposedDescriptor(t *testing.T, svc *Service, vaultID string, req Register
 }
 
 func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
-	led, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "enroll.sqlite"), nil)
+	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "enroll.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +79,8 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 		Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		},
+		VaultBoardStore: led,
+		ArkResolver:     stubArkResolver{signer: arkade.PubKey().SerializeCompressed()},
 	}
 	raw := bytes.Repeat([]byte{0x3c}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -214,6 +225,7 @@ func TestCurrentSavingsDescriptorRebuildsExactlyAfterRestart(t *testing.T) {
 		ArkadeCosignerOrigin:  svc.ArkadeCosignerOrigin,
 		ArkadeCosignerVersion: svc.ArkadeCosignerVersion,
 		ArkResolver:           svc.ArkResolver,
+		VaultBoardStore:       svc.VaultBoardStore,
 	})
 	if err := restarted.LoadVaults(); err != nil {
 		t.Fatal(err)
@@ -279,7 +291,7 @@ func TestProposeBindsDescriptorIntoEnrollment(t *testing.T) {
 }
 
 func TestFinishDoesNotInheritProcessOwnerPubs(t *testing.T) {
-	led, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "inherit.sqlite"), nil)
+	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "inherit.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +436,8 @@ func TestProposeMintsSavingsDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc, ok := proposed.Descriptor.(savings.PublicDescriptor)
+	composite, ok := proposed.Descriptor.(vaultBoardCompositeDescriptor)
+	desc := composite.Savings
 	if !ok || desc.Schema != savings.Schema || desc.TemplateVersion != savings.Template {
 		t.Fatalf("propose did not mint Savings: %+v", proposed.Descriptor)
 	}
@@ -450,6 +463,75 @@ func TestProposeMintsSavingsDescriptor(t *testing.T) {
 	}
 }
 
+func TestVaultBoardProposeHashFinishesExactCompositeEnrollment(t *testing.T) {
+	ledger, err := policy.OpenLedger(filepath.Join(t.TempDir(), "board-enroll.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	svc := enrollService(t, ledger)
+	v2Master, _ := btcec.NewPrivateKey()
+	v2Emulator, _ := btcec.NewPrivateKey()
+	svc.VaultCosignerPub = v2Master.PubKey()
+	svc.keys, err = NewFileBackedKeyCapabilities(v2Master, LocalSigner{Priv: v2Emulator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.VaultBoardStore = ledger
+	svc.ArkResolver = stubArkResolver{signer: svc.ArkadeCosignerPub.SerializeCompressed()}
+	raw := bytes.Repeat([]byte{0x7c}, 32)
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	hash, _ := HashEnrollmentToken(token)
+	now := time.Now().UTC()
+	if err := ledger.PutInvite(hash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	start, err := svc.StartEnrollment(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pass, _ := webauthn.NewP256()
+	direct, _ := webauthn.NewP256()
+	hot, _ := btcec.NewPrivateKey()
+	owner, _ := btcec.NewPrivateKey()
+	boarding, _ := btcec.NewPrivateKey()
+	base := attestedFinish(t, svc, start, pass, []byte("cred-board"), RegisterRequest{
+		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
+	})
+	request := base
+	request.VtxoBoardingProgram = program.VaultBoardV1
+	request.VaultBoardingBIP340Pub = hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey()))
+	colliding := request
+	colliding.VaultBoardingBIP340Pub = hex.EncodeToString(schnorr.SerializePubKey(hot.PubKey()))
+	if _, err := svc.ProposeEnrollment(token, colliding); err == nil {
+		t.Fatal("enrollment accepted one key for boarding and phone recovery")
+	}
+	proposed, err := svc.ProposeEnrollment(token, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := proposed.Descriptor.(vaultBoardCompositeDescriptor); !ok {
+		t.Fatalf("boarding descriptor = %T", proposed.Descriptor)
+	}
+	request.DescriptorHash = proposed.DescriptorHash
+	status, err := svc.FinishEnrollment(context.Background(), token, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.VtxoBoardingProgram != program.VaultBoardV1 || !status.VtxoBoardingActive || status.VtxoBoardingAddress == "" {
+		t.Fatalf("boarding finish status = %+v", status)
+	}
+	stored, err := ledger.GetVaultBoardEnrollment(start.VaultID)
+	if err != nil || stored == nil || stored.Program != program.VaultBoardV1 {
+		t.Fatalf("stored boarding enrollment = %+v, %v", stored, err)
+	}
+	if _, err := svc.FinishEnrollment(context.Background(), token, request); err != nil {
+		t.Fatalf("exact finish replay failed: %v", err)
+	}
+}
+
 func TestProposeMintsSavingsWithoutRecovery(t *testing.T) {
 	svc, token, start := enrollReady(t)
 	pass, _ := webauthn.NewP256()
@@ -465,7 +547,8 @@ func TestProposeMintsSavingsWithoutRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desc, ok := proposed.Descriptor.(savings.PublicDescriptor)
+	composite, ok := proposed.Descriptor.(vaultBoardCompositeDescriptor)
+	desc := composite.Savings
 	if !ok || desc.Schema != savings.Schema || desc.TemplateVersion != savings.Template {
 		t.Fatalf("skip-recovery propose did not mint Savings: %+v", proposed.Descriptor)
 	}
@@ -631,7 +714,7 @@ func TestConcurrentFinishAndStatusDoNotRaceSharedKeyFields(t *testing.T) {
 
 func enrollReady(t *testing.T) (*Service, string, *EnrollStartResponse) {
 	t.Helper()
-	led, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "ready.sqlite"), nil)
+	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "ready.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,6 +752,8 @@ func enrollService(t *testing.T, led *policy.Ledger) *Service {
 		Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		},
+		VaultBoardStore: led,
+		ArkResolver:     stubArkResolver{signer: arkade.PubKey().SerializeCompressed()},
 	}
 }
 

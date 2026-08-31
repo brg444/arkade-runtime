@@ -94,20 +94,22 @@ the exact release-pinned Operator signer and checkpoint unroll closure. Remote
 GetInfo data cannot change the checkpoint key, closure type, or CSV delay that
 the VaultCosigner will authorize.
 
-## Boarding trust assumption
+## Boarding programs
 
-The current boarding intermediate is a phone-plus-Operator contract. The
-VaultCosigner and rolling allowance begin governing the value only after the
-Operator settles it into `vault-policy-v1`. A compromised phone and Operator
-can therefore collude during that interval. This is an explicit property of the
-standard SDK boarding path and must remain visible in the release threat model.
+`vault-board-v1` is the only boarding program. It requires a worker-owned board
+key, a distinct VaultBoardCosigner, and the pinned Arkade Operator for
+cooperative boarding. The service verifies the exact fixed Spending recipient,
+fees, registration proof, Batch Output expiry, commitment tree, and final
+artifacts. It submits only through the stock public Operator routes and never
+returns its signature. The phone-only 604672-second recovery leaf remains
+available after the cooperative window closes.
 
-Boarding also has an external availability gate. The stock SDK may record a
-settlement intent as cancelled after its best-effort delete was not
-acknowledged. The current deployed Operator does not match that deletion by a
-boarding input, so a later retry can collide with the retained intent. Mainnet
-boarding requires qualification of the deployed cancellation path for boarding
-inputs. The Vault service exposes no substitute intent lifecycle.
+The lifecycle records authorization, dispatch, and known Operator outcomes.
+An unacknowledged submission remains ambiguous, while a retained intent must be
+released before another registration attempt. Live response-loss, reload,
+worker wake, retained-intent, and CSV-cutoff qualification remain mainnet gates.
+Mainnet also requires a reviewed per-device board-key registration and
+revocation policy. The Mutinynet key model is not a mainnet release pin.
 
 ## Ordinary Spending qualification
 

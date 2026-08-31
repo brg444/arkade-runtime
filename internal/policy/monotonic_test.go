@@ -34,7 +34,7 @@ func TestMissingSequenceCannotRebaselineNonEmptyLedger(t *testing.T) {
 	dbPath := filepath.Join(dir, "ledger.sqlite")
 	sequencePath := filepath.Join(dir, "policy-sequence")
 	key := testIntegrityKey()
-	ledger, err := OpenMainnetLedger(dbPath, nil)
+	ledger, err := OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestMissingSequenceCannotRebaselineNonEmptyLedger(t *testing.T) {
 	if err := os.Remove(sequencePath); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := OpenMainnetLedger(dbPath, nil)
+	reopened, err := OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestMissingSequenceCannotRebaselineNonEmptyLedger(t *testing.T) {
 
 func TestFirstVtxoReservationWithMonotonicSequenceDoesNotDeadlock(t *testing.T) {
 	dir := t.TempDir()
-	led, err := OpenMainnetLedger(filepath.Join(dir, "ledger.sqlite"), nil)
+	led, err := OpenLedger(filepath.Join(dir, "ledger.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestVtxoReservationDetectsDatabaseRollback(t *testing.T) {
 	dbPath := filepath.Join(dir, "ledger.sqlite")
 	sequencePath := filepath.Join(dir, "policy-sequence")
 	key := testIntegrityKey()
-	ledger, err := OpenMainnetLedger(dbPath, nil)
+	ledger, err := OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestVtxoReservationDetectsDatabaseRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ledger, err = OpenMainnetLedger(dbPath, nil)
+	ledger, err = OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestVtxoReservationDetectsDatabaseRollback(t *testing.T) {
 	if err := os.WriteFile(dbPath, preReservation, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := OpenMainnetLedger(dbPath, nil)
+	restored, err := OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestVtxoReservationDetectsDatabaseRollback(t *testing.T) {
 
 func TestVtxoReservationRollsBackWhenSequenceCannotAdvance(t *testing.T) {
 	dir := t.TempDir()
-	ledger, err := OpenMainnetLedger(filepath.Join(dir, "ledger.sqlite"), nil)
+	ledger, err := OpenLedger(filepath.Join(dir, "ledger.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
