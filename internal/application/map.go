@@ -18,7 +18,7 @@ type MapWriteRequest struct {
 }
 
 func (s *Service) GetMap(vaultID string) (json.RawMessage, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	rec, err := s.Ledger.GetVaultMap(vaultID)
@@ -36,7 +36,7 @@ func (s *Service) PutMap(ctx context.Context, req MapWriteRequest) error {
 	if vaultID == "" {
 		return fmt.Errorf("vault id required")
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return err
 	}
 	if _, err := s.authenticatePasskeySession(ctx, passkeyPurposeMapWrite, vaultID, req.SessionAssertionRequest); err != nil {

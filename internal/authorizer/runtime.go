@@ -85,7 +85,7 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 		return nil, fmt.Errorf("required Arkade resolver: %w", err)
 	}
 	rt.service.ArkResolver = resolver
-	if ready := rt.service.Ready(); !ready.Ok {
+	if ready := rt.service.Ready(ctx); !ready.Ok {
 		_ = rt.Close()
 		return nil, fmt.Errorf("authorizer readiness: %s", ready.Error)
 	}

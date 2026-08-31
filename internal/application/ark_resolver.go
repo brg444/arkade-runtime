@@ -18,6 +18,7 @@ import (
 	"github.com/arkade-os/arkd/pkg/ark-lib/arkfee"
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
 )
 
@@ -25,6 +26,11 @@ const (
 	arkResolverTimeout    = 15 * time.Second
 	arkResolverInfoLimit  = 16 * 1024
 	arkResolverVtxosLimit = 512 * 1024
+	// Stock arkd serves at most 100 VTXOs per page. The 32-page ceiling bounds
+	// one spendable lookup to 3,200 coins and fails instead of understating a
+	// balance when a pathological vault exceeds it.
+	arkResolverVtxoPageSize = 100
+	arkResolverVtxoMaxPages = 32
 )
 
 type arkResolver struct {
@@ -174,16 +180,33 @@ func (r *arkResolver) IntentFeePolicy(ctx context.Context) (ports.IntentFeePolic
 	return validatedIntentFeePolicy(info)
 }
 
-func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
+func (r *arkResolver) SubmittedVtxoState(ctx context.Context, pkScript []byte, reserved []ports.ResolvedVtxo, arkTxid string, changeVout *uint32, changeValueSats uint64) (ports.SubmittedVtxoState, error) {
 	if len(reserved) == 0 {
-		return fmt.Errorf("reserved outpoints required")
+		return ports.SubmittedVtxoPending, fmt.Errorf("reserved outpoints required")
 	}
-	if err := requireTxid(strings.ToLower(strings.TrimSpace(arkTxid))); err != nil {
-		return fmt.Errorf("arkTxid")
+	if len(reserved) > policy.MaxVtxoOperationInputs {
+		return ports.SubmittedVtxoPending, fmt.Errorf("too many reserved outpoints")
 	}
-	listed, err := r.listVtxos(ctx, pkScript, false)
+	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
+	if err := requireTxid(wantTx); err != nil {
+		return ports.SubmittedVtxoPending, fmt.Errorf("arkTxid")
+	}
+	if (changeVout == nil) != (changeValueSats == 0) {
+		return ports.SubmittedVtxoPending, fmt.Errorf("change projection")
+	}
+	outpoints := make([]string, 0, len(reserved)+1)
+	for _, want := range reserved {
+		if err := requireTxid(want.Txid); err != nil {
+			return ports.SubmittedVtxoPending, fmt.Errorf("reserved outpoint txid")
+		}
+		outpoints = append(outpoints, want.Txid+":"+strconv.FormatUint(uint64(want.Vout), 10))
+	}
+	if changeVout != nil {
+		outpoints = append(outpoints, wantTx+":"+strconv.FormatUint(uint64(*changeVout), 10))
+	}
+	listed, err := r.listVtxosByOutpoint(ctx, outpoints)
 	if err != nil {
-		return err
+		return ports.SubmittedVtxoPending, err
 	}
 	byOut := make(map[string]indexerVtxo, len(listed))
 	for _, vtxo := range listed {
@@ -195,60 +218,52 @@ func (r *arkResolver) ReservedSpentByArkTxid(ctx context.Context, pkScript []byt
 		}
 		byOut[vtxo.Outpoint.Txid+":"+strconv.FormatUint(uint64(*vtxo.Outpoint.Vout), 10)] = vtxo
 	}
-	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
+	pending := false
 	for _, want := range reserved {
 		got, ok := byOut[want.Txid+":"+strconv.FormatUint(uint64(want.Vout), 10)]
 		if !ok {
-			return fmt.Errorf("reserved outpoint missing from indexer")
+			pending = true
+			continue
 		}
 		if !got.IsSpent {
-			return fmt.Errorf("reserved outpoints not spent")
+			pending = true
+			continue
 		}
 		// arkd records the checkpoint transaction ID in spentBy and the
 		// offchain transaction ID in arkTxid. Finalization is bound to the
 		// latter; comparing spentBy to an Arkade transaction ID rejects every
 		// otherwise valid collaborative spend.
 		if strings.ToLower(strings.TrimSpace(got.ArkTxid)) != wantTx {
-			return fmt.Errorf("reserved outpoint not spent by ark txid")
+			return ports.SubmittedVtxoConflict, nil
 		}
 	}
-	return nil
-}
-
-func (r *arkResolver) ChangeVtxoFromArkTx(ctx context.Context, changeScript []byte, arkTxid string, vout uint32, valueSats uint64) error {
-	if err := requireTxid(strings.ToLower(strings.TrimSpace(arkTxid))); err != nil {
-		return fmt.Errorf("arkTxid")
+	if pending {
+		return ports.SubmittedVtxoPending, nil
 	}
-	listed, err := r.listVtxos(ctx, changeScript, false)
+	if changeVout == nil {
+		return ports.SubmittedVtxoFinalized, nil
+	}
+	change, ok := byOut[wantTx+":"+strconv.FormatUint(uint64(*changeVout), 10)]
+	if !ok {
+		return ports.SubmittedVtxoPending, nil
+	}
+	item, err := parseResolvedVtxo(change, pkScript)
 	if err != nil {
-		return err
+		return ports.SubmittedVtxoPending, err
 	}
-	wantTx := strings.ToLower(strings.TrimSpace(arkTxid))
-	for _, vtxo := range listed {
-		if vtxo.Outpoint.Vout == nil {
-			continue
-		}
-		if strings.ToLower(strings.TrimSpace(vtxo.Outpoint.Txid)) != wantTx || *vtxo.Outpoint.Vout != vout {
-			continue
-		}
-		item, err := parseResolvedVtxo(vtxo, changeScript)
-		if err != nil {
-			return err
-		}
-		if item.ValueSats != valueSats {
-			return fmt.Errorf("change vtxo amount")
-		}
-		return nil
+	if item.ValueSats != changeValueSats {
+		return ports.SubmittedVtxoPending, fmt.Errorf("change vtxo amount")
 	}
-	return fmt.Errorf("change vtxo not yet projected")
+	return ports.SubmittedVtxoFinalized, nil
 }
 
 func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]ports.ResolvedVtxo, error) {
-	listed, err := r.listVtxos(ctx, pkScript, true)
+	listed, err := r.listSpendableVtxos(ctx, pkScript)
 	if err != nil {
 		return nil, err
 	}
 	resolved := make([]ports.ResolvedVtxo, 0, len(listed))
+	seen := make(map[string]struct{}, len(listed))
 	for i, vtxo := range listed {
 		if vtxo.IsSpent {
 			continue
@@ -257,12 +272,17 @@ func (r *arkResolver) SpendableVtxos(ctx context.Context, pkScript []byte) ([]po
 		if err != nil {
 			return nil, fmt.Errorf("ark indexer vtxo %d: %w", i, err)
 		}
+		key := item.Txid + ":" + strconv.FormatUint(uint64(item.Vout), 10)
+		if _, ok := seen[key]; ok {
+			return nil, fmt.Errorf("ark indexer returned duplicate vtxo")
+		}
+		seen[key] = struct{}{}
 		resolved = append(resolved, item)
 	}
 	return resolved, nil
 }
 
-func (r *arkResolver) listVtxos(ctx context.Context, pkScript []byte, spendableOnly bool) ([]indexerVtxo, error) {
+func (r *arkResolver) listSpendableVtxos(ctx context.Context, pkScript []byte) ([]indexerVtxo, error) {
 	if r == nil || r.hc == nil || r.origin == "" {
 		return nil, fmt.Errorf("ark indexer not configured")
 	}
@@ -271,16 +291,76 @@ func (r *arkResolver) listVtxos(ctx context.Context, pkScript []byte, spendableO
 	}
 	query := url.Values{}
 	query.Set("scripts", hex.EncodeToString(pkScript))
-	if spendableOnly {
-		query.Set("spendableOnly", "true")
+	query.Set("spendableOnly", "true")
+	return r.listVtxoPages(ctx, query, arkResolverVtxoMaxPages)
+}
+
+func (r *arkResolver) listVtxosByOutpoint(ctx context.Context, outpoints []string) ([]indexerVtxo, error) {
+	if r == nil || r.hc == nil || r.origin == "" {
+		return nil, fmt.Errorf("ark indexer not configured")
 	}
-	var out struct {
-		Vtxos []indexerVtxo `json:"vtxos"`
+	if len(outpoints) == 0 || len(outpoints) > policy.MaxVtxoOperationInputs+1 {
+		return nil, fmt.Errorf("outpoint filter count")
 	}
-	if err := r.getJSON(ctx, "/v1/indexer/vtxos?"+query.Encode(), &out, arkResolverVtxosLimit); err != nil {
-		return nil, err
+	query := url.Values{}
+	for _, outpoint := range outpoints {
+		query.Add("outpoints", outpoint)
 	}
-	return out.Vtxos, nil
+	return r.listVtxoPages(ctx, query, 1)
+}
+
+func (r *arkResolver) listVtxoPages(ctx context.Context, query url.Values, maxPages int32) ([]indexerVtxo, error) {
+	if maxPages <= 0 {
+		return nil, fmt.Errorf("vtxo page limit")
+	}
+	var (
+		all       []indexerVtxo
+		pageIndex = int32(1)
+		pageTotal int32
+	)
+	for requestCount := int32(0); requestCount < maxPages; requestCount++ {
+		query.Set("page.size", strconv.Itoa(arkResolverVtxoPageSize))
+		query.Set("page.index", strconv.FormatInt(int64(pageIndex), 10))
+		var out indexerVtxoPage
+		if err := r.getJSON(ctx, "/v1/indexer/vtxos?"+query.Encode(), &out, arkResolverVtxosLimit); err != nil {
+			return nil, err
+		}
+		if out.Page == nil || out.Page.Current != pageIndex || out.Page.Total < 0 || len(out.Vtxos) > arkResolverVtxoPageSize {
+			return nil, fmt.Errorf("invalid ark indexer vtxo page")
+		}
+		if requestCount == 0 {
+			pageTotal = out.Page.Total
+			if pageTotal > maxPages {
+				return nil, fmt.Errorf("ark indexer vtxo page limit exceeded")
+			}
+		} else if out.Page.Total != pageTotal {
+			return nil, fmt.Errorf("ark indexer vtxo page total changed")
+		}
+		if pageTotal == 0 {
+			if pageIndex != 1 || out.Page.Next != 0 || len(out.Vtxos) != 0 {
+				return nil, fmt.Errorf("invalid empty ark indexer vtxo page")
+			}
+			return all, nil
+		}
+		if pageIndex > pageTotal {
+			return nil, fmt.Errorf("invalid ark indexer vtxo page range")
+		}
+		if len(out.Vtxos) == 0 || (pageIndex < pageTotal && len(out.Vtxos) != arkResolverVtxoPageSize) {
+			return nil, fmt.Errorf("incomplete ark indexer vtxo page")
+		}
+		all = append(all, out.Vtxos...)
+		if pageIndex == pageTotal {
+			if out.Page.Next != pageIndex {
+				return nil, fmt.Errorf("invalid terminal ark indexer vtxo page")
+			}
+			return all, nil
+		}
+		if out.Page.Next != pageIndex+1 || out.Page.Next > pageTotal {
+			return nil, fmt.Errorf("invalid next ark indexer vtxo page")
+		}
+		pageIndex = out.Page.Next
+	}
+	return nil, fmt.Errorf("ark indexer vtxo page limit exceeded")
 }
 
 type arkIndexerInfo struct {
@@ -313,6 +393,17 @@ type indexerVtxo struct {
 	IsSpent         bool            `json:"isSpent"`
 	SpentBy         string          `json:"spentBy"`
 	ArkTxid         string          `json:"arkTxid"`
+}
+
+type indexerPage struct {
+	Current int32 `json:"current"`
+	Next    int32 `json:"next"`
+	Total   int32 `json:"total"`
+}
+
+type indexerVtxoPage struct {
+	Vtxos []indexerVtxo `json:"vtxos"`
+	Page  *indexerPage  `json:"page"`
 }
 
 func validatedIntentFeePolicy(info arkIndexerInfo) (ports.IntentFeePolicy, error) {

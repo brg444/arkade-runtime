@@ -38,8 +38,8 @@ const (
 	ReplayResign ReplayAction = "resign"
 )
 
-// ErrRecoveryBusy is a second worker hitting a pending unsigned session
-// for the same outpoint. The first worker still owns the cosign.
+// ErrRecoveryBusy rejects a pending retry whose exact transition sighash does
+// not match the write-ahead session. An identical retry may safely re-sign.
 var ErrRecoveryBusy = errors.New("recovery session already in progress")
 
 func requireSessionPurpose(purpose string) error {
@@ -124,8 +124,11 @@ func DecideReplay(existing *RecoverySession, next RecoverySession) (ReplayAction
 	if existing.InputTxid != next.InputTxid || existing.InputVout != next.InputVout {
 		return "", fmt.Errorf("overlapping input set for this outpoint")
 	}
-	if len(existing.Signature) == 0 && len(next.Signature) == 0 {
-		return "", ErrRecoveryBusy
+	if len(existing.Signature) == 0 {
+		if existing.LastSighash == "" || next.LastSighash == "" || existing.LastSighash != next.LastSighash {
+			return "", ErrRecoveryBusy
+		}
+		return ReplayResign, nil
 	}
 	if next.LastSighash != "" && existing.LastSighash == next.LastSighash && len(existing.Signature) > 0 {
 		return ReplayReplay, nil

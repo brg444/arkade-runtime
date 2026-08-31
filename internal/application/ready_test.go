@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -16,6 +17,7 @@ type readyArkResolver struct {
 	network    string
 	checkpoint []byte
 	signer     []byte
+	feeErr     error
 }
 
 func (r readyArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.ResolvedVtxo, error) {
@@ -23,15 +25,11 @@ func (r readyArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.Resol
 }
 
 func (r readyArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy, error) {
-	return ports.IntentFeePolicy{}, nil
+	return ports.IntentFeePolicy{}, r.feeErr
 }
 
-func (r readyArkResolver) ReservedSpentByArkTxid(context.Context, []byte, []ports.ResolvedVtxo, string) error {
-	return nil
-}
-
-func (r readyArkResolver) ChangeVtxoFromArkTx(context.Context, []byte, string, uint32, uint64) error {
-	return nil
+func (r readyArkResolver) SubmittedVtxoState(context.Context, []byte, []ports.ResolvedVtxo, string, *uint32, uint64) (ports.SubmittedVtxoState, error) {
+	return ports.SubmittedVtxoFinalized, nil
 }
 
 func (r readyArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), r.checkpoint...) }
@@ -69,21 +67,28 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		ArkadeCosignerOrigin:  deployment.MutinynetArkadeCosignerOrigin,
 		ArkadeCosignerVersion: deployment.MutinynetArkadeCosignerVersion,
 	})
-	if got := svc.Ready(); got.Ok || got.Error != "Arkade resolver unavailable" {
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
 		t.Fatalf("missing resolver readiness = %+v", got)
 	}
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
 	}
-	if got := svc.Ready(); !got.Ok || got.Error != "" {
+	if got := svc.Ready(context.Background()); !got.Ok || got.Error != "" {
 		t.Fatalf("pinned resolver readiness = %+v", got)
+	}
+	svc.ArkResolver = readyArkResolver{
+		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
+		feeErr: errors.New("indexer unavailable"),
+	}
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
+		t.Fatalf("unreachable resolver readiness = %+v", got)
 	}
 	attackerCheckpoint := append([]byte(nil), checkpoint...)
 	attackerCheckpoint[len(attackerCheckpoint)-1] ^= 1
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: attackerCheckpoint, signer: signer,
 	}
-	if got := svc.Ready(); got.Ok || got.Error != "Arkade resolver policy mismatch" {
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver policy mismatch" {
 		t.Fatalf("mutated resolver readiness = %+v", got)
 	}
 }

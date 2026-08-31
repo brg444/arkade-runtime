@@ -35,6 +35,18 @@ type IntentFeePolicy struct {
 	OnchainOutput  string
 }
 
+// SubmittedVtxoState is the pinned indexer's view of one submitted Arkade
+// transaction. Pending means the Operator has not projected every expected
+// effect yet; Conflict means a reserved input was spent by another Arkade
+// transaction.
+type SubmittedVtxoState uint8
+
+const (
+	SubmittedVtxoPending SubmittedVtxoState = iota
+	SubmittedVtxoFinalized
+	SubmittedVtxoConflict
+)
+
 // ArkResolver is the application-owned indexer surface. Policy consumes
 // resolved amounts and never sees HTTP.
 type ArkResolver interface {
@@ -44,15 +56,10 @@ type ArkResolver interface {
 	// IntentFeePolicy returns a freshly validated GetInfo fee policy. Callers
 	// compare its digest to the reservation before adding a signature.
 	IntentFeePolicy(ctx context.Context) (IntentFeePolicy, error)
-	// ReservedSpentByArkTxid requires every reserved outpoint to be spent by
-	// the persisted ark txid (confirmed or virtual mempool). Disappearance
-	// alone is not enough. arkd writes this at Operator accept, before
-	// finalizeTx projects the new VTXOs.
-	ReservedSpentByArkTxid(ctx context.Context, pkScript []byte, reserved []ResolvedVtxo, arkTxid string) error
-	// ChangeVtxoFromArkTx requires the mandatory change output of the Arkade
-	// transaction to exist as an unspent vault-policy-v1 VTXO. That appears
-	// only after Operator finalizeTx, not after accept.
-	ChangeVtxoFromArkTx(ctx context.Context, changeScript []byte, arkTxid string, vout uint32, valueSats uint64) error
+	// SubmittedVtxoState checks reserved inputs and optional mandatory change
+	// in one indexer snapshot. arkd records input arkTxid at Operator accept;
+	// the change VTXO appears only after finalizeTx projects new VTXOs.
+	SubmittedVtxoState(ctx context.Context, pkScript []byte, reserved []ResolvedVtxo, arkTxid string, changeVout *uint32, changeValueSats uint64) (SubmittedVtxoState, error)
 	// CheckpointTapscript is the release-pinned Operator unroll script.
 	CheckpointTapscript() []byte
 	// OperatorSignerPub is the release-pinned compressed Operator signer.

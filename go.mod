@@ -2,13 +2,11 @@ module github.com/brg444/arkade-vault-server
 
 go 1.26.6
 
-replace github.com/btcsuite/btcd/btcec/v2 => github.com/btcsuite/btcd/btcec/v2 v2.3.3
-
 // Script engine only. Do not vendor the emulator monorepo.
 replace github.com/arkade-os/emulator/pkg/arkade => github.com/brg444/arkade-2fa-vault-poc/pkg/arkade v0.0.0-20260818081800-1b511fd273c7
 
 require (
-	github.com/arkade-os/arkd/pkg/ark-lib v0.8.1-0.20260423153230-9b5d8e96256f
+	github.com/arkade-os/arkd/pkg/ark-lib v0.8.1-0.20260802233125-8b34e3528595
 	github.com/arkade-os/emulator/pkg/arkade v0.0.0-00010101000000-000000000000
 	github.com/btcsuite/btcd v0.24.3-0.20240921052913-67b8efd3ba53
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5
@@ -39,9 +37,9 @@ require (
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
-	google.golang.org/grpc v1.79.3 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/gc/v3 v3.1.4 // indirect
 	modernc.org/libc v1.74.4 // indirect

@@ -2,8 +2,8 @@
 
 > [!WARNING]
 > This release candidate runs only on Mutinynet. Real-fund custody is out of
-> scope. Mainnet requires the private mainnet Emulator
-> endpoint, reviewed release pins, and hardware-isolated VaultCosigner keys.
+> scope. Mainnet requires reviewed Emulator and Operator pins and
+> hardware-isolated VaultCosigner keys.
 
 Arkade Vault Server is the protected policy and signing service for
 [Arkade Wallet Vault](https://github.com/brg444/arkade-wallet-vault). It owns
@@ -161,18 +161,21 @@ server.
 
 The complete gate and operations posture are recorded in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md) and
-[deploy/ops.md](deploy/ops.md). The unavailable external dependency is the
-private mainnet Emulator endpoint. The release uses `arkade.computer` and the
-official Arkade SDK as deployed; it does not require a modified `arkd` or a
-Vault-specific Operator API. Mainnet configuration must pin the deployed
-Operator identity, checkpoint policy, delays, and fee bounds before the
+[deploy/ops.md](deploy/ops.md). The confirmed mainnet Emulator discovery
+endpoint is `https://emulator.arkade.computer/v1/info`, whose advertised signer matches the
+official SDK pin. The release uses `arkade.computer` and the official Arkade
+SDK as deployed; it does not require a modified `arkd` or a Vault-specific
+Operator API. Mainnet configuration must pin and qualify the deployed Emulator
+and Operator identities, checkpoint policy, delays, and fee bounds before the
 Contract Packs are regenerated. Vault Program and policy adjustments are
 deliberately deferred until the current Mutinynet lifecycle is stable.
 
 Ordinary VTXO send and boarding still require live qualification against
 `arkade.computer`, along with the documented storage, rate-limit, and hardware
-checks. Lightning remains a later workflow and cannot share the ordinary-send
-operation by adding optional fields.
+checks. Outbound Lightning uses the wallet's published swap-package adapter;
+its funding transaction is an ordinary VTXO send, so this service adds no
+Lightning endpoint or schema. Invoice, quote, solver, refund, and live-payment
+qualification remain wallet release gates.
 
 ## Repository map
 
