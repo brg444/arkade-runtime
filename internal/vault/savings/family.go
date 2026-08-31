@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -58,6 +59,7 @@ type FamilyInput struct {
 	ArkadeCosignerBase *btcec.PublicKey
 	TemplateVersion    string
 	ServerFreeClawback bool
+	SpendingPolicy     program.SpendingPolicy
 }
 
 func (in FamilyInput) ProgramTemplate() string {
@@ -108,6 +110,9 @@ func BuildFamily(in FamilyInput) (*Family, error) {
 	if err := assertFamilyBases(in); err != nil {
 		return nil, err
 	}
+	if err := program.ValidateSpendingPolicy(in.SpendingPolicy); err != nil {
+		return nil, fmt.Errorf("spending policy: %w", err)
+	}
 	fam := &Family{
 		Quarantine:    map[string]Tree{},
 		Pending:       map[string]Tree{},
@@ -129,7 +134,7 @@ func BuildFamily(in FamilyInput) (*Family, error) {
 			return nil, fmt.Errorf("quarantine %s: %w", key, err)
 		}
 		fam.Quarantine[key] = Tree{Address: qAddr, PkScript: qScript}
-		claw, err := BuildTransitionScript(qScript, nil, clawWitness)
+		claw, err := BuildTransitionScript(qScript, nil, clawWitness, in.SpendingPolicy.AbsoluteFeeCapSats, in.SpendingPolicy.FeerateCapSatPerV)
 		if err != nil {
 			return nil, fmt.Errorf("clawback auth %s: %w", key, err)
 		}
@@ -148,7 +153,7 @@ func BuildFamily(in FamilyInput) (*Family, error) {
 		if claimant == "phone" {
 			phoneDirect = in.PhoneDirectP256
 		}
-		initAuth, err := BuildTransitionScript(pScript, phoneDirect, InitiateWitnessBytes(claimant, in.Recovery != nil))
+		initAuth, err := BuildTransitionScript(pScript, phoneDirect, InitiateWitnessBytes(claimant, in.Recovery != nil), in.SpendingPolicy.AbsoluteFeeCapSats, in.SpendingPolicy.FeerateCapSatPerV)
 		if err != nil {
 			return nil, fmt.Errorf("initiate auth %s: %w", key, err)
 		}

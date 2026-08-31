@@ -127,12 +127,31 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if !ok || exit["delay"] != "604672" || exit["delayUnit"] != "seconds" {
 		t.Fatalf("vault-board-v1 exit: %#v", board["exit"])
 	}
-	caps, ok := listed["caps"].(map[string]any)
+	policySchema, ok := listed["policySchema"].(map[string]any)
 	if !ok {
-		t.Fatal("vault-policy-v1 caps required")
+		t.Fatal("vault-policy-v1 policy schema required")
 	}
-	if caps["txRecipientSats"] != float64(50000) || caps["periodAllowanceSats"] != float64(100000) {
-		t.Fatalf("vault-policy-v1 caps: %+v", caps)
+	if policySchema["program"] != "vault-policy-v1" ||
+		policySchema["schema"] != "vault-spending-policy-v1" ||
+		policySchema["period"] != "rolling-24h" ||
+		policySchema["immutableAfterEnrollment"] != true {
+		t.Fatalf("vault-policy-v1 policy identity: %+v", policySchema)
+	}
+	bounds, ok := policySchema["bounds"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 policy bounds required")
+	}
+	txBound, ok := bounds["txRecipientCapSats"].(map[string]any)
+	if !ok || txBound["min"] != float64(330) || txBound["max"] != float64(100000000) {
+		t.Fatalf("vault-policy-v1 transaction cap bounds: %+v", bounds)
+	}
+	presets, ok := policySchema["presets"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 policy presets required")
+	}
+	standard, ok := presets["standard"].(map[string]any)
+	if !ok || standard["txRecipientCapSats"] != float64(50000) || standard["periodAllowanceSats"] != float64(100000) {
+		t.Fatalf("vault-policy-v1 standard preset: %+v", presets)
 	}
 }
 

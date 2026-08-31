@@ -31,7 +31,8 @@
     ],
     "PublicStatus": [
       "network:string", "clientOrigin:string", "rpId:string", "templateVersion:string",
-      "policyVersion:string", "enrollmentMode:string", "enrollmentExpiresAt:string,omitempty"
+      "policyVersion:string", "enrollmentMode:string", "enrollmentExpiresAt:string,omitempty",
+      "spendingPolicyCapabilities:object"
     ],
     "Status": [
       "enrolled:boolean", "network:string", "clientOrigin:string", "rpId:string",
@@ -42,7 +43,8 @@
       "savingsScript:string,omitempty", "passkeyLoginAvailable:boolean", "enrollmentMode:string",
       "enrollmentExpiresAt:string,omitempty", "periodAllowance:integer", "periodSpent:integer",
       "periodRemaining:integer", "txCap:integer", "absoluteFeeCap:integer",
-      "feerateCapSatVb:integer", "phoneBip340Pub:string,omitempty",
+      "feerateCapSatVb:integer", "spendingPolicy:object", "spendingPolicyDigest:string",
+      "phoneBip340Pub:string,omitempty",
       "phoneDirectP256:string,omitempty", "warnings:array<string>,omitempty",
       "vtxoVaultCosignerPub:string", "vtxoExitDelay:integer", "vtxoExitDelayUnit:string",
       "spendingArkAddress:string", "spendingArkScript:string", "vtxoDelegatePub:string",
@@ -51,10 +53,11 @@
       "vtxoBoardingExitDelayUnit:string"
     ],
     "InviteView": ["canEnroll:boolean", "vaultId:string|null"],
-    "EnrollStartRequest": null,
+    "EnrollStartRequest": ["spendingPolicy:object", "spendingPolicyDigest:string"],
     "EnrollStartResponse": [
       "handle:string", "vaultId:string", "challenge:string", "rpId:string", "rpName:string",
-      "userId:string", "userName:string", "timeoutMs:integer"
+      "userId:string", "userName:string", "timeoutMs:integer",
+      "spendingPolicy:object", "spendingPolicyDigest:string"
     ],
     "EnrollFinishRequest": [
       "handle:string", "userHandle:string", "clientDataJSON:string", "authenticatorData:string",
@@ -62,7 +65,8 @@
       "phoneDirectP256:string", "phoneBip340Pub:string",
       "vtxoBoardingProgram:string", "vaultBoardingBip340Pub:string",
       "externalOwnerWalletXOnly:string,omitempty", "recoveryXOnly:string,omitempty",
-      "recoveryKeyXOnly:string,omitempty", "vaultId:string,omitempty", "descriptorHash:string,omitempty"
+      "recoveryKeyXOnly:string,omitempty", "vaultId:string,omitempty", "descriptorHash:string,omitempty",
+      "spendingPolicy:object", "spendingPolicyDigest:string"
     ],
     "ProposedEnrollment": ["vaultId:string", "descriptorHash:string", "descriptor:any"],
     "TransitionRequest": [
@@ -149,6 +153,7 @@
     "SavingsPublicArkade": ["origin:string", "version:string"],
     "SavingsPublicCSV": ["hardware:integer", "phone:integer", "recovery:integer"],
     "SavingsPublicPolicy": [
+      "program:string", "schema:string", "period:string", "digest:string",
       "recipientDustSats:integer", "recipientCapSats:integer", "periodAllowanceSats:integer",
       "absoluteFeeCapSats:integer", "feerateCapSatVb:integer"
     ],

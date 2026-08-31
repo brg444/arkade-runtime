@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS pending_enrollment (
   vault_id TEXT NOT NULL UNIQUE,
   token_hash BLOB NOT NULL UNIQUE CHECK (length(token_hash) = 32) REFERENCES invite(token_hash),
   challenge BLOB NOT NULL,
+	policy_digest BLOB NOT NULL CHECK (length(policy_digest) = 32),
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );

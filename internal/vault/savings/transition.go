@@ -53,13 +53,19 @@ func clawbackWitnessForServerFree(hasRecovery bool) int64 {
 
 // BuildTransitionScript pins dest, funded P2A, packet, fee, and optional
 // PhoneDirectP256 CSFS. Phone initiate is the only bound path.
-func BuildTransitionScript(destScript []byte, phoneDirect []byte, witnessBytes int64) ([]byte, error) {
+func BuildTransitionScript(destScript []byte, phoneDirect []byte, witnessBytes, absoluteFeeCapSats, feerateCapSatPerV int64) ([]byte, error) {
 	dest, err := p2trProgram(destScript)
 	if err != nil {
 		return nil, err
 	}
 	if witnessBytes <= 0 {
 		return nil, fmt.Errorf("witness bytes required")
+	}
+	if absoluteFeeCapSats < program.MinAbsoluteFeeCapSats || absoluteFeeCapSats > program.MaxAbsoluteFeeCapSats {
+		return nil, fmt.Errorf("absolute fee cap outside vault-spending-policy-v1 bounds")
+	}
+	if feerateCapSatPerV < program.MinFeerateCapSatPerV || feerateCapSatPerV > program.MaxFeerateCapSatPerV {
+		return nil, fmt.Errorf("feerate cap outside vault-spending-policy-v1 bounds")
 	}
 	var phone []byte
 	if len(phoneDirect) > 0 {
@@ -70,7 +76,7 @@ func BuildTransitionScript(destScript []byte, phoneDirect []byte, witnessBytes i
 	}
 	var prefix []byte
 	for i := 0; i < 8; i++ {
-		script, err := assembleTransitionScript(dest, prefix, phone, witnessBytes)
+		script, err := assembleTransitionScript(dest, prefix, phone, witnessBytes, absoluteFeeCapSats, feerateCapSatPerV)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +92,7 @@ func BuildTransitionScript(destScript []byte, phoneDirect []byte, witnessBytes i
 	return nil, fmt.Errorf("authorization script packet envelope did not converge")
 }
 
-func assembleTransitionScript(dest, prefix, phone []byte, witnessBytes int64) ([]byte, error) {
+func assembleTransitionScript(dest, prefix, phone []byte, witnessBytes, absoluteFeeCapSats, feerateCapSatPerV int64) ([]byte, error) {
 	b := txscript.NewScriptBuilder().
 		AddOp(arkade.OP_INSPECTVERSION).
 		AddInt64(2).
@@ -154,7 +160,7 @@ func assembleTransitionScript(dest, prefix, phone []byte, witnessBytes int64) ([
 		AddOp(txscript.OP_GREATERTHANOREQUAL).
 		AddOp(txscript.OP_VERIFY).
 		AddOp(txscript.OP_DUP).
-		AddInt64(program.AbsoluteFeeCeiling).
+		AddInt64(absoluteFeeCapSats).
 		AddOp(txscript.OP_LESSTHANOREQUAL).
 		AddOp(txscript.OP_VERIFY).
 		AddOp(txscript.OP_DUP).
@@ -165,7 +171,7 @@ func assembleTransitionScript(dest, prefix, phone []byte, witnessBytes int64) ([
 		AddOp(txscript.OP_ADD).
 		AddInt64(4).
 		AddOp(txscript.OP_DIV).
-		AddInt64(program.FeerateCeilingSatPerV).
+		AddInt64(feerateCapSatPerV).
 		AddOp(txscript.OP_MUL).
 		AddOp(txscript.OP_LESSTHANOREQUAL).
 		AddOp(txscript.OP_VERIFY).

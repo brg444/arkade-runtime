@@ -50,7 +50,7 @@ func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			writeMutationError(w, err)
 			return
 		}
-		response, err := svc.StartEnrollment(r.Header.Get(EnrollmentTokenHeader))
+		response, err := svc.StartEnrollment(r.Header.Get(EnrollmentTokenHeader), request)
 		writeJSON(w, response, err)
 	})
 	mux.HandleFunc("POST /v1/enroll/propose", func(w http.ResponseWriter, r *http.Request) {

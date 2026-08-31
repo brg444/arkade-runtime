@@ -25,13 +25,39 @@
       "template": "vault-policy-v1-collaborative-3key",
       "policy": "vault-spending-policy-v1",
       "recovery": "optional",
-      "caps": {
-        "txRecipientSats": 50000,
-        "periodAllowanceSats": 100000,
-        "absoluteFeeSats": 5000,
-        "feerateSatVb": 10,
-        "dustSats": 330
+      "policySchema": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "immutableAfterEnrollment": true,
+        "bounds": {
+          "periodAllowanceSats": { "min": 330, "max": 1000000000 },
+          "txRecipientCapSats": { "min": 330, "max": 100000000 },
+          "absoluteFeeCapSats": { "min": 0, "max": 100000 },
+          "feerateCapSatPerV": { "min": 1, "max": 100 }
+        },
+        "presets": {
+          "cautious": {
+            "periodAllowanceSats": 50000,
+            "txRecipientCapSats": 25000,
+            "absoluteFeeCapSats": 2500,
+            "feerateCapSatPerV": 10
+          },
+          "standard": {
+            "periodAllowanceSats": 100000,
+            "txRecipientCapSats": 50000,
+            "absoluteFeeCapSats": 5000,
+            "feerateCapSatPerV": 10
+          },
+          "flexible": {
+            "periodAllowanceSats": 1000000,
+            "txRecipientCapSats": 250000,
+            "absoluteFeeCapSats": 10000,
+            "feerateCapSatPerV": 20
+          }
+        }
       },
+      "recipientDustSats": 330,
       "spend": {
         "leaf": "user-and-vtxo-vault-cosigner-and-arkd",
         "note": "3-key collaborative spend/intent [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
