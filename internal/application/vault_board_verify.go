@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"log"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -165,10 +166,12 @@ func verifyVaultBoardIntentProofShape(
 		}
 		fields, err := txutils.GetArkPsbtFields(packet, i, txutils.VtxoTaprootTreeField)
 		if err != nil || len(fields) != 1 || len(fields[0]) != len(tree.RevealedScripts) {
+			log.Printf("vault-board-v1 proof input %d revealed tree shape got=%q want=%q err=%v", i, fields, tree.RevealedScripts, err)
 			return nil, fmt.Errorf("vault-board-v1 proof input %d revealed tree", i)
 		}
 		for j := range tree.RevealedScripts {
 			if fields[0][j] != tree.RevealedScripts[j] {
+				log.Printf("vault-board-v1 proof input %d revealed tree value got=%q want=%q", i, fields[0], tree.RevealedScripts)
 				return nil, fmt.Errorf("vault-board-v1 proof input %d revealed tree", i)
 			}
 		}
