@@ -85,9 +85,11 @@ and the deployed Operator origin, network identity, signer keys, checkpoint
 policy, delay units, fee bounds, and rotation policy are qualified and pinned
 in both Contract Packs.
 
-Vault Program parameters and policy adjustments are deliberately deferred
-until ordinary Mutinynet Spending and recovery are qualified. The current
-cleanup retains the current Mutinynet policy values.
+The compiled Vault Program remains fixed. Mainnet review must approve the
+`vault-spending-policy-v1` schema, presets, and bounds before the Contract Pack
+is frozen. Each fresh vault then selects an immutable policy instance during
+enrollment; no post-enrollment mutation or arbitrary policy execution is part
+of this release.
 
 The resolver is startup-critical for the VTXO-first release. Readiness requires
 the exact release-pinned Operator signer and checkpoint unroll closure. Remote
