@@ -250,8 +250,17 @@ func validateVaultBoardFundingTx(tx vaultBoardEsploraTx, txid string, vout uint3
 }
 
 func validateVaultBoardBlock(block vaultBoardEsploraBlock, hash string, height int64) error {
-	if block.ID != hash || requireTxid(block.ID) != nil || block.Height != height || block.Height < 0 || block.MedianTime <= 0 {
-		return fmt.Errorf("block identity")
+	if requireTxid(block.ID) != nil {
+		return fmt.Errorf("block id")
+	}
+	if block.ID != hash {
+		return fmt.Errorf("block id got=%s want=%s", block.ID, hash)
+	}
+	if block.Height != height || block.Height < 0 {
+		return fmt.Errorf("block height got=%d want=%d", block.Height, height)
+	}
+	if block.MedianTime <= 0 {
+		return fmt.Errorf("block median time")
 	}
 	return nil
 }
