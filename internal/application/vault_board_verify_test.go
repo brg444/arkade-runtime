@@ -85,8 +85,10 @@ func (f vaultBoardProofFixture) proof(t *testing.T, message string, outputs []*w
 			Script:       append([]byte(nil), f.tree.Collaborative...),
 			LeafVersion:  txscript.BaseLeafVersion,
 		}}
-		if err := txutils.SetArkPsbtField(&proof.Packet, i, txutils.VtxoTaprootTreeField, txutils.TapTree(f.tree.RevealedScripts)); err != nil {
-			t.Fatal(err)
+		if i == 1 {
+			if err := txutils.SetArkPsbtField(&proof.Packet, i, txutils.VtxoTaprootTreeField, txutils.TapTree(f.tree.RevealedScripts)); err != nil {
+				t.Fatal(err)
+			}
 		}
 		sig, err := signTapLeafAtWithSighash(&proof.Packet, i, f.boarding, f.tree.Collaborative, txscript.SigHashAll)
 		if err != nil {
@@ -169,6 +171,31 @@ func TestVerifyVaultBoardIntentProofRejectsTreeAndSignatureSubstitution(t *testi
 	wrongTree, _ := packet.B64Encode()
 	if _, err := verifyVaultBoardRegisterProof(wrongTree, message, fixture.operation, fixture.tree, fixture.expireAt); err == nil || !strings.Contains(err.Error(), "revealed tree") {
 		t.Fatalf("substituted tree accepted: %v", err)
+	}
+
+	packet, _ = parsePSBT(raw)
+	packet.Inputs[1].Unknowns = nil
+	missingTree, _ := packet.B64Encode()
+	if _, err := verifyVaultBoardRegisterProof(missingTree, message, fixture.operation, fixture.tree, fixture.expireAt); err == nil || !strings.Contains(err.Error(), "input 1 revealed tree") {
+		t.Fatalf("missing real input tree accepted: %v", err)
+	}
+
+	packet, _ = parsePSBT(raw)
+	if err := txutils.SetArkPsbtField(packet, 1, txutils.VtxoTaprootTreeField, txutils.TapTree(fixture.tree.RevealedScripts)); err != nil {
+		t.Fatal(err)
+	}
+	duplicateTree, _ := packet.B64Encode()
+	if _, err := verifyVaultBoardRegisterProof(duplicateTree, message, fixture.operation, fixture.tree, fixture.expireAt); err == nil {
+		t.Fatalf("duplicate real input tree accepted: %v", err)
+	}
+
+	packet, _ = parsePSBT(raw)
+	if err := txutils.SetArkPsbtField(packet, 0, txutils.VtxoTaprootTreeField, txutils.TapTree(fixture.tree.RevealedScripts)); err != nil {
+		t.Fatal(err)
+	}
+	syntheticTree, _ := packet.B64Encode()
+	if _, err := verifyVaultBoardRegisterProof(syntheticTree, message, fixture.operation, fixture.tree, fixture.expireAt); err == nil || !strings.Contains(err.Error(), "input 0 revealed tree") {
+		t.Fatalf("synthetic input tree accepted: %v", err)
 	}
 }
 

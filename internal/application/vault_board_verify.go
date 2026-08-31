@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"log"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -165,13 +164,19 @@ func verifyVaultBoardIntentProofShape(
 			return nil, fmt.Errorf("vault-board-v1 proof input %d: %w", i, err)
 		}
 		fields, err := txutils.GetArkPsbtFields(packet, i, txutils.VtxoTaprootTreeField)
+		// Intent.create carries the real coin's tree on input 1. Input 0 is the
+		// synthetic BIP-322 to_spend reference and has no VTXO tree field.
+		if i == 0 {
+			if err != nil || len(fields) != 0 {
+				return nil, fmt.Errorf("vault-board-v1 proof input %d revealed tree", i)
+			}
+			continue
+		}
 		if err != nil || len(fields) != 1 || len(fields[0]) != len(tree.RevealedScripts) {
-			log.Printf("vault-board-v1 proof input %d revealed tree shape got=%q want=%q err=%v", i, fields, tree.RevealedScripts, err)
 			return nil, fmt.Errorf("vault-board-v1 proof input %d revealed tree", i)
 		}
 		for j := range tree.RevealedScripts {
 			if fields[0][j] != tree.RevealedScripts[j] {
-				log.Printf("vault-board-v1 proof input %d revealed tree value got=%q want=%q", i, fields[0], tree.RevealedScripts)
 				return nil, fmt.Errorf("vault-board-v1 proof input %d revealed tree", i)
 			}
 		}
