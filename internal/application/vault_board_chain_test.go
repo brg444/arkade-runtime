@@ -64,8 +64,8 @@ func TestVaultBoardChainCrossChecksConfirmedOutpointAndMTP(t *testing.T) {
 			return vaultBoardTextResponse(http.StatusOK, tipHash), nil
 		case "/api/block/" + tipHash:
 			return jsonResponse(http.StatusOK, fmt.Sprintf(`{"id":%q,"height":105,"mediantime":105000}`, tipHash)), nil
-		case "/api/tx/" + txid + "/outspend/0":
-			return jsonResponse(http.StatusOK, `{"spent":false,"txid":"","vin":0}`), nil
+		case "/api/tx/" + txid + "/outspends":
+			return jsonResponse(http.StatusOK, `[{"spent":false,"txid":"","vin":0}]`), nil
 		default:
 			t.Fatalf("unexpected Esplora path: %s", req.URL.Path)
 			return nil, nil
@@ -84,13 +84,13 @@ func TestVaultBoardChainCrossChecksConfirmedOutpointAndMTP(t *testing.T) {
 		len(state.PkScript) != 34 {
 		t.Fatalf("confirmed outpoint = %+v", state)
 	}
-	if requests["/api/tx/"+txid] != 2 || requests["/api/tx/"+txid+"/outspend/0"] != 2 {
+	if requests["/api/tx/"+txid] != 2 || requests["/api/tx/"+txid+"/outspends"] != 2 {
 		t.Fatalf("missing reorg cross-checks: %#v", requests)
 	}
 	if _, err := chain.revalidateOutpoint(context.Background(), state); err != nil {
 		t.Fatal(err)
 	}
-	if requests["/api/tx/"+txid] != 2 || requests["/api/tx/"+txid+"/outspend/0"] != 3 ||
+	if requests["/api/tx/"+txid] != 2 || requests["/api/tx/"+txid+"/outspends"] != 3 ||
 		requests["/api/block-height/100"] != 2 || requests["/api/blocks/tip/hash"] != 2 || requests["/api/block/"+tipHash] != 2 {
 		t.Fatalf("narrow revalidation performed unexpected requests: %#v", requests)
 	}
@@ -125,9 +125,9 @@ func TestVaultBoardChainFailsClosedOnStatusOrOutspendRace(t *testing.T) {
 			return vaultBoardTextResponse(http.StatusOK, tipHash), nil
 		case "/api/block/" + tipHash:
 			return jsonResponse(http.StatusOK, fmt.Sprintf(`{"id":%q,"height":105,"mediantime":105000}`, tipHash)), nil
-		case "/api/tx/" + txid + "/outspend/0":
+		case "/api/tx/" + txid + "/outspends":
 			outspendCalls++
-			return jsonResponse(http.StatusOK, `{"spent":false,"txid":"","vin":0}`), nil
+			return jsonResponse(http.StatusOK, `[{"spent":false,"txid":"","vin":0}]`), nil
 		default:
 			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
 		}
@@ -168,12 +168,12 @@ func TestVaultBoardChainFailsClosedOnOutspendRace(t *testing.T) {
 			return vaultBoardTextResponse(http.StatusOK, tipHash+"\n"), nil
 		case "/api/block/" + tipHash:
 			return jsonResponse(http.StatusOK, fmt.Sprintf(`{"id":%q,"height":105,"mediantime":105000}`, tipHash)), nil
-		case "/api/tx/" + txid + "/outspend/0":
+		case "/api/tx/" + txid + "/outspends":
 			outspendCalls++
 			if outspendCalls == 1 {
-				return jsonResponse(http.StatusOK, `{"spent":false,"txid":"","vin":0}`), nil
+				return jsonResponse(http.StatusOK, `[{"spent":false,"txid":"","vin":0}]`), nil
 			}
-			return jsonResponse(http.StatusOK, fmt.Sprintf(`{"spent":true,"txid":%q,"vin":0}`, spendingTxid)), nil
+			return jsonResponse(http.StatusOK, fmt.Sprintf(`[{"spent":true,"txid":%q,"vin":0}]`, spendingTxid)), nil
 		default:
 			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
 		}
@@ -210,8 +210,8 @@ func TestVaultBoardChainRejectsNonCanonicalFundingBlock(t *testing.T) {
 			return vaultBoardTextResponse(http.StatusOK, tipHash), nil
 		case "/api/block/" + tipHash:
 			return jsonResponse(http.StatusOK, fmt.Sprintf(`{"id":%q,"height":105,"mediantime":105000}`, tipHash)), nil
-		case "/api/tx/" + txid + "/outspend/0":
-			return jsonResponse(http.StatusOK, `{"spent":false,"txid":"","vin":0}`), nil
+		case "/api/tx/" + txid + "/outspends":
+			return jsonResponse(http.StatusOK, `[{"spent":false,"txid":"","vin":0}]`), nil
 		default:
 			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
 		}

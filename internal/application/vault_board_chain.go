@@ -141,8 +141,8 @@ func (e *esploraVaultBoardChain) confirmedOutpoint(ctx context.Context, txid str
 		return vaultBoardConfirmedOutpoint{}, fmt.Errorf("vault-board-v1 chain tip does not contain funding block")
 	}
 
-	var outspend vaultBoardEsploraOutspend
-	if err := e.getJSON(ctx, "/tx/"+txid+"/outspend/"+strconv.FormatUint(uint64(vout), 10), vaultBoardChainOutspendLimit, &outspend); err != nil {
+	outspend, err := e.getOutspend(ctx, txid, vout)
+	if err != nil {
 		return vaultBoardConfirmedOutpoint{}, err
 	}
 	if outspend.Spent {
@@ -168,8 +168,8 @@ func (e *esploraVaultBoardChain) confirmedOutpoint(ctx context.Context, txid str
 	if err != nil || canonicalFundingHash != funding.Status.BlockHash {
 		return vaultBoardConfirmedOutpoint{}, fmt.Errorf("vault-board-v1 funding block is not canonical")
 	}
-	var confirmOutspend vaultBoardEsploraOutspend
-	if err := e.getJSON(ctx, "/tx/"+txid+"/outspend/"+strconv.FormatUint(uint64(vout), 10), vaultBoardChainOutspendLimit, &confirmOutspend); err != nil {
+	confirmOutspend, err := e.getOutspend(ctx, txid, vout)
+	if err != nil {
 		return vaultBoardConfirmedOutpoint{}, err
 	}
 	if confirmOutspend != outspend {
@@ -204,8 +204,8 @@ func (e *esploraVaultBoardChain) revalidateOutpoint(ctx context.Context, prior v
 		validateVaultBoardBlock(tip, tipHash, tip.Height) != nil || tip.Height < prior.FundingBlockHeight || tip.MedianTime < prior.SequenceAnchorMTP {
 		return vaultBoardConfirmedOutpoint{}, fmt.Errorf("vault-board-v1 chain tip does not contain funding block")
 	}
-	var outspend vaultBoardEsploraOutspend
-	if err := e.getJSON(ctx, "/tx/"+txid+"/outspend/"+strconv.FormatUint(uint64(prior.Vout), 10), vaultBoardChainOutspendLimit, &outspend); err != nil {
+	outspend, err := e.getOutspend(ctx, txid, prior.Vout)
+	if err != nil {
 		return vaultBoardConfirmedOutpoint{}, err
 	}
 	if outspend.Spent {
@@ -220,6 +220,17 @@ func (e *esploraVaultBoardChain) revalidateOutpoint(ctx context.Context, prior v
 	current.Spent = outspend.Spent
 	current.SpendingTxid = outspend.Txid
 	return current, nil
+}
+
+func (e *esploraVaultBoardChain) getOutspend(ctx context.Context, txid string, vout uint32) (vaultBoardEsploraOutspend, error) {
+	var outspends []vaultBoardEsploraOutspend
+	if err := e.getJSON(ctx, "/tx/"+txid+"/outspends", vaultBoardChainOutspendLimit, &outspends); err != nil {
+		return vaultBoardEsploraOutspend{}, err
+	}
+	if uint64(vout) >= uint64(len(outspends)) {
+		return vaultBoardEsploraOutspend{}, fmt.Errorf("vault-board-v1 outspend set does not contain output")
+	}
+	return outspends[vout], nil
 }
 
 func validateVaultBoardFundingTx(tx vaultBoardEsploraTx, txid string, vout uint32) error {
