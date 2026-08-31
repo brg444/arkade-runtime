@@ -1,6 +1,7 @@
 package application
 
 import (
+	"encoding/hex"
 	"testing"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -26,5 +27,13 @@ func TestVaultBoardRequiresFourDistinctSigningRoles(t *testing.T) {
 				t.Fatalf("roles %d and %d were allowed to share a key", i, j)
 			}
 		}
+	}
+}
+
+func TestVtxoBoardTreeUsesSDKRevealedLeafOrder(t *testing.T) {
+	fixture := newVaultBoardServiceFixture(t)
+	tree := fixture.proof.tree
+	if len(tree.RevealedScripts) != 2 || tree.RevealedScripts[0] != hex.EncodeToString(tree.Collaborative) {
+		t.Fatalf("revealed leaf order does not match the SDK: %#v", tree.RevealedScripts)
 	}
 }
