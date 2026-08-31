@@ -16,6 +16,26 @@ func vaultBoardTextResponse(status int, body string) *http.Response {
 	return response
 }
 
+func vaultBoardHTMLResponse(status int, body string) *http.Response {
+	response := jsonResponse(status, body)
+	response.Header.Set("Content-Type", "text/html; charset=utf-8")
+	return response
+}
+
+func TestVaultBoardChainAcceptsPinnedBlockHeightHTMLOnly(t *testing.T) {
+	hash := strings.Repeat("11", 32)
+	doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+		return vaultBoardHTMLResponse(http.StatusOK, hash), nil
+	})
+	chain := &esploraVaultBoardChain{origin: deployment.MutinynetEsploraOrigin, hc: doer}
+	if got, err := chain.getText(context.Background(), "/block-height/1", vaultBoardChainTextLimit); err != nil || got != hash {
+		t.Fatalf("pinned block-height representation rejected: got=%q err=%v", got, err)
+	}
+	if _, err := chain.getText(context.Background(), "/blocks/tip/hash", vaultBoardChainTextLimit); err == nil {
+		t.Fatal("HTML accepted outside the pinned block-height endpoint")
+	}
+}
+
 func TestVaultBoardChainCrossChecksConfirmedOutpointAndMTP(t *testing.T) {
 	txid := strings.Repeat("11", 32)
 	fundingHash := strings.Repeat("22", 32)
