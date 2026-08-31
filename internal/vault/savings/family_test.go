@@ -3,6 +3,8 @@ package savings
 import (
 	"encoding/hex"
 	"testing"
+
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const fixturePhoneDirectP256 = "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721"
@@ -24,6 +26,7 @@ func fixtureFamilyInput(t *testing.T) FamilyInput {
 		ArkadeCosignerBase: scalarPub(t, 15),
 		TemplateVersion:    Template,
 		ServerFreeClawback: true,
+		SpendingPolicy:     program.DefaultSpendingPolicy(),
 	}
 }
 
@@ -84,6 +87,39 @@ func TestSavingsFamilyWithoutRecoveryHasFiveTrees(t *testing.T) {
 	}
 	if len(d.Pending) != 2 || len(d.Quarantine) != 2 {
 		t.Fatalf("descriptor trees pending=%d quarantine=%d", len(d.Pending), len(d.Quarantine))
+	}
+}
+
+func TestSavingsFamilyBindsSelectedFeePolicy(t *testing.T) {
+	standardInput := fixtureFamilyInput(t)
+	standard, _, err := BuildPublicDescriptor(standardInput, "https://operator.example", "savings-v1-fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flexibleInput := fixtureFamilyInput(t)
+	flexibleInput.SpendingPolicy = program.SpendingPolicyFromValues(250_000, 1_000_000, 10_000, 20)
+	flexible, _, err := BuildPublicDescriptor(flexibleInput, "https://operator.example", "savings-v1-fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flexible.Policy.AbsoluteFeeCapSats != 10_000 || flexible.Policy.FeerateCapSatVb != 20 {
+		t.Fatalf("descriptor policy = %+v", flexible.Policy)
+	}
+	if standard.Savings == flexible.Savings {
+		t.Fatal("selected fee policy did not change the Savings transaction program")
+	}
+	for _, claimant := range claimants {
+		key := FamilyKey(claimant)
+		if standard.Pending[key] == flexible.Pending[key] {
+			t.Fatalf("selected fee policy did not change %s pending tree", key)
+		}
+	}
+	hash, err := HashPublicDescriptor(flexible)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash != "cf5fb73ae35ce6b4c857a6ca79c4e872809ab9514e968afd1151b5bc091cf31e" {
+		t.Fatalf("flexible descriptor hash = %s", hash)
 	}
 }
 

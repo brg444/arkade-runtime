@@ -182,8 +182,10 @@ type RegisterRequest struct {
 	RecoveryKeyXOnly         string `json:"recoveryKeyXOnly,omitempty"`
 	// Optional tenant identity. Extra fields must not 400 under
 	// DisallowUnknownFields; new enrollments should send them.
-	VaultID        string `json:"vaultId,omitempty"`
-	DescriptorHash string `json:"descriptorHash,omitempty"`
+	VaultID              string                 `json:"vaultId,omitempty"`
+	DescriptorHash       string                 `json:"descriptorHash,omitempty"`
+	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
+	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
 }
 
 type parsedRegisterRequest struct {
@@ -194,6 +196,7 @@ type parsedRegisterRequest struct {
 	boardPub                          *btcec.PublicKey
 	boardingProgram                   string
 	vaultID                           string
+	spendingPolicy                    program.SpendingPolicy
 }
 
 func (s *Service) requireLedgerIntegrity() error {
@@ -379,6 +382,10 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 	}
 	parsed.vaultID = req.VaultID
 	parsed.boardingProgram = program.VaultBoardV1
+	if _, err := requireSpendingPolicyDigest(req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
+		return parsed, err
+	}
+	parsed.spendingPolicy = req.SpendingPolicy
 	return parsed, nil
 }
 
@@ -480,12 +487,11 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	if cred.RPID != cfg.RPID {
 		return fmt.Errorf("stored rp id %q incompatible with runtime %q", cred.RPID, cfg.RPID)
 	}
-	if cred.RecipientDustSats != program.DustSats ||
-		cred.TxRecipientCapSats != program.TxRecipientCapSats ||
-		cred.PeriodAllowanceSats != program.PeriodAllowanceSats ||
-		cred.AbsoluteFeeCapSats != program.AbsoluteFeeCeiling ||
-		cred.FeerateCapSatPerV != program.FeerateCeilingSatPerV {
+	if cred.RecipientDustSats != program.DustSats {
 		return fmt.Errorf("stored economic policy incompatible with runtime")
+	}
+	if err := program.ValidateSpendingPolicy(spendingPolicyFromCredential(cred)); err != nil {
+		return fmt.Errorf("stored economic policy: %w", err)
 	}
 	wantOrigin, wantVersion := s.arkadeIdentity()
 	if cred.ArkadeCosignerOrigin != wantOrigin {
@@ -567,56 +573,59 @@ func knownFixtureXOnly(xonly []byte) bool {
 // PublicStatus is the unauthenticated authorizer identity. It is not a
 // tenant descriptor and must not be treated as enrolled.
 type PublicStatus struct {
-	Network             string `json:"network"`
-	ClientOrigin        string `json:"clientOrigin"`
-	RPID                string `json:"rpId"`
-	TemplateVersion     string `json:"templateVersion"`
-	PolicyVersion       string `json:"policyVersion"`
-	EnrollmentMode      string `json:"enrollmentMode"`
-	EnrollmentExpiresAt string `json:"enrollmentExpiresAt,omitempty"`
+	Network                    string                             `json:"network"`
+	ClientOrigin               string                             `json:"clientOrigin"`
+	RPID                       string                             `json:"rpId"`
+	TemplateVersion            string                             `json:"templateVersion"`
+	PolicyVersion              string                             `json:"policyVersion"`
+	EnrollmentMode             string                             `json:"enrollmentMode"`
+	EnrollmentExpiresAt        string                             `json:"enrollmentExpiresAt,omitempty"`
+	SpendingPolicyCapabilities program.SpendingPolicyCapabilities `json:"spendingPolicyCapabilities"`
 }
 
 // Status is the UI snapshot.
 type Status struct {
-	Enrolled                  bool     `json:"enrolled"`
-	Network                   string   `json:"network"`
-	ClientOrigin              string   `json:"clientOrigin"`
-	RPID                      string   `json:"rpId"`
-	VaultID                   string   `json:"vaultId"`
-	TemplateVersion           string   `json:"templateVersion"`
-	PolicyVersion             string   `json:"policyVersion"`
-	ExternalOwnerWalletPub    string   `json:"externalOwnerWalletPub,omitempty"`
-	RecoveryKeyPub            string   `json:"recoveryKeyPub,omitempty"`
-	VaultCosignerBasePub      string   `json:"vaultCosignerBasePub,omitempty"`
-	ArkadeCosignerBasePub     string   `json:"arkadeCosignerBasePub,omitempty"`
-	ArkadeCosignerOrigin      string   `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion     string   `json:"arkadeCosignerVersion"`
-	SavingsAddr               string   `json:"savingsAddress"`
-	SavingsScript             string   `json:"savingsScript,omitempty"`
-	PasskeyLoginAvailable     bool     `json:"passkeyLoginAvailable"`
-	EnrollmentMode            string   `json:"enrollmentMode"`
-	EnrollmentExpiresAt       string   `json:"enrollmentExpiresAt,omitempty"`
-	PeriodAllowance           int64    `json:"periodAllowance"`
-	PeriodSpent               int64    `json:"periodSpent"`
-	PeriodRemaining           int64    `json:"periodRemaining"`
-	TxCap                     int64    `json:"txCap"`
-	AbsoluteFeeCap            int64    `json:"absoluteFeeCap"`
-	FeerateCapSatPerV         int64    `json:"feerateCapSatVb"`
-	PhoneBIP340Pub            string   `json:"phoneBip340Pub,omitempty"`
-	PhoneDirectP256           string   `json:"phoneDirectP256,omitempty"`
-	Warnings                  []string `json:"warnings,omitempty"`
-	VtxoVaultCosignerPub      string   `json:"vtxoVaultCosignerPub"`
-	VtxoExitDelay             uint32   `json:"vtxoExitDelay"`
-	VtxoExitDelayUnit         string   `json:"vtxoExitDelayUnit"`
-	SpendingArkAddress        string   `json:"spendingArkAddress"`
-	SpendingArkScript         string   `json:"spendingArkScript"`
-	VtxoDelegatePub           string   `json:"vtxoDelegatePub"`
-	VtxoBoardingActive        bool     `json:"vtxoBoardingActive"`
-	VtxoBoardingProgram       string   `json:"vtxoBoardingProgram"`
-	VtxoBoardingAddress       string   `json:"vtxoBoardingAddress"`
-	VtxoBoardingScript        string   `json:"vtxoBoardingScript"`
-	VtxoBoardingExitDelay     uint32   `json:"vtxoBoardingExitDelay"`
-	VtxoBoardingExitDelayUnit string   `json:"vtxoBoardingExitDelayUnit"`
+	Enrolled                  bool                   `json:"enrolled"`
+	Network                   string                 `json:"network"`
+	ClientOrigin              string                 `json:"clientOrigin"`
+	RPID                      string                 `json:"rpId"`
+	VaultID                   string                 `json:"vaultId"`
+	TemplateVersion           string                 `json:"templateVersion"`
+	PolicyVersion             string                 `json:"policyVersion"`
+	ExternalOwnerWalletPub    string                 `json:"externalOwnerWalletPub,omitempty"`
+	RecoveryKeyPub            string                 `json:"recoveryKeyPub,omitempty"`
+	VaultCosignerBasePub      string                 `json:"vaultCosignerBasePub,omitempty"`
+	ArkadeCosignerBasePub     string                 `json:"arkadeCosignerBasePub,omitempty"`
+	ArkadeCosignerOrigin      string                 `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion     string                 `json:"arkadeCosignerVersion"`
+	SavingsAddr               string                 `json:"savingsAddress"`
+	SavingsScript             string                 `json:"savingsScript,omitempty"`
+	PasskeyLoginAvailable     bool                   `json:"passkeyLoginAvailable"`
+	EnrollmentMode            string                 `json:"enrollmentMode"`
+	EnrollmentExpiresAt       string                 `json:"enrollmentExpiresAt,omitempty"`
+	PeriodAllowance           int64                  `json:"periodAllowance"`
+	PeriodSpent               int64                  `json:"periodSpent"`
+	PeriodRemaining           int64                  `json:"periodRemaining"`
+	TxCap                     int64                  `json:"txCap"`
+	AbsoluteFeeCap            int64                  `json:"absoluteFeeCap"`
+	FeerateCapSatPerV         int64                  `json:"feerateCapSatVb"`
+	SpendingPolicy            program.SpendingPolicy `json:"spendingPolicy"`
+	SpendingPolicyDigest      string                 `json:"spendingPolicyDigest"`
+	PhoneBIP340Pub            string                 `json:"phoneBip340Pub,omitempty"`
+	PhoneDirectP256           string                 `json:"phoneDirectP256,omitempty"`
+	Warnings                  []string               `json:"warnings,omitempty"`
+	VtxoVaultCosignerPub      string                 `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay             uint32                 `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit         string                 `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress        string                 `json:"spendingArkAddress"`
+	SpendingArkScript         string                 `json:"spendingArkScript"`
+	VtxoDelegatePub           string                 `json:"vtxoDelegatePub"`
+	VtxoBoardingActive        bool                   `json:"vtxoBoardingActive"`
+	VtxoBoardingProgram       string                 `json:"vtxoBoardingProgram"`
+	VtxoBoardingAddress       string                 `json:"vtxoBoardingAddress"`
+	VtxoBoardingScript        string                 `json:"vtxoBoardingScript"`
+	VtxoBoardingExitDelay     uint32                 `json:"vtxoBoardingExitDelay"`
+	VtxoBoardingExitDelayUnit string                 `json:"vtxoBoardingExitDelayUnit"`
 }
 
 func statusWarnings(cred *policy.Credential) []string {
@@ -689,6 +698,24 @@ func periodAllowanceSats(rec *policy.VaultRecord, cred *policy.Credential) int64
 	return program.PeriodAllowanceSats
 }
 
+func spendingPolicyFromCredential(cred *policy.Credential) program.SpendingPolicy {
+	if cred == nil {
+		return program.SpendingPolicy{}
+	}
+	return program.SpendingPolicyFromValues(
+		cred.TxRecipientCapSats, cred.PeriodAllowanceSats, cred.AbsoluteFeeCapSats, cred.FeerateCapSatPerV,
+	)
+}
+
+func spendingPolicyFromRecord(rec *policy.VaultRecord) program.SpendingPolicy {
+	if rec == nil {
+		return program.SpendingPolicy{}
+	}
+	return program.SpendingPolicyFromValues(
+		rec.TxRecipientCapSats, rec.PeriodAllowanceSats, rec.AbsoluteFeeCapSats, rec.FeerateCapSatPerV,
+	)
+}
+
 func (s *Service) routeVaultID(vaultID string) (string, error) {
 	id := strings.TrimSpace(vaultID)
 	if id == "" {
@@ -720,6 +747,9 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	}
 	if rec == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
+	}
+	if err := program.ValidateSpendingPolicy(spendingPolicyFromRecord(rec)); err != nil {
+		return "", enrolledSnapshot{}, nil, fmt.Errorf("stored economic policy: %w", err)
 	}
 	return id, snap, rec, nil
 }
@@ -753,11 +783,12 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 		return PublicStatus{}, fmt.Errorf("deployment: %w", err)
 	}
 	st := PublicStatus{
-		Network:         cfg.Network,
-		ClientOrigin:    cfg.ClientOrigin,
-		RPID:            cfg.RPID,
-		TemplateVersion: publicEnrollTemplate(s),
-		PolicyVersion:   program.PolicyVersion,
+		Network:                    cfg.Network,
+		ClientOrigin:               cfg.ClientOrigin,
+		RPID:                       cfg.RPID,
+		TemplateVersion:            publicEnrollTemplate(s),
+		PolicyVersion:              program.PolicyVersion,
+		SpendingPolicyCapabilities: program.CurrentSpendingPolicyCapabilities(),
 	}
 	st.EnrollmentMode, st.EnrollmentExpiresAt = s.publicEnrollmentMode()
 	return st, nil
@@ -792,20 +823,19 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	if err != nil {
 		return Status{}, err
 	}
-	allowance := periodAllowanceSats(nil, cred)
-	txCap := program.TxRecipientCapSats
-	feeCap := program.AbsoluteFeeCeiling
-	feerate := program.FeerateCeilingSatPerV
+	selected := spendingPolicyFromCredential(cred)
+	if err := program.ValidateSpendingPolicy(selected); err != nil {
+		return Status{}, fmt.Errorf("stored economic policy: %w", err)
+	}
+	digest, err := program.SpendingPolicyDigestHex(selected)
+	if err != nil {
+		return Status{}, err
+	}
+	allowance := selected.PeriodAllowanceSats
+	txCap := selected.TxRecipientCapSats
+	feeCap := selected.AbsoluteFeeCapSats
+	feerate := selected.FeerateCapSatPerV
 	policyVersion := program.PolicyVersion
-	if cred.TxRecipientCapSats > 0 {
-		txCap = cred.TxRecipientCapSats
-	}
-	if cred.AbsoluteFeeCapSats >= 0 {
-		feeCap = cred.AbsoluteFeeCapSats
-	}
-	if cred.FeerateCapSatPerV > 0 {
-		feerate = cred.FeerateCapSatPerV
-	}
 	if cred.PolicyVersion != "" {
 		policyVersion = cred.PolicyVersion
 	}
@@ -814,19 +844,21 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		rem = 0
 	}
 	st := Status{
-		Enrolled:          true,
-		Network:           cfg.Network,
-		ClientOrigin:      cfg.ClientOrigin,
-		RPID:              cfg.RPID,
-		VaultID:           vaultID,
-		TemplateVersion:   publicEnrollTemplate(s),
-		PolicyVersion:     policyVersion,
-		PeriodAllowance:   allowance,
-		PeriodSpent:       spent,
-		PeriodRemaining:   rem,
-		TxCap:             txCap,
-		AbsoluteFeeCap:    feeCap,
-		FeerateCapSatPerV: feerate,
+		Enrolled:             true,
+		Network:              cfg.Network,
+		ClientOrigin:         cfg.ClientOrigin,
+		RPID:                 cfg.RPID,
+		VaultID:              vaultID,
+		TemplateVersion:      publicEnrollTemplate(s),
+		PolicyVersion:        policyVersion,
+		PeriodAllowance:      allowance,
+		PeriodSpent:          spent,
+		PeriodRemaining:      rem,
+		TxCap:                txCap,
+		AbsoluteFeeCap:       feeCap,
+		FeerateCapSatPerV:    feerate,
+		SpendingPolicy:       selected,
+		SpendingPolicyDigest: digest,
 	}
 	st.EnrollmentMode = "closed"
 	snap := s.snapshot(vaultID)

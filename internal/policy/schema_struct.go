@@ -109,6 +109,7 @@ var expectedCurrentTables = map[string]struct {
 			spec("vault_id", "TEXT", true, 0),
 			spec("token_hash", "BLOB", true, 0),
 			spec("challenge", "BLOB", true, 0),
+			spec("policy_digest", "BLOB", true, 0),
 			spec("expires_at", "TEXT", true, 0),
 			spec("created_at", "TEXT", true, 0),
 		},

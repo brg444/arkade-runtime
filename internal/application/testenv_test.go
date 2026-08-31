@@ -97,6 +97,11 @@ func newEnv(t *testing.T) *env {
 		VtxoBoardingProgram:      program.VaultBoardV1,
 		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
 	}
+	request.SpendingPolicy = program.DefaultSpendingPolicy()
+	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHex(request.SpendingPolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
 	preview, err := service.previewVaultBoardEnrollmentDescriptor(fixture.VaultID, request)
 	if err != nil {
 		t.Fatal(err)

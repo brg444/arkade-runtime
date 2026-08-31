@@ -2,7 +2,7 @@
   {
     "name": "with-recovery",
     "recovery": true,
-    "descriptorHash": "be28faaa9480e9eec214311bdd060bdb4d0c07ff30730971610df326a8962ea1",
+    "descriptorHash": "5b997fdddd39260d6611acf6f0263d246d5b46427a4f697840a803ae259cf40b",
     "savings": {
       "address": "tb1pgwr9uyhn2ylwygxym2eydfyf37rlly3ag679ffsqjhxgpyker4kqkx2m2h",
       "script": "512043865e12f3513ee220c4dab246a4898f87ff923d46bc54a60095cc8092d91d6c"
@@ -39,7 +39,7 @@
   {
     "name": "without-recovery",
     "recovery": false,
-    "descriptorHash": "2c28241456a7d05b9d604e72fdaf96276c22c34012bb6e22fbbdb1a0fe784543",
+    "descriptorHash": "33190bad389d996efb7e4e4ccf17eaaa69ad1faa4668b5db9637defeb45b47fb",
     "savings": {
       "address": "tb1pfth3d3jq2je2k5qr3ttqwlk8ehtaxu5p484fyl38t3ph3gh2gkqqzdzy80",
       "script": "51204aef16c64054b2ab50038ad6077ec7cdd7d37281a9ea927e275c4378a2ea4580"

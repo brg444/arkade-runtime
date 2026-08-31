@@ -61,6 +61,7 @@ func (s *Service) savingsFamilyInput(vaultID string, parsed parsedRegisterReques
 		PhoneDirectP256:    parsed.phoneDirectP256,
 		VaultCosignerBase:  vaultBase,
 		ArkadeCosignerBase: arkadeBase,
+		SpendingPolicy:     parsed.spendingPolicy,
 	}, nil
 }
 
@@ -96,10 +97,10 @@ func (s *Service) mintSavingsCredential(vaultID string, parsed parsedRegisterReq
 		SavingsAddress:        fam.Savings.Address,
 		SavingsScript:         append([]byte(nil), fam.Savings.PkScript...),
 		RecipientDustSats:     program.DustSats,
-		TxRecipientCapSats:    program.TxRecipientCapSats,
-		PeriodAllowanceSats:   program.PeriodAllowanceSats,
-		AbsoluteFeeCapSats:    program.AbsoluteFeeCeiling,
-		FeerateCapSatPerV:     program.FeerateCeilingSatPerV,
+		TxRecipientCapSats:    parsed.spendingPolicy.TxRecipientCapSats,
+		PeriodAllowanceSats:   parsed.spendingPolicy.PeriodAllowanceSats,
+		AbsoluteFeeCapSats:    parsed.spendingPolicy.AbsoluteFeeCapSats,
+		FeerateCapSatPerV:     parsed.spendingPolicy.FeerateCapSatPerV,
 	}
 	if parsed.recovery != nil {
 		cred.RecoveryKey = parsed.recovery.SerializeCompressed()
@@ -154,6 +155,9 @@ func (s *Service) rebuildSavings(cred *policy.Credential) (
 	parsed := parsedRegisterRequest{
 		id: cred.ID, webauthnP256: cred.WebAuthnP256, phoneDirectP256: cred.PhoneDirectP256,
 		phone: phone, externalOwner: externalOwner, recovery: recovery,
+		spendingPolicy: program.SpendingPolicyFromValues(
+			cred.TxRecipientCapSats, cred.PeriodAllowanceSats, cred.AbsoluteFeeCapSats, cred.FeerateCapSatPerV,
+		),
 	}
 	in, inErr := s.savingsFamilyInput(cred.VaultID, parsed, vaultBase, arkadeBase)
 	if inErr != nil {

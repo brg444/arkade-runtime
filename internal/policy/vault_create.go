@@ -125,7 +125,7 @@ func validateCreateVaultInput(in CreateVaultInput) error {
 		if in.Pending.Handle == "" || in.Pending.VaultID != in.Record.VaultID {
 			return fmt.Errorf("pending enrollment does not match vault")
 		}
-		if len(in.Pending.Challenge) == 0 || len(in.Pending.TokenHash) != sha256.Size {
+		if len(in.Pending.Challenge) == 0 || len(in.Pending.TokenHash) != sha256.Size || len(in.Pending.PolicyDigest) != sha256.Size {
 			return fmt.Errorf("pending enrollment challenge required")
 		}
 		if !bytes.Equal(in.Pending.TokenHash, in.TokenHash) {
@@ -144,8 +144,8 @@ func consumePendingEnrollmentTx(tx *sql.Tx, pending *PendingEnrollment, now time
 	}
 	res, err := tx.Exec(`
 DELETE FROM pending_enrollment
- WHERE handle = ? AND token_hash = ? AND vault_id = ? AND challenge = ? AND expires_at = ?`,
-		pending.Handle, pending.TokenHash, pending.VaultID, pending.Challenge, pending.ExpiresAt,
+ WHERE handle = ? AND token_hash = ? AND vault_id = ? AND challenge = ? AND policy_digest = ? AND expires_at = ?`,
+		pending.Handle, pending.TokenHash, pending.VaultID, pending.Challenge, pending.PolicyDigest, pending.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("consume pending enrollment: %w", err)

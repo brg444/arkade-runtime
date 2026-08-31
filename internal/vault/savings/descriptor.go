@@ -62,11 +62,15 @@ type PublicCSV struct {
 }
 
 type PublicPolicy struct {
-	RecipientDustSats   int64 `json:"recipientDustSats"`
-	RecipientCapSats    int64 `json:"recipientCapSats"`
-	PeriodAllowanceSats int64 `json:"periodAllowanceSats"`
-	AbsoluteFeeCapSats  int64 `json:"absoluteFeeCapSats"`
-	FeerateCapSatVb     int64 `json:"feerateCapSatVb"`
+	Program             string `json:"program"`
+	Schema              string `json:"schema"`
+	Period              string `json:"period"`
+	Digest              string `json:"digest"`
+	RecipientDustSats   int64  `json:"recipientDustSats"`
+	RecipientCapSats    int64  `json:"recipientCapSats"`
+	PeriodAllowanceSats int64  `json:"periodAllowanceSats"`
+	AbsoluteFeeCapSats  int64  `json:"absoluteFeeCapSats"`
+	FeerateCapSatVb     int64  `json:"feerateCapSatVb"`
 }
 
 type PublicP2A struct {
@@ -101,6 +105,11 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 	if err != nil {
 		return PublicDescriptor{}, nil, err
 	}
+	selected := in.SpendingPolicy
+	policyDigest, err := program.SpendingPolicyDigestHex(selected)
+	if err != nil {
+		return PublicDescriptor{}, nil, err
+	}
 	d := PublicDescriptor{
 		Schema:          Schema,
 		Network:         strings.ToLower(in.Network),
@@ -125,11 +134,15 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 			Recovery: program.RecoveryCSVBlocks,
 		},
 		Policy: PublicPolicy{
+			Program:             selected.Program,
+			Schema:              selected.Schema,
+			Period:              selected.Period,
+			Digest:              policyDigest,
 			RecipientDustSats:   program.DustSats,
-			RecipientCapSats:    program.TxRecipientCapSats,
-			PeriodAllowanceSats: program.PeriodAllowanceSats,
-			AbsoluteFeeCapSats:  program.AbsoluteFeeCeiling,
-			FeerateCapSatVb:     program.FeerateCeilingSatPerV,
+			RecipientCapSats:    selected.TxRecipientCapSats,
+			PeriodAllowanceSats: selected.PeriodAllowanceSats,
+			AbsoluteFeeCapSats:  selected.AbsoluteFeeCapSats,
+			FeerateCapSatVb:     selected.FeerateCapSatPerV,
 		},
 		P2A: PublicP2A{
 			Script:      P2AScriptHex,
@@ -238,6 +251,12 @@ func encodePublicDescriptor(d PublicDescriptor) ([]byte, error) {
 	appendU32(&parts, d.CSV.Hardware)
 	appendU32(&parts, d.CSV.Phone)
 	appendU32(&parts, d.CSV.Recovery)
+	appendBytes(&parts, []byte(d.Policy.Program))
+	appendBytes(&parts, []byte(d.Policy.Schema))
+	appendBytes(&parts, []byte(d.Policy.Period))
+	if err := appendExactHex(&parts, d.Policy.Digest, "policy.digest", sha256.Size); err != nil {
+		return nil, err
+	}
 	appendI64(&parts, d.Policy.RecipientDustSats)
 	appendI64(&parts, d.Policy.RecipientCapSats)
 	appendI64(&parts, d.Policy.PeriodAllowanceSats)
