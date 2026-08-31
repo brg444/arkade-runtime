@@ -458,6 +458,67 @@ func (l *Ledger) StoreVaultEnvelopeIfAbsent(vaultID string, envelope CredentialE
 	return tx.Commit()
 }
 
+// ReplaceVaultEnvelope atomically replaces one exact, verified envelope. The
+// application authorizes the protocol-version upgrade; this layer provides the
+// tenant/credential integrity and compare-and-swap boundary.
+func (l *Ledger) ReplaceVaultEnvelope(vaultID string, expected, replacement CredentialEnvelope) error {
+	if vaultID == "" {
+		return fmt.Errorf("vault id required")
+	}
+	if err := validateCredentialEnvelope(expected); err != nil {
+		return err
+	}
+	if err := validateCredentialEnvelope(replacement); err != nil {
+		return err
+	}
+	if len(expected.IntegrityMAC) != sha256.Size || len(replacement.IntegrityMAC) != sha256.Size {
+		return fmt.Errorf("credential envelope integrity MAC must be 32 bytes")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	tx, err := l.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	cred, err := getVaultCredentialTx(tx, vaultID)
+	if err != nil {
+		return err
+	}
+	if cred == nil {
+		return fmt.Errorf("vault credential required")
+	}
+	if err := VerifyVaultEnvelope(&expected, vaultID, cred.CredentialID, l.integrityKey); err != nil {
+		return err
+	}
+	if err := VerifyVaultEnvelope(&replacement, vaultID, cred.CredentialID, l.integrityKey); err != nil {
+		return err
+	}
+	current, err := getVaultEnvelopeTx(tx, vaultID)
+	if err != nil {
+		return err
+	}
+	if current == nil || !envelopesEqual(*current, expected) {
+		return fmt.Errorf("credential envelope changed during upgrade")
+	}
+	result, err := tx.Exec(`
+UPDATE vault_envelope
+   SET version = ?, binding = ?, nonce = ?, ciphertext = ?, direct_signature = ?, phone_signature = ?, integrity_mac = ?
+ WHERE vault_id = ?`, replacement.Version, replacement.Binding, replacement.Nonce, replacement.Ciphertext,
+		replacement.DirectSig, replacement.PhoneSig, replacement.IntegrityMAC, vaultID)
+	if err != nil {
+		return fmt.Errorf("replace credential envelope: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("replace credential envelope rows: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("replace credential envelope affected %d rows", rows)
+	}
+	return tx.Commit()
+}
+
 func envelopesEqual(a, b CredentialEnvelope) bool {
 	return a.Version == b.Version && a.Binding == b.Binding &&
 		bytes.Equal(a.Nonce, b.Nonce) && bytes.Equal(a.Ciphertext, b.Ciphertext) &&

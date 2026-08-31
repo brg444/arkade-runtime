@@ -146,7 +146,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err != nil {
 		return nil, err
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -731,7 +731,7 @@ func (s *Service) expireReservedVtxo(ctx context.Context, op policy.VtxoOperatio
 }
 
 func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID string) (*VtxoOperationView, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	id, _, _, err := s.resolveSpendVaultRecord(vaultID)
@@ -798,36 +798,33 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 		return fmt.Errorf("reserved inputs required")
 	}
 	pkScript := inputs[0].Script
-	err = s.ArkResolver.ReservedSpentByArkTxid(ctx, pkScript, reserved, op.ArkTxid)
+	if op.ChangeSats > 0 && op.ChangeVout == nil {
+		return fmt.Errorf("change vout missing")
+	}
+	if op.ChangeSats > 0 && !bytes.Equal(op.ChangeScript, pkScript) {
+		return fmt.Errorf("change script does not match reserved inputs")
+	}
+	state, err := s.ArkResolver.SubmittedVtxoState(ctx, pkScript, reserved, op.ArkTxid, op.ChangeVout, uint64(op.ChangeSats))
 	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "not spent by ark txid") {
-			next := op
-			next.State = policy.VtxoStateUnresolved
-			current, swapped, transitionErr := s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
-			if transitionErr != nil {
-				return transitionErr
-			}
-			if !swapped && current.State != policy.VtxoStateUnresolved {
-				return apperr.New(apperr.CodeRejected, "vtxo operation changed concurrently")
-			}
-			return nil
-		}
-		if strings.Contains(msg, "reserved outpoints not spent") || strings.Contains(msg, "missing from indexer") {
-			return nil
-		}
 		return err
 	}
-	if op.ChangeSats > 0 {
-		if op.ChangeVout == nil {
-			return fmt.Errorf("change vout missing")
+	if state == ports.SubmittedVtxoPending {
+		return nil
+	}
+	if state == ports.SubmittedVtxoConflict {
+		next := op
+		next.State = policy.VtxoStateUnresolved
+		current, swapped, transitionErr := s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
+		if transitionErr != nil {
+			return transitionErr
 		}
-		if err := s.ArkResolver.ChangeVtxoFromArkTx(ctx, op.ChangeScript, op.ArkTxid, *op.ChangeVout, uint64(op.ChangeSats)); err != nil {
-			if strings.Contains(err.Error(), "change vtxo not yet projected") {
-				return nil
-			}
-			return err
+		if !swapped && current.State != policy.VtxoStateUnresolved {
+			return apperr.New(apperr.CodeRejected, "vtxo operation changed concurrently")
 		}
+		return nil
+	}
+	if state != ports.SubmittedVtxoFinalized {
+		return fmt.Errorf("unknown submitted vtxo state")
 	}
 	next := op
 	next.State = policy.VtxoStateFinalized
@@ -842,7 +839,7 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 }
 
 func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeRequest) (*VtxoAuthorizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -983,7 +980,7 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 }
 
 func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpointAuthorizeRequest) (*VtxoCheckpointAuthorizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -1084,7 +1081,7 @@ func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpoi
 }
 
 func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*VtxoFinalizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {

@@ -44,27 +44,23 @@ func (s stubArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy
 	return s.feePolicy, s.feeErr
 }
 
-func (s stubArkResolver) ReservedSpentByArkTxid(_ context.Context, _ []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
+func (s stubArkResolver) SubmittedVtxoState(_ context.Context, _ []byte, reserved []ports.ResolvedVtxo, arkTxid string, changeVout *uint32, _ uint64) (ports.SubmittedVtxoState, error) {
 	if s.spentErr != nil {
-		return s.spentErr
+		return ports.SubmittedVtxoPending, s.spentErr
 	}
 	if len(reserved) == 0 {
-		return fmt.Errorf("reserved outpoints required")
+		return ports.SubmittedVtxoPending, fmt.Errorf("reserved outpoints required")
 	}
 	if s.spentBy == "" {
-		return fmt.Errorf("reserved outpoints not spent")
+		return ports.SubmittedVtxoPending, nil
 	}
 	if !strings.EqualFold(s.spentBy, arkTxid) {
-		return fmt.Errorf("reserved outpoint not spent by ark txid")
+		return ports.SubmittedVtxoConflict, nil
 	}
-	return nil
-}
-
-func (s stubArkResolver) ChangeVtxoFromArkTx(_ context.Context, _ []byte, arkTxid string, vout uint32, _ uint64) error {
-	if !s.changeExists || vout != 1 || !strings.EqualFold(s.spentBy, arkTxid) {
-		return fmt.Errorf("change vtxo not yet projected")
+	if changeVout != nil && (!s.changeExists || *changeVout != 1) {
+		return ports.SubmittedVtxoPending, nil
 	}
-	return nil
+	return ports.SubmittedVtxoFinalized, nil
 }
 
 func (s stubArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), s.checkpoint...) }

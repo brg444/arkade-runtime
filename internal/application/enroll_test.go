@@ -53,6 +53,9 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = led.Close() })
+	if err := led.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
+		t.Fatal(err)
+	}
 	master, _ := btcec.NewPrivateKey()
 	arkade, _ := btcec.NewPrivateKey()
 	owner, _ := btcec.NewPrivateKey()
@@ -282,6 +285,9 @@ func TestFinishDoesNotInheritProcessOwnerPubs(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = led.Close() })
+	if err := led.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
+		t.Fatal(err)
+	}
 	master, _ := btcec.NewPrivateKey()
 	arkade, _ := btcec.NewPrivateKey()
 	hot, _ := btcec.NewPrivateKey()
@@ -651,6 +657,9 @@ func enrollReady(t *testing.T) (*Service, string, *EnrollStartResponse) {
 
 func enrollService(t *testing.T, led *policy.Ledger) *Service {
 	t.Helper()
+	if err := led.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
+		t.Fatal(err)
+	}
 	master, _ := btcec.NewPrivateKey()
 	arkade, _ := btcec.NewPrivateKey()
 	return &Service{

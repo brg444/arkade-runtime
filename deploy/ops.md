@@ -55,12 +55,15 @@ VTXO routes remain unavailable indefinitely.
 4. Exercise VTXO receive, send, ambiguous-response recovery, and restart.
 5. Exercise Savings-to-Spending boarding, invitation rotation, and rollback
    failure drills.
-6. Enable outbound BOLT11 only after its separate durable-saga gate passes.
+6. Enable outbound BOLT11 only after the wallet's package-native quote,
+   contract registration, refund, and ordinary VTXO funding gates pass. This
+   service adds no Lightning-specific API or ledger state.
 
-Mainnet deployment requires the private Emulator endpoint and every release pin
-in [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md). The Arkade
-Operator is `https://arkade.computer`; this deployment does not include or
-modify `arkd`.
+Mainnet deployment uses the confirmed Emulator discovery endpoint at
+`https://mainnet-signer.invalid/v1/info` and requires every release pin in
+[the mainnet v2 baseline](../docs/mainnet-v2-baseline.md). The Arkade Operator
+is `https://arkade.computer`; this deployment does not include or modify
+`arkd`.
 
 Before enabling boarding, inject a lost settlement response and an
 unacknowledged intent deletion for a boarding input. The deployed Operator must
@@ -73,3 +76,8 @@ vault identifier on passkey challenge issuance and VTXO reservation. Phone
 authentication protects the reservation mutation, but it does not replace
 load protection. A process-local or serverless instance-local counter does not
 close this gate.
+
+Before a public release, remove the private Emulator module replacement after
+the required signing checks land in an official package, commit an explicit
+server distribution license, and record clean `govulncheck` output with the
+other release checks.

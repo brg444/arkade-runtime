@@ -40,12 +40,21 @@ func TestDecideRecoveryReplay(t *testing.T) {
 		VaultID: "vault-a", Purpose: sessionPurposeInitiate,
 		InputTxid: "aa11", InputVout: 0, DestScript: "5120ab", LastSighash: "11",
 	}
-	if _, err := DecideReplay(pending, *pending); !errors.Is(err, ErrRecoveryBusy) {
-		t.Fatalf("unsigned operation was not held: %v", err)
+	if action, err := DecideReplay(pending, *pending); err != nil || action != ReplayResign {
+		t.Fatalf("exact unsigned retry: %v %v", action, err)
+	}
+	different := *pending
+	different.LastSighash = "22"
+	if _, err := DecideReplay(pending, different); !errors.Is(err, ErrRecoveryBusy) {
+		t.Fatalf("different unsigned operation was not held: %v", err)
+	}
+	different.Signature = []byte("different-signed-psbt")
+	if _, err := DecideReplay(pending, different); !errors.Is(err, ErrRecoveryBusy) {
+		t.Fatalf("different signed operation was not held: %v", err)
 	}
 }
 
-func TestApplyRecoveryReplayRefusesSecondUnsignedWorker(t *testing.T) {
+func TestApplyRecoveryReplayAllowsExactUnsignedRetry(t *testing.T) {
 	led := openPolicyTestLedger(t, nil)
 	createPolicyTestVault(t, led, "vault-a", 0x71)
 	next := RecoverySession{
@@ -56,8 +65,9 @@ func TestApplyRecoveryReplayRefusesSecondUnsignedWorker(t *testing.T) {
 	if err != nil || action != ReplaySign || stored == nil {
 		t.Fatalf("first: %v %v", action, err)
 	}
-	if _, _, err := led.ApplyRecoveryReplay(next); !errors.Is(err, ErrRecoveryBusy) {
-		t.Fatalf("second unsigned worker: %v", err)
+	action, stored, err = led.ApplyRecoveryReplay(next)
+	if err != nil || action != ReplayResign || stored == nil || len(stored.Signature) != 0 {
+		t.Fatalf("exact unsigned retry: %v %v stored=%+v", action, err, stored)
 	}
 	next.Signature = []byte("signed-psbt")
 	action, stored, err = led.ApplyRecoveryReplay(next)

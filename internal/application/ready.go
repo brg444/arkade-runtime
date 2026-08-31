@@ -1,8 +1,13 @@
 package application
 
 import (
+	"context"
+	"time"
+
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 )
+
+const resolverReadyTimeout = 5 * time.Second
 
 // ReadyStatus is the unauthenticated readiness body. It never includes keys,
 // tokens, PSBTs, or credential envelopes.
@@ -17,7 +22,7 @@ type ReadyStatus struct {
 }
 
 // Ready checks ledger access and every release-pinned signing dependency.
-func (s *Service) Ready() ReadyStatus {
+func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	st := ReadyStatus{
 		EnrollTemplate: savings.Template,
 	}
@@ -57,6 +62,12 @@ func (s *Service) Ready() ReadyStatus {
 	}
 	if err := validateArkResolverPolicy(cfg.Network, s.ArkResolver.CheckpointTapscript(), s.ArkResolver.OperatorSignerPub()); err != nil {
 		st.Error = "Arkade resolver policy mismatch"
+		return st
+	}
+	readyCtx, cancel := context.WithTimeout(ctx, resolverReadyTimeout)
+	defer cancel()
+	if _, err := s.ArkResolver.IntentFeePolicy(readyCtx); err != nil {
+		st.Error = "Arkade resolver unavailable"
 		return st
 	}
 	st.Ok = true
