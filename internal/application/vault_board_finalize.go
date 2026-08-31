@@ -102,9 +102,17 @@ func verifyVaultBoardFinal(
 	if err != nil {
 		return verifiedVaultBoardFinal{}, err
 	}
-	if finalPacket.UnsignedTx.TxHash() != unsignedPacket.UnsignedTx.TxHash() ||
-		finalPacket.UnsignedTx.Version != 3 || finalPacket.UnsignedTx.LockTime != 0 {
-		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final commitment changed")
+	if finalPacket.UnsignedTx.TxHash() != unsignedPacket.UnsignedTx.TxHash() {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final commitment txid changed")
+	}
+	// Stock arkd builds the onchain commitment transaction at version 2.
+	// Version 3 is reserved for Arkade offchain transactions and must not be
+	// imposed on this Bitcoin transaction boundary.
+	if finalPacket.UnsignedTx.Version != 2 {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final commitment version got=%d want=2", finalPacket.UnsignedTx.Version)
+	}
+	if finalPacket.UnsignedTx.LockTime != 0 {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final commitment locktime got=%d want=0", finalPacket.UnsignedTx.LockTime)
 	}
 	idx := evidence.InputIndexes[0]
 	if idx >= len(finalPacket.Inputs) || idx >= len(finalPacket.UnsignedTx.TxIn) {

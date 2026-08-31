@@ -69,7 +69,7 @@ func newVaultBoardFinalFixtureFromProof(t *testing.T, proof vaultBoardProofFixtu
 	}
 	commitment, err := psbt.New(
 		[]*wire.OutPoint{{Hash: *boardHash, Index: proof.operation.Vout}},
-		[]*wire.TxOut{{Value: batchAmount, PkScript: batchScript}}, 3, 0,
+		[]*wire.TxOut{{Value: batchAmount, PkScript: batchScript}}, 2, 0,
 		[]uint32{wire.MaxTxInSequenceNum},
 	)
 	if err != nil {
@@ -197,6 +197,66 @@ func TestVerifyVaultBoardFinalRejectsUnpinnedOrMutatedEvidence(t *testing.T) {
 		fixture.expiry,
 	); err == nil || !strings.Contains(err.Error(), "signature") {
 		t.Fatalf("missing signature accepted: %v", err)
+	}
+}
+
+func TestVerifyVaultBoardFinalRejectsCommitmentMutation(t *testing.T) {
+	fixture := newVaultBoardFinalFixture(t)
+	encodeBoth := func(t *testing.T, mutate func(*psbt.Packet)) vaultBoardFinalEvidence {
+		t.Helper()
+		evidence := fixture.evidence
+		for signed, target := range map[bool]*string{false: &evidence.UnsignedCommitmentPSBT, true: &evidence.SignedCommitmentPSBT} {
+			raw := fixture.evidence.UnsignedCommitmentPSBT
+			if signed {
+				raw = fixture.evidence.SignedCommitmentPSBT
+			}
+			packet, err := parsePSBT(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(packet)
+			*target, err = packet.B64Encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		return evidence
+	}
+	tests := []struct {
+		name     string
+		evidence func(*testing.T) vaultBoardFinalEvidence
+		want     string
+	}{
+		{name: "version", evidence: func(t *testing.T) vaultBoardFinalEvidence {
+			return encodeBoth(t, func(packet *psbt.Packet) { packet.UnsignedTx.Version = 3 })
+		}, want: "version"},
+		{name: "locktime", evidence: func(t *testing.T) vaultBoardFinalEvidence {
+			return encodeBoth(t, func(packet *psbt.Packet) { packet.UnsignedTx.LockTime = 1 })
+		}, want: "locktime"},
+		{name: "txid", evidence: func(t *testing.T) vaultBoardFinalEvidence {
+			evidence := fixture.evidence
+			packet, err := parsePSBT(evidence.SignedCommitmentPSBT)
+			if err != nil {
+				t.Fatal(err)
+			}
+			packet.UnsignedTx.TxOut[0].Value--
+			evidence.SignedCommitmentPSBT, err = packet.B64Encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return evidence
+		}, want: "txid"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := verifyVaultBoardFinal(
+				test.evidence(t), fixture.proof.operation, fixture.register, fixture.proof.tree,
+				fixture.expiry,
+			)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("commitment mutation accepted: %v", err)
+			}
+		})
 	}
 }
 
