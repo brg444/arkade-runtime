@@ -103,6 +103,7 @@ type vaultBoardServiceFixture struct {
 	vaultID  string
 	receiver string
 	now      time.Time
+	clock    *time.Time
 	dbPath   string
 	master   *btcec.PrivateKey
 	emulator *btcec.PrivateKey
@@ -111,8 +112,9 @@ type vaultBoardServiceFixture struct {
 func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	t.Helper()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	clock := &now
 	dbPath := filepath.Join(t.TempDir(), "board-service.sqlite")
-	ledger, err := policy.OpenLedger(dbPath, func() time.Time { return now })
+	ledger, err := policy.OpenLedger(dbPath, func() time.Time { return *clock })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,13 +133,13 @@ func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	svc.keys = keys
 	svc.VaultCosignerPub = master.PubKey()
 	svc.VaultBoardStore = ledger
-	svc.EnrollmentNow = func() time.Time { return now }
+	svc.EnrollmentNow = func() time.Time { return *clock }
 	resolver := &vaultBoardTestResolver{stubArkResolver: stubArkResolver{
 		feePolicy: ports.IntentFeePolicy{OnchainInput: "1000.0"},
 		signer:    operatorKey.PubKey().SerializeCompressed(),
 	}}
 	svc.ArkResolver = resolver
-	svc.SessionNow = func() time.Time { return now }
+	svc.SessionNow = func() time.Time { return *clock }
 
 	raw := bytes.Repeat([]byte{0x6d}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -204,7 +206,7 @@ func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	}
 	return vaultBoardServiceFixture{
 		svc: svc, ledger: ledger, chain: chain, operator: op, resolver: resolver,
-		proof: proof, vaultID: start.VaultID, receiver: receiverTree.ArkAddress, now: now,
+		proof: proof, vaultID: start.VaultID, receiver: receiverTree.ArkAddress, now: now, clock: clock,
 		dbPath: dbPath, master: master, emulator: emulator,
 	}
 }
@@ -238,7 +240,29 @@ func (f vaultBoardServiceFixture) register(t *testing.T, prepared vaultBoardPrep
 	return result
 }
 
-func TestVaultBoardServiceDirectRegisterReleaseAndGenerationRotation(t *testing.T) {
+func (f vaultBoardServiceFixture) releaseHandle(t *testing.T) vaultBoardPrepareResult {
+	t.Helper()
+	operationID, err := policy.ComputeVaultBoardOperationID(f.vaultID, f.proof.operation.Txid, f.proof.operation.Vout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := f.ledger.GetCurrentVaultBoardAttempt(context.Background(), operationID)
+	if err != nil || snapshot == nil {
+		t.Fatalf("release snapshot = %+v, %v", snapshot, err)
+	}
+	expireAt := f.svc.vtxoNow().Add(vaultBoardDeleteTTL).Unix()
+	handle, err := f.svc.sealVaultBoardHandle(vaultBoardHandleClaims{
+		Version: 1, Kind: string(vaultBoardReleaseRequired), VaultID: f.vaultID,
+		OperationID: operationID, Txid: hex.EncodeToString(f.proof.operation.Txid), Vout: f.proof.operation.Vout,
+		Attempt: snapshot.Register.Attempt, DeleteExpireAt: expireAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return vaultBoardPrepareResult{State: vaultBoardReleaseRequired, Handle: handle, DeleteExpireAt: expireAt}
+}
+
+func TestVaultBoardServiceSupersedesExpiredRegisterWithoutDelete(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
 	prepared := fixture.prepare(t)
 	if prepared.State != vaultBoardReady || prepared.Handle == "" {
@@ -248,33 +272,60 @@ func TestVaultBoardServiceDirectRegisterReleaseAndGenerationRotation(t *testing.
 	if registered.Status != vaultBoardRegistered || registered.IntentID == "" || fixture.operator.registers != 1 {
 		t.Fatalf("register = %+v, calls=%d", registered, fixture.operator.registers)
 	}
-	release := fixture.prepare(t)
-	if release.State != vaultBoardReleaseRequired || release.DeleteExpireAt <= fixture.now.Unix() {
-		t.Fatalf("release prepare = %+v", release)
+	blocked := fixture.prepare(t)
+	if blocked.State != vaultBoardBlocked || fixture.operator.deletes != 0 {
+		t.Fatalf("active register = %+v, delete calls=%d", blocked, fixture.operator.deletes)
 	}
+	*fixture.clock = time.Unix(prepared.RegisterExpireAt, 0).UTC().Add(30 * time.Second)
+	next := fixture.prepare(t)
+	claims, err := fixture.svc.openVaultBoardHandle(next.Handle, string(vaultBoardReady))
+	if err != nil || claims.Attempt != 1 {
+		t.Fatalf("next attempt = %+v, %v", claims, err)
+	}
+	newSession, _ := btcec.NewPrivateKey()
+	fixture.proof.treePubHex = hex.EncodeToString(newSession.PubKey().SerializeCompressed())
+	if got := fixture.register(t, next); got.Status != vaultBoardRegistered || fixture.operator.deletes != 0 {
+		t.Fatalf("superseding register = %+v, delete calls=%d", got, fixture.operator.deletes)
+	}
+}
+
+func TestVaultBoardServiceSupersedesExpiredRegisterAfterAmbiguousDelete(t *testing.T) {
+	fixture := newVaultBoardServiceFixture(t)
+	prepared := fixture.prepare(t)
+	if got := fixture.register(t, prepared); got.Status != vaultBoardRegistered {
+		t.Fatalf("register = %+v", got)
+	}
+	release := fixture.releaseHandle(t)
 	deleteMessage, err := (intent.DeleteMessage{
 		BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: release.DeleteExpireAt,
 	}).Encode()
 	if err != nil {
 		t.Fatal(err)
 	}
+	fixture.operator.deleteErr = fmt.Errorf("stock boarding-only delete did not match")
 	result, err := fixture.svc.releaseVaultBoard(context.Background(), vaultBoardDeletePhaseRequest{
 		Handle: release.Handle, PSBT: fixture.proof.proof(t, deleteMessage, nil),
 		Message: deleteMessage, InputIndexes: []int{0, 1},
 	})
-	if err != nil || result != vaultBoardReleased || fixture.operator.deletes != 1 {
-		t.Fatalf("release = %q, %v, calls=%d", result, err, fixture.operator.deletes)
+	if err != nil || result != vaultBoardReleaseAmbiguous {
+		t.Fatalf("ambiguous delete = %q, %v", result, err)
 	}
+	operationID, _ := policy.ComputeVaultBoardOperationID(fixture.vaultID, fixture.proof.operation.Txid, fixture.proof.operation.Vout)
+	snapshot, err := fixture.ledger.GetCurrentVaultBoardAttempt(context.Background(), operationID)
+	if err != nil || snapshot.DeleteAuthorization == nil || snapshot.DeleteDispatch == nil || snapshot.DeleteSubmission != nil {
+		t.Fatalf("delete boundary = %+v, %v", snapshot, err)
+	}
+	*fixture.clock = time.Unix(prepared.RegisterExpireAt, 0).UTC().Add(30 * time.Second)
 	next := fixture.prepare(t)
 	claims, err := fixture.svc.openVaultBoardHandle(next.Handle, string(vaultBoardReady))
 	if err != nil || claims.Attempt != 1 {
-		t.Fatalf("next attempt = %+v, %v", claims, err)
+		t.Fatalf("superseding prepare = %+v, claims=%+v, %v", next, claims, err)
 	}
-	if _, err := fixture.svc.registerVaultBoard(context.Background(), vaultBoardRegisterPhaseRequest{
-		Handle: prepared.Handle, PSBT: fixture.proof.proof(t, fixture.proof.registerMessage(t), []*wire.TxOut{fixture.proof.receiver}),
-		Message: fixture.proof.registerMessage(t), InputIndexes: []int{0, 1},
-	}); err == nil {
-		t.Fatalf("released attempt replay accepted: %v", err)
+	newSession, _ := btcec.NewPrivateKey()
+	fixture.proof.treePubHex = hex.EncodeToString(newSession.PubKey().SerializeCompressed())
+	fixture.operator.deleteErr = nil
+	if got := fixture.register(t, next); got.Status != vaultBoardRegistered {
+		t.Fatalf("superseding register = %+v", got)
 	}
 }
 
@@ -298,8 +349,8 @@ func TestVaultBoardServiceDistinguishesRejectedAndAmbiguousRegister(t *testing.T
 			if test.want == vaultBoardDefinitelyNotSubmitted && prepared.State != vaultBoardReady {
 				t.Fatalf("definite rejection did not rotate: %+v", prepared)
 			}
-			if test.want == vaultBoardRegisterAmbiguous && prepared.State != vaultBoardReleaseRequired {
-				t.Fatalf("response loss did not require release: %+v", prepared)
+			if test.want == vaultBoardRegisterAmbiguous && prepared.State != vaultBoardBlocked {
+				t.Fatalf("response loss was not held until expiry: %+v", prepared)
 			}
 		})
 	}
@@ -384,7 +435,7 @@ func TestVaultBoardRegisterRefusesProofInsideDispatchMargin(t *testing.T) {
 func TestVaultBoardReleaseRefusesProofInsideDispatchMargin(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
 	fixture.register(t, fixture.prepare(t))
-	release := fixture.prepare(t)
+	release := fixture.releaseHandle(t)
 	claims, err := fixture.svc.openVaultBoardHandle(release.Handle, string(vaultBoardReleaseRequired))
 	if err != nil {
 		t.Fatal(err)
@@ -448,20 +499,11 @@ func TestVaultBoardRestartBeforeDispatchRotatesServerAttempt(t *testing.T) {
 	}
 }
 
-func TestVaultBoardAttemptRepricesAfterAuthoritativeRelease(t *testing.T) {
+func TestVaultBoardAttemptRepricesAfterExpiredRegister(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
 	first := fixture.prepare(t)
 	fixture.register(t, first)
-	release := fixture.prepare(t)
-	deleteMessage, _ := (intent.DeleteMessage{
-		BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: release.DeleteExpireAt,
-	}).Encode()
-	if result, err := fixture.svc.releaseVaultBoard(context.Background(), vaultBoardDeletePhaseRequest{
-		Handle: release.Handle, PSBT: fixture.proof.proof(t, deleteMessage, nil),
-		Message: deleteMessage, InputIndexes: []int{0, 1},
-	}); err != nil || result != vaultBoardReleased {
-		t.Fatalf("release = %q, %v", result, err)
-	}
+	*fixture.clock = time.Unix(first.RegisterExpireAt, 0).UTC().Add(30 * time.Second)
 	fixture.resolver.feePolicy.OnchainInput = "2000.0"
 	if _, err := fixture.svc.prepareVaultBoard(context.Background(), vaultBoardPrepareRequest{
 		VaultID: fixture.vaultID,
@@ -505,6 +547,11 @@ func TestVaultBoardLostFinalResponseReconcilesExactVtxo(t *testing.T) {
 	if err != nil || snapshot.FinalAuthorization == nil || snapshot.FinalSubmission != nil {
 		t.Fatalf("durable final evidence = %+v, %v", snapshot, err)
 	}
+	*fixture.clock = time.Unix(prepared.RegisterExpireAt, 0).UTC().Add(time.Hour)
+	blocked := fixture.prepare(t)
+	if blocked.State != vaultBoardBlocked {
+		t.Fatalf("expired attempt crossed final boundary: %+v", blocked)
+	}
 	auth := snapshot.FinalAuthorization
 	fixture.chain.state.Spent = true
 	fixture.chain.state.SpendingTxid = auth.CommitmentTxid
@@ -522,7 +569,7 @@ func TestVaultBoardLostFinalResponseReconcilesExactVtxo(t *testing.T) {
 func TestVaultBoardDeleteResultPersistsAfterCallerCancellation(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
 	fixture.register(t, fixture.prepare(t))
-	release := fixture.prepare(t)
+	release := fixture.releaseHandle(t)
 	deleteMessage, _ := (intent.DeleteMessage{
 		BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: release.DeleteExpireAt,
 	}).Encode()
@@ -580,7 +627,7 @@ func TestVaultBoardPersistedEnrollmentRequiresResolverBeforeReload(t *testing.T)
 func TestVaultBoardDeleteFailureBeforeDispatchLeavesNoDeadAuthorization(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
 	fixture.register(t, fixture.prepare(t))
-	release := fixture.prepare(t)
+	release := fixture.releaseHandle(t)
 	deleteMessage, _ := (intent.DeleteMessage{
 		BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: release.DeleteExpireAt,
 	}).Encode()
@@ -600,10 +647,7 @@ func TestVaultBoardDeleteFailureBeforeDispatchLeavesNoDeadAuthorization(t *testi
 		t.Fatalf("pre-dispatch delete became durable: %+v, %v", snapshot, err)
 	}
 	fixture.chain.errAt = 0
-	retry := fixture.prepare(t)
-	if retry.State != vaultBoardReleaseRequired {
-		t.Fatalf("retry prepare = %+v", retry)
-	}
+	retry := fixture.releaseHandle(t)
 	retryMessage, _ := (intent.DeleteMessage{
 		BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: retry.DeleteExpireAt,
 	}).Encode()

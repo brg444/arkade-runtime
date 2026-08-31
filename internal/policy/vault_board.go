@@ -31,7 +31,18 @@ const (
 	vaultBoardOperationIDDomain   = "arkade-vault/vault-board-v1-operation-id/v1"
 	vaultBoardCanonicalVersion    = uint32(1)
 	MaxVaultBoardOperatorRefBytes = 256
+	vaultBoardRegisterQuarantine  = 30 * time.Second
 )
+
+// VaultBoardRegisterCanSupersede reports whether a finite-lived register
+// proof is old enough to replace. This is only a liveness gate: callers must
+// still prove the boarding outpoint is unspent and atomically reject any prior
+// final authorization before allocating the next attempt.
+func VaultBoardRegisterCanSupersede(expireAt int64, now time.Time) bool {
+	quarantineSeconds := int64(vaultBoardRegisterQuarantine / time.Second)
+	nowUnix := now.UTC().Unix()
+	return expireAt > 0 && nowUnix >= quarantineSeconds && expireAt <= nowUnix-quarantineSeconds
+}
 
 // VaultBoardEnrollment is the immutable per-vault commitment to the boarding
 // key, VaultBoardCosigner, Operator, and exact onchain script.
@@ -606,7 +617,7 @@ func (l *Ledger) BeginVaultBoardAttempt(ctx context.Context, operation VaultBoar
 		if last.Attempt == ^uint32(0) {
 			return nil, nil, false, fmt.Errorf("vault-board-v1 attempt overflow")
 		}
-		if err := requireVaultBoardAttemptCanRotate(ctx, conn, key, operationID, last.Attempt); err != nil {
+		if err := requireVaultBoardAttemptCanRotate(ctx, conn, key, operationID, last.Attempt, now); err != nil {
 			return nil, nil, false, err
 		}
 		attempt = last.Attempt + 1
@@ -793,7 +804,7 @@ func loadVerifiedVaultBoardRegisters(ctx context.Context, q queryContext, key []
 	return out, rows.Err()
 }
 
-func requireVaultBoardAttemptCanRotate(ctx context.Context, q queryContext, key []byte, operationID string, attempt uint32) error {
+func requireVaultBoardAttemptCanRotate(ctx context.Context, q queryContext, key []byte, operationID string, attempt uint32, now time.Time) error {
 	if finalAuth, err := loadVaultBoardAuthorization(ctx, q, operationID, attempt, VaultBoardPhaseFinalize); err == nil {
 		if err := VerifyVaultBoardAuthorization(&finalAuth, key); err != nil {
 			return err
@@ -802,47 +813,70 @@ func requireVaultBoardAttemptCanRotate(ctx context.Context, q queryContext, key 
 	} else if err != sql.ErrNoRows {
 		return err
 	}
-	deleteAuth, err := loadVaultBoardAuthorization(ctx, q, operationID, attempt, VaultBoardPhaseDelete)
+	register, err := loadVaultBoardAuthorization(ctx, q, operationID, attempt, VaultBoardPhaseRegister)
+	if err != nil {
+		return err
+	}
+	if err := VerifyVaultBoardAuthorization(&register, key); err != nil {
+		return err
+	}
+	registerDispatch, err := loadVaultBoardDispatch(ctx, q, operationID, attempt, VaultBoardPhaseRegister)
 	if err == sql.ErrNoRows {
 		// A register authorization that never crossed the durable dispatch
-		// boundary cannot have reached the Operator. Rotating it is safe and
-		// gives a restarted SDK a fresh TreeSignerSession without storing the
-		// old session secret.
-		if _, dispatchErr := loadVaultBoardDispatch(ctx, q, operationID, attempt, VaultBoardPhaseRegister); dispatchErr == sql.ErrNoRows {
-			return nil
-		} else if dispatchErr != nil {
-			return dispatchErr
+		// boundary cannot have reached the Operator.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := VerifyVaultBoardDispatch(&registerDispatch, key); err != nil {
+		return err
+	}
+	registerResult, resultErr := loadVaultBoardSubmission(ctx, q, operationID, attempt, VaultBoardPhaseRegister)
+	if resultErr == nil {
+		if err := VerifyVaultBoardSubmission(&registerResult, key); err != nil {
+			return err
 		}
-		registerResult, resultErr := loadVaultBoardSubmission(ctx, q, operationID, attempt, VaultBoardPhaseRegister)
-		if resultErr == nil {
-			if err := VerifyVaultBoardSubmission(&registerResult, key); err != nil {
+		if registerResult.Outcome == VaultBoardAuthRejected {
+			return nil
+		}
+	} else if resultErr != sql.ErrNoRows {
+		return resultErr
+	}
+
+	// A successful direct release remains sufficient, but stock Operator
+	// releases cannot match boarding-only inputs. A missing/ambiguous release
+	// therefore does not permanently poison an expired pre-final attempt.
+	deleteAuth, deleteErr := loadVaultBoardAuthorization(ctx, q, operationID, attempt, VaultBoardPhaseDelete)
+	if deleteErr == nil {
+		if err := VerifyVaultBoardAuthorization(&deleteAuth, key); err != nil {
+			return err
+		}
+		if deleteDispatch, dispatchErr := loadVaultBoardDispatch(ctx, q, operationID, attempt, VaultBoardPhaseDelete); dispatchErr == nil {
+			if err := VerifyVaultBoardDispatch(&deleteDispatch, key); err != nil {
 				return err
 			}
-			if registerResult.Outcome == VaultBoardAuthRejected {
+		} else if dispatchErr != sql.ErrNoRows {
+			return dispatchErr
+		}
+		if deleteResult, resultErr := loadVaultBoardSubmission(ctx, q, operationID, attempt, VaultBoardPhaseDelete); resultErr == nil {
+			if err := VerifyVaultBoardSubmission(&deleteResult, key); err != nil {
+				return err
+			}
+			if deleteResult.Outcome == VaultBoardAuthReleased && bytes.Equal(deleteResult.RequestDigest, deleteAuth.RequestDigest) {
 				return nil
 			}
 		} else if resultErr != sql.ErrNoRows {
 			return resultErr
 		}
-		return fmt.Errorf("previous vault-board-v1 attempt not authoritatively released")
+	} else if deleteErr != sql.ErrNoRows {
+		return deleteErr
 	}
-	if err != nil {
-		return err
+
+	if VaultBoardRegisterCanSupersede(register.ExpireAt, now) {
+		return nil
 	}
-	if err := VerifyVaultBoardAuthorization(&deleteAuth, key); err != nil {
-		return err
-	}
-	deleteResult, err := loadVaultBoardSubmission(ctx, q, operationID, attempt, VaultBoardPhaseDelete)
-	if err != nil {
-		return fmt.Errorf("previous vault-board-v1 attempt not authoritatively released")
-	}
-	if err := VerifyVaultBoardSubmission(&deleteResult, key); err != nil {
-		return err
-	}
-	if deleteResult.Outcome != VaultBoardAuthReleased || !bytes.Equal(deleteResult.RequestDigest, deleteAuth.RequestDigest) {
-		return fmt.Errorf("previous vault-board-v1 attempt not authoritatively released")
-	}
-	return nil
+	return fmt.Errorf("previous vault-board-v1 register is still active")
 }
 
 func requireVaultBoardAttemptCurrent(ctx context.Context, q queryContext, key []byte, operationID string, attempt uint32) error {
