@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -262,30 +263,72 @@ func (f vaultBoardServiceFixture) releaseHandle(t *testing.T) vaultBoardPrepareR
 	return vaultBoardPrepareResult{State: vaultBoardReleaseRequired, Handle: handle, DeleteExpireAt: expireAt}
 }
 
-func TestVaultBoardServiceSupersedesExpiredRegisterWithoutDelete(t *testing.T) {
+func TestVaultBoardServiceSupersedesStaleRegisterThroughDefiniteRejectionAndFinalFence(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
-	prepared := fixture.prepare(t)
-	if prepared.State != vaultBoardReady || prepared.Handle == "" {
-		t.Fatalf("prepare = %+v", prepared)
+	first := fixture.prepare(t)
+	if first.State != vaultBoardReady || first.Handle == "" {
+		t.Fatalf("first prepare = %+v", first)
 	}
-	registered := fixture.register(t, prepared)
+	registered := fixture.register(t, first)
 	if registered.Status != vaultBoardRegistered || registered.IntentID == "" || fixture.operator.registers != 1 {
-		t.Fatalf("register = %+v, calls=%d", registered, fixture.operator.registers)
+		t.Fatalf("first register = %+v, calls=%d", registered, fixture.operator.registers)
 	}
 	blocked := fixture.prepare(t)
-	if blocked.State != vaultBoardBlocked || fixture.operator.deletes != 0 {
+	if blocked.State != vaultBoardBlocked || blocked.Handle != "" || blocked.DeleteExpireAt != 0 || fixture.operator.deletes != 0 {
 		t.Fatalf("active register = %+v, delete calls=%d", blocked, fixture.operator.deletes)
 	}
-	*fixture.clock = time.Unix(prepared.RegisterExpireAt, 0).UTC().Add(30 * time.Second)
-	next := fixture.prepare(t)
-	claims, err := fixture.svc.openVaultBoardHandle(next.Handle, string(vaultBoardReady))
+
+	*fixture.clock = time.Unix(first.RegisterExpireAt, 0).UTC().Add(30 * time.Second)
+	rejectedAttempt := fixture.prepare(t)
+	claims, err := fixture.svc.openVaultBoardHandle(rejectedAttempt.Handle, string(vaultBoardReady))
 	if err != nil || claims.Attempt != 1 {
-		t.Fatalf("next attempt = %+v, %v", claims, err)
+		t.Fatalf("stale supersession = %+v, claims=%+v, %v", rejectedAttempt, claims, err)
 	}
-	newSession, _ := btcec.NewPrivateKey()
-	fixture.proof.treePubHex = hex.EncodeToString(newSession.PubKey().SerializeCompressed())
-	if got := fixture.register(t, next); got.Status != vaultBoardRegistered || fixture.operator.deletes != 0 {
-		t.Fatalf("superseding register = %+v, delete calls=%d", got, fixture.operator.deletes)
+	rejectedSession, _ := btcec.NewPrivateKey()
+	fixture.proof.treePubHex = hex.EncodeToString(rejectedSession.PubKey().SerializeCompressed())
+	// Stock VTXO_BANNED is InvalidArgument and reaches this adapter as HTTP 400,
+	// which is a definite pre-acceptance rejection rather than an ambiguous 500.
+	fixture.operator.registerErr = vaultBoardOperatorRejection{status: http.StatusBadRequest}
+	if got := fixture.register(t, rejectedAttempt); got.Status != vaultBoardDefinitelyNotSubmitted {
+		t.Fatalf("banned register = %+v", got)
+	}
+	operationID, _ := policy.ComputeVaultBoardOperationID(fixture.vaultID, fixture.proof.operation.Txid, fixture.proof.operation.Vout)
+	rejectedSnapshot, err := fixture.ledger.GetCurrentVaultBoardAttempt(context.Background(), operationID)
+	if err != nil || rejectedSnapshot == nil || rejectedSnapshot.Register.Attempt != 1 ||
+		rejectedSnapshot.RegisterSubmission == nil || rejectedSnapshot.RegisterSubmission.Outcome != policy.VaultBoardAuthRejected {
+		t.Fatalf("rejected attempt = %+v, %v", rejectedSnapshot, err)
+	}
+
+	fixture.operator.registerErr = nil
+	successfulAttempt := fixture.prepare(t)
+	claims, err = fixture.svc.openVaultBoardHandle(successfulAttempt.Handle, string(vaultBoardReady))
+	if err != nil || claims.Attempt != 2 {
+		t.Fatalf("post-rejection rotation = %+v, claims=%+v, %v", successfulAttempt, claims, err)
+	}
+	successfulSession, _ := btcec.NewPrivateKey()
+	fixture.proof.treePubHex = hex.EncodeToString(successfulSession.PubKey().SerializeCompressed())
+	if got := fixture.register(t, successfulAttempt); got.Status != vaultBoardRegistered || fixture.operator.deletes != 0 {
+		t.Fatalf("post-rejection register = %+v, delete calls=%d", got, fixture.operator.deletes)
+	}
+	successfulSnapshot, err := fixture.ledger.GetCurrentVaultBoardAttempt(context.Background(), operationID)
+	if err != nil || successfulSnapshot == nil || successfulSnapshot.Register.Attempt != 2 ||
+		bytes.Equal(successfulSnapshot.Register.RequestDigest, rejectedSnapshot.Register.RequestDigest) ||
+		bytes.Equal(successfulSnapshot.Register.TreeSessionPub, rejectedSnapshot.Register.TreeSessionPub) {
+		t.Fatalf("rotated attempt = %+v, rejected=%+v, %v", successfulSnapshot, rejectedSnapshot, err)
+	}
+
+	finalFixture := newVaultBoardFinalFixtureFromProof(t, fixture.proof)
+	fixture.operator.finalErr = fmt.Errorf("connection reset after final authorization")
+	result, err := fixture.svc.submitVaultBoardCommitment(context.Background(), vaultBoardFinalPhaseRequest{
+		Handle: successfulAttempt.Handle, PSBT: finalFixture.evidence.SignedCommitmentPSBT,
+		InputIndexes: []int{0}, Batch: finalFixture.evidence,
+	})
+	if err != nil || result != vaultBoardCommitmentAmbiguous || fixture.operator.finals != 1 {
+		t.Fatalf("final authorization = %q, %v, calls=%d", result, err, fixture.operator.finals)
+	}
+	*fixture.clock = time.Unix(successfulAttempt.RegisterExpireAt, 0).UTC().Add(time.Hour)
+	if got := fixture.prepare(t); got.State != vaultBoardBlocked || got.Handle != "" {
+		t.Fatalf("final authorization allowed rotation: %+v", got)
 	}
 }
 
