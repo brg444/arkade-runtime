@@ -611,7 +611,7 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 		return err
 	}
 	if existing == nil {
-		return s.Ledger.StoreVaultEnvelopeIfAbsent(vaultID, envelope)
+		return s.Stores.Identity.StoreVaultEnvelopeIfAbsent(vaultID, envelope)
 	}
 	if credentialEnvelopesEqual(*existing, envelope) {
 		return nil
@@ -622,7 +622,7 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 	if err := verifyRecoveryBindingV2Upgrade(cred, existing); err != nil {
 		return err
 	}
-	return s.Ledger.ReplaceVaultEnvelope(vaultID, *existing, envelope)
+	return s.Stores.Identity.ReplaceVaultEnvelope(vaultID, *existing, envelope)
 }
 
 func credentialEnvelopesEqual(a, b policy.CredentialEnvelope) bool {

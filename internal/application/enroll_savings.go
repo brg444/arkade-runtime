@@ -23,11 +23,7 @@ func (s *Service) previewSavingsDescriptor(vaultID string, req RegisterRequest) 
 	if vaultID == "" {
 		return nil, fmt.Errorf("tenant vault id required")
 	}
-	master, err := s.vaultCosignerMaster()
-	if err != nil {
-		return nil, err
-	}
-	child, err := policy.DeriveVaultCosignerScalar(master, vaultID, policy.CosignerModeHKDFSHA256V1)
+	childPub, err := s.keys.enrollmentPublic(vaultID)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +31,7 @@ func (s *Service) previewSavingsDescriptor(vaultID string, req RegisterRequest) 
 	if err != nil {
 		return nil, err
 	}
-	in, err := s.savingsFamilyInput(vaultID, parsed, child.PubKey(), s.ArkadeCosignerPub)
+	in, err := s.savingsFamilyInput(vaultID, parsed, childPub, s.ArkadeCosignerPub)
 	if err != nil {
 		return nil, err
 	}

@@ -38,18 +38,27 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "deployment not ready"
 		return st
 	}
-	if s.Ledger == nil {
+	if err := s.Stores.Validate(); err != nil {
 		st.Error = "ledger unavailable"
 		return st
 	}
-	ver, err := s.Ledger.SchemaVersion()
+	if err := s.requireLedgerIntegrity(); err != nil {
+		st.Error = "ledger integrity unavailable"
+		return st
+	}
+	ver, err := s.Stores.Identity.SchemaVersion()
 	if err != nil {
 		st.Error = "schema unread"
 		return st
 	}
 	st.Schema = ver
-	if s.ArkadeCosignerOrigin == "" || s.ArkadeCosignerVersion == "" || s.ArkadeCosignerPub == nil {
+	if s.VaultCosignerPub == nil || s.ArkadeCosignerOrigin == "" || s.ArkadeCosignerVersion == "" ||
+		s.ArkadeCosignerPub == nil || s.keys.Validate() != nil {
 		st.Error = "arkade signer not pinned"
+		return st
+	}
+	if err := validateReleaseContractPack(s.contractPackJSON); err != nil {
+		st.Error = "contract pack mismatch"
 		return st
 	}
 	if isNilInterface(s.ArkResolver) {

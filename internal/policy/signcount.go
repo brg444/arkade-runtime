@@ -21,9 +21,6 @@ func (l *Ledger) AdvanceSignCount(vaultID string, credentialID []byte, incoming 
 	if len(l.integrityKey) != sha256.Size {
 		return fmt.Errorf("sign count ledger required")
 	}
-	if !hasTable(l.db, "webauthn_sign_count") {
-		return nil
-	}
 	var stored uint32
 	var mac []byte
 	err := l.db.QueryRow(

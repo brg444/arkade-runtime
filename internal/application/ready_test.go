@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -42,6 +43,11 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ledger.Close()
+	integrityKey := bytes.Repeat([]byte{0x42}, 32)
+	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
+		t.Fatal(err)
+	}
+	vaultCosigner, _ := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{0x43}, 32))
 	arkadeCosigner, err := hex.DecodeString(deployment.MutinynetArkadeCosignerPubHex)
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +69,9 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		Network: deployment.NetworkMutinynet,
 	}
 	svc := New(Deps{
-		Ledger: ledger, Deployment: cfg, ArkadeCosignerPub: arkadeCosignerPub,
+		Stores: testStores(t, ledger), Deployment: cfg, IntegrityKey: integrityKey,
+		Keys:             testKeys(t, vaultCosigner, LocalSigner{Priv: vaultCosigner}),
+		VaultCosignerPub: vaultCosigner.PubKey(), ArkadeCosignerPub: arkadeCosignerPub,
 		ArkadeCosignerOrigin:  deployment.MutinynetArkadeCosignerOrigin,
 		ArkadeCosignerVersion: deployment.MutinynetArkadeCosignerVersion,
 	})
@@ -73,6 +81,18 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
 	}
+	keys := svc.keys
+	svc.keys = KeyCapabilities{}
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "arkade signer not pinned" {
+		t.Fatalf("missing signer capability readiness = %+v", got)
+	}
+	svc.keys = keys
+	contractPack := append([]byte(nil), svc.contractPackJSON...)
+	svc.contractPackJSON[0] ^= 1
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "contract pack mismatch" {
+		t.Fatalf("mutated Contract Pack readiness = %+v", got)
+	}
+	svc.contractPackJSON = contractPack
 	if got := svc.Ready(context.Background()); !got.Ok || got.Error != "" {
 		t.Fatalf("pinned resolver readiness = %+v", got)
 	}

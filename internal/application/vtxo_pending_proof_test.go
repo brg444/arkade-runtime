@@ -35,10 +35,12 @@ func pendingProofForInputs(
 	t.Helper()
 	proofInputs := make([]intent.Input, len(inputs))
 	for i, input := range inputs {
-		var hash chainhash.Hash
-		copy(hash[:], input.Txid)
+		hash, err := chainhash.NewHashFromStr(hex.EncodeToString(input.Txid))
+		if err != nil {
+			t.Fatal(err)
+		}
 		proofInputs[i] = intent.Input{
-			OutPoint:    &wire.OutPoint{Hash: hash, Index: uint32(input.Vout)},
+			OutPoint:    &wire.OutPoint{Hash: *hash, Index: uint32(input.Vout)},
 			Sequence:    wire.MaxTxInSequenceNum,
 			WitnessUtxo: &wire.TxOut{Value: input.ValueSats, PkScript: bytes.Clone(input.Script)},
 		}
@@ -241,11 +243,11 @@ func TestAuthorizeVtxoSpendLostResponseReturnsIdenticalPendingProof(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	op, err := e.svc.Ledger.GetVtxoOperation(context.Background(), reserve.OperationID)
+	op, err := e.ledger.GetVtxoOperation(context.Background(), reserve.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inputs, err := e.svc.Ledger.GetVtxoOperationInputs(context.Background(), reserve.OperationID)
+	inputs, err := e.ledger.GetVtxoOperationInputs(context.Background(), reserve.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +339,7 @@ func TestAuthorizeVtxoSpendLostResponseReturnsIdenticalPendingProof(t *testing.T
 	if err := verifyDualSignedPendingProof(first.AuthorizedPendingProof, inputs, tree, e.hot.PubKey()); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), op.OperationID)
+	stored, err := e.ledger.GetVtxoOperation(context.Background(), op.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}

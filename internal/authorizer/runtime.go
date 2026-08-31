@@ -12,18 +12,21 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/application"
+	"github.com/brg444/arkade-vault-server/internal/contractpack"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	httpapi "github.com/brg444/arkade-vault-server/internal/iface/http"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-vault-server/internal/program"
+	arkaderuntime "github.com/brg444/arkade-vault-server/internal/runtime"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -42,7 +45,7 @@ type Config struct {
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
 type Runtime struct {
-	handler http.Handler
+	host    *arkaderuntime.Host
 	service *application.Service
 	ledger  *policy.Ledger
 }
@@ -50,16 +53,19 @@ type Runtime struct {
 // Handler returns the constrained HTTP API. The underlying Service and its
 // policy-agnostic final signer stay private to this package.
 func (r *Runtime) Handler() http.Handler {
-	if r == nil {
+	if r == nil || r.host == nil {
 		return http.NotFoundHandler()
 	}
-	return r.handler
+	return r.host.Handler()
 }
 
 // Close releases the authoritative ledger.
 func (r *Runtime) Close() error {
 	if r == nil {
 		return nil
+	}
+	if r.host != nil {
+		return r.host.Close()
 	}
 	if r.service != nil {
 		r.service.WipeSecrets()
@@ -85,9 +91,9 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 		return nil, fmt.Errorf("required Arkade resolver: %w", err)
 	}
 	rt.service.ArkResolver = resolver
-	if ready := rt.service.Ready(ctx); !ready.Ok {
+	if err := rt.host.Ready(ctx); err != nil {
 		_ = rt.Close()
-		return nil, fmt.Errorf("authorizer readiness: %s", ready.Error)
+		return nil, fmt.Errorf("authorizer readiness: %w", err)
 	}
 	return rt, nil
 }
@@ -111,11 +117,20 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 	if dialArkade == nil {
 		return nil, fmt.Errorf("public arkade emulator dialer required")
 	}
+	if err := contractpack.Validate(); err != nil {
+		return nil, fmt.Errorf("release Contract Pack: %w", err)
+	}
 
 	vaultCosignerKey, err := LoadVaultCosignerKey(cfg.VaultCosignerKeyFile)
 	if err != nil {
 		return nil, err
 	}
+	keyOwnedByService := false
+	defer func() {
+		if !keyOwnedByService {
+			wipePrivateKey(vaultCosignerKey)
+		}
+	}()
 	arkadeBase, err := parseCanonicalCompressedPub("ArkadeCosigner", deployment.MutinynetArkadeCosignerPubHex)
 	if err != nil {
 		return nil, err
@@ -178,17 +193,31 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
+	if err := validateArkadeDialResult(arkadeSigner, arkadeIdentity, arkadeBase); err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
+	}
+	stores, err := arkadevaultv1.StoresFromLedger(ledger)
+	if err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
+	}
+	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
+	if err != nil {
+		zero(credentialIntegrityKey)
+		return nil, err
+	}
 	svc := application.New(application.Deps{
-		Ledger:                ledger,
+		Stores:                stores,
 		Deployment:            cfg.Deployment,
 		IntegrityKey:          credentialIntegrityKey,
-		MasterIKM:             vaultCosignerKey,
+		Keys:                  keys,
 		VaultCosignerPub:      vaultCosignerKey.PubKey(),
 		ArkadeCosignerPub:     arkadeIdentity.BasePub,
 		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
 		ArkadeCosignerVersion: arkadeIdentity.Version,
-		ArkadeSigner:          arkadeSigner,
 	})
+	keyOwnedByService = true
 	defer func() {
 		if closeOnError {
 			svc.WipeSecrets()
@@ -201,8 +230,63 @@ func openWithArkadeDialer(ctx context.Context, cfg Config, dialArkade arkadeSign
 		return nil, err
 	}
 
+	registry, err := compiledRegistry()
+	if err != nil {
+		return nil, err
+	}
+	host, err := arkaderuntime.Open(registry, arkadevaultv1.ProfileID, arkaderuntime.Mount{
+		Handler: httpapi.Authorizer(svc),
+		Readiness: func(ctx context.Context) error {
+			ready := svc.Ready(ctx)
+			if !ready.Ok {
+				return fmt.Errorf("%s", ready.Error)
+			}
+			return nil
+		},
+		Shutdown: func() error {
+			svc.WipeSecrets()
+			return ledger.Close()
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	closeOnError = false
-	return &Runtime{handler: httpapi.Authorizer(svc), service: svc, ledger: ledger}, nil
+	return &Runtime{host: host, service: svc, ledger: ledger}, nil
+}
+
+func validateArkadeDialResult(signer application.Signer, identity application.PublicEmulatorIdentity, expected *btcec.PublicKey) error {
+	if signerUnavailable(signer) {
+		return fmt.Errorf("public arkade emulator signer capability required")
+	}
+	if identity.Origin != deployment.MutinynetArkadeCosignerOrigin ||
+		identity.Version != deployment.MutinynetArkadeCosignerVersion ||
+		identity.BasePub == nil || expected == nil ||
+		!bytes.Equal(identity.BasePub.SerializeCompressed(), expected.SerializeCompressed()) {
+		return fmt.Errorf("public arkade emulator identity does not match the release pin")
+	}
+	return nil
+}
+
+func signerUnavailable(signer application.Signer) bool {
+	if signer == nil {
+		return true
+	}
+	value := reflect.ValueOf(signer)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
+// compiledRegistry is the single production composition point. Profiles are
+// linked here at build time; there is no configuration or discovery path that
+// can add another profile at runtime.
+func compiledRegistry() (*arkaderuntime.Registry, error) {
+	return arkaderuntime.Compile(arkadevaultv1.Definition())
 }
 
 // provisionEnrollmentInvite turns one operator-supplied secret file into one
@@ -303,15 +387,25 @@ func LoadVaultCosignerKey(path string) (*btcec.PrivateKey, error) {
 		return nil, fmt.Errorf("VaultCosigner key must be exactly 32-byte hex")
 	}
 	defer zero(raw)
-	scalar := new(big.Int).SetBytes(raw)
-	if scalar.Sign() <= 0 || scalar.Cmp(btcec.S256().N) >= 0 {
+	var scalar btcec.ModNScalar
+	overflow := scalar.SetByteSlice(raw)
+	defer scalar.Zero()
+	if overflow || scalar.IsZero() {
 		return nil, fmt.Errorf("VaultCosigner key scalar must be in [1, secp256k1.N-1]")
 	}
 	priv, _ := btcec.PrivKeyFromBytes(raw)
 	if role, known := knownPublicFixtureRole(priv.PubKey()); known {
+		wipePrivateKey(priv)
 		return nil, fmt.Errorf("public %s fixture VaultCosigner key is forbidden", role)
 	}
 	return priv, nil
+}
+
+func wipePrivateKey(priv *btcec.PrivateKey) {
+	if priv == nil {
+		return
+	}
+	priv.Key.Zero()
 }
 
 func parseDeploymentPub(role, encoded string) (*btcec.PublicKey, error) {
