@@ -3,6 +3,7 @@ package application
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	arktree "github.com/arkade-os/arkd/pkg/ark-lib/tree"
@@ -79,6 +80,7 @@ func attachVaultBoardRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			return
 		}
 		result, err := svc.prepareVaultBoard(r.Context(), request)
+		logVaultBoardPhaseError("prepare", err)
 		writeJSON(w, vaultBoardPrepareHTTPResponse{
 			Status: string(result.State), Handle: result.Handle, RegisterExpireAt: result.RegisterExpireAt,
 			DeleteExpireAt: result.DeleteExpireAt, Reason: result.Reason, CommitmentTxid: result.CommitmentTxid,
@@ -98,6 +100,7 @@ func attachVaultBoardRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		result, err := svc.registerVaultBoard(r.Context(), vaultBoardRegisterPhaseRequest{
 			Handle: request.Handle, PSBT: request.PSBT, InputIndexes: request.InputIndexes, Message: message,
 		})
+		logVaultBoardPhaseError("register", err)
 		writeJSON(w, vaultBoardRegisterHTTPResponse{Status: string(result.Status), IntentID: result.IntentID}, err)
 	})
 	mux.HandleFunc("POST /v1/vtxo/board/release", func(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +117,7 @@ func attachVaultBoardRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		result, err := svc.releaseVaultBoard(r.Context(), vaultBoardDeletePhaseRequest{
 			Handle: request.Handle, PSBT: request.PSBT, InputIndexes: request.InputIndexes, Message: message,
 		})
+		logVaultBoardPhaseError("release", err)
 		writeJSON(w, struct {
 			Status string `json:"status"`
 		}{Status: string(result)}, err)
@@ -133,10 +137,17 @@ func attachVaultBoardRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			Handle: request.Handle, PSBT: request.PSBT, InputIndexes: request.InputIndexes,
 			SignedForfeits: request.SignedForfeits, Batch: evidence,
 		})
+		logVaultBoardPhaseError("final", err)
 		writeJSON(w, struct {
 			Status string `json:"status"`
 		}{Status: string(result)}, err)
 	})
+}
+
+func logVaultBoardPhaseError(phase string, err error) {
+	if err != nil {
+		log.Printf("vault-board-v1 %s failed: %v", phase, err)
+	}
 }
 
 func canonicalVaultBoardMessage[M any](message M) (string, error) {
