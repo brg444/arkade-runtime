@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 )
 
@@ -59,6 +60,15 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	}
 	if err := validateReleaseContractPack(s.contractPackJSON); err != nil {
 		st.Error = "contract pack mismatch"
+		return st
+	}
+	if s.VaultBoardStore == nil {
+		st.Error = "vault-board-v1 store unavailable"
+		return st
+	}
+	runtime, err := s.requireVaultBoardRuntime()
+	if err != nil || runtime.batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
+		st.Error = "vault-board-v1 runtime unavailable"
 		return st
 	}
 	if isNilInterface(s.ArkResolver) {

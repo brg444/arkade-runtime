@@ -10,7 +10,7 @@ import (
 )
 
 func TestStoresFromLedgerKeepsOnePhysicalDatabase(t *testing.T) {
-	ledger, err := policy.OpenMainnetLedger(t.TempDir()+"/vault.db", nil)
+	ledger, err := policy.OpenLedger(t.TempDir()+"/vault.db", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestStoresFromLedgerKeepsOnePhysicalDatabase(t *testing.T) {
 }
 
 func TestStoresRetainLedgerAuthenticationBoundary(t *testing.T) {
-	ledger, err := policy.OpenMainnetLedger(t.TempDir()+"/vault.db", nil)
+	ledger, err := policy.OpenLedger(t.TempDir()+"/vault.db", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,10 +50,13 @@ VTXO routes remain unavailable indefinitely.
 
 1. Run `go test ./... -count=1`, `go vet ./...`, and the targeted race suites
    documented in the repository README.
-2. Start against empty mainnet v2 volumes and new key material.
+2. Start the Mutinynet candidate against empty volumes and new key material.
+   `vault-board-v1` is the only boarding program and has no runtime selector or
+   compatibility database.
 3. Require `/ready` to return `ok: true` before routing wallet traffic.
 4. Exercise VTXO receive, send, ambiguous-response recovery, and restart.
-5. Exercise Savings-to-Spending boarding, invitation rotation, and rollback
+5. Exercise Savings-to-Spending boarding, response loss at all four phases,
+   retained-intent release, invitation rotation, CSV cutoff, and rollback
    failure drills.
 6. Enable outbound BOLT11 only after the wallet's package-native quote,
    contract registration, refund, and ordinary VTXO funding gates pass. This
@@ -65,11 +68,11 @@ Mainnet deployment uses the confirmed Emulator discovery endpoint at
 is `https://arkade.computer`; this deployment does not include or modify
 `arkd`.
 
-Before enabling boarding, inject a lost settlement response and an
-unacknowledged intent deletion for a boarding input. The deployed Operator must
-either complete that exact attempt or acknowledge its cancellation before the
-wallet can select the input again. A duplicate-input rejection confirms the
-input is still locked; it does not complete recovery.
+Before enabling boarding, inject lost responses after registration, release,
+and final submission. The service must reconcile the exact attempt or keep
+the input ambiguous; it may never rotate an unknown dispatch into another
+attempt. A retained intent must receive an acknowledged release through the
+stock public Operator API before the SDK can register a replacement.
 
 The public edge must also enforce a shared rate limit by client address and
 vault identifier on passkey challenge issuance and VTXO reservation. Phone

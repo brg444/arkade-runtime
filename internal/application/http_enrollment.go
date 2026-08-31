@@ -1,8 +1,11 @@
 package application
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
@@ -10,11 +13,32 @@ func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		vaultID := strings.TrimSpace(r.URL.Query().Get("vault"))
 		if vaultID == "" {
 			status, err := svc.PublicStatus()
-			writeJSON(w, status, err)
+			writeJSON(w, struct {
+				PublicStatus
+				VtxoBoardingProgram string `json:"vtxoBoardingProgram"`
+			}{PublicStatus: status, VtxoBoardingProgram: program.VaultBoardV1}, err)
 			return
 		}
 		status, err := svc.StatusFor(r.Context(), vaultID)
-		writeJSON(w, status, err)
+		if err != nil {
+			writeJSON(w, status, err)
+			return
+		}
+		snap := svc.snapshot(vaultID)
+		cred, loadErr := svc.loadVerifiedCredentialFor(vaultID)
+		if loadErr != nil || cred == nil || snap.Board == nil {
+			if loadErr == nil {
+				loadErr = fmt.Errorf("vault-board-v1 enrollment descriptor unavailable")
+			}
+			writeJSON(w, nil, loadErr)
+			return
+		}
+		desc, hash, descErr := svc.statusVaultBoardDescriptor(cred, snap)
+		writeJSON(w, struct {
+			Status
+			VtxoBoardingDescriptor     vaultBoardPublicDescriptor `json:"vtxoBoardingDescriptor"`
+			VtxoBoardingDescriptorHash string                     `json:"vtxoBoardingDescriptorHash"`
+		}{Status: status, VtxoBoardingDescriptor: desc.Boarding, VtxoBoardingDescriptorHash: hash}, descErr)
 	})
 	mux.HandleFunc("GET /v1/invite", func(w http.ResponseWriter, r *http.Request) {
 		view, err := svc.InviteStatus(r.Header.Get(EnrollmentTokenHeader))

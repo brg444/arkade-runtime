@@ -38,7 +38,7 @@ func (r readyArkResolver) OperatorSignerPub() []byte   { return append([]byte(ni
 func (r readyArkResolver) Network() string             { return r.network }
 
 func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
-	ledger, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "ledger.sqlite"), nil)
+	ledger, err := policy.OpenLedger(filepath.Join(t.TempDir(), "ledger.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,16 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		VaultCosignerPub: vaultCosigner.PubKey(), ArkadeCosignerPub: arkadeCosignerPub,
 		ArkadeCosignerOrigin:  deployment.MutinynetArkadeCosignerOrigin,
 		ArkadeCosignerVersion: deployment.MutinynetArkadeCosignerVersion,
+		VaultBoardStore:       ledger,
 	})
+	installedRuntime := &vaultBoardRuntime{
+		chain: &vaultBoardTestChain{},
+		operatorDial: func(context.Context) (vaultBoardOperator, error) {
+			return &vaultBoardTestOperator{}, nil
+		},
+		batchExpiry: deployment.MutinynetVtxoTreeExpirySeconds,
+	}
+	svc.vaultBoardRuntime = installedRuntime
 	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
 		t.Fatalf("missing resolver readiness = %+v", got)
 	}
@@ -93,6 +102,11 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		t.Fatalf("mutated Contract Pack readiness = %+v", got)
 	}
 	svc.contractPackJSON = contractPack
+	svc.vaultBoardRuntime = nil
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "vault-board-v1 runtime unavailable" {
+		t.Fatalf("incomplete boarding runtime readiness = %+v", got)
+	}
+	svc.vaultBoardRuntime = installedRuntime
 	if got := svc.Ready(context.Background()); !got.Ok || got.Error != "" {
 		t.Fatalf("pinned resolver readiness = %+v", got)
 	}

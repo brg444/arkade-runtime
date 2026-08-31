@@ -31,8 +31,9 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
-	Stores     arkadevaultv1.Stores
-	Deployment deployment.Config
+	Stores          arkadevaultv1.Stores
+	VaultBoardStore VaultBoardStore
+	Deployment      deployment.Config
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
 	// scalar with a domain-separated KDF.
@@ -58,6 +59,7 @@ type Service struct {
 	sessionChallenges          map[string]passkeyChallenge
 	SessionNow                 func() time.Time
 	afterLoadPending           func()
+	vaultBoardRuntime          *vaultBoardRuntime
 }
 
 // Deps is the constructor input. Private keys stay behind scoped capabilities.
@@ -71,6 +73,7 @@ type Deps struct {
 	ArkadeCosignerOrigin  string
 	ArkadeCosignerVersion string
 	ArkResolver           ports.ArkResolver
+	VaultBoardStore       VaultBoardStore
 }
 
 // New builds the application service without receiving raw key material or a
@@ -86,6 +89,7 @@ func New(d Deps) *Service {
 		ArkadeCosignerVersion:  d.ArkadeCosignerVersion,
 		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
+		VaultBoardStore:        d.VaultBoardStore,
 	}
 	if raw, err := liveContractPackJSON(); err == nil {
 		s.contractPackJSON = raw
@@ -133,6 +137,15 @@ type enrolledSnapshot struct {
 	VaultCosignerBase   *btcec.PublicKey
 	ArkadeCosignerBase  *btcec.PublicKey
 	Savings             *savingsSnapshot
+	Board               *vaultBoardSnapshot
+}
+
+type vaultBoardSnapshot struct {
+	BoardingPub *btcec.PublicKey
+	CosignerPub *btcec.PublicKey
+	OperatorPub *btcec.PublicKey
+	PkScript    []byte
+	Address     string
 }
 
 type savingsSnapshot struct {
@@ -156,10 +169,12 @@ type publishedIndex struct {
 // and this process's pinned deployment keys/policy still rebuild the stored
 // descriptor.
 type RegisterRequest struct {
-	CredentialID    string `json:"credentialId"`
-	WebAuthnP256    string `json:"webauthnP256"`
-	PhoneDirectP256 string `json:"phoneDirectP256"`
-	PhoneBIP340Pub  string `json:"phoneBip340Pub"`
+	CredentialID           string `json:"credentialId"`
+	WebAuthnP256           string `json:"webauthnP256"`
+	PhoneDirectP256        string `json:"phoneDirectP256"`
+	PhoneBIP340Pub         string `json:"phoneBip340Pub"`
+	VtxoBoardingProgram    string `json:"vtxoBoardingProgram"`
+	VaultBoardingBIP340Pub string `json:"vaultBoardingBip340Pub"`
 	// These BIP340 x-only keys are chosen exactly once for a fresh portable
 	// deployment. A configured deployment may precommit the same identities.
 	ExternalOwnerWalletXOnly string `json:"externalOwnerWalletXOnly,omitempty"`
@@ -176,6 +191,8 @@ type parsedRegisterRequest struct {
 	phone                             *btcec.PublicKey
 	externalOwner                     *btcec.PublicKey
 	recovery                          *btcec.PublicKey
+	boardPub                          *btcec.PublicKey
+	boardingProgram                   string
 	vaultID                           string
 }
 
@@ -217,7 +234,11 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err != nil {
 		return err
 	}
-	proposed, err := s.previewTenantDescriptor(vaultID, req)
+	parsed, err = s.applyVaultBoardEnrollmentRequest(parsed, req)
+	if err != nil {
+		return err
+	}
+	proposed, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil {
 		return err
 	}
@@ -243,12 +264,22 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err := sealVaultCredentialForService(&vcred, s); err != nil {
 		return err
 	}
-	if err := s.Stores.Identity.CreateVault(policy.CreateVaultInput{
-		Record: rec, Credential: vcred, TokenHash: tokenHash, Pending: pending,
-	}); err != nil {
+	boardRec, boardSnap, err := s.mintVaultBoardEnrollment(vaultID, parsed)
+	if err != nil {
 		return err
 	}
-	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv)
+	if boardRec == nil || boardSnap == nil || s.VaultBoardStore == nil {
+		return fmt.Errorf("vault-board-v1 release store is not active")
+	}
+	create := policy.CreateVaultInput{Record: rec, Credential: vcred, TokenHash: tokenHash, Pending: pending}
+	if err := s.VaultBoardStore.CreateVaultWithBoard(create, *boardRec); err != nil {
+		return err
+	}
+	stored, err := s.VaultBoardStore.GetVaultBoardEnrollment(vaultID)
+	if err != nil || stored == nil || !bytes.Equal(stored.IntegrityMAC, boardRec.IntegrityMAC) {
+		return fmt.Errorf("vault-board-v1 enrollment readback failed")
+	}
+	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv, boardSnap)
 	return nil
 }
 
@@ -347,6 +378,7 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 		}
 	}
 	parsed.vaultID = req.VaultID
+	parsed.boardingProgram = program.VaultBoardV1
 	return parsed, nil
 }
 
@@ -392,7 +424,26 @@ func (s *Service) publishStoredEnrollment(cred *policy.Credential) error {
 	if err != nil {
 		return err
 	}
-	s.publishEnrollmentAt(cred.VaultID, cred.ID, phone, sv)
+	if s.VaultBoardStore == nil {
+		return fmt.Errorf("vault-board-v1 store required")
+	}
+	rec, loadErr := s.VaultBoardStore.GetVaultBoardEnrollment(cred.VaultID)
+	if loadErr != nil || rec == nil {
+		return fmt.Errorf("vault-board-v1 enrollment required")
+	}
+	board, loadErr := boardSnapshotFromRecord(rec)
+	if loadErr != nil || board == nil {
+		return fmt.Errorf("vault-board-v1 enrollment invalid")
+	}
+	rebuilt, rebuildErr := s.buildVtxoBoardTree(cred.VaultID, enrolledSnapshot{PhoneBIP340: phone}, board.BoardingPub)
+	if rebuildErr != nil {
+		return rebuildErr
+	}
+	if rebuilt.OnchainAddress != board.Address || !bytes.Equal(rebuilt.PkScript, board.PkScript) ||
+		!rebuilt.CosignerPub.IsEqual(board.CosignerPub) || !rebuilt.OperatorPub.IsEqual(board.OperatorPub) {
+		return fmt.Errorf("rebuilt vault-board-v1 does not match stored enrollment")
+	}
+	s.publishEnrollmentAt(cred.VaultID, cred.ID, phone, sv, board)
 	return nil
 }
 
@@ -582,11 +633,14 @@ func statusWarnings(cred *policy.Credential) []string {
 	return out
 }
 
-func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phone *btcec.PublicKey, sv *savingsSnapshot) {
+func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phone *btcec.PublicKey, sv *savingsSnapshot, board ...*vaultBoardSnapshot) {
 	snap := &enrolledSnapshot{
 		VaultID:      vaultID,
 		CredentialID: append([]byte(nil), credID...),
 		PhoneBIP340:  phone, Savings: sv,
+	}
+	if len(board) == 1 {
+		snap.Board = board[0]
 	}
 	if sv != nil {
 		snap.ExternalOwnerWallet = sv.ExternalOwnerWallet
@@ -839,13 +893,11 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	if tree.DelegatePub != nil {
 		st.VtxoDelegatePub = hex.EncodeToString(tree.DelegatePub.SerializeCompressed())
 	}
-	board, err := s.buildVtxoBoardTree(snap)
-	if err != nil || board == nil {
-		return
+	if board := snap.Board; board != nil {
+		st.VtxoBoardingActive = true
+		st.VtxoBoardingAddress = board.Address
+		st.VtxoBoardingScript = hex.EncodeToString(board.PkScript)
 	}
-	st.VtxoBoardingActive = true
-	st.VtxoBoardingAddress = board.OnchainAddress
-	st.VtxoBoardingScript = hex.EncodeToString(board.PkScript)
 }
 
 func mapLedgerBusy(err error) error {

@@ -34,6 +34,11 @@ type vtxoCheckpointAuthorizer interface {
 	authorizeVtxoCheckpoints(context.Context, vtxoCheckpointAuthorization) ([]string, error)
 }
 
+type vaultBoardAuthorizer interface {
+	vaultBoardCosignerPublic(vaultBoardKeyContext) (*btcec.PublicKey, error)
+	authorizeVaultBoard(context.Context, vaultBoardAuthorization) (string, error)
+}
+
 type publicEmulatorOperation interface {
 	authorizeSavingsRecoveryStage(context.Context, publicEmulatorRecoveryStage) (string, error)
 }
@@ -50,6 +55,7 @@ type KeyCapabilities struct {
 	savingsRecovery savingsRecoveryAuthorizer
 	vtxoTransaction vtxoTransactionAuthorizer
 	vtxoCheckpoint  vtxoCheckpointAuthorizer
+	vaultBoard      vaultBoardAuthorizer
 	publicEmulator  publicEmulatorOperation
 	lifecycle       keyLifecycle
 }
@@ -64,6 +70,8 @@ func (k KeyCapabilities) Validate() error {
 		return fmt.Errorf("arkade-vault-v1 VTXO transaction authorization required")
 	case isNilInterface(k.vtxoCheckpoint):
 		return fmt.Errorf("arkade-vault-v1 VTXO checkpoint authorization required")
+	case isNilInterface(k.vaultBoard):
+		return fmt.Errorf("vault-board-v1 authorization required")
 	case isNilInterface(k.publicEmulator):
 		return fmt.Errorf("arkade-vault-v1 public Emulator operation required")
 	case isNilInterface(k.lifecycle):
@@ -127,8 +135,24 @@ func (k KeyCapabilities) vtxoCheckpointAuthorization(
 	return k.vtxoCheckpoint.authorizeVtxoCheckpoints(ctx, req)
 }
 
+func (k KeyCapabilities) vaultBoardPublic(req vaultBoardKeyContext) (*btcec.PublicKey, error) {
+	if isNilInterface(k.vaultBoard) {
+		return nil, fmt.Errorf("vault-board-v1 authorization required")
+	}
+	return k.vaultBoard.vaultBoardCosignerPublic(req)
+}
+
+func (k KeyCapabilities) vaultBoardAuthorization(
+	ctx context.Context, req vaultBoardAuthorization,
+) (string, error) {
+	if isNilInterface(k.vaultBoard) {
+		return "", fmt.Errorf("vault-board-v1 authorization required")
+	}
+	return k.vaultBoard.authorizeVaultBoard(ctx, req)
+}
+
 // NewFileBackedKeyCapabilities binds the current file-backed VaultCosigner
-// and release-pinned public Emulator to the five named profile operations.
+// and release-pinned public Emulator to the v1 profile operations.
 // The generic primitive remains private behind these semantic capabilities.
 func NewFileBackedKeyCapabilities(master *btcec.PrivateKey, emulator Signer) (KeyCapabilities, error) {
 	if master == nil {
@@ -143,9 +167,12 @@ func NewFileBackedKeyCapabilities(master *btcec.PrivateKey, emulator Signer) (Ke
 	capabilities := KeyCapabilities{
 		enrollment: keys, savingsRecovery: savings,
 		vtxoTransaction: keys, vtxoCheckpoint: keys,
-		publicEmulator: public, lifecycle: keys,
+		vaultBoard: keys, publicEmulator: public, lifecycle: keys,
 	}
-	return capabilities, capabilities.Validate()
+	if err := capabilities.Validate(); err != nil {
+		return KeyCapabilities{}, err
+	}
+	return capabilities, nil
 }
 
 type fileBackedVaultKeys struct {
@@ -424,4 +451,122 @@ func validateVtxoKeyContext(req vtxoKeyContext, requireExpected bool) error {
 		return fmt.Errorf("vault-policy-v1 expected signer required")
 	}
 	return nil
+}
+
+type vaultBoardKeyContext struct {
+	vaultID       string
+	network       string
+	operatorPub   []byte
+	expectedXOnly []byte
+}
+
+func newVaultBoardKeyContext(vaultID, network string, operatorPub []byte) (vaultBoardKeyContext, error) {
+	if vaultID == "" || network != program.NetworkMutinynet || len(operatorPub) != btcec.PubKeyBytesLenCompressed {
+		return vaultBoardKeyContext{}, fmt.Errorf("vault-board-v1 key context required")
+	}
+	if _, err := btcec.ParsePubKey(operatorPub); err != nil {
+		return vaultBoardKeyContext{}, fmt.Errorf("vault-board-v1 Operator key")
+	}
+	return vaultBoardKeyContext{vaultID: vaultID, network: network, operatorPub: bytes.Clone(operatorPub)}, nil
+}
+
+func (k *fileBackedVaultKeys) vaultBoardCosignerPublic(req vaultBoardKeyContext) (*btcec.PublicKey, error) {
+	var pub *btcec.PublicKey
+	err := k.withMaster(func(master *btcec.PrivateKey) error {
+		priv, err := deriveVaultBoardKey(master, req)
+		if err != nil {
+			return err
+		}
+		pub = priv.PubKey()
+		return nil
+	})
+	return pub, err
+}
+
+type vaultBoardAuthorization struct {
+	key          vaultBoardKeyContext
+	psbt         string
+	leaf         []byte
+	inputIndexes []int
+	phase        vaultBoardSignaturePhase
+}
+
+type vaultBoardSignaturePhase string
+
+const (
+	vaultBoardPhaseRegister vaultBoardSignaturePhase = "register"
+	vaultBoardPhaseDelete   vaultBoardSignaturePhase = "delete"
+	vaultBoardPhaseFinalize vaultBoardSignaturePhase = "finalize"
+)
+
+func (p vaultBoardSignaturePhase) sighash() (txscript.SigHashType, error) {
+	switch p {
+	case vaultBoardPhaseRegister, vaultBoardPhaseDelete:
+		return txscript.SigHashAll, nil
+	case vaultBoardPhaseFinalize:
+		return txscript.SigHashDefault, nil
+	default:
+		return 0, fmt.Errorf("vault-board-v1 signature phase")
+	}
+}
+
+func newVaultBoardAuthorization(
+	key vaultBoardKeyContext, encoded string, leaf, expectedXOnly []byte,
+	inputIndexes []int, phase vaultBoardSignaturePhase,
+) (vaultBoardAuthorization, error) {
+	if encoded == "" || len(leaf) == 0 || len(expectedXOnly) != schnorr.PubKeyBytesLen || len(inputIndexes) == 0 {
+		return vaultBoardAuthorization{}, fmt.Errorf("vault-board-v1 authorization required")
+	}
+	if _, err := phase.sighash(); err != nil {
+		return vaultBoardAuthorization{}, err
+	}
+	seen := make(map[int]struct{}, len(inputIndexes))
+	for _, idx := range inputIndexes {
+		if idx < 0 {
+			return vaultBoardAuthorization{}, fmt.Errorf("vault-board-v1 input index")
+		}
+		if _, ok := seen[idx]; ok {
+			return vaultBoardAuthorization{}, fmt.Errorf("vault-board-v1 duplicate input index")
+		}
+		seen[idx] = struct{}{}
+	}
+	key.expectedXOnly = bytes.Clone(expectedXOnly)
+	return vaultBoardAuthorization{
+		key: key, psbt: encoded, leaf: bytes.Clone(leaf),
+		inputIndexes: append([]int(nil), inputIndexes...), phase: phase,
+	}, nil
+}
+
+func (k *fileBackedVaultKeys) authorizeVaultBoard(
+	ctx context.Context, req vaultBoardAuthorization,
+) (string, error) {
+	if req.psbt == "" || len(req.leaf) == 0 || len(req.inputIndexes) == 0 ||
+		len(req.key.expectedXOnly) != schnorr.PubKeyBytesLen {
+		return "", fmt.Errorf("invalid vault-board-v1 authorization")
+	}
+	var authorized string
+	err := k.withMaster(func(master *btcec.PrivateKey) error {
+		priv, err := deriveVaultBoardKey(master, req.key)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), req.key.expectedXOnly) {
+			return fmt.Errorf("vault-board-v1 signer key mismatch")
+		}
+		sighash, err := req.phase.sighash()
+		if err != nil {
+			return err
+		}
+		authorized, err = signExactVaultBoardStage(ctx, req.psbt, priv,
+			req.key.expectedXOnly, req.leaf, req.inputIndexes, sighash)
+		return err
+	})
+	return authorized, err
+}
+
+func deriveVaultBoardKey(master *btcec.PrivateKey, req vaultBoardKeyContext) (*btcec.PrivateKey, error) {
+	if master == nil || req.vaultID == "" || req.network != program.NetworkMutinynet || len(req.operatorPub) != btcec.PubKeyBytesLenCompressed {
+		return nil, fmt.Errorf("vault-board-v1 key context required")
+	}
+	return policy.DeriveVaultBoardCosignerScalar(master, req.vaultID, req.network, req.operatorPub)
 }

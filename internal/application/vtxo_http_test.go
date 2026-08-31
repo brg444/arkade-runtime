@@ -217,19 +217,22 @@ func TestVaultBoardV1StatusUsesDistinctStandardBoardingTree(t *testing.T) {
 
 func TestVaultBoardV1MatchesSDKVector(t *testing.T) {
 	phone, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 1))
+	master, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 2))
+	boarding, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 3))
 	operator, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 4))
 	svc := &Service{
 		Deployment:  deployment.Config{Network: deployment.NetworkMutinynet},
 		ArkResolver: stubArkResolver{signer: operator.PubKey().SerializeCompressed()},
+		keys:        testKeys(t, master, LocalSigner{Priv: operator}),
 	}
-	tree, err := svc.buildVtxoBoardTree(enrolledSnapshot{PhoneBIP340: phone.PubKey()})
+	tree, err := svc.buildVtxoBoardTree(fixture.VaultID, enrolledSnapshot{PhoneBIP340: phone.PubKey()}, boarding.PubKey())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(tree.PkScript); got != "5120a077fad544f052d9730fb622fc1e737ef932eb7db907d2f1ee3792ce9e5d4d2c" {
+	if got := hex.EncodeToString(tree.PkScript); got != "51205b05e624da25f8a138c64253650383731d40990ca80f5ab1855f86868be0d122" {
 		t.Fatalf("vault-board-v1 script = %s", got)
 	}
-	if tree.OnchainAddress != "tb1p5pml442y7pfdjuc0kc30c8nn0mun96mahyra9u0wx7fva8jaf5kqavcsgc" {
+	if tree.OnchainAddress != "tb1ptvz7vfx6yhu2zwxxgffk2qurwvw5pxgv4q844vv9t7rgdzlq6y3qnu6rvj" {
 		t.Fatalf("vault-board-v1 address = %s", tree.OnchainAddress)
 	}
 }

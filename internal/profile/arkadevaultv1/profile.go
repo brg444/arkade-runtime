@@ -37,12 +37,14 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"vtxo-operation-store",
 				"recovery-operation-store",
 				"map-store",
+				"vault-board-store",
 			},
 			KeyScopes: []string{
 				"enrollment-derivation",
 				"savings-recovery-authorization",
 				"vtxo-transaction-authorization",
 				"vtxo-checkpoint-authorization",
+				"vault-board-authorization",
 				"public-emulator-operation",
 			},
 		}},
@@ -87,5 +89,13 @@ func routes() []arkaderuntime.Route {
 		{Method: http.MethodOptions, Path: "/v1/vtxo/finalize"},
 		{Method: http.MethodGet, Path: "/v1/vtxo/operation"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/operation"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/board/prepare"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/board/prepare"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/board/register"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/board/register"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/board/release"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/board/release"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/board/final"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/board/final"},
 	}
 }
