@@ -193,7 +193,11 @@ func (s *Service) buildVtxoBoardTree(vaultID string, snap enrolledSnapshot, boar
 		},
 	}
 	cooperative := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{boarding, cosigner, operator}}
-	board := &arkscript.TapscriptsVtxoScript{Closures: []arkscript.Closure{exit, cooperative}}
+	// Match the official TypeScript SDK's BoardingProgramScript encoding:
+	// collaborative leaf first, recovery leaf second. Taproot's two-leaf root
+	// is independent of this list order, but the intent proof carries the
+	// serialized revealed-tree field and both sides must use one canonical form.
+	board := &arkscript.TapscriptsVtxoScript{Closures: []arkscript.Closure{cooperative, exit}}
 	tapKey, tapTree, err := board.TapTree()
 	if err != nil {
 		return nil, fmt.Errorf("vault-board-v1 tree: %w", err)
