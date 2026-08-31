@@ -277,8 +277,14 @@ func (e *esploraVaultBoardChain) getText(ctx context.Context, path string, limit
 		return "", err
 	}
 	defer res.Body.Close()
-	if err := requireVaultBoardContentType(res, "text/plain"); err != nil {
-		return "", err
+	mediaType, _, contentTypeErr := mime.ParseMediaType(res.Header.Get("Content-Type"))
+	// The release-pinned Mutinynet gateway serves its block-height hash
+	// endpoint as text/html even though the body is the canonical bare hash.
+	// Permit that one observed representation only; every returned value is
+	// still length-bounded and then validated as an exact txid by the caller.
+	blockHeightHTML := strings.HasPrefix(path, "/block-height/") && mediaType == "text/html"
+	if contentTypeErr != nil || (mediaType != "text/plain" && !blockHeightHTML) {
+		return "", fmt.Errorf("vault-board-v1 Esplora content type")
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if err != nil || int64(len(raw)) > limit {
