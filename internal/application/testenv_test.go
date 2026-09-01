@@ -96,6 +96,7 @@ func newEnv(t *testing.T) *env {
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(externalOwner.PubKey())),
 		VtxoBoardingProgram:      program.VaultBoardV1,
 		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
+		ProtectionTier:           program.ProtectionTierStandard,
 	}
 	request.SpendingPolicy = program.DefaultSpendingPolicy()
 	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHex(request.SpendingPolicy)

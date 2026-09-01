@@ -61,6 +61,7 @@ func (s *Service) savingsFamilyInput(vaultID string, parsed parsedRegisterReques
 		PhoneDirectP256:    parsed.phoneDirectP256,
 		VaultCosignerBase:  vaultBase,
 		ArkadeCosignerBase: arkadeBase,
+		ProtectionTier:     parsed.protectionTier,
 		SpendingPolicy:     parsed.spendingPolicy,
 	}, nil
 }
@@ -92,6 +93,7 @@ func (s *Service) mintSavingsCredential(vaultID string, parsed parsedRegisterReq
 		ArkadeCosignerVersion: version,
 		TemplateVersion:       savings.Template,
 		PolicyVersion:         program.PolicyVersion,
+		ProtectionTier:        parsed.protectionTier,
 		Network:               cfg.Network,
 		VaultID:               vaultID,
 		SavingsAddress:        fam.Savings.Address,
@@ -155,6 +157,7 @@ func (s *Service) rebuildSavings(cred *policy.Credential) (
 	parsed := parsedRegisterRequest{
 		id: cred.ID, webauthnP256: cred.WebAuthnP256, phoneDirectP256: cred.PhoneDirectP256,
 		phone: phone, externalOwner: externalOwner, recovery: recovery,
+		protectionTier: cred.ProtectionTier,
 		spendingPolicy: program.SpendingPolicyFromValues(
 			cred.TxRecipientCapSats, cred.PeriodAllowanceSats, cred.AbsoluteFeeCapSats, cred.FeerateCapSatPerV,
 		),

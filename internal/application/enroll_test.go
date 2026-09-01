@@ -39,6 +39,9 @@ func TestEnrollmentRequestHasNoOwnershipProofFields(t *testing.T) {
 
 func proposedDescriptor(t *testing.T, svc *Service, vaultID string, req RegisterRequest) RegisterRequest {
 	t.Helper()
+	if req.ProtectionTier == "" {
+		req.ProtectionTier = program.ProtectionTierStandard
+	}
 	if req.SpendingPolicy.Program == "" {
 		req.SpendingPolicy = program.DefaultSpendingPolicy()
 		var err error
@@ -161,7 +164,6 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 	otherRecovery, _ := btcec.NewPrivateKey()
 	forgedRecovery := req
 	forgedRecovery.RecoveryXOnly = hex.EncodeToString(schnorr.SerializePubKey(otherRecovery.PubKey()))
-	forgedRecovery.RegisterRequest = proposedDescriptor(t, svc, replay.VaultID, forgedRecovery.RegisterRequest)
 	if _, err := svc.FinishEnrollment(context.Background(), token, forgedRecovery); err == nil {
 		t.Fatal("duplicate finish accepted a different recovery key")
 	}
@@ -179,7 +181,7 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 }
 
 func TestDuplicateFinishWithRecoveryRequiresExactReplay(t *testing.T) {
-	svc, token, start := enrollReady(t)
+	svc, token, start := enrollReadyAdvanced(t)
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	hot, _ := btcec.NewPrivateKey()
@@ -201,14 +203,13 @@ func TestDuplicateFinishWithRecoveryRequiresExactReplay(t *testing.T) {
 	}
 	withoutRecovery := req
 	withoutRecovery.RecoveryXOnly = ""
-	withoutRecovery.RegisterRequest = proposedDescriptor(t, svc, start.VaultID, withoutRecovery.RegisterRequest)
 	if _, err := svc.FinishEnrollment(context.Background(), token, withoutRecovery); err == nil {
 		t.Fatal("recovery enrollment replayed as no-recovery enrollment")
 	}
 }
 
 func TestCurrentSavingsDescriptorRebuildsExactlyAfterRestart(t *testing.T) {
-	svc, token, start := enrollReady(t)
+	svc, token, start := enrollReadyAdvanced(t)
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	phone, _ := btcec.NewPrivateKey()
@@ -276,7 +277,7 @@ func TestCurrentSavingsDescriptorRebuildsExactlyAfterRestart(t *testing.T) {
 }
 
 func TestEnrollmentBindsImmutableCustomSpendingPolicy(t *testing.T) {
-	selected := program.SpendingPolicyFromValues(250_000, 1_000_000, 10_000, 20)
+	selected := program.SpendingPolicyFromValues(25_000, 50_000, program.AbsoluteFeeCeiling, program.FeerateCeilingSatPerV)
 	svc, token, start := enrollReadyWithPolicy(t, selected)
 	wantDigest, err := program.SpendingPolicyDigestHex(selected)
 	if err != nil {
@@ -362,8 +363,8 @@ func TestOneRuntimeKeepsTenantSpendingPoliciesIndependent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ledger.Close() })
 	svc := enrollService(t, ledger)
-	cautious := program.SpendingPolicyFromValues(25_000, 50_000, 2_500, 10)
-	flexible := program.SpendingPolicyFromValues(250_000, 1_000_000, 10_000, 20)
+	cautious := program.SpendingPolicyFromValues(25_000, 50_000, program.AbsoluteFeeCeiling, program.FeerateCeilingSatPerV)
+	flexible := program.DefaultSpendingPolicy()
 	tokenA, startA := startTestEnrollment(t, svc, ledger, 0x41, cautious)
 	tokenB, startB := startTestEnrollment(t, svc, ledger, 0x42, flexible)
 
@@ -403,10 +404,10 @@ func TestOneRuntimeKeepsTenantSpendingPoliciesIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := enforceVtxoAmount(200_000, 0, recA); err == nil {
+	if err := enforceVtxoAmount(40_000, 0, recA); err == nil {
 		t.Fatal("cautious tenant accepted flexible transaction cap")
 	}
-	if err := enforceVtxoAmount(200_000, 0, recB); err != nil {
+	if err := enforceVtxoAmount(40_000, 0, recB); err != nil {
 		t.Fatalf("flexible tenant rejected its transaction cap: %v", err)
 	}
 }
@@ -575,7 +576,7 @@ func TestFinishCannotConsumeAfterConcurrentChallengeRotation(t *testing.T) {
 }
 
 func TestProposeMintsSavingsDescriptor(t *testing.T) {
-	svc, token, start := enrollReady(t)
+	svc, token, start := enrollReadyAdvanced(t)
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	hot, _ := btcec.NewPrivateKey()
@@ -751,6 +752,7 @@ func attestedFinish(t *testing.T, svc *Service, start *EnrollStartResponse, pass
 	obj := webauthn.EncodeNoneAttestationObject(auth)
 	extra.CredentialID = hex.EncodeToString(credID)
 	extra.WebAuthnP256 = hex.EncodeToString(compressed)
+	extra.ProtectionTier = start.ProtectionTier
 	extra.SpendingPolicy = start.SpendingPolicy
 	extra.SpendingPolicyDigest = start.SpendingPolicyDigest
 	if extra.ExternalOwnerWalletXOnly != "" {
@@ -870,10 +872,18 @@ func TestConcurrentFinishAndStatusDoNotRaceSharedKeyFields(t *testing.T) {
 }
 
 func enrollReady(t *testing.T) (*Service, string, *EnrollStartResponse) {
-	return enrollReadyWithPolicy(t, program.DefaultSpendingPolicy())
+	return enrollReadyWithPolicyAndTier(t, program.DefaultSpendingPolicy(), program.ProtectionTierStandard)
+}
+
+func enrollReadyAdvanced(t *testing.T) (*Service, string, *EnrollStartResponse) {
+	return enrollReadyWithPolicyAndTier(t, program.DefaultSpendingPolicy(), program.ProtectionTierAdvanced)
 }
 
 func enrollReadyWithPolicy(t *testing.T, selected program.SpendingPolicy) (*Service, string, *EnrollStartResponse) {
+	return enrollReadyWithPolicyAndTier(t, selected, program.ProtectionTierStandard)
+}
+
+func enrollReadyWithPolicyAndTier(t *testing.T, selected program.SpendingPolicy, tier string) (*Service, string, *EnrollStartResponse) {
 	t.Helper()
 	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "ready.sqlite"), nil)
 	if err != nil {
@@ -881,11 +891,15 @@ func enrollReadyWithPolicy(t *testing.T, selected program.SpendingPolicy) (*Serv
 	}
 	t.Cleanup(func() { _ = led.Close() })
 	svc := enrollService(t, led)
-	token, start := startTestEnrollment(t, svc, led, 0x3c, selected)
+	token, start := startTestEnrollmentWithTier(t, svc, led, 0x3c, selected, tier)
 	return svc, token, start
 }
 
 func startTestEnrollment(t *testing.T, svc *Service, led *policy.Ledger, tokenByte byte, selected program.SpendingPolicy) (string, *EnrollStartResponse) {
+	return startTestEnrollmentWithTier(t, svc, led, tokenByte, selected, program.ProtectionTierStandard)
+}
+
+func startTestEnrollmentWithTier(t *testing.T, svc *Service, led *policy.Ledger, tokenByte byte, selected program.SpendingPolicy, tier string) (string, *EnrollStartResponse) {
 	t.Helper()
 	raw := bytes.Repeat([]byte{tokenByte}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -897,7 +911,7 @@ func startTestEnrollment(t *testing.T, svc *Service, led *policy.Ledger, tokenBy
 	if err := led.PutInvite(hash, now, now); err != nil {
 		t.Fatal(err)
 	}
-	start, err := svc.StartEnrollment(token, enrollStartRequest(t, selected))
+	start, err := svc.StartEnrollment(token, enrollStartRequestWithTier(t, selected, tier))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,12 +924,16 @@ func defaultEnrollStartRequest(t *testing.T) EnrollStartRequest {
 }
 
 func enrollStartRequest(t *testing.T, selected program.SpendingPolicy) EnrollStartRequest {
+	return enrollStartRequestWithTier(t, selected, program.ProtectionTierStandard)
+}
+
+func enrollStartRequestWithTier(t *testing.T, selected program.SpendingPolicy, tier string) EnrollStartRequest {
 	t.Helper()
 	digest, err := program.SpendingPolicyDigestHex(selected)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return EnrollStartRequest{SpendingPolicy: selected, SpendingPolicyDigest: digest}
+	return EnrollStartRequest{ProtectionTier: tier, SpendingPolicy: selected, SpendingPolicyDigest: digest}
 }
 
 func enrollStartRequestUnchecked(t *testing.T, selected program.SpendingPolicy) EnrollStartRequest {
@@ -925,7 +943,7 @@ func enrollStartRequestUnchecked(t *testing.T, selected program.SpendingPolicy) 
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(raw)
-	return EnrollStartRequest{SpendingPolicy: selected, SpendingPolicyDigest: hex.EncodeToString(sum[:])}
+	return EnrollStartRequest{ProtectionTier: program.ProtectionTierStandard, SpendingPolicy: selected, SpendingPolicyDigest: hex.EncodeToString(sum[:])}
 }
 
 func enrollService(t *testing.T, led *policy.Ledger) *Service {

@@ -8,7 +8,7 @@ func TestFrozenProtocolDomains(t *testing.T) {
 	pairs := []struct {
 		got, want string
 	}{
-		{vaultRecordMACDomain, "arkade-vault/vault-record/v1"},
+		{vaultRecordMACDomain, "arkade-vault/vault-record/v2"},
 		{vaultCredentialMACDomain, "arkade-vault/vault-credential/v1"},
 		{sessionMACDomain, "arkade-2fa-vault/recovery-session/v2"},
 		{vaultEnvelopeDomain, "arkade-vault/vault-envelope/v2"},

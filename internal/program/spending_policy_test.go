@@ -36,7 +36,9 @@ func TestValidateSpendingPolicyBoundsAndRelationship(t *testing.T) {
 		{"tx-max", func(p *SpendingPolicy) { p.TxRecipientCapSats = MaxTxRecipientCapSats + 1 }},
 		{"allowance", func(p *SpendingPolicy) { p.PeriodAllowanceSats = p.TxRecipientCapSats - 1 }},
 		{"fee", func(p *SpendingPolicy) { p.AbsoluteFeeCapSats = MaxAbsoluteFeeCapSats + 1 }},
+		{"fee-release", func(p *SpendingPolicy) { p.AbsoluteFeeCapSats++ }},
 		{"feerate", func(p *SpendingPolicy) { p.FeerateCapSatPerV = 0 }},
+		{"feerate-release", func(p *SpendingPolicy) { p.FeerateCapSatPerV++ }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -51,12 +53,38 @@ func TestValidateSpendingPolicyBoundsAndRelationship(t *testing.T) {
 
 func TestSpendingPolicyCapabilitiesAreValid(t *testing.T) {
 	caps := CurrentSpendingPolicyCapabilities()
-	if caps.Program != SpendingPolicyProgram || caps.Schema != PolicyVersion || len(caps.Presets) != 3 {
+	if caps.Program != SpendingPolicyProgram || caps.Schema != PolicyVersion || len(caps.Presets) != 2 {
 		t.Fatalf("capabilities = %+v", caps)
+	}
+	if caps.Bounds.AbsoluteFeeCapSats != (SpendingPolicyBounds{Min: AbsoluteFeeCeiling, Max: AbsoluteFeeCeiling}) ||
+		caps.Bounds.FeerateCapSatPerV != (SpendingPolicyBounds{Min: FeerateCeilingSatPerV, Max: FeerateCeilingSatPerV}) ||
+		caps.Presets[0].ID != "lower-exposure" || caps.Presets[0].Label != "Lower exposure" ||
+		caps.Presets[1].ID != "everyday" || caps.Presets[1].Label != "Everyday" {
+		t.Fatalf("release-managed capabilities = %+v", caps)
 	}
 	for _, preset := range caps.Presets {
 		if err := ValidateSpendingPolicy(preset.Policy); err != nil {
 			t.Fatalf("preset %s: %v", preset.ID, err)
+		}
+	}
+}
+
+func TestProtectionTiersDeriveExactRecoveryRule(t *testing.T) {
+	tests := []struct {
+		tier        string
+		hasRecovery bool
+		wantErr     bool
+	}{
+		{ProtectionTierStandard, false, false},
+		{ProtectionTierStandard, true, true},
+		{ProtectionTierAdvanced, false, true},
+		{ProtectionTierAdvanced, true, false},
+		{"", false, true},
+		{"custom", true, true},
+	}
+	for _, test := range tests {
+		if err := ValidateProtectionTierRecovery(test.tier, test.hasRecovery); (err != nil) != test.wantErr {
+			t.Fatalf("tier=%q recovery=%v error=%v", test.tier, test.hasRecovery, err)
 		}
 	}
 }

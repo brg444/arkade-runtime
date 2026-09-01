@@ -26,6 +26,7 @@ func fixtureFamilyInput(t *testing.T) FamilyInput {
 		ArkadeCosignerBase: scalarPub(t, 15),
 		TemplateVersion:    Template,
 		ServerFreeClawback: true,
+		ProtectionTier:     program.ProtectionTierAdvanced,
 		SpendingPolicy:     program.DefaultSpendingPolicy(),
 	}
 }
@@ -62,6 +63,7 @@ func TestSavingsFamilyIsCompleteAndDistinct(t *testing.T) {
 func TestSavingsFamilyWithoutRecoveryHasFiveTrees(t *testing.T) {
 	in := fixtureFamilyInput(t)
 	in.Recovery = nil
+	in.ProtectionTier = program.ProtectionTierStandard
 	fam, err := BuildFamily(in)
 	if err != nil {
 		t.Fatal(err)
@@ -90,36 +92,46 @@ func TestSavingsFamilyWithoutRecoveryHasFiveTrees(t *testing.T) {
 	}
 }
 
-func TestSavingsFamilyBindsSelectedFeePolicy(t *testing.T) {
-	standardInput := fixtureFamilyInput(t)
-	standard, _, err := BuildPublicDescriptor(standardInput, "https://operator.example", "savings-v1-fixture")
+func TestSavingsFamilyBindsSelectedExposurePolicyWithReleaseFees(t *testing.T) {
+	everydayInput := fixtureFamilyInput(t)
+	everyday, _, err := BuildPublicDescriptor(everydayInput, "https://operator.example", "savings-v1-fixture")
 	if err != nil {
 		t.Fatal(err)
 	}
-	flexibleInput := fixtureFamilyInput(t)
-	flexibleInput.SpendingPolicy = program.SpendingPolicyFromValues(250_000, 1_000_000, 10_000, 20)
-	flexible, _, err := BuildPublicDescriptor(flexibleInput, "https://operator.example", "savings-v1-fixture")
+	lowerInput := fixtureFamilyInput(t)
+	lowerInput.SpendingPolicy = program.SpendingPolicyFromValues(25_000, 50_000, program.AbsoluteFeeCeiling, program.FeerateCeilingSatPerV)
+	lower, _, err := BuildPublicDescriptor(lowerInput, "https://operator.example", "savings-v1-fixture")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if flexible.Policy.AbsoluteFeeCapSats != 10_000 || flexible.Policy.FeerateCapSatVb != 20 {
-		t.Fatalf("descriptor policy = %+v", flexible.Policy)
+	if lower.Policy.AbsoluteFeeCapSats != program.AbsoluteFeeCeiling || lower.Policy.FeerateCapSatVb != program.FeerateCeilingSatPerV {
+		t.Fatalf("descriptor policy = %+v", lower.Policy)
 	}
-	if standard.Savings == flexible.Savings {
-		t.Fatal("selected fee policy did not change the Savings transaction program")
+	if everyday.Savings != lower.Savings {
+		t.Fatal("exposure-only policy changed the release-managed Savings transaction program")
 	}
 	for _, claimant := range claimants {
 		key := FamilyKey(claimant)
-		if standard.Pending[key] == flexible.Pending[key] {
-			t.Fatalf("selected fee policy did not change %s pending tree", key)
+		if everyday.Pending[key] != lower.Pending[key] {
+			t.Fatalf("exposure-only policy changed %s pending tree", key)
 		}
 	}
-	hash, err := HashPublicDescriptor(flexible)
+	everydayHash, err := HashPublicDescriptor(everyday)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hash != "cf5fb73ae35ce6b4c857a6ca79c4e872809ab9514e968afd1151b5bc091cf31e" {
-		t.Fatalf("flexible descriptor hash = %s", hash)
+	lowerHash, err := HashPublicDescriptor(lower)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if everydayHash == lowerHash {
+		t.Fatal("selected exposure policy did not change the canonical descriptor")
+	}
+
+	customFee := fixtureFamilyInput(t)
+	customFee.SpendingPolicy.AbsoluteFeeCapSats++
+	if _, err := BuildFamily(customFee); err == nil {
+		t.Fatal("Savings family accepted a user-selected fee cap")
 	}
 }
 
