@@ -1,8 +1,14 @@
 package application
 
 import (
+	"context"
+	"time"
+
+	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 )
+
+const resolverReadyTimeout = 5 * time.Second
 
 // ReadyStatus is the unauthenticated readiness body. It never includes keys,
 // tokens, PSBTs, or credential envelopes.
@@ -17,7 +23,7 @@ type ReadyStatus struct {
 }
 
 // Ready checks ledger access and every release-pinned signing dependency.
-func (s *Service) Ready() ReadyStatus {
+func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	st := ReadyStatus{
 		EnrollTemplate: savings.Template,
 	}
@@ -33,18 +39,36 @@ func (s *Service) Ready() ReadyStatus {
 		st.Error = "deployment not ready"
 		return st
 	}
-	if s.Ledger == nil {
+	if err := s.Stores.Validate(); err != nil {
 		st.Error = "ledger unavailable"
 		return st
 	}
-	ver, err := s.Ledger.SchemaVersion()
+	if err := s.requireLedgerIntegrity(); err != nil {
+		st.Error = "ledger integrity unavailable"
+		return st
+	}
+	ver, err := s.Stores.Identity.SchemaVersion()
 	if err != nil {
 		st.Error = "schema unread"
 		return st
 	}
 	st.Schema = ver
-	if s.ArkadeCosignerOrigin == "" || s.ArkadeCosignerVersion == "" || s.ArkadeCosignerPub == nil {
+	if s.VaultCosignerPub == nil || s.ArkadeCosignerOrigin == "" || s.ArkadeCosignerVersion == "" ||
+		s.ArkadeCosignerPub == nil || s.keys.Validate() != nil {
 		st.Error = "arkade signer not pinned"
+		return st
+	}
+	if err := validateReleaseContractPack(s.contractPackJSON); err != nil {
+		st.Error = "contract pack mismatch"
+		return st
+	}
+	if s.VaultBoardStore == nil {
+		st.Error = "vault-board-v1 store unavailable"
+		return st
+	}
+	runtime, err := s.requireVaultBoardRuntime()
+	if err != nil || runtime.batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
+		st.Error = "vault-board-v1 runtime unavailable"
 		return st
 	}
 	if isNilInterface(s.ArkResolver) {
@@ -57,6 +81,12 @@ func (s *Service) Ready() ReadyStatus {
 	}
 	if err := validateArkResolverPolicy(cfg.Network, s.ArkResolver.CheckpointTapscript(), s.ArkResolver.OperatorSignerPub()); err != nil {
 		st.Error = "Arkade resolver policy mismatch"
+		return st
+	}
+	readyCtx, cancel := context.WithTimeout(ctx, resolverReadyTimeout)
+	defer cancel()
+	if _, err := s.ArkResolver.IntentFeePolicy(readyCtx); err != nil {
+		st.Error = "Arkade resolver unavailable"
 		return st
 	}
 	st.Ok = true

@@ -22,7 +22,6 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
 
@@ -132,8 +131,8 @@ func (s *Service) requireArkResolver() error {
 }
 
 func (s *Service) vtxoNow() time.Time {
-	if s != nil && s.Ledger != nil {
-		return s.Ledger.NowUTC()
+	if s != nil && s.Stores.VtxoOperations != nil {
+		return s.Stores.VtxoOperations.NowUTC()
 	}
 	if s != nil && s.SessionNow != nil {
 		return s.SessionNow().UTC()
@@ -146,7 +145,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err != nil {
 		return nil, err
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -188,7 +187,7 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 	if err := enforceVtxoAmount(req.AmountSats, 0, rec); err != nil {
 		return nil, err
 	}
-	if existing, err := s.Ledger.GetVtxoOperation(ctx, opID); err == nil {
+	if existing, err := s.Stores.VtxoOperations.GetVtxoOperation(ctx, opID); err == nil {
 		return s.replayVtxoReservation(ctx, existing, vaultID, purpose, req.AmountSats, destScript, tree)
 	} else if err != sql.ErrNoRows {
 		return nil, err
@@ -256,11 +255,11 @@ func (s *Service) ReserveVtxo(ctx context.Context, req VtxoReserveRequest) (*Vtx
 		LastDestScript:      destScript,
 	}
 	allowance := periodAllowanceSats(rec, nil)
-	if err := s.Ledger.ReserveVtxoOperation(ctx, recRow, opInputs, allowance); err != nil {
+	if err := s.Stores.Allowance.ReserveVtxoOperation(ctx, recRow, opInputs, allowance); err != nil {
 		// Two exact retries can both observe a missing row before SQLite
 		// serializes their inserts. Re-read by the caller's durable identifier;
 		// only the exact original request may recover the winning reservation.
-		if existing, loadErr := s.Ledger.GetVtxoOperation(ctx, opID); loadErr == nil {
+		if existing, loadErr := s.Stores.VtxoOperations.GetVtxoOperation(ctx, opID); loadErr == nil {
 			return s.replayVtxoReservation(ctx, existing, vaultID, purpose, req.AmountSats, destScript, tree)
 		}
 		return nil, mapLedgerBusy(err)
@@ -319,7 +318,7 @@ func (s *Service) replayVtxoReservation(
 	if op.State == policy.VtxoStateAborted {
 		return nil, apperr.New(apperr.CodeRejected, "reservation expired")
 	}
-	inputs, err := s.Ledger.GetVtxoOperationInputs(ctx, op.OperationID)
+	inputs, err := s.Stores.VtxoOperations.GetVtxoOperationInputs(ctx, op.OperationID)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +390,7 @@ func (s *Service) selectSpendVtxos(ctx context.Context, pkScript, destScript []b
 		limit = maxVtxoSpendInputs
 	}
 	for count := 1; count <= limit; count++ {
-		fee, change, ok, solveErr := solveVtxoSpend(coins[:count], destScript, pkScript, amountSats, feeCap, estimator)
+		fee, change, ok, solveErr := solveVtxoSpend(ctx, coins[:count], destScript, pkScript, amountSats, feeCap, estimator)
 		if solveErr != nil {
 			return nil, 0, 0, solveErr
 		}
@@ -491,7 +490,10 @@ func exactFeeSats(fee arkfee.FeeAmount) (uint64, error) {
 	return uint64(rounded), nil
 }
 
-func solveVtxoSpend(coins []reservedCoin, destScript, changeScript []byte, amount, feeCap uint64, estimator *arkfee.Estimator) (fee, change uint64, ok bool, err error) {
+func solveVtxoSpend(ctx context.Context, coins []reservedCoin, destScript, changeScript []byte, amount, feeCap uint64, estimator *arkfee.Estimator) (fee, change uint64, ok bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return 0, 0, false, apperr.New(apperr.CodeBusy, "fee selection cancelled")
+	}
 	var total uint64
 	feeInputs := make([]arkfee.OffchainInput, len(coins))
 	for i, coin := range coins {
@@ -521,6 +523,9 @@ func solveVtxoSpend(coins []reservedCoin, destScript, changeScript []byte, amoun
 		maxCandidate = available
 	}
 	for candidate := uint64(0); candidate <= maxCandidate; candidate++ {
+		if err := ctx.Err(); err != nil {
+			return 0, 0, false, apperr.New(apperr.CodeBusy, "fee selection cancelled")
+		}
 		candidateChange := total - amount - candidate
 		if candidateChange < uint64(program.DustSats) {
 			continue
@@ -637,7 +642,7 @@ func (s *Service) loadLiveVtxo(ctx context.Context, vaultID, operationID, wantPu
 	if operationID == "" {
 		return policy.VtxoOperation{}, nil, apperr.New(apperr.CodeRejected, "operationId required")
 	}
-	rec, err := s.Ledger.GetVtxoOperation(ctx, operationID)
+	rec, err := s.Stores.VtxoOperations.GetVtxoOperation(ctx, operationID)
 	if err == sql.ErrNoRows {
 		return policy.VtxoOperation{}, nil, apperr.ErrNotFound
 	}
@@ -658,11 +663,11 @@ func (s *Service) loadLiveVtxo(ctx context.Context, vaultID, operationID, wantPu
 		if rec.State == policy.VtxoStateReserved && !s.vtxoNow().Before(exp) {
 			next := rec
 			next.State = policy.VtxoStateAborted
-			_, _, _ = s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateReserved, next)
+			_, _, _ = s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateReserved, next)
 			return policy.VtxoOperation{}, nil, apperr.New(apperr.CodeRejected, "reservation expired")
 		}
 	}
-	inputs, err := s.Ledger.GetVtxoOperationInputs(ctx, operationID)
+	inputs, err := s.Stores.VtxoOperations.GetVtxoOperationInputs(ctx, operationID)
 	if err != nil {
 		return policy.VtxoOperation{}, nil, err
 	}
@@ -720,7 +725,7 @@ func (s *Service) expireReservedVtxo(ctx context.Context, op policy.VtxoOperatio
 	}
 	next := op
 	next.State = policy.VtxoStateAborted
-	current, swapped, err := s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateReserved, next)
+	current, swapped, err := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateReserved, next)
 	if err != nil {
 		return op, err
 	}
@@ -731,14 +736,14 @@ func (s *Service) expireReservedVtxo(ctx context.Context, op policy.VtxoOperatio
 }
 
 func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID string) (*VtxoOperationView, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	id, _, _, err := s.resolveSpendVaultRecord(vaultID)
 	if err != nil {
 		return nil, err
 	}
-	op, err := s.Ledger.GetVtxoOperation(ctx, operationID)
+	op, err := s.Stores.VtxoOperations.GetVtxoOperation(ctx, operationID)
 	if err == sql.ErrNoRows {
 		return nil, apperr.ErrNotFound
 	}
@@ -752,7 +757,7 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 	// historical operation made one status read trigger unbounded remote work.
 	if op.State == policy.VtxoStateSubmitted {
 		if err := s.promoteSubmittedVtxo(ctx, op); err == nil {
-			if current, loadErr := s.Ledger.GetVtxoOperation(ctx, operationID); loadErr == nil {
+			if current, loadErr := s.Stores.VtxoOperations.GetVtxoOperation(ctx, operationID); loadErr == nil {
 				op = current
 			}
 		}
@@ -784,7 +789,7 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 	if op.State != policy.VtxoStateSubmitted {
 		return nil
 	}
-	inputs, err := s.Ledger.GetVtxoOperationInputs(ctx, op.OperationID)
+	inputs, err := s.Stores.VtxoOperations.GetVtxoOperationInputs(ctx, op.OperationID)
 	if err != nil {
 		return err
 	}
@@ -798,40 +803,37 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 		return fmt.Errorf("reserved inputs required")
 	}
 	pkScript := inputs[0].Script
-	err = s.ArkResolver.ReservedSpentByArkTxid(ctx, pkScript, reserved, op.ArkTxid)
+	if op.ChangeSats > 0 && op.ChangeVout == nil {
+		return fmt.Errorf("change vout missing")
+	}
+	if op.ChangeSats > 0 && !bytes.Equal(op.ChangeScript, pkScript) {
+		return fmt.Errorf("change script does not match reserved inputs")
+	}
+	state, err := s.ArkResolver.SubmittedVtxoState(ctx, pkScript, reserved, op.ArkTxid, op.ChangeVout, uint64(op.ChangeSats))
 	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "not spent by ark txid") {
-			next := op
-			next.State = policy.VtxoStateUnresolved
-			current, swapped, transitionErr := s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
-			if transitionErr != nil {
-				return transitionErr
-			}
-			if !swapped && current.State != policy.VtxoStateUnresolved {
-				return apperr.New(apperr.CodeRejected, "vtxo operation changed concurrently")
-			}
-			return nil
-		}
-		if strings.Contains(msg, "reserved outpoints not spent") || strings.Contains(msg, "missing from indexer") {
-			return nil
-		}
 		return err
 	}
-	if op.ChangeSats > 0 {
-		if op.ChangeVout == nil {
-			return fmt.Errorf("change vout missing")
+	if state == ports.SubmittedVtxoPending {
+		return nil
+	}
+	if state == ports.SubmittedVtxoConflict {
+		next := op
+		next.State = policy.VtxoStateUnresolved
+		current, swapped, transitionErr := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
+		if transitionErr != nil {
+			return transitionErr
 		}
-		if err := s.ArkResolver.ChangeVtxoFromArkTx(ctx, op.ChangeScript, op.ArkTxid, *op.ChangeVout, uint64(op.ChangeSats)); err != nil {
-			if strings.Contains(err.Error(), "change vtxo not yet projected") {
-				return nil
-			}
-			return err
+		if !swapped && current.State != policy.VtxoStateUnresolved {
+			return apperr.New(apperr.CodeRejected, "vtxo operation changed concurrently")
 		}
+		return nil
+	}
+	if state != ports.SubmittedVtxoFinalized {
+		return fmt.Errorf("unknown submitted vtxo state")
 	}
 	next := op
 	next.State = policy.VtxoStateFinalized
-	current, swapped, err := s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
+	current, swapped, err := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
 	if err != nil {
 		return err
 	}
@@ -842,7 +844,7 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 }
 
 func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeRequest) (*VtxoAuthorizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -924,24 +926,24 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	op.PendingProofDigest = bytes.Clone(pendingDigest)
 	op.CheckpointPSBTs = encodeJSONStringSlice(req.UnsignedCheckpointPsbts)
 	op.ArkTxid = arkTxid
-	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
+	keyContext, err := s.vtxoKeyContext(vaultID)
 	if err != nil {
 		return nil, err
 	}
-	expected := schnorr.SerializePubKey(cosigner.PubKey())
+	expected := schnorr.SerializePubKey(tree.CosignerPub)
 	timeout := s.SignTimeout
 	if timeout == 0 {
 		timeout = 15 * time.Second
 	}
 	signCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	signedArk, err := signExactArkStage(signCtx, req.UnsignedArkPsbt, cosigner, expected, tree.SpendLeaf)
+	authorization, err := newVtxoTransactionAuthorization(
+		keyContext, req.UnsignedArkPsbt, req.PendingProof, tree.SpendLeaf, expected,
+	)
 	if err != nil {
 		return nil, err
 	}
-	authorizedPendingProof, err := signExactArkStageWithSighash(
-		signCtx, req.PendingProof, cosigner, expected, tree.SpendLeaf, txscript.SigHashAll,
-	)
+	signedArk, authorizedPendingProof, err := s.keys.vtxoTransactionAuthorization(signCtx, authorization)
 	if err != nil {
 		return nil, err
 	}
@@ -958,7 +960,7 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	// discarded before finalization.
 	op.CheckpointPSBTs = encodeJSONStringSlice(req.UnsignedCheckpointPsbts)
 	op.State = policy.VtxoStateSigned
-	current, swapped, err := s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateReserved, op)
+	current, swapped, err := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateReserved, op)
 	if err != nil {
 		return nil, err
 	}
@@ -983,7 +985,7 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 }
 
 func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpointAuthorizeRequest) (*VtxoCheckpointAuthorizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -1044,29 +1046,29 @@ func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpoi
 			CheckpointPsbts: storedRaw, ArkTxid: op.ArkTxid,
 		}, nil
 	}
-	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
+	keyContext, err := s.vtxoKeyContext(vaultID)
 	if err != nil {
 		return nil, err
 	}
-	expected := schnorr.SerializePubKey(cosigner.PubKey())
+	expected := schnorr.SerializePubKey(tree.CosignerPub)
 	timeout := s.SignTimeout
 	if timeout == 0 {
 		timeout = 15 * time.Second
 	}
 	signCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	authorized := make([]string, len(req.CheckpointPsbts))
-	for i, raw := range req.CheckpointPsbts {
-		signed, err := signExactArkStage(signCtx, raw, cosigner, expected, tree.SpendLeaf)
-		if err != nil {
-			return nil, err
-		}
-		authorized[i] = signed
+	authorization, err := newVtxoCheckpointAuthorization(keyContext, req.CheckpointPsbts, tree.SpendLeaf, expected)
+	if err != nil {
+		return nil, err
+	}
+	authorized, err := s.keys.vtxoCheckpointAuthorization(signCtx, authorization)
+	if err != nil {
+		return nil, err
 	}
 	op.CheckpointPSBTs = encodeJSONStringSlice(authorized)
 	op.CheckpointRequestPSBTs = requestBinding
 	op.State = policy.VtxoStateSubmitted
-	current, swapped, err := s.Ledger.TransitionVtxoOperation(ctx, policy.VtxoStateSigned, op)
+	current, swapped, err := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateSigned, op)
 	if err != nil {
 		return nil, err
 	}
@@ -1084,7 +1086,7 @@ func (s *Service) AuthorizeVtxoCheckpoints(ctx context.Context, req VtxoCheckpoi
 }
 
 func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*VtxoFinalizeResponse, error) {
-	if err := s.attachLedgerIntegrity(); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	if err := s.requireVaultPolicyV1Exit(); err != nil {
@@ -1098,7 +1100,7 @@ func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*V
 	if err != nil {
 		return nil, err
 	}
-	op, err := s.Ledger.GetVtxoOperation(ctx, req.OperationID)
+	op, err := s.Stores.VtxoOperations.GetVtxoOperation(ctx, req.OperationID)
 	if err == sql.ErrNoRows {
 		return nil, apperr.ErrNotFound
 	}
@@ -1130,7 +1132,7 @@ func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*V
 	if err := s.promoteSubmittedVtxo(ctx, op); err != nil {
 		return nil, err
 	}
-	op, err = s.Ledger.GetVtxoOperation(ctx, req.OperationID)
+	op, err = s.Stores.VtxoOperations.GetVtxoOperation(ctx, req.OperationID)
 	if err != nil {
 		return nil, err
 	}
@@ -1187,18 +1189,12 @@ func (s *Service) bindVtxoAuthorization(ctx context.Context, vaultID string, dig
 }
 
 func matchReservedOutpoint(seen map[string]policy.VtxoOperationInput, op wire.OutPoint) (policy.VtxoOperationInput, bool) {
-	internal := make([]byte, 32)
-	copy(internal, op.Hash[:])
-	if in, ok := seen[outpointKey(internal, op.Index)]; ok {
-		return in, true
-	}
 	display, err := hex.DecodeString(op.Hash.String())
-	if err == nil {
-		if in, ok := seen[outpointKey(display, op.Index)]; ok {
-			return in, true
-		}
+	if err != nil {
+		return policy.VtxoOperationInput{}, false
 	}
-	return policy.VtxoOperationInput{}, false
+	in, ok := seen[outpointKey(display, op.Index)]
+	return in, ok
 }
 
 func encodeJSONStringSlice(v []string) string {

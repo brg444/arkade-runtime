@@ -4,7 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"fmt"
-	"math/big"
 
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -23,6 +22,13 @@ const (
 	CosignerModeVtxoHKDFSHA256V1 = "vtxo-hkdf-sha256-v1"
 	vtxoVaultCosignerHKDFSalt    = "arkade-2fa-vault/vtxo-vault-cosigner/hkdf-sha256-v1"
 	vtxoVaultCosignerHKDFInfo    = "vtxo-vault-cosigner/v1"
+
+	// CosignerModeVaultBoardHKDFSHA256V1 is the vault-board-v1
+	// VaultBoardCosigner domain. It is distinct from both L1 Savings and the
+	// vault-policy-v1 VTXO cosigner.
+	CosignerModeVaultBoardHKDFSHA256V1 = "vault-board-v1-hkdf-sha256-v1"
+	vaultBoardCosignerHKDFSalt         = "arkade-vault/vault-board-v1-cosigner/hkdf-sha256-v1"
+	vaultBoardCosignerHKDFInfo         = "vault-board-cosigner/v1"
 )
 
 // DeriveVaultCosignerScalar returns the secp256k1 scalar for vaultID.
@@ -53,7 +59,6 @@ func deriveHKDFVaultCosigner(master *btcec.PrivateKey, vaultID string) (*btcec.P
 	_, _ = extract.Write(ikm)
 	prk := extract.Sum(nil)
 	defer zeroBytes(prk)
-	n := btcec.S256().N
 	for counter := 0; counter <= 255; counter++ {
 		info := make([]byte, 0, len(vaultCosignerHKDFInfo)+3+len(vaultID))
 		info = append(info, vaultCosignerHKDFInfo...)
@@ -64,7 +69,7 @@ func deriveHKDFVaultCosigner(master *btcec.PrivateKey, vaultID string) (*btcec.P
 		_, _ = expand.Write(info)
 		_, _ = expand.Write([]byte{1})
 		okm := expand.Sum(nil)
-		if scalarInRange(okm, n) {
+		if scalarInRange(okm) {
 			priv, _ := btcec.PrivKeyFromBytes(okm)
 			zeroBytes(okm)
 			if priv == nil {
@@ -112,6 +117,58 @@ func DeriveVtxoVaultCosignerScalar(master *btcec.PrivateKey, vaultID, policyVers
 	return deriveVtxoHKDFVaultCosigner(master, vaultID, policyVersion, network, advertisedServerPub)
 }
 
+// DeriveVaultBoardCosignerScalar returns the even-Y scalar for the named
+// vault-board-v1 authorization capability. The Operator key and network are
+// release identity, so a deployment change cannot silently reinterpret an
+// enrolled boarding output.
+func DeriveVaultBoardCosignerScalar(master *btcec.PrivateKey, vaultID, network string, operatorPub []byte) (*btcec.PrivateKey, error) {
+	if master == nil {
+		return nil, fmt.Errorf("vault cosigner master required")
+	}
+	if vaultID == "" {
+		return nil, fmt.Errorf("vault id required")
+	}
+	if network != program.NetworkMutinynet {
+		return nil, fmt.Errorf("vault-board-v1 is Mutinynet-only")
+	}
+	if len(operatorPub) != 33 || (operatorPub[0] != 0x02 && operatorPub[0] != 0x03) {
+		return nil, fmt.Errorf("Operator pub must be compressed secp256k1")
+	}
+	if _, err := btcec.ParsePubKey(operatorPub); err != nil {
+		return nil, fmt.Errorf("Operator pub must be compressed secp256k1")
+	}
+	ikm := master.Serialize()
+	defer zeroBytes(ikm)
+	extract := hmac.New(sha256.New, []byte(vaultBoardCosignerHKDFSalt))
+	_, _ = extract.Write(ikm)
+	prk := extract.Sum(nil)
+	defer zeroBytes(prk)
+	for counter := 0; counter <= 255; counter++ {
+		info := make([]byte, 0, len(vaultBoardCosignerHKDFInfo)+len(vaultID)+len(network)+len(operatorPub)+len(program.VaultBoardV1)+7)
+		for _, field := range [][]byte{
+			[]byte(vaultBoardCosignerHKDFInfo), []byte(vaultID), []byte(program.VaultBoardV1),
+			[]byte(network), operatorPub,
+		} {
+			info = append(info, field...)
+			info = append(info, 0)
+		}
+		info = append(info, byte(counter))
+		expand := hmac.New(sha256.New, prk)
+		_, _ = expand.Write(info)
+		_, _ = expand.Write([]byte{1})
+		okm := expand.Sum(nil)
+		if scalarInRange(okm) {
+			priv, _ := btcec.PrivKeyFromBytes(okm)
+			zeroBytes(okm)
+			if priv != nil {
+				return evenYPrivateKey(priv), nil
+			}
+		}
+		zeroBytes(okm)
+	}
+	return nil, fmt.Errorf("vault-board-v1 HKDF produced no valid secp256k1 scalar")
+}
+
 func deriveVtxoHKDFVaultCosigner(master *btcec.PrivateKey, vaultID, policyVersion, network string, advertisedServerPub []byte) (*btcec.PrivateKey, error) {
 	ikm := master.Serialize()
 	defer zeroBytes(ikm)
@@ -119,14 +176,13 @@ func deriveVtxoHKDFVaultCosigner(master *btcec.PrivateKey, vaultID, policyVersio
 	_, _ = extract.Write(ikm)
 	prk := extract.Sum(nil)
 	defer zeroBytes(prk)
-	n := btcec.S256().N
 	for counter := 0; counter <= 255; counter++ {
 		info := vtxoVaultCosignerInfo(vaultID, policyVersion, network, advertisedServerPub, byte(counter))
 		expand := hmac.New(sha256.New, prk)
 		_, _ = expand.Write(info)
 		_, _ = expand.Write([]byte{1})
 		okm := expand.Sum(nil)
-		if scalarInRange(okm, n) {
+		if scalarInRange(okm) {
 			priv, _ := btcec.PrivKeyFromBytes(okm)
 			zeroBytes(okm)
 			if priv == nil {
@@ -177,13 +233,12 @@ func VerifyVaultCosignerPub(master *btcec.PrivateKey, rec VaultRecord) error {
 	return nil
 }
 
-func scalarInRange(raw []byte, n *big.Int) bool {
+func scalarInRange(raw []byte) bool {
 	if len(raw) != 32 {
 		return false
 	}
-	x := new(big.Int).SetBytes(raw)
-	if x.Sign() <= 0 || x.Cmp(n) >= 0 {
-		return false
-	}
-	return true
+	var scalar btcec.ModNScalar
+	overflow := scalar.SetByteSlice(raw)
+	defer scalar.Zero()
+	return !overflow && !scalar.IsZero()
 }

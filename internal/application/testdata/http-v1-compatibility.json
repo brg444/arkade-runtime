@@ -1,0 +1,162 @@
+{
+  "routes": {
+    "/health": ["GET"],
+    "/ready": ["GET"],
+    "/v1/status": ["GET", "OPTIONS"],
+    "/v1/invite": ["GET", "OPTIONS"],
+    "/v1/enroll/start": ["OPTIONS", "POST"],
+    "/v1/enroll/propose": ["OPTIONS", "POST"],
+    "/v1/enroll/finish": ["OPTIONS", "POST"],
+    "/v1/initiate": ["OPTIONS", "POST"],
+    "/v1/clawback": ["OPTIONS", "POST"],
+    "/v1/passkey/challenge": ["OPTIONS", "POST"],
+    "/v1/passkey/binding": ["OPTIONS", "POST"],
+    "/v1/passkey/install": ["OPTIONS", "POST"],
+    "/v1/passkey/recover": ["OPTIONS", "POST"],
+    "/v1/map": ["GET", "OPTIONS", "POST"],
+    "/v1/vtxo/reserve": ["OPTIONS", "POST"],
+    "/v1/vtxo/authorize": ["OPTIONS", "POST"],
+    "/v1/vtxo/checkpoints/authorize": ["OPTIONS", "POST"],
+    "/v1/vtxo/finalize": ["OPTIONS", "POST"],
+    "/v1/vtxo/operation": ["GET", "OPTIONS"],
+    "/v1/vtxo/board/prepare": ["OPTIONS", "POST"],
+    "/v1/vtxo/board/register": ["OPTIONS", "POST"],
+    "/v1/vtxo/board/release": ["OPTIONS", "POST"],
+    "/v1/vtxo/board/final": ["OPTIONS", "POST"]
+  },
+  "shapes": {
+    "ReadyStatus": [
+      "ok:boolean", "schema:integer", "network:string", "enrollTemplate:string",
+      "arkadeOrigin:string", "arkadeVersion:string", "error:string,omitempty"
+    ],
+    "PublicStatus": [
+      "network:string", "clientOrigin:string", "rpId:string", "templateVersion:string",
+      "policyVersion:string", "enrollmentMode:string", "enrollmentExpiresAt:string,omitempty"
+    ],
+    "Status": [
+      "enrolled:boolean", "network:string", "clientOrigin:string", "rpId:string",
+      "vaultId:string", "templateVersion:string", "policyVersion:string",
+      "externalOwnerWalletPub:string,omitempty", "recoveryKeyPub:string,omitempty",
+      "vaultCosignerBasePub:string,omitempty", "arkadeCosignerBasePub:string,omitempty",
+      "arkadeCosignerOrigin:string", "arkadeCosignerVersion:string", "savingsAddress:string",
+      "savingsScript:string,omitempty", "passkeyLoginAvailable:boolean", "enrollmentMode:string",
+      "enrollmentExpiresAt:string,omitempty", "periodAllowance:integer", "periodSpent:integer",
+      "periodRemaining:integer", "txCap:integer", "absoluteFeeCap:integer",
+      "feerateCapSatVb:integer", "phoneBip340Pub:string,omitempty",
+      "phoneDirectP256:string,omitempty", "warnings:array<string>,omitempty",
+      "vtxoVaultCosignerPub:string", "vtxoExitDelay:integer", "vtxoExitDelayUnit:string",
+      "spendingArkAddress:string", "spendingArkScript:string", "vtxoDelegatePub:string",
+      "vtxoBoardingActive:boolean", "vtxoBoardingProgram:string", "vtxoBoardingAddress:string",
+      "vtxoBoardingScript:string", "vtxoBoardingExitDelay:integer",
+      "vtxoBoardingExitDelayUnit:string"
+    ],
+    "InviteView": ["canEnroll:boolean", "vaultId:string|null"],
+    "EnrollStartRequest": null,
+    "EnrollStartResponse": [
+      "handle:string", "vaultId:string", "challenge:string", "rpId:string", "rpName:string",
+      "userId:string", "userName:string", "timeoutMs:integer"
+    ],
+    "EnrollFinishRequest": [
+      "handle:string", "userHandle:string", "clientDataJSON:string", "authenticatorData:string",
+      "attestationObject:string,omitempty", "credentialId:string", "webauthnP256:string",
+      "phoneDirectP256:string", "phoneBip340Pub:string",
+      "vtxoBoardingProgram:string", "vaultBoardingBip340Pub:string",
+      "externalOwnerWalletXOnly:string,omitempty", "recoveryXOnly:string,omitempty",
+      "recoveryKeyXOnly:string,omitempty", "vaultId:string,omitempty", "descriptorHash:string,omitempty"
+    ],
+    "ProposedEnrollment": ["vaultId:string", "descriptorHash:string", "descriptor:any"],
+    "TransitionRequest": [
+      "vaultId:string", "purpose:string", "psbt:string", "challengeId:string",
+      "credentialId:string", "clientDataJSON:string", "authenticatorData:string",
+      "signature:string", "directProof:string"
+    ],
+    "TransitionResponse": ["signedPsbt:string", "replay:boolean"],
+    "PasskeyChallengeRequest": ["purpose:string", "vaultId:string,omitempty"],
+    "PasskeyChallengeResponse": [
+      "challengeId:string", "challenge:string", "allowCredentialId:string", "expiresInSeconds:integer"
+    ],
+    "RecoveryBindingRouteRequest": [
+      "vaultId:string", "envelopeNonce:string", "envelopeCiphertext:string"
+    ],
+    "RecoveryBindingResponse": ["binding:string", "bindingDigest:string"],
+    "InstallCredentialEnvelopeRequest": [
+      "vaultId:string", "challengeId:string", "credentialId:string", "clientDataJSON:string",
+      "authenticatorData:string", "signature:string", "directProof:string", "envelopeNonce:string",
+      "envelopeCiphertext:string", "binding:string", "bindingDirectSig:string", "bindingPhoneSig:string"
+    ],
+    "RecoverCredentialEnvelopeRequest": [
+      "vaultId:string", "challengeId:string", "credentialId:string", "clientDataJSON:string",
+      "authenticatorData:string", "signature:string", "directProof:string"
+    ],
+    "RecoverCredentialEnvelopeResponse": [
+      "binding:string", "bindingDigest:string", "envelopeNonce:string", "envelopeCiphertext:string",
+      "bindingDirectSig:string", "bindingPhoneSig:string"
+    ],
+    "MapWriteRequest": [
+      "vaultId:string", "challengeId:string", "credentialId:string", "clientDataJSON:string",
+      "authenticatorData:string", "signature:string", "directProof:string", "payload:json"
+    ],
+    "VtxoReserveRequest": [
+      "operationId:string", "vaultId:string", "purpose:string", "destAddress:string",
+      "amountSats:integer", "phoneSignature:string"
+    ],
+    "VtxoInputView": ["txid:string", "vout:integer", "valueSats:integer", "scriptHex:string"],
+    "VtxoReserveResponse": [
+      "operationId:string", "bundleDigest:string", "reservationExpires:string",
+      "inputs:array<object>", "changeAddress:string", "changeScript:string", "destScript:string",
+      "feeSats:integer", "feePolicyDigest:string", "changeSats:integer",
+      "changeVout:integer|null,omitempty", "checkpointTapscript:string,omitempty"
+    ],
+    "VtxoAuthorizeRequest": [
+      "vaultId:string", "operationId:string", "bundleDigest:string", "unsignedArkPsbt:string",
+      "unsignedCheckpointPsbts:array<string>", "pendingProof:string", "credentialId:string",
+      "clientDataJSON:string", "authenticatorData:string", "signature:string", "directSig:string"
+    ],
+    "VtxoAuthorizeResponse": [
+      "operationId:string", "bundleDigest:string", "authorizedPsbt:string",
+      "authorizedPendingProof:string", "arkTxid:string"
+    ],
+    "VtxoCheckpointAuthorizeRequest": [
+      "vaultId:string", "operationId:string", "bundleDigest:string", "checkpointPsbts:array<string>"
+    ],
+    "VtxoCheckpointAuthorizeResponse": [
+      "operationId:string", "bundleDigest:string", "checkpointPsbts:array<string>", "arkTxid:string"
+    ],
+    "VtxoFinalizeRequest": [
+      "vaultId:string", "operationId:string", "bundleDigest:string", "arkTxid:string"
+    ],
+    "VtxoFinalizeResponse": [
+      "operationId:string", "bundleDigest:string", "state:string", "arkTxid:string"
+    ],
+    "VtxoOperationView": [
+      "operationId:string", "bundleDigest:string", "state:string", "arkTxid:string,omitempty",
+      "expiresAt:string,omitempty", "feeSats:integer", "feePolicyDigest:string", "changeSats:integer",
+      "changeVout:integer|null,omitempty", "changeScript:string", "authorizedPsbt:string,omitempty",
+      "authorizedPendingProof:string,omitempty", "checkpointPsbts:array<string>,omitempty"
+    ],
+    "SavingsPublicDescriptor": [
+      "schema:string", "network:string", "vaultId:string", "templateVersion:string",
+      "policyVersion:string", "keys:object", "tweaks:object", "arkadeCosigner:object",
+      "csv:object", "policy:object", "p2a:object", "transitionSequence:integer",
+      "savings:object", "pending:object", "quarantine:object"
+    ],
+    "SavingsPublicKeys": [
+      "phoneBip340:string", "phoneDirectP256:string", "hardware:string", "recovery:string,omitempty",
+      "vaultCosignerBase:string", "arkadeCosignerBase:string"
+    ],
+    "SavingsPublicPair": ["vault:string", "arkade:string"],
+    "SavingsPublicTweaks": ["initiate:object", "pending:object"],
+    "SavingsPublicArkade": ["origin:string", "version:string"],
+    "SavingsPublicCSV": ["hardware:integer", "phone:integer", "recovery:integer"],
+    "SavingsPublicPolicy": [
+      "recipientDustSats:integer", "recipientCapSats:integer", "periodAllowanceSats:integer",
+      "absoluteFeeCapSats:integer", "feerateCapSatVb:integer"
+    ],
+    "SavingsPublicP2A": ["script:string", "valueSats:integer", "outputIndex:integer"],
+    "SavingsTreeRef": ["script:string", "address:string"],
+    "SavingsPendingRef": ["script:string", "address:string", "delay:integer"],
+    "SavingsQuarantineRef": ["script:string", "address:string", "guardians:array<string>"],
+    "MutationSuccess": ["ok:boolean"],
+    "ErrorResponse": ["error:string", "code:string"]
+  }
+}

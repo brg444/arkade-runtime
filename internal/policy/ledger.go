@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/binary"
 	"fmt"
@@ -69,15 +70,36 @@ func (l *Ledger) Close() error {
 	return l.db.Close()
 }
 
-// SetIntegrityKey installs a private copy of the authorizer-derived MAC key.
+// SetIntegrityKey installs the authorizer-derived MAC key exactly once.
 func (l *Ledger) SetIntegrityKey(key []byte) error {
 	if len(key) != sha256.Size {
 		return fmt.Errorf("policy integrity key must be 32 bytes")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	zeroBytes(l.integrityKey)
+	if len(l.integrityKey) != 0 {
+		if len(l.integrityKey) != sha256.Size || subtle.ConstantTimeCompare(l.integrityKey, key) != 1 {
+			return fmt.Errorf("policy integrity key already initialized")
+		}
+		return nil
+	}
 	l.integrityKey = append([]byte(nil), key...)
+	return nil
+}
+
+// RequireIntegrityKey verifies request wiring without mutating the live key.
+func (l *Ledger) RequireIntegrityKey(key []byte) error {
+	if len(key) != sha256.Size {
+		return fmt.Errorf("policy integrity key must be 32 bytes")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.integrityKey) != sha256.Size {
+		return fmt.Errorf("policy integrity key is not initialized")
+	}
+	if subtle.ConstantTimeCompare(l.integrityKey, key) != 1 {
+		return fmt.Errorf("policy integrity key mismatch")
+	}
 	return nil
 }
 
@@ -242,7 +264,15 @@ func (l *Ledger) AttachMonotonic(m *Monotonic) error {
 
 func economicOutflowCount(q queryContext) (uint64, error) {
 	var n int64
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM vtxo_operation`).Scan(&n); err != nil {
+	query := `SELECT COUNT(*) FROM vtxo_operation`
+	var boardTables int
+	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('vault_board_authorization','vault_board_dispatch','vault_board_submission')`).Scan(&boardTables); err != nil {
+		return 0, err
+	}
+	if boardTables == 3 {
+		query = `SELECT (SELECT COUNT(*) FROM vtxo_operation) + (SELECT COUNT(*) FROM vault_board_authorization) + (SELECT COUNT(*) FROM vault_board_dispatch) + (SELECT COUNT(*) FROM vault_board_submission)`
+	}
+	if err := q.QueryRowContext(context.Background(), query).Scan(&n); err != nil {
 		return 0, err
 	}
 	if n < 0 {

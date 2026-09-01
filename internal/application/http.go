@@ -20,6 +20,7 @@ import (
 const GatewaySecretHeader = "X-Vault-Gateway-Secret"
 
 const maxJSONBody = 1 << 20
+const maxRequestIDLength = 64
 const EnrollmentTokenHeader = "X-Vault-Enrollment-Token"
 
 const (
@@ -103,7 +104,7 @@ func safeVaultID(id string) string {
 
 func withRequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimSpace(r.Header.Get("X-Request-Id"))
+		id := validRequestID(r.Header.Get("X-Request-Id"))
 		if id == "" {
 			id = fmt.Sprintf("%d", time.Now().UnixNano())
 		}
@@ -124,6 +125,20 @@ func withRequestLog(next http.Handler) http.Handler {
 		}
 		log.Printf("request id=%s op=%s path=%s vault=%s status=%d code=%s", id, r.Method, r.URL.Path, vault, status, code)
 	})
+}
+
+func validRequestID(raw string) string {
+	id := strings.TrimSpace(raw)
+	if id == "" || len(id) > maxRequestIDLength {
+		return ""
+	}
+	for _, c := range id {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') &&
+			(c < '0' || c > '9') && c != '.' && c != '_' && c != '-' {
+			return ""
+		}
+	}
+	return id
 }
 
 func requireGatewaySecret(next http.Handler) http.Handler {
@@ -172,6 +187,10 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/operation":             {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/prepare":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/register":        {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/release":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/final":           {http.MethodPost: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -195,8 +214,8 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, _ *http.Request) {
-		st := svc.Ready()
+	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) {
+		st := svc.Ready(r.Context())
 		if !st.Ok {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
@@ -205,6 +224,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
+	attachVaultBoardRoutes(mux, svc, origin)
 }
 
 type mutationError struct {
@@ -242,6 +262,7 @@ func decodeMutation(r *http.Request, dst any, expectedOrigin string) error {
 }
 
 func writeMutationError(w http.ResponseWriter, err error) {
+	w.Header().Set("X-Vault-Error-Code", string(apperr.CodeRejected))
 	var me *mutationError
 	if errors.As(err, &me) {
 		http.Error(w, me.msg, me.status)
@@ -252,7 +273,7 @@ func writeMutationError(w http.ResponseWriter, err error) {
 		http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
 		return
 	}
-	http.Error(w, err.Error(), http.StatusBadRequest)
+	http.Error(w, "invalid request", http.StatusBadRequest)
 }
 
 func writeJSON(w http.ResponseWriter, v any, err error) {
