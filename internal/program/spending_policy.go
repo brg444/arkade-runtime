@@ -88,8 +88,14 @@ func ValidateSpendingPolicy(p SpendingPolicy) error {
 	if err := validatePolicyBound("absolute fee cap", p.AbsoluteFeeCapSats, MinAbsoluteFeeCapSats, MaxAbsoluteFeeCapSats); err != nil {
 		return err
 	}
+	if p.AbsoluteFeeCapSats != AbsoluteFeeCeiling {
+		return fmt.Errorf("absolute fee cap must match the release value %d", AbsoluteFeeCeiling)
+	}
 	if err := validatePolicyBound("feerate cap", p.FeerateCapSatPerV, MinFeerateCapSatPerV, MaxFeerateCapSatPerV); err != nil {
 		return err
+	}
+	if p.FeerateCapSatPerV != FeerateCeilingSatPerV {
+		return fmt.Errorf("feerate cap must match the release value %d", FeerateCeilingSatPerV)
 	}
 	return nil
 }
@@ -146,12 +152,11 @@ func CurrentSpendingPolicyCapabilities() SpendingPolicyCapabilities {
 	out.Period = SpendingPolicyPeriod
 	out.Bounds.PeriodAllowanceSats = SpendingPolicyBounds{Min: MinPeriodAllowanceSats, Max: MaxPeriodAllowanceSats}
 	out.Bounds.TxRecipientCapSats = SpendingPolicyBounds{Min: MinTxRecipientCapSats, Max: MaxTxRecipientCapSats}
-	out.Bounds.AbsoluteFeeCapSats = SpendingPolicyBounds{Min: MinAbsoluteFeeCapSats, Max: MaxAbsoluteFeeCapSats}
-	out.Bounds.FeerateCapSatPerV = SpendingPolicyBounds{Min: MinFeerateCapSatPerV, Max: MaxFeerateCapSatPerV}
+	out.Bounds.AbsoluteFeeCapSats = SpendingPolicyBounds{Min: AbsoluteFeeCeiling, Max: AbsoluteFeeCeiling}
+	out.Bounds.FeerateCapSatPerV = SpendingPolicyBounds{Min: FeerateCeilingSatPerV, Max: FeerateCeilingSatPerV}
 	out.Presets = []SpendingPolicyPreset{
-		{ID: "cautious", Label: "Cautious", Policy: SpendingPolicyFromValues(25_000, 50_000, 2_500, 10)},
-		{ID: "standard", Label: "Standard", Policy: DefaultSpendingPolicy()},
-		{ID: "flexible", Label: "Flexible", Policy: SpendingPolicyFromValues(250_000, 1_000_000, 10_000, 20)},
+		{ID: "lower-exposure", Label: "Lower exposure", Policy: SpendingPolicyFromValues(25_000, 50_000, AbsoluteFeeCeiling, FeerateCeilingSatPerV)},
+		{ID: "everyday", Label: "Everyday", Policy: DefaultSpendingPolicy()},
 	}
 	return out
 }

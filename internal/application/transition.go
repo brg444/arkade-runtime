@@ -208,6 +208,7 @@ func (s *Service) transitionFamily(cred *policy.Credential) (*savings.Family, er
 	parsed := parsedRegisterRequest{
 		phoneDirectP256: cred.PhoneDirectP256,
 		phone:           phone, externalOwner: hardware, recovery: recovery,
+		protectionTier: cred.ProtectionTier,
 		spendingPolicy: spendingPolicyFromCredential(cred),
 	}
 	in, err := s.savingsFamilyInput(cred.VaultID, parsed, vaultBase, arkadeBase)

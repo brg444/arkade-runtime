@@ -184,6 +184,7 @@ type RegisterRequest struct {
 	// DisallowUnknownFields; new enrollments should send them.
 	VaultID              string                 `json:"vaultId,omitempty"`
 	DescriptorHash       string                 `json:"descriptorHash,omitempty"`
+	ProtectionTier       string                 `json:"protectionTier"`
 	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
 	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
 }
@@ -196,6 +197,7 @@ type parsedRegisterRequest struct {
 	boardPub                          *btcec.PublicKey
 	boardingProgram                   string
 	vaultID                           string
+	protectionTier                    string
 	spendingPolicy                    program.SpendingPolicy
 }
 
@@ -380,6 +382,10 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 			return parsed, err
 		}
 	}
+	if err := program.ValidateProtectionTierRecovery(req.ProtectionTier, parsed.recovery != nil); err != nil {
+		return parsed, err
+	}
+	parsed.protectionTier = req.ProtectionTier
 	parsed.vaultID = req.VaultID
 	parsed.boardingProgram = program.VaultBoardV1
 	if _, err := requireSpendingPolicyDigest(req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
@@ -474,6 +480,9 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	}
 	if cred.PolicyVersion != program.PolicyVersion {
 		return fmt.Errorf("stored policy %q incompatible with runtime %q", cred.PolicyVersion, program.PolicyVersion)
+	}
+	if err := program.ValidateProtectionTierRecovery(cred.ProtectionTier, len(cred.RecoveryKey) > 0); err != nil {
+		return fmt.Errorf("stored protection tier: %w", err)
 	}
 	if cred.Network != cfg.Network {
 		return fmt.Errorf("stored network %q incompatible with runtime %q", cred.Network, cfg.Network)
@@ -592,6 +601,7 @@ type Status struct {
 	VaultID                   string                 `json:"vaultId"`
 	TemplateVersion           string                 `json:"templateVersion"`
 	PolicyVersion             string                 `json:"policyVersion"`
+	ProtectionTier            string                 `json:"protectionTier"`
 	ExternalOwnerWalletPub    string                 `json:"externalOwnerWalletPub,omitempty"`
 	RecoveryKeyPub            string                 `json:"recoveryKeyPub,omitempty"`
 	VaultCosignerBasePub      string                 `json:"vaultCosignerBasePub,omitempty"`
@@ -751,6 +761,9 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	if err := program.ValidateSpendingPolicy(spendingPolicyFromRecord(rec)); err != nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("stored economic policy: %w", err)
 	}
+	if err := program.ValidateProtectionTierRecovery(rec.ProtectionTier, len(rec.RecoveryKey) > 0); err != nil {
+		return "", enrolledSnapshot{}, nil, fmt.Errorf("stored protection tier: %w", err)
+	}
 	return id, snap, rec, nil
 }
 
@@ -851,6 +864,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		VaultID:              vaultID,
 		TemplateVersion:      publicEnrollTemplate(s),
 		PolicyVersion:        policyVersion,
+		ProtectionTier:       cred.ProtectionTier,
 		PeriodAllowance:      allowance,
 		PeriodSpent:          spent,
 		PeriodRemaining:      rem,

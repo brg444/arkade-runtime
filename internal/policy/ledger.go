@@ -46,6 +46,7 @@ type Credential struct {
 	ArkadeCosignerVersion string
 	TemplateVersion       string
 	PolicyVersion         string
+	ProtectionTier        string
 	Network               string
 	VaultID               string
 	SavingsAddress        string

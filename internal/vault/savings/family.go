@@ -59,6 +59,7 @@ type FamilyInput struct {
 	ArkadeCosignerBase *btcec.PublicKey
 	TemplateVersion    string
 	ServerFreeClawback bool
+	ProtectionTier     string
 	SpendingPolicy     program.SpendingPolicy
 }
 
@@ -109,6 +110,9 @@ func BuildSavings(vaultID, network, template string, phone, hardware, recovery *
 func BuildFamily(in FamilyInput) (*Family, error) {
 	if err := assertFamilyBases(in); err != nil {
 		return nil, err
+	}
+	if err := program.ValidateProtectionTierRecovery(in.ProtectionTier, in.Recovery != nil); err != nil {
+		return nil, fmt.Errorf("protection tier: %w", err)
 	}
 	if err := program.ValidateSpendingPolicy(in.SpendingPolicy); err != nil {
 		return nil, fmt.Errorf("spending policy: %w", err)

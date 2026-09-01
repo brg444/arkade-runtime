@@ -55,11 +55,12 @@ permissions, backups, and restore decisions. Separate paths or named volumes
 under one authority fail to establish independent failure domains. Restoring
 both to the same earlier point defeats rollback detection.
 
-The recovery envelope uses `arkade-vault/recovery-binding/v3`. Its signed
+The recovery envelope uses `arkade-vault/recovery-binding/v4`. Its signed
 preimage includes the authenticated credential, complete Savings descriptor,
-and every immutable Spending and boarding field. The server rebuilds those
-fields from its release-pinned policy when it creates or installs the binding;
-substituted or incomplete descriptors fail closed.
+the selected protection tier, and every immutable Spending and boarding field.
+The server rebuilds those fields from its release-pinned program and enrolled
+policy when it creates or installs the binding; substituted or incomplete
+descriptors fail closed.
 
 ## Release gates
 
@@ -85,11 +86,14 @@ and the deployed Operator origin, network identity, signer keys, checkpoint
 policy, delay units, fee bounds, and rotation policy are qualified and pinned
 in both Contract Packs.
 
-The compiled Vault Program remains fixed. Mainnet review must approve the
-`vault-spending-policy-v1` schema, presets, and bounds before the Contract Pack
-is frozen. Each fresh vault then selects an immutable policy instance during
-enrollment; no post-enrollment mutation or arbitrary policy execution is part
-of this release.
+The compiled Vault Program remains fixed. Each fresh vault selects Standard
+without a recovery key or Advanced with a distinct recovery key, then selects
+an immutable `vault-spending-policy-v1` instance during enrollment. The
+current user controls are the per-payment cap and rolling 24-hour allowance;
+the 5,000-sat and 10-sat/vB fee ceilings remain release-managed. Mainnet review
+must approve these tiers, presets, and bounds before the Contract Pack is
+frozen. No post-enrollment mutation or arbitrary policy execution is part of
+this release.
 
 The resolver is startup-critical for the VTXO-first release. Readiness requires
 the exact release-pinned Operator signer and checkpoint unroll closure. Remote

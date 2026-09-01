@@ -15,6 +15,7 @@ type VaultRecord struct {
 	VaultID               string
 	TemplateVersion       string
 	PolicyVersion         string
+	ProtectionTier        string
 	Network               string
 	RPID                  string
 	Origin                string
@@ -56,7 +57,8 @@ func VaultRecordFromCredential(c Credential) VaultRecord {
 func vaultRecordFromCredential(c Credential) VaultRecord {
 	return VaultRecord{
 		VaultID: c.VaultID, TemplateVersion: c.TemplateVersion, PolicyVersion: c.PolicyVersion,
-		Network: c.Network, RPID: c.RPID, Origin: c.Origin,
+		ProtectionTier: c.ProtectionTier,
+		Network:        c.Network, RPID: c.RPID, Origin: c.Origin,
 		PhoneBIP340:          append([]byte(nil), c.PhoneBIP340...),
 		PhoneDirectP256:      append([]byte(nil), c.PhoneDirectP256...),
 		ExternalOwnerWallet:  append([]byte(nil), c.ExternalOwnerWallet...),
@@ -86,7 +88,8 @@ func (v VaultRecord) toCredential(cred VaultCredential) Credential {
 		ArkadeCosignerBase:   v.ArkadeCosignerBase,
 		ArkadeCosignerOrigin: v.ArkadeCosignerOrigin, ArkadeCosignerVersion: v.ArkadeCosignerVersion,
 		TemplateVersion: v.TemplateVersion, PolicyVersion: v.PolicyVersion,
-		Network: v.Network, VaultID: v.VaultID,
+		ProtectionTier: v.ProtectionTier,
+		Network:        v.Network, VaultID: v.VaultID,
 		SavingsAddress: v.SavingsAddress, SavingsScript: v.SavingsScript,
 		RecipientDustSats: v.RecipientDustSats, TxRecipientCapSats: v.TxRecipientCapSats,
 		PeriodAllowanceSats: v.PeriodAllowanceSats, AbsoluteFeeCapSats: v.AbsoluteFeeCapSats,
@@ -160,7 +163,7 @@ func vaultRecordMAC(v VaultRecord, key []byte) ([]byte, error) {
 	}
 	out = binary.LittleEndian.AppendUint32(out, 1)
 	for _, field := range [][]byte{
-		[]byte(v.VaultID), []byte(v.TemplateVersion), []byte(v.PolicyVersion),
+		[]byte(v.VaultID), []byte(v.TemplateVersion), []byte(v.PolicyVersion), []byte(v.ProtectionTier),
 		[]byte(v.CosignerMode), []byte(v.Network), []byte(v.RPID), []byte(v.Origin),
 		v.PhoneBIP340, v.PhoneDirectP256, v.ExternalOwnerWallet, v.RecoveryKey,
 		v.VaultCosignerBase, v.ArkadeCosignerBase,
@@ -241,7 +244,7 @@ func (l *Ledger) LoadVault(vaultID string) (*VaultRecord, *VaultCredential, erro
 	}
 	var v VaultRecord
 	err := l.db.QueryRow(`
-SELECT vault_id, template_version, policy_version, network, rp_id, origin,
+SELECT vault_id, template_version, policy_version, protection_tier, network, rp_id, origin,
        phone_bip340_compressed, phone_direct_p256_compressed,
        external_owner_wallet_compressed, recovery_key_compressed,
        vault_cosigner_base_compressed, arkade_cosigner_base_compressed,
@@ -250,7 +253,7 @@ SELECT vault_id, template_version, policy_version, network, rp_id, origin,
        recipient_dust_sats, tx_recipient_cap_sats, period_allowance_sats,
        absolute_fee_cap_sats, feerate_cap_sat_vb, integrity_mac
   FROM vault WHERE vault_id = ?`, vaultID).Scan(
-		&v.VaultID, &v.TemplateVersion, &v.PolicyVersion, &v.Network, &v.RPID, &v.Origin,
+		&v.VaultID, &v.TemplateVersion, &v.PolicyVersion, &v.ProtectionTier, &v.Network, &v.RPID, &v.Origin,
 		&v.PhoneBIP340, &v.PhoneDirectP256, &v.ExternalOwnerWallet, &v.RecoveryKey,
 		&v.VaultCosignerBase, &v.ArkadeCosignerBase,
 		&v.ArkadeCosignerOrigin, &v.ArkadeCosignerVersion, &v.CosignerMode,
@@ -305,7 +308,7 @@ func (l *Ledger) LoadVerifiedVault(vaultID string, key []byte) (*VaultRecord, *V
 func insertVaultTx(tx *sql.Tx, v VaultRecord, cred VaultCredential, envelope *CredentialEnvelope) error {
 	if _, err := tx.Exec(`
 INSERT INTO vault (
-  vault_id, template_version, policy_version, network, rp_id, origin,
+  vault_id, template_version, policy_version, protection_tier, network, rp_id, origin,
   phone_bip340_compressed, phone_direct_p256_compressed,
   external_owner_wallet_compressed, recovery_key_compressed,
   vault_cosigner_base_compressed, arkade_cosigner_base_compressed,
@@ -313,9 +316,9 @@ INSERT INTO vault (
   savings_address, savings_script,
   recipient_dust_sats, tx_recipient_cap_sats, period_allowance_sats,
   absolute_fee_cap_sats, feerate_cap_sat_vb, integrity_mac
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		v.VaultID, v.TemplateVersion, v.PolicyVersion, v.Network, v.RPID, v.Origin,
-		v.PhoneBIP340, v.PhoneDirectP256, v.ExternalOwnerWallet, v.RecoveryKey,
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		v.VaultID, v.TemplateVersion, v.PolicyVersion, v.ProtectionTier, v.Network, v.RPID, v.Origin,
+		v.PhoneBIP340, v.PhoneDirectP256, v.ExternalOwnerWallet, nullableRecoveryKey(v.RecoveryKey),
 		v.VaultCosignerBase, v.ArkadeCosignerBase,
 		v.ArkadeCosignerOrigin, v.ArkadeCosignerVersion, v.CosignerMode,
 		v.SavingsAddress, v.SavingsScript,
@@ -342,6 +345,13 @@ VALUES (?,?,?,?,?,?,?,?)`,
 		}
 	}
 	return nil
+}
+
+func nullableRecoveryKey(raw []byte) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	return raw
 }
 
 func boolToInt(v bool) int {
@@ -536,6 +546,8 @@ func VaultRecordsCanonicallyEqual(got, want VaultRecord) error {
 		return fmt.Errorf("template_version")
 	case got.PolicyVersion != want.PolicyVersion:
 		return fmt.Errorf("policy_version")
+	case got.ProtectionTier != want.ProtectionTier:
+		return fmt.Errorf("protection_tier")
 	case got.Network != want.Network:
 		return fmt.Errorf("network")
 	case got.RPID != want.RPID:

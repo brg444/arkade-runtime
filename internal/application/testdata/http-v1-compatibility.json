@@ -37,6 +37,7 @@
     "Status": [
       "enrolled:boolean", "network:string", "clientOrigin:string", "rpId:string",
       "vaultId:string", "templateVersion:string", "policyVersion:string",
+	  "protectionTier:string",
       "externalOwnerWalletPub:string,omitempty", "recoveryKeyPub:string,omitempty",
       "vaultCosignerBasePub:string,omitempty", "arkadeCosignerBasePub:string,omitempty",
       "arkadeCosignerOrigin:string", "arkadeCosignerVersion:string", "savingsAddress:string",
@@ -53,10 +54,11 @@
       "vtxoBoardingExitDelayUnit:string"
     ],
     "InviteView": ["canEnroll:boolean", "vaultId:string|null"],
-    "EnrollStartRequest": ["spendingPolicy:object", "spendingPolicyDigest:string"],
+    "EnrollStartRequest": ["protectionTier:string", "spendingPolicy:object", "spendingPolicyDigest:string"],
     "EnrollStartResponse": [
       "handle:string", "vaultId:string", "challenge:string", "rpId:string", "rpName:string",
       "userId:string", "userName:string", "timeoutMs:integer",
+	  "protectionTier:string",
       "spendingPolicy:object", "spendingPolicyDigest:string"
     ],
     "EnrollFinishRequest": [
@@ -66,6 +68,7 @@
       "vtxoBoardingProgram:string", "vaultBoardingBip340Pub:string",
       "externalOwnerWalletXOnly:string,omitempty", "recoveryXOnly:string,omitempty",
       "recoveryKeyXOnly:string,omitempty", "vaultId:string,omitempty", "descriptorHash:string,omitempty",
+	  "protectionTier:string",
       "spendingPolicy:object", "spendingPolicyDigest:string"
     ],
     "ProposedEnrollment": ["vaultId:string", "descriptorHash:string", "descriptor:any"],
@@ -140,7 +143,7 @@
     ],
     "SavingsPublicDescriptor": [
       "schema:string", "network:string", "vaultId:string", "templateVersion:string",
-      "policyVersion:string", "keys:object", "tweaks:object", "arkadeCosigner:object",
+      "policyVersion:string", "protectionTier:string", "keys:object", "tweaks:object", "arkadeCosigner:object",
       "csv:object", "policy:object", "p2a:object", "transitionSequence:integer",
       "savings:object", "pending:object", "quarantine:object"
     ],

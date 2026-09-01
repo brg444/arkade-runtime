@@ -24,6 +24,7 @@ type InviteView struct {
 // EnrollStartRequest freezes the user's selected policy before creating the
 // passkey. The invite is carried separately in the header.
 type EnrollStartRequest struct {
+	ProtectionTier       string                 `json:"protectionTier"`
 	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
 	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
 }
@@ -38,6 +39,7 @@ type EnrollStartResponse struct {
 	UserID               string                 `json:"userId"`
 	UserName             string                 `json:"userName"`
 	TimeoutMS            int                    `json:"timeoutMs"`
+	ProtectionTier       string                 `json:"protectionTier"`
 	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
 	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
 }
@@ -84,6 +86,9 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
 	}
+	if err := program.ValidateProtectionTier(request.ProtectionTier); err != nil {
+		return nil, err
+	}
 	policyDigest, err := requireSpendingPolicyDigest(request.SpendingPolicy, request.SpendingPolicyDigest)
 	if err != nil {
 		return nil, err
@@ -102,13 +107,14 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 		return nil, err
 	}
 	pending, err := s.Stores.Identity.ReservePendingEnrollment(policy.PendingEnrollment{
-		Handle:       handle,
-		VaultID:      vaultID,
-		TokenHash:    hash,
-		Challenge:    challenge,
-		PolicyDigest: policyDigest,
-		ExpiresAt:    now.Add(pendingEnrollmentTTL).Format(time.RFC3339),
-		CreatedAt:    now.Format(time.RFC3339),
+		Handle:         handle,
+		VaultID:        vaultID,
+		TokenHash:      hash,
+		Challenge:      challenge,
+		ProtectionTier: request.ProtectionTier,
+		PolicyDigest:   policyDigest,
+		ExpiresAt:      now.Add(pendingEnrollmentTTL).Format(time.RFC3339),
+		CreatedAt:      now.Format(time.RFC3339),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
@@ -123,6 +129,7 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 		UserID:               hex.EncodeToString([]byte(pending.VaultID)),
 		UserName:             "vault",
 		TimeoutMS:            int(pendingEnrollmentTTL / time.Millisecond),
+		ProtectionTier:       pending.ProtectionTier,
 		SpendingPolicy:       request.SpendingPolicy,
 		SpendingPolicyDigest: hex.EncodeToString(pending.PolicyDigest),
 	}, nil
@@ -151,6 +158,16 @@ func requirePendingSpendingPolicy(pending *policy.PendingEnrollment, selected pr
 	return nil
 }
 
+func requirePendingProtectionTier(pending *policy.PendingEnrollment, tier string) error {
+	if err := program.ValidateProtectionTier(tier); err != nil {
+		return err
+	}
+	if pending == nil || pending.ProtectionTier != tier {
+		return fmt.Errorf("protection tier does not match pending enrollment")
+	}
+	return nil
+}
+
 // ProposeEnrollment returns the descriptor that Finish will persist. It does
 // not consume the invite or write a vault row.
 func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*ProposedEnrollment, error) {
@@ -171,6 +188,9 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	}
 	if req.VaultID != "" && req.VaultID != pending.VaultID {
 		return nil, fmt.Errorf("vault id does not match pending enrollment")
+	}
+	if err := requirePendingProtectionTier(pending, req.ProtectionTier); err != nil {
+		return nil, err
 	}
 	if err := requirePendingSpendingPolicy(pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return nil, err
@@ -199,6 +219,9 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 	}
 	if subtle.ConstantTimeCompare(pending.TokenHash, hash) != 1 {
 		return nil, fmt.Errorf("pending enrollment not found")
+	}
+	if err := requirePendingProtectionTier(pending, req.ProtectionTier); err != nil {
+		return nil, err
 	}
 	if err := requirePendingSpendingPolicy(pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return nil, err

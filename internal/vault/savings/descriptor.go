@@ -19,6 +19,7 @@ type PublicDescriptor struct {
 	VaultID            string                   `json:"vaultId"`
 	TemplateVersion    string                   `json:"templateVersion"`
 	PolicyVersion      string                   `json:"policyVersion"`
+	ProtectionTier     string                   `json:"protectionTier"`
 	Keys               PublicKeys               `json:"keys"`
 	Tweaks             PublicTweaks             `json:"tweaks"`
 	ArkadeCosigner     PublicArkade             `json:"arkadeCosigner"`
@@ -116,6 +117,7 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 		VaultID:         in.VaultID,
 		TemplateVersion: in.template(),
 		PolicyVersion:   PolicyVersion,
+		ProtectionTier:  in.ProtectionTier,
 		Keys: PublicKeys{
 			PhoneBip340:        hex.EncodeToString(in.Phone.SerializeCompressed()),
 			PhoneDirectP256:    hex.EncodeToString(in.PhoneDirectP256),
@@ -183,6 +185,9 @@ func HashPublicDescriptor(d PublicDescriptor) (string, error) {
 }
 
 func encodePublicDescriptor(d PublicDescriptor) ([]byte, error) {
+	if err := program.ValidateProtectionTierRecovery(d.ProtectionTier, d.Keys.Recovery != ""); err != nil {
+		return nil, fmt.Errorf("protection tier: %w", err)
+	}
 	var parts [][]byte
 	if err := appendCanonText(&parts, d.Schema, "schema"); err != nil {
 		return nil, err
@@ -195,6 +200,9 @@ func encodePublicDescriptor(d PublicDescriptor) ([]byte, error) {
 	}
 	appendBytes(&parts, []byte(d.TemplateVersion))
 	appendBytes(&parts, []byte(d.PolicyVersion))
+	if err := appendCanonText(&parts, d.ProtectionTier, "protectionTier"); err != nil {
+		return nil, err
+	}
 	for _, field := range []struct {
 		hex  string
 		name string
