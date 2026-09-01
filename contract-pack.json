@@ -1,6 +1,6 @@
 {
   "name": "arkade-vault-contract",
-  "version": 1,
+  "version": 2,
   "note": "Named programs only. Not operator knobs. Keep this file byte-identical to arkade-vault-server/contract-pack.json. Client tests pin this copy.",
   "unsafeFixturePubs": [
     "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
@@ -14,7 +14,10 @@
       "template": "phone-hww-recovery-savings-v1",
       "policy": "vault-spending-policy-v1",
       "csv": { "hardware": 6, "phone": 144, "recovery": 288 },
-      "recovery": "optional",
+      "protectionTiers": {
+        "standard": { "recoveryKey": "forbidden" },
+        "advanced": { "recoveryKey": "required" }
+      },
       "serverFreeClawback": true,
       "internalTag": "arkade-vault/savings-v1/internal"
     },
@@ -24,14 +27,37 @@
       "schema": "arkade-vault/vtxo-policy-v1",
       "template": "vault-policy-v1-collaborative-3key",
       "policy": "vault-spending-policy-v1",
-      "recovery": "optional",
-      "caps": {
-        "txRecipientSats": 50000,
-        "periodAllowanceSats": 100000,
-        "absoluteFeeSats": 5000,
-        "feerateSatVb": 10,
-        "dustSats": 330
+      "protectionTiers": {
+        "standard": { "recoveryKey": "forbidden" },
+        "advanced": { "recoveryKey": "required" }
       },
+      "policySchema": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "immutableAfterEnrollment": true,
+        "bounds": {
+          "periodAllowanceSats": { "min": 330, "max": 1000000000 },
+          "txRecipientCapSats": { "min": 330, "max": 100000000 },
+          "absoluteFeeCapSats": { "min": 5000, "max": 5000 },
+          "feerateCapSatPerV": { "min": 10, "max": 10 }
+        },
+        "presets": {
+          "lower-exposure": {
+            "periodAllowanceSats": 50000,
+            "txRecipientCapSats": 25000,
+            "absoluteFeeCapSats": 5000,
+            "feerateCapSatPerV": 10
+          },
+          "everyday": {
+            "periodAllowanceSats": 100000,
+            "txRecipientCapSats": 50000,
+            "absoluteFeeCapSats": 5000,
+            "feerateCapSatPerV": 10
+          }
+        }
+      },
+      "recipientDustSats": 330,
       "spend": {
         "leaf": "user-and-vtxo-vault-cosigner-and-arkd",
         "note": "3-key collaborative spend/intent [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
@@ -74,11 +100,12 @@
     "prf": "arkade-2fa-vault/prf/v1",
     "kek": "arkade-2fa-vault/kek/v1",
     "directP256": "arkade-2fa-vault/direct-p256/v1",
-    "vaultRecord": "arkade-vault/vault-record/v1",
+    "vaultRecord": "arkade-vault/vault-record/v2",
     "vaultCredential": "arkade-vault/vault-credential/v1",
     "recoverySession": "arkade-2fa-vault/recovery-session/v2",
-    "recoveryBinding": "arkade-vault/recovery-binding/v3",
+    "recoveryBinding": "arkade-vault/recovery-binding/v4",
     "passkeyProof": "arkade-2fa-vault/passkey-proof/v1",
     "vtxoReserve": "arkade-vault/vtxo-reserve/v1"
-  }
+  },
+  "formats": { "recoveryKit": 3, "mapBackup": 3 }
 }

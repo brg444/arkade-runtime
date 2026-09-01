@@ -1,20 +1,25 @@
 package policy
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 // PendingEnrollment is one in-flight WebAuthn create ceremony bound to a
 // single invite. Replay of start must reuse this vault identity.
 type PendingEnrollment struct {
-	Handle    string
-	VaultID   string
-	TokenHash []byte
-	Challenge []byte
-	ExpiresAt string
-	CreatedAt string
+	Handle         string
+	VaultID        string
+	TokenHash      []byte
+	Challenge      []byte
+	ProtectionTier string
+	PolicyDigest   []byte
+	ExpiresAt      string
+	CreatedAt      string
 }
 
 func validatePendingEnrollment(p PendingEnrollment) error {
@@ -26,6 +31,12 @@ func validatePendingEnrollment(p PendingEnrollment) error {
 	}
 	if len(p.Challenge) == 0 {
 		return fmt.Errorf("pending enrollment challenge required")
+	}
+	if err := program.ValidateProtectionTier(p.ProtectionTier); err != nil {
+		return fmt.Errorf("pending enrollment: %w", err)
+	}
+	if len(p.PolicyDigest) != sha256.Size {
+		return fmt.Errorf("pending enrollment policy_digest must be 32 bytes")
 	}
 	if p.ExpiresAt == "" || p.CreatedAt == "" {
 		return fmt.Errorf("pending enrollment timestamps required")
@@ -72,6 +83,12 @@ func reservePendingEnrollmentTx(tx *sql.Tx, p PendingEnrollment) (*PendingEnroll
 		return nil, err
 	}
 	if existing != nil {
+		if existing.ProtectionTier != p.ProtectionTier {
+			return nil, fmt.Errorf("pending enrollment protection tier changed")
+		}
+		if !bytes.Equal(existing.PolicyDigest, p.PolicyDigest) {
+			return nil, fmt.Errorf("pending enrollment policy changed")
+		}
 		if existing.ExpiresAt != "" && existing.ExpiresAt >= p.CreatedAt {
 			return existing, nil
 		}
@@ -86,19 +103,21 @@ func reservePendingEnrollmentTx(tx *sql.Tx, p PendingEnrollment) (*PendingEnroll
 		return existing, nil
 	}
 	if _, err := tx.Exec(`
-INSERT INTO pending_enrollment (handle, vault_id, token_hash, challenge, expires_at, created_at)
-VALUES (?, ?, ?, ?, ?, ?)`,
-		p.Handle, p.VaultID, p.TokenHash, p.Challenge, p.ExpiresAt, p.CreatedAt,
+INSERT INTO pending_enrollment (handle, vault_id, token_hash, challenge, protection_tier, policy_digest, expires_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.Handle, p.VaultID, p.TokenHash, p.Challenge, p.ProtectionTier, p.PolicyDigest, p.ExpiresAt, p.CreatedAt,
 	); err != nil {
 		return nil, fmt.Errorf("pending enrollment: %w", err)
 	}
 	return &PendingEnrollment{
-		Handle:    p.Handle,
-		VaultID:   p.VaultID,
-		TokenHash: append([]byte(nil), p.TokenHash...),
-		Challenge: append([]byte(nil), p.Challenge...),
-		ExpiresAt: p.ExpiresAt,
-		CreatedAt: p.CreatedAt,
+		Handle:         p.Handle,
+		VaultID:        p.VaultID,
+		TokenHash:      append([]byte(nil), p.TokenHash...),
+		Challenge:      append([]byte(nil), p.Challenge...),
+		ProtectionTier: p.ProtectionTier,
+		PolicyDigest:   append([]byte(nil), p.PolicyDigest...),
+		ExpiresAt:      p.ExpiresAt,
+		CreatedAt:      p.CreatedAt,
 	}, nil
 }
 
@@ -109,9 +128,9 @@ func (l *Ledger) GetPendingByHandle(handle string) (*PendingEnrollment, error) {
 	}
 	var p PendingEnrollment
 	err := l.db.QueryRow(`
-SELECT handle, vault_id, token_hash, challenge, expires_at, created_at
+SELECT handle, vault_id, token_hash, challenge, protection_tier, policy_digest, expires_at, created_at
   FROM pending_enrollment WHERE handle = ?`, handle).Scan(
-		&p.Handle, &p.VaultID, &p.TokenHash, &p.Challenge, &p.ExpiresAt, &p.CreatedAt,
+		&p.Handle, &p.VaultID, &p.TokenHash, &p.Challenge, &p.ProtectionTier, &p.PolicyDigest, &p.ExpiresAt, &p.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -125,9 +144,9 @@ SELECT handle, vault_id, token_hash, challenge, expires_at, created_at
 func getPendingByTokenHashTx(tx *sql.Tx, tokenHash []byte) (*PendingEnrollment, error) {
 	var p PendingEnrollment
 	err := tx.QueryRow(`
-SELECT handle, vault_id, token_hash, challenge, expires_at, created_at
+SELECT handle, vault_id, token_hash, challenge, protection_tier, policy_digest, expires_at, created_at
   FROM pending_enrollment WHERE token_hash = ?`, tokenHash).Scan(
-		&p.Handle, &p.VaultID, &p.TokenHash, &p.Challenge, &p.ExpiresAt, &p.CreatedAt,
+		&p.Handle, &p.VaultID, &p.TokenHash, &p.Challenge, &p.ProtectionTier, &p.PolicyDigest, &p.ExpiresAt, &p.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil

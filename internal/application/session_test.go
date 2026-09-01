@@ -12,7 +12,6 @@ import (
 
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -83,74 +82,6 @@ func TestPasskeyEnvelopeInstallAndCrossDeviceRecover(t *testing.T) {
 	}
 }
 
-func TestPasskeyEnvelopeAuthenticatedV2Upgrade(t *testing.T) {
-	e := newRecoveryEnv(t)
-	nonce := strings.Repeat("31", 12)
-	ciphertext := strings.Repeat("42", 48)
-	nonceRaw, _ := hex.DecodeString(nonce)
-	ciphertextRaw, _ := hex.DecodeString(ciphertext)
-	cred, err := e.svc.loadVerifiedCredentialFor(fixture.VaultID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldBinding, err := canonicalRecoveryBindingV2(cred, nonceRaw, ciphertextRaw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldDigest := recoveryBindingDigestForDomain(recoveryBindingDomainV2, oldBinding)
-	oldDirectSig, err := webauthn.SignDigestLowS(e.direct, oldDigest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldPhoneSig, err := schnorr.Sign(e.hot, oldDigest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldEnvelope := policy.CredentialEnvelope{
-		Version: policy.CredentialEnvelopeVersion, Binding: oldBinding,
-		Nonce: nonceRaw, Ciphertext: ciphertextRaw,
-		DirectSig: oldDirectSig, PhoneSig: oldPhoneSig.Serialize(),
-	}
-	if err := e.svc.sealVaultEnvelope(&oldEnvelope, fixture.VaultID, e.credID); err != nil {
-		t.Fatal(err)
-	}
-	if err := e.ledger.StoreVaultEnvelopeIfAbsent(fixture.VaultID, oldEnvelope); err != nil {
-		t.Fatal(err)
-	}
-
-	current, err := e.svc.BuildRecoveryBindingFor(fixture.VaultID, RecoveryBindingRequest{
-		EnvelopeNonce: nonce, EnvelopeCiphertext: ciphertext,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	currentDigest, _ := hex.DecodeString(current.BindingDigest)
-	currentDirectSig, err := webauthn.SignDigestLowS(e.direct, currentDigest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	currentPhoneSig, err := schnorr.Sign(e.hot, currentDigest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, assertion := passkeySessionAssertion(t, e, passkeyPurposeInstall)
-	if err := e.svc.InstallCredentialEnvelope(context.Background(), InstallCredentialEnvelopeRequest{
-		VaultID: fixture.VaultID, SessionAssertionRequest: assertion,
-		RecoveryBindingRequest: RecoveryBindingRequest{EnvelopeNonce: nonce, EnvelopeCiphertext: ciphertext},
-		Binding:                current.Binding, BindingDirectSig: hex.EncodeToString(currentDirectSig),
-		BindingPhoneSig: hex.EncodeToString(currentPhoneSig.Serialize()),
-	}); err != nil {
-		t.Fatalf("upgrade envelope: %v", err)
-	}
-	stored, err := e.svc.loadVerifiedEnvelopeFor(fixture.VaultID, e.credID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored == nil || stored.Binding != current.Binding {
-		t.Fatalf("stored binding was not upgraded: %+v", stored)
-	}
-}
-
 func newRecoveryEnv(t *testing.T) *env {
 	t.Helper()
 	e := newEnv(t)
@@ -168,7 +99,7 @@ func newRecoveryEnv(t *testing.T) *env {
 	return e
 }
 
-func TestRecoveryBindingV3BindsDerivedSpendingAndBoardingDescriptor(t *testing.T) {
+func TestRecoveryBindingV4BindsProtectionSpendingAndBoardingDescriptor(t *testing.T) {
 	e := newRecoveryEnv(t)
 	status, err := e.svc.StatusFor(context.Background(), fixture.VaultID)
 	if err != nil {
@@ -204,7 +135,7 @@ func TestRecoveryBindingV3BindsDerivedSpendingAndBoardingDescriptor(t *testing.T
 		"version", "credentialId", "webauthnP256", "phoneDirectP256", "phoneBip340Pub",
 		"externalOwnerWalletPub", "vaultCosignerBasePub", "arkadeCosignerBasePub",
 		"arkadeCosignerOrigin", "arkadeCosignerVersion", "clientOrigin", "rpId", "network",
-		"vaultId", "templateVersion", "policyVersion", "savingsAddress", "savingsScript",
+		"vaultId", "templateVersion", "policyVersion", "protectionTier", "savingsAddress", "savingsScript",
 		"vtxoVaultCosignerPub", "vtxoExitDelay", "vtxoExitDelayUnit", "spendingArkAddress",
 		"spendingArkScript", "vtxoDelegatePub", "vtxoBoardingActive", "vtxoBoardingProgram",
 		"vtxoBoardingAddress", "vtxoBoardingScript", "vtxoBoardingExitDelay",
@@ -219,8 +150,8 @@ func TestRecoveryBindingV3BindsDerivedSpendingAndBoardingDescriptor(t *testing.T
 	if err := json.Unmarshal([]byte(response.Binding), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 3 {
-		t.Fatalf("recovery binding version = %d", got.Version)
+	if got.Version != 4 || got.ProtectionTier != status.ProtectionTier {
+		t.Fatalf("recovery binding identity = %d/%q", got.Version, got.ProtectionTier)
 	}
 	type derivedDescriptor struct {
 		VtxoVaultCosignerPub, VtxoExitDelayUnit                      string
@@ -408,7 +339,7 @@ func TestPasskeySessionBrowserDigestParityVectors(t *testing.T) {
 	if got, want := hex.EncodeToString(passkeySessionProofDigest(passkeyPurposeRecover, challenge, []byte{0xaa, 0xbb, 0xcc})), "84dc9646da544458148af17e91f1df49e97221c203dcb23dd92e5895b7ce8230"; got != want {
 		t.Fatalf("passkey proof digest = %s, want %s", got, want)
 	}
-	if got, want := hex.EncodeToString(recoveryBindingDigest(`{"version":3}`)), "fb53c366e4b1670df143caf175386caadb7e7b490e7fc7d637938b194863cb1c"; got != want {
+	if got, want := hex.EncodeToString(recoveryBindingDigest(`{"version":4}`)), "4a854f298d7eeb1671d26330a22f480e6f83a5f0c9fafadc43586d72759e9103"; got != want {
 		t.Fatalf("recovery binding digest = %s, want %s", got, want)
 	}
 }

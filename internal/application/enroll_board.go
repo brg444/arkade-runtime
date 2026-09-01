@@ -169,6 +169,10 @@ func (s *Service) statusVaultBoardDescriptor(cred *policy.Credential, snap enrol
 		VaultID: cred.VaultID, Network: cred.Network, Phone: phone, Hardware: hardware,
 		Recovery: recovery, PhoneDirectP256: append([]byte(nil), cred.PhoneDirectP256...),
 		VaultCosignerBase: vaultBase, ArkadeCosignerBase: arkadeBase,
+		ProtectionTier: cred.ProtectionTier,
+		SpendingPolicy: program.SpendingPolicyFromValues(
+			cred.TxRecipientCapSats, cred.PeriodAllowanceSats, cred.AbsoluteFeeCapSats, cred.FeerateCapSatPerV,
+		),
 	}
 	applySavingsProgram(&in, cred.TemplateVersion)
 	savingsDesc, _, err := savings.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)

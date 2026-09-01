@@ -44,7 +44,7 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(canonical.Bytes())
-	const want = "1e28fb91a0872947e95978884965e3448f26b71b722006885684ff02339ae7a6"
+	const want = "c15fdd355bcf93cc34487f43178f133f95d59c9f501ef4544589eeeb0ed9a553"
 	if got := hex.EncodeToString(sum[:]); got != want {
 		t.Fatalf("schema digest = %s, want %s\ncanonical schema:\n%s", got, want, canonical.String())
 	}

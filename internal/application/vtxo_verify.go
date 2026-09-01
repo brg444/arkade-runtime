@@ -335,7 +335,10 @@ func verifySpendPSBT(ptx *psbt.Packet, op policy.VtxoOperation, inputs []policy.
 	if uint64(dest.Value) != uint64(op.AmountSats) || !bytes.Equal(dest.PkScript, op.DestScript) {
 		return fmt.Errorf("dest")
 	}
-	if dest.Value < program.DustSats || dest.Value > program.TxRecipientCapSats {
+	// The authenticated operation was reserved against this vault's immutable
+	// recipient cap. Rechecking the release default here would incorrectly
+	// override a valid per-vault policy instance.
+	if dest.Value < program.DustSats {
 		return fmt.Errorf("dest amount")
 	}
 	var changeValue uint64

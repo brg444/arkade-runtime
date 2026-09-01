@@ -16,14 +16,21 @@ func TestContractPackMatchesLiveEnroll(t *testing.T) {
 		t.Fatal(err)
 	}
 	var pack struct {
+		Version  int `json:"version"`
 		Programs struct {
 			Savings struct {
-				Status     string `json:"status"`
-				Enrollable *bool  `json:"enrollable"`
-				Template   string `json:"template"`
-				Recovery   string `json:"recovery"`
+				Status          string `json:"status"`
+				Enrollable      *bool  `json:"enrollable"`
+				Template        string `json:"template"`
+				ProtectionTiers map[string]struct {
+					RecoveryKey string `json:"recoveryKey"`
+				} `json:"protectionTiers"`
 			} `json:"savings-recovery-v1"`
 		} `json:"programs"`
+		Formats struct {
+			RecoveryKit int `json:"recoveryKit"`
+			MapBackup   int `json:"mapBackup"`
+		} `json:"formats"`
 	}
 	if err := json.Unmarshal(raw, &pack); err != nil {
 		t.Fatal(err)
@@ -34,8 +41,10 @@ func TestContractPackMatchesLiveEnroll(t *testing.T) {
 	if pack.Programs.Savings.Enrollable == nil || !*pack.Programs.Savings.Enrollable {
 		t.Fatalf("Savings program must be enrollable: %+v", pack.Programs.Savings)
 	}
-	if pack.Programs.Savings.Recovery != "optional" {
-		t.Fatalf("recovery %q, want optional", pack.Programs.Savings.Recovery)
+	if pack.Version != 2 || pack.Formats.RecoveryKit != 3 || pack.Formats.MapBackup != 3 ||
+		pack.Programs.Savings.ProtectionTiers["standard"].RecoveryKey != "forbidden" ||
+		pack.Programs.Savings.ProtectionTiers["advanced"].RecoveryKey != "required" {
+		t.Fatalf("protection/formats contract: %+v", pack)
 	}
 }
 
@@ -127,12 +136,44 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if !ok || exit["delay"] != "604672" || exit["delayUnit"] != "seconds" {
 		t.Fatalf("vault-board-v1 exit: %#v", board["exit"])
 	}
-	caps, ok := listed["caps"].(map[string]any)
+	policySchema, ok := listed["policySchema"].(map[string]any)
 	if !ok {
-		t.Fatal("vault-policy-v1 caps required")
+		t.Fatal("vault-policy-v1 policy schema required")
 	}
-	if caps["txRecipientSats"] != float64(50000) || caps["periodAllowanceSats"] != float64(100000) {
-		t.Fatalf("vault-policy-v1 caps: %+v", caps)
+	if policySchema["program"] != "vault-policy-v1" ||
+		policySchema["schema"] != "vault-spending-policy-v1" ||
+		policySchema["period"] != "rolling-24h" ||
+		policySchema["immutableAfterEnrollment"] != true {
+		t.Fatalf("vault-policy-v1 policy identity: %+v", policySchema)
+	}
+	bounds, ok := policySchema["bounds"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 policy bounds required")
+	}
+	txBound, ok := bounds["txRecipientCapSats"].(map[string]any)
+	if !ok || txBound["min"] != float64(330) || txBound["max"] != float64(100000000) {
+		t.Fatalf("vault-policy-v1 transaction cap bounds: %+v", bounds)
+	}
+	feeBound, ok := bounds["absoluteFeeCapSats"].(map[string]any)
+	feerateBound, rateOK := bounds["feerateCapSatPerV"].(map[string]any)
+	if !ok || !rateOK || feeBound["min"] != float64(5000) || feeBound["max"] != float64(5000) ||
+		feerateBound["min"] != float64(10) || feerateBound["max"] != float64(10) {
+		t.Fatalf("vault-policy-v1 release-managed fee bounds: %+v", bounds)
+	}
+	presets, ok := policySchema["presets"].(map[string]any)
+	if !ok {
+		t.Fatal("vault-policy-v1 policy presets required")
+	}
+	lower, lowerOK := presets["lower-exposure"].(map[string]any)
+	everyday, everydayOK := presets["everyday"].(map[string]any)
+	if !lowerOK || !everydayOK || len(presets) != 2 ||
+		lower["txRecipientCapSats"] != float64(25000) || lower["periodAllowanceSats"] != float64(50000) ||
+		everyday["txRecipientCapSats"] != float64(50000) || everyday["periodAllowanceSats"] != float64(100000) {
+		t.Fatalf("vault-policy-v1 exposure presets: %+v", presets)
+	}
+	tiers, ok := listed["protectionTiers"].(map[string]any)
+	if !ok || len(tiers) != 2 {
+		t.Fatalf("vault-policy-v1 protection tiers: %+v", listed["protectionTiers"])
 	}
 }
 
@@ -172,7 +213,7 @@ func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
 	if _, ok := pack.Domains["enrollmentPop"]; ok {
 		t.Fatal("contract pack must not publish an enrollment proof domain")
 	}
-	if pack.Domains["recoveryBinding"] != "arkade-vault/recovery-binding/v3" {
+	if pack.Domains["recoveryBinding"] != "arkade-vault/recovery-binding/v4" {
 		t.Fatalf("recovery binding domain = %q", pack.Domains["recoveryBinding"])
 	}
 	if _, ok := pack.Programs["savings-recovery-v1"]["recoveryPopTag"]; ok {

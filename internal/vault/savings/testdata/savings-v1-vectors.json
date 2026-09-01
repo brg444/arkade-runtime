@@ -1,8 +1,9 @@
 [
   {
     "name": "with-recovery",
+    "protectionTier": "advanced",
     "recovery": true,
-    "descriptorHash": "be28faaa9480e9eec214311bdd060bdb4d0c07ff30730971610df326a8962ea1",
+    "descriptorHash": "b387fdb5ddc5ed25ab75ceff00103bd587fe0de4aa521a14aa8f006d37793fe0",
     "savings": {
       "address": "tb1pgwr9uyhn2ylwygxym2eydfyf37rlly3ag679ffsqjhxgpyker4kqkx2m2h",
       "script": "512043865e12f3513ee220c4dab246a4898f87ff923d46bc54a60095cc8092d91d6c"
@@ -38,8 +39,9 @@
   },
   {
     "name": "without-recovery",
+    "protectionTier": "standard",
     "recovery": false,
-    "descriptorHash": "2c28241456a7d05b9d604e72fdaf96276c22c34012bb6e22fbbdb1a0fe784543",
+    "descriptorHash": "fa29ea123948397ad3059f34679aba0195e966bfbb4879a60530c8c29d46d090",
     "savings": {
       "address": "tb1pfth3d3jq2je2k5qr3ttqwlk8ehtaxu5p484fyl38t3ph3gh2gkqqzdzy80",
       "script": "51204aef16c64054b2ab50038ad6077ec7cdd7d37281a9ea927e275c4378a2ea4580"

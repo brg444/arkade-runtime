@@ -10,7 +10,7 @@ import (
 
 // SHA256 is the release-pinned digest of the exact Contract Pack bytes.
 // Updating the pack requires an explicit binary release with a reviewed pin.
-const SHA256 = "ef2943e50b3712b47e09f37a9e7cbd4504d042608d5e7795c715b6add2a9e1c3"
+const SHA256 = "3a30b9819a071d6bcec4d5ae5a27a0bae20a1e3445293998a60402525ba44526"
 
 // JSON is the exact contract-pack.json committed at the repo root.
 //

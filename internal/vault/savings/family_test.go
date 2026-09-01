@@ -3,6 +3,8 @@ package savings
 import (
 	"encoding/hex"
 	"testing"
+
+	"github.com/brg444/arkade-vault-server/internal/program"
 )
 
 const fixturePhoneDirectP256 = "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721"
@@ -24,6 +26,8 @@ func fixtureFamilyInput(t *testing.T) FamilyInput {
 		ArkadeCosignerBase: scalarPub(t, 15),
 		TemplateVersion:    Template,
 		ServerFreeClawback: true,
+		ProtectionTier:     program.ProtectionTierAdvanced,
+		SpendingPolicy:     program.DefaultSpendingPolicy(),
 	}
 }
 
@@ -59,6 +63,7 @@ func TestSavingsFamilyIsCompleteAndDistinct(t *testing.T) {
 func TestSavingsFamilyWithoutRecoveryHasFiveTrees(t *testing.T) {
 	in := fixtureFamilyInput(t)
 	in.Recovery = nil
+	in.ProtectionTier = program.ProtectionTierStandard
 	fam, err := BuildFamily(in)
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +89,49 @@ func TestSavingsFamilyWithoutRecoveryHasFiveTrees(t *testing.T) {
 	}
 	if len(d.Pending) != 2 || len(d.Quarantine) != 2 {
 		t.Fatalf("descriptor trees pending=%d quarantine=%d", len(d.Pending), len(d.Quarantine))
+	}
+}
+
+func TestSavingsFamilyBindsSelectedExposurePolicyWithReleaseFees(t *testing.T) {
+	everydayInput := fixtureFamilyInput(t)
+	everyday, _, err := BuildPublicDescriptor(everydayInput, "https://operator.example", "savings-v1-fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lowerInput := fixtureFamilyInput(t)
+	lowerInput.SpendingPolicy = program.SpendingPolicyFromValues(25_000, 50_000, program.AbsoluteFeeCeiling, program.FeerateCeilingSatPerV)
+	lower, _, err := BuildPublicDescriptor(lowerInput, "https://operator.example", "savings-v1-fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lower.Policy.AbsoluteFeeCapSats != program.AbsoluteFeeCeiling || lower.Policy.FeerateCapSatVb != program.FeerateCeilingSatPerV {
+		t.Fatalf("descriptor policy = %+v", lower.Policy)
+	}
+	if everyday.Savings != lower.Savings {
+		t.Fatal("exposure-only policy changed the release-managed Savings transaction program")
+	}
+	for _, claimant := range claimants {
+		key := FamilyKey(claimant)
+		if everyday.Pending[key] != lower.Pending[key] {
+			t.Fatalf("exposure-only policy changed %s pending tree", key)
+		}
+	}
+	everydayHash, err := HashPublicDescriptor(everyday)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lowerHash, err := HashPublicDescriptor(lower)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if everydayHash == lowerHash {
+		t.Fatal("selected exposure policy did not change the canonical descriptor")
+	}
+
+	customFee := fixtureFamilyInput(t)
+	customFee.SpendingPolicy.AbsoluteFeeCapSats++
+	if _, err := BuildFamily(customFee); err == nil {
+		t.Fatal("Savings family accepted a user-selected fee cap")
 	}
 }
 

@@ -78,6 +78,30 @@ func TestCurrentVaultRecordsCredentialsAndEnvelopesAreTenantScoped(t *testing.T)
 	}
 }
 
+func TestVaultPolicyValuesAreCoveredByRecordIntegrity(t *testing.T) {
+	tests := []struct {
+		name   string
+		column string
+	}{
+		{name: "transaction cap", column: "tx_recipient_cap_sats"},
+		{name: "period allowance", column: "period_allowance_sats"},
+		{name: "absolute fee cap", column: "absolute_fee_cap_sats"},
+		{name: "feerate cap", column: "feerate_cap_sat_vb"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			led := openPolicyTestLedger(t, nil)
+			createPolicyTestVault(t, led, "vault-policy-tamper", 0x51)
+			if _, err := led.db.Exec(`UPDATE vault SET `+test.column+` = `+test.column+` + 1 WHERE vault_id = ?`, "vault-policy-tamper"); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := led.LoadVerifiedVault("vault-policy-tamper", testIntegrityKey()); err == nil || !strings.Contains(err.Error(), "integrity") {
+				t.Fatalf("tampered %s did not fail closed: %v", test.name, err)
+			}
+		})
+	}
+}
+
 func TestCurrentInviteHasOneConcurrentEnrollmentWinner(t *testing.T) {
 	led := openPolicyTestLedger(t, nil)
 	now := led.NowUTC()

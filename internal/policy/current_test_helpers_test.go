@@ -46,7 +46,8 @@ func policyTestVaultInput(t testing.TB, vaultID string, tag byte, tokenHash []by
 	keyBytes[0] = 0x02
 	record := VaultRecord{
 		VaultID: vaultID, TemplateVersion: "vault-v2-test", PolicyVersion: "vault-policy-v1",
-		Network: "mainnet", RPID: "vault.example", Origin: "https://vault.example",
+		ProtectionTier: "advanced",
+		Network:        "mainnet", RPID: "vault.example", Origin: "https://vault.example",
 		PhoneBIP340: keyBytes, PhoneDirectP256: keyBytes, ExternalOwnerWallet: keyBytes,
 		RecoveryKey: keyBytes, VaultCosignerBase: keyBytes,
 		ArkadeCosignerBase:   keyBytes,
