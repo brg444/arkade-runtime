@@ -15,13 +15,25 @@ The server may add a VaultCosigner signature only after the complete operation
 matches that program and its stateful allowance. Bitcoin scripts and committed
 transaction paths retain the structural spending and recovery constraints.
 
+This release hosts one compiled program, `vault-policy-v1`, with an immutable
+policy instance and protection tier for each vault. `standard` forbids a
+recovery key; `advanced` requires a recovery key distinct from the other
+enrolled roles. Enrollment freezes both values before the passkey ceremony.
+The Spending choice is Lower exposure (25,000 sats per send and 50,000 sats
+per rolling 24 hours), Everyday (50,000 and 100,000 sats respectively), or
+custom values for those two limits. Every choice uses the release-managed
+ceilings of 5,000 sats and 10 sat/vB. The wallet and server independently
+rebuild the same descriptor and persist the selection in the authenticated
+vault record. The service does not load arbitrary policy code or allow these
+conditions to change after enrollment.
+
 ## Responsibilities
 
 The service is organized around four product workflows:
 
 | Workflow | Server responsibility | Wallet responsibility |
 | --- | --- | --- |
-| Enrollment | Consume an invitation, verify the passkey ceremony, derive the tenant VaultCosigner, and persist the immutable descriptor. | Create the device credential and keys, verify the proposed descriptor, and retain encrypted recovery material. |
+| Enrollment | Validate and freeze the selected protection tier and Spending preset, consume an invitation, verify the passkey ceremony, derive the tenant VaultCosigner, and persist the immutable descriptor. | Choose a protection tier and Spending preset, create the device credential and permitted keys, reconstruct and review the proposed descriptor, and retain encrypted recovery material when applicable. |
 | Spending | Authenticate and reserve policy VTXOs, enforce the rolling allowance and fee cap, validate the complete Arkade transaction and checkpoints, sign, and reconcile an ambiguous response by operation ID. | Persist the operation, phone-sign the reservation, confirm the quoted fee, obtain device authorization, coordinate the Operator exchange, finalize, and post the receipt. |
 | Savings | Rebuild and verify the L1 Savings program when authorizing a recovery transition. | Construct and sign Savings transfers with the device and hardware keys. The server does not publish them. |
 | Recovery | Authorize `initiate` and `clawback` transitions, verify passkey sessions, and store authenticated encrypted map data. | Hold claimant and guardian keys, broadcast transitions, and claim after the committed delay. |
@@ -96,7 +108,7 @@ authorization.
 | `GET /ready` | Database and release-pinned signer/resolver readiness. |
 | `GET /v1/status` | Public service status or one vault's status with `?vault=`. |
 | `GET /v1/invite` | Invitation availability. |
-| `POST /v1/enroll/start` | Reserve a vault ID and create-ceremony challenge. |
+| `POST /v1/enroll/start` | Freeze the protection tier and canonical policy digest, reserve a vault ID, and return the create-ceremony challenge. |
 | `POST /v1/enroll/propose` | Return the Savings and `vault-board-v1` descriptors for wallet review. |
 | `POST /v1/enroll/finish` | Verify the complete enrollment and consume the invitation. |
 | `POST /v1/vtxo/board/prepare` | Reconcile and prepare one exact boarding attempt. |
@@ -176,8 +188,9 @@ official SDK pin. The release uses `arkade.computer` and the official Arkade
 SDK as deployed; it does not require a modified `arkd` or a Vault-specific
 Operator API. Mainnet configuration must pin and qualify the deployed Emulator
 and Operator identities, checkpoint policy, delays, and fee bounds before the
-Contract Packs are regenerated. Vault Program and policy adjustments are
-deliberately deferred until the current Mutinynet lifecycle is stable.
+Contract Packs are regenerated. The supported policy schema and bounds must be
+reviewed as release parameters; individual vaults may then choose any valid
+instance during enrollment.
 
 Ordinary VTXO send and boarding still require live qualification against
 `arkade.computer`, along with the documented storage, rate-limit, and hardware

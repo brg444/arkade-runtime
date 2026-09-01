@@ -14,6 +14,7 @@ type savingsVectorTree struct {
 
 type savingsVector struct {
 	Name           string                       `json:"name"`
+	ProtectionTier string                       `json:"protectionTier"`
 	Recovery       bool                         `json:"recovery"`
 	DescriptorHash string                       `json:"descriptorHash"`
 	Savings        savingsVectorTree            `json:"savings"`
@@ -36,6 +37,7 @@ func TestSavingsV1ConformanceVectors(t *testing.T) {
 	for _, vector := range vectors {
 		t.Run(vector.Name, func(t *testing.T) {
 			in := fixtureFamilyInput(t)
+			in.ProtectionTier = vector.ProtectionTier
 			if !vector.Recovery {
 				in.Recovery = nil
 			}

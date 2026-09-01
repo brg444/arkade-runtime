@@ -23,12 +23,24 @@ and conservation equation. The operation binds the destination, ordered input
 set, exact fee, fee-policy digest, optional change amount and output index, and
 reservation time.
 
+Each vault carries one immutable `vault-spending-policy-v1` instance selected
+during enrollment. The user selects the recipient cap and rolling 24-hour
+allowance. The current release fixes the absolute fee cap at 5,000 sats and the
+feerate cap at 10 sat/vB. The policy digest is bound to the pending enrollment,
+authenticated vault record, Savings descriptor, Recovery Kit, and wallet pin.
+Authorization always loads the tenant record; a different vault on the same
+service may use different exposure limits without changing the compiled
+`vault-policy-v1` program.
+
 The fee is evaluated from the Operator's four `fees.intentFee` CEL programs.
 It includes every selected offchain input, the destination, and the change
 output when present. P2A is not an intent recipient. The exact program strings
 are hashed into the reservation; any fee-policy change before either signing
-stage stops the operation. The vault's recipient, allowance, and absolute fee
-caps still apply.
+stage stops the operation. The enrolled vault's recipient, allowance,
+absolute-fee, and feerate caps still apply. Its two fee ceilings are also
+embedded in the fixed Savings transition template, so changing the policy
+values changes the descriptor that both sides must reconstruct before
+enrollment can finish.
 
 The live sequence is:
 

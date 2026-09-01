@@ -148,7 +148,7 @@ func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	if err := ledger.PutInvite(hash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
-	start, err := svc.StartEnrollment(token)
+	start, err := svc.StartEnrollment(token, defaultEnrollStartRequest(t))
 	if err != nil {
 		t.Fatal(err)
 	}

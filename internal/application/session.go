@@ -26,8 +26,7 @@ const (
 	passkeyPurposeMapWrite       = "map-write"
 	passkeyChallengeTTL          = 2 * time.Minute
 	maxPasskeyChallengesPerVault = 16
-	recoveryBindingDomain        = "arkade-vault/recovery-binding/v3"
-	recoveryBindingDomainV2      = "arkade-vault/recovery-binding/v2"
+	recoveryBindingDomain        = "arkade-vault/recovery-binding/v4"
 	passkeyProofDomain           = "arkade-2fa-vault/passkey-proof/v1"
 )
 
@@ -124,6 +123,7 @@ type recoveryBinding struct {
 	VaultID                   string `json:"vaultId"`
 	TemplateVersion           string `json:"templateVersion"`
 	PolicyVersion             string `json:"policyVersion"`
+	ProtectionTier            string `json:"protectionTier"`
 	SavingsAddress            string `json:"savingsAddress"`
 	SavingsScript             string `json:"savingsScript"`
 	VtxoVaultCosignerPub      string `json:"vtxoVaultCosignerPub"`
@@ -145,37 +145,6 @@ type recoveryBinding struct {
 	FeerateCapSatPerV         int64  `json:"feerateCapSatVb"`
 	EnvelopeNonce             string `json:"envelopeNonce"`
 	EnvelopeCiphertext        string `json:"envelopeCiphertext"`
-}
-
-// recoveryBindingV2 is retained only to authenticate and replace an envelope
-// written by the immediately preceding Mutinynet release. New installs and
-// recoveries continue to use the complete v3 Vault Program binding.
-type recoveryBindingV2 struct {
-	Version                uint32 `json:"version"`
-	CredentialID           string `json:"credentialId"`
-	WebAuthnP256           string `json:"webauthnP256"`
-	PhoneDirectP256        string `json:"phoneDirectP256"`
-	PhoneBIP340Pub         string `json:"phoneBip340Pub"`
-	ExternalOwnerWalletPub string `json:"externalOwnerWalletPub"`
-	VaultCosignerBasePub   string `json:"vaultCosignerBasePub"`
-	ArkadeCosignerBasePub  string `json:"arkadeCosignerBasePub"`
-	ArkadeCosignerOrigin   string `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion  string `json:"arkadeCosignerVersion"`
-	ClientOrigin           string `json:"clientOrigin"`
-	RPID                   string `json:"rpId"`
-	Network                string `json:"network"`
-	VaultID                string `json:"vaultId"`
-	TemplateVersion        string `json:"templateVersion"`
-	PolicyVersion          string `json:"policyVersion"`
-	SavingsAddress         string `json:"savingsAddress"`
-	SavingsScript          string `json:"savingsScript"`
-	RecipientDustSats      int64  `json:"recipientDustSats"`
-	TxRecipientCapSats     int64  `json:"txRecipientCapSats"`
-	PeriodAllowanceSats    int64  `json:"periodAllowanceSats"`
-	AbsoluteFeeCapSats     int64  `json:"absoluteFeeCapSats"`
-	FeerateCapSatPerV      int64  `json:"feerateCapSatVb"`
-	EnvelopeNonce          string `json:"envelopeNonce"`
-	EnvelopeCiphertext     string `json:"envelopeCiphertext"`
 }
 
 func (s *Service) sessionNow() time.Time {
@@ -466,7 +435,7 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		return "", fmt.Errorf("recovery binding boarding descriptor incomplete")
 	}
 	binding := recoveryBinding{
-		Version:      3,
+		Version:      4,
 		CredentialID: hex.EncodeToString(cred.ID), WebAuthnP256: hex.EncodeToString(cred.WebAuthnP256),
 		PhoneDirectP256: hex.EncodeToString(cred.PhoneDirectP256), PhoneBIP340Pub: hex.EncodeToString(cred.PhoneBIP340),
 		ExternalOwnerWalletPub: hex.EncodeToString(cred.ExternalOwnerWallet),
@@ -475,6 +444,7 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		ArkadeCosignerOrigin:   cred.ArkadeCosignerOrigin, ArkadeCosignerVersion: cred.ArkadeCosignerVersion,
 		ClientOrigin: cred.Origin, RPID: cred.RPID, Network: cred.Network, VaultID: cred.VaultID,
 		TemplateVersion: cred.TemplateVersion, PolicyVersion: cred.PolicyVersion,
+		ProtectionTier: cred.ProtectionTier,
 		SavingsAddress: cred.SavingsAddress, SavingsScript: hex.EncodeToString(cred.SavingsScript),
 		VtxoVaultCosignerPub:      hex.EncodeToString(spending.CosignerPub.SerializeCompressed()),
 		VtxoExitDelay:             program.VaultPolicyV1ExitDelay,
@@ -512,59 +482,6 @@ func recoveryBindingDigestForDomain(domain, binding string) []byte {
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(binding))
 	return h.Sum(nil)
-}
-
-func canonicalRecoveryBindingV2(cred *policy.Credential, nonce, ciphertext []byte) (string, error) {
-	if cred == nil {
-		return "", fmt.Errorf("credential required")
-	}
-	binding := recoveryBindingV2{
-		Version:      2,
-		CredentialID: hex.EncodeToString(cred.ID), WebAuthnP256: hex.EncodeToString(cred.WebAuthnP256),
-		PhoneDirectP256: hex.EncodeToString(cred.PhoneDirectP256), PhoneBIP340Pub: hex.EncodeToString(cred.PhoneBIP340),
-		ExternalOwnerWalletPub: hex.EncodeToString(cred.ExternalOwnerWallet),
-		VaultCosignerBasePub:   hex.EncodeToString(cred.VaultCosignerBase),
-		ArkadeCosignerBasePub:  hex.EncodeToString(cred.ArkadeCosignerBase),
-		ArkadeCosignerOrigin:   cred.ArkadeCosignerOrigin, ArkadeCosignerVersion: cred.ArkadeCosignerVersion,
-		ClientOrigin: cred.Origin, RPID: cred.RPID, Network: cred.Network, VaultID: cred.VaultID,
-		TemplateVersion: cred.TemplateVersion, PolicyVersion: cred.PolicyVersion,
-		SavingsAddress: cred.SavingsAddress, SavingsScript: hex.EncodeToString(cred.SavingsScript),
-		RecipientDustSats: cred.RecipientDustSats, TxRecipientCapSats: cred.TxRecipientCapSats,
-		PeriodAllowanceSats: cred.PeriodAllowanceSats, AbsoluteFeeCapSats: cred.AbsoluteFeeCapSats,
-		FeerateCapSatPerV: cred.FeerateCapSatPerV,
-		EnvelopeNonce:     hex.EncodeToString(nonce), EnvelopeCiphertext: hex.EncodeToString(ciphertext),
-	}
-	raw, err := json.Marshal(binding)
-	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
-}
-
-func verifyRecoveryBindingV2Upgrade(cred *policy.Credential, envelope *policy.CredentialEnvelope) error {
-	if cred == nil || envelope == nil {
-		return fmt.Errorf("previous credential envelope required")
-	}
-	expected, err := canonicalRecoveryBindingV2(cred, envelope.Nonce, envelope.Ciphertext)
-	if err != nil {
-		return err
-	}
-	if envelope.Binding != expected {
-		return fmt.Errorf("credential envelope locked")
-	}
-	digest := recoveryBindingDigestForDomain(recoveryBindingDomainV2, expected)
-	if err := verifyDirectAuth(cred.PhoneDirectP256, digest, envelope.DirectSig); err != nil {
-		return fmt.Errorf("previous credential envelope binding: %w", err)
-	}
-	phonePub, err := btcec.ParsePubKey(cred.PhoneBIP340)
-	if err != nil {
-		return fmt.Errorf("stored PhoneBIP340: %w", err)
-	}
-	phoneSig, err := schnorr.ParseSignature(envelope.PhoneSig)
-	if err != nil || !phoneSig.Verify(digest, phonePub) {
-		return fmt.Errorf("previous credential envelope binding Phone signature invalid")
-	}
-	return nil
 }
 
 func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCredentialEnvelopeRequest) error {
@@ -632,13 +549,7 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 	if credentialEnvelopesEqual(*existing, envelope) {
 		return nil
 	}
-	if !bytes.Equal(existing.Nonce, envelope.Nonce) || !bytes.Equal(existing.Ciphertext, envelope.Ciphertext) {
-		return fmt.Errorf("credential envelope locked")
-	}
-	if err := verifyRecoveryBindingV2Upgrade(cred, existing); err != nil {
-		return err
-	}
-	return s.Stores.Identity.ReplaceVaultEnvelope(vaultID, *existing, envelope)
+	return fmt.Errorf("credential envelope locked")
 }
 
 func credentialEnvelopesEqual(a, b policy.CredentialEnvelope) bool {

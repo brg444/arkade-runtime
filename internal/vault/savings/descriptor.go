@@ -19,6 +19,7 @@ type PublicDescriptor struct {
 	VaultID            string                   `json:"vaultId"`
 	TemplateVersion    string                   `json:"templateVersion"`
 	PolicyVersion      string                   `json:"policyVersion"`
+	ProtectionTier     string                   `json:"protectionTier"`
 	Keys               PublicKeys               `json:"keys"`
 	Tweaks             PublicTweaks             `json:"tweaks"`
 	ArkadeCosigner     PublicArkade             `json:"arkadeCosigner"`
@@ -62,11 +63,15 @@ type PublicCSV struct {
 }
 
 type PublicPolicy struct {
-	RecipientDustSats   int64 `json:"recipientDustSats"`
-	RecipientCapSats    int64 `json:"recipientCapSats"`
-	PeriodAllowanceSats int64 `json:"periodAllowanceSats"`
-	AbsoluteFeeCapSats  int64 `json:"absoluteFeeCapSats"`
-	FeerateCapSatVb     int64 `json:"feerateCapSatVb"`
+	Program             string `json:"program"`
+	Schema              string `json:"schema"`
+	Period              string `json:"period"`
+	Digest              string `json:"digest"`
+	RecipientDustSats   int64  `json:"recipientDustSats"`
+	RecipientCapSats    int64  `json:"recipientCapSats"`
+	PeriodAllowanceSats int64  `json:"periodAllowanceSats"`
+	AbsoluteFeeCapSats  int64  `json:"absoluteFeeCapSats"`
+	FeerateCapSatVb     int64  `json:"feerateCapSatVb"`
 }
 
 type PublicP2A struct {
@@ -101,12 +106,18 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 	if err != nil {
 		return PublicDescriptor{}, nil, err
 	}
+	selected := in.SpendingPolicy
+	policyDigest, err := program.SpendingPolicyDigestHex(selected)
+	if err != nil {
+		return PublicDescriptor{}, nil, err
+	}
 	d := PublicDescriptor{
 		Schema:          Schema,
 		Network:         strings.ToLower(in.Network),
 		VaultID:         in.VaultID,
 		TemplateVersion: in.template(),
 		PolicyVersion:   PolicyVersion,
+		ProtectionTier:  in.ProtectionTier,
 		Keys: PublicKeys{
 			PhoneBip340:        hex.EncodeToString(in.Phone.SerializeCompressed()),
 			PhoneDirectP256:    hex.EncodeToString(in.PhoneDirectP256),
@@ -125,11 +136,15 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 			Recovery: program.RecoveryCSVBlocks,
 		},
 		Policy: PublicPolicy{
+			Program:             selected.Program,
+			Schema:              selected.Schema,
+			Period:              selected.Period,
+			Digest:              policyDigest,
 			RecipientDustSats:   program.DustSats,
-			RecipientCapSats:    program.TxRecipientCapSats,
-			PeriodAllowanceSats: program.PeriodAllowanceSats,
-			AbsoluteFeeCapSats:  program.AbsoluteFeeCeiling,
-			FeerateCapSatVb:     program.FeerateCeilingSatPerV,
+			RecipientCapSats:    selected.TxRecipientCapSats,
+			PeriodAllowanceSats: selected.PeriodAllowanceSats,
+			AbsoluteFeeCapSats:  selected.AbsoluteFeeCapSats,
+			FeerateCapSatVb:     selected.FeerateCapSatPerV,
 		},
 		P2A: PublicP2A{
 			Script:      P2AScriptHex,
@@ -170,6 +185,9 @@ func HashPublicDescriptor(d PublicDescriptor) (string, error) {
 }
 
 func encodePublicDescriptor(d PublicDescriptor) ([]byte, error) {
+	if err := program.ValidateProtectionTierRecovery(d.ProtectionTier, d.Keys.Recovery != ""); err != nil {
+		return nil, fmt.Errorf("protection tier: %w", err)
+	}
 	var parts [][]byte
 	if err := appendCanonText(&parts, d.Schema, "schema"); err != nil {
 		return nil, err
@@ -182,6 +200,9 @@ func encodePublicDescriptor(d PublicDescriptor) ([]byte, error) {
 	}
 	appendBytes(&parts, []byte(d.TemplateVersion))
 	appendBytes(&parts, []byte(d.PolicyVersion))
+	if err := appendCanonText(&parts, d.ProtectionTier, "protectionTier"); err != nil {
+		return nil, err
+	}
 	for _, field := range []struct {
 		hex  string
 		name string
@@ -238,6 +259,12 @@ func encodePublicDescriptor(d PublicDescriptor) ([]byte, error) {
 	appendU32(&parts, d.CSV.Hardware)
 	appendU32(&parts, d.CSV.Phone)
 	appendU32(&parts, d.CSV.Recovery)
+	appendBytes(&parts, []byte(d.Policy.Program))
+	appendBytes(&parts, []byte(d.Policy.Schema))
+	appendBytes(&parts, []byte(d.Policy.Period))
+	if err := appendExactHex(&parts, d.Policy.Digest, "policy.digest", sha256.Size); err != nil {
+		return nil, err
+	}
 	appendI64(&parts, d.Policy.RecipientDustSats)
 	appendI64(&parts, d.Policy.RecipientCapSats)
 	appendI64(&parts, d.Policy.PeriodAllowanceSats)

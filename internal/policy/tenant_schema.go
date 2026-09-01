@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	vaultRecordMACDomain     = "arkade-vault/vault-record/v1"
+	vaultRecordMACDomain     = "arkade-vault/vault-record/v2"
 	vaultCredentialMACDomain = "arkade-vault/vault-credential/v1"
 	sessionMACDomain         = "arkade-2fa-vault/recovery-session/v2"
 	signCountMACDomain       = "arkade-2fa-vault/webauthn-sign-count/v1"
@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS vault (
   vault_id TEXT PRIMARY KEY,
   template_version TEXT NOT NULL,
   policy_version TEXT NOT NULL,
+  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('standard', 'advanced')),
   network TEXT NOT NULL,
   rp_id TEXT NOT NULL,
   origin TEXT NOT NULL,
@@ -44,7 +45,11 @@ CREATE TABLE IF NOT EXISTS vault (
   period_allowance_sats INTEGER NOT NULL,
   absolute_fee_cap_sats INTEGER NOT NULL,
   feerate_cap_sat_vb INTEGER NOT NULL,
-  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)
+  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
+  CHECK (
+    (protection_tier = 'standard' AND recovery_key_compressed IS NULL)
+    OR (protection_tier = 'advanced' AND length(recovery_key_compressed) = 33)
+  )
 );
 CREATE TABLE IF NOT EXISTS vault_credential (
   credential_id BLOB PRIMARY KEY,
@@ -75,6 +80,8 @@ CREATE TABLE IF NOT EXISTS pending_enrollment (
   vault_id TEXT NOT NULL UNIQUE,
   token_hash BLOB NOT NULL UNIQUE CHECK (length(token_hash) = 32) REFERENCES invite(token_hash),
   challenge BLOB NOT NULL,
+  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('standard', 'advanced')),
+  policy_digest BLOB NOT NULL CHECK (length(policy_digest) = 32),
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );

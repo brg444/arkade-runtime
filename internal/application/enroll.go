@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 )
 
@@ -20,19 +21,27 @@ type InviteView struct {
 	VaultID   *string `json:"vaultId"`
 }
 
-// EnrollStartRequest is accepted for symmetry; the invite is the header token.
-type EnrollStartRequest struct{}
+// EnrollStartRequest freezes the user's selected policy before creating the
+// passkey. The invite is carried separately in the header.
+type EnrollStartRequest struct {
+	ProtectionTier       string                 `json:"protectionTier"`
+	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
+	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
+}
 
 // EnrollStartResponse is the server-assigned vault identity plus create options.
 type EnrollStartResponse struct {
-	Handle    string `json:"handle"`
-	VaultID   string `json:"vaultId"`
-	Challenge string `json:"challenge"`
-	RPID      string `json:"rpId"`
-	RPName    string `json:"rpName"`
-	UserID    string `json:"userId"`
-	UserName  string `json:"userName"`
-	TimeoutMS int    `json:"timeoutMs"`
+	Handle               string                 `json:"handle"`
+	VaultID              string                 `json:"vaultId"`
+	Challenge            string                 `json:"challenge"`
+	RPID                 string                 `json:"rpId"`
+	RPName               string                 `json:"rpName"`
+	UserID               string                 `json:"userId"`
+	UserName             string                 `json:"userName"`
+	TimeoutMS            int                    `json:"timeoutMs"`
+	ProtectionTier       string                 `json:"protectionTier"`
+	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
+	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
 }
 
 // EnrollFinishRequest binds the pending handle to the created credential.
@@ -69,13 +78,20 @@ func (s *Service) InviteStatus(token string) (InviteView, error) {
 }
 
 // StartEnrollment assigns a vault id for an unused invite and does not consume it.
-func (s *Service) StartEnrollment(token string) (*EnrollStartResponse, error) {
+func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*EnrollStartResponse, error) {
 	if err := s.runtimeConfig().Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
 	hash, err := HashEnrollmentToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
+	}
+	if err := program.ValidateProtectionTier(request.ProtectionTier); err != nil {
+		return nil, err
+	}
+	policyDigest, err := requireSpendingPolicyDigest(request.SpendingPolicy, request.SpendingPolicyDigest)
+	if err != nil {
+		return nil, err
 	}
 	now := s.currentEnrollmentTime().UTC()
 	vaultID, err := newOpaqueVaultID()
@@ -91,27 +107,65 @@ func (s *Service) StartEnrollment(token string) (*EnrollStartResponse, error) {
 		return nil, err
 	}
 	pending, err := s.Stores.Identity.ReservePendingEnrollment(policy.PendingEnrollment{
-		Handle:    handle,
-		VaultID:   vaultID,
-		TokenHash: hash,
-		Challenge: challenge,
-		ExpiresAt: now.Add(pendingEnrollmentTTL).Format(time.RFC3339),
-		CreatedAt: now.Format(time.RFC3339),
+		Handle:         handle,
+		VaultID:        vaultID,
+		TokenHash:      hash,
+		Challenge:      challenge,
+		ProtectionTier: request.ProtectionTier,
+		PolicyDigest:   policyDigest,
+		ExpiresAt:      now.Add(pendingEnrollmentTTL).Format(time.RFC3339),
+		CreatedAt:      now.Format(time.RFC3339),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
 	}
 	cfg := s.runtimeConfig()
 	return &EnrollStartResponse{
-		Handle:    pending.Handle,
-		VaultID:   pending.VaultID,
-		Challenge: hex.EncodeToString(pending.Challenge),
-		RPID:      cfg.RPID,
-		RPName:    "Arkade Vault",
-		UserID:    hex.EncodeToString([]byte(pending.VaultID)),
-		UserName:  "vault",
-		TimeoutMS: int(pendingEnrollmentTTL / time.Millisecond),
+		Handle:               pending.Handle,
+		VaultID:              pending.VaultID,
+		Challenge:            hex.EncodeToString(pending.Challenge),
+		RPID:                 cfg.RPID,
+		RPName:               "Arkade Vault",
+		UserID:               hex.EncodeToString([]byte(pending.VaultID)),
+		UserName:             "vault",
+		TimeoutMS:            int(pendingEnrollmentTTL / time.Millisecond),
+		ProtectionTier:       pending.ProtectionTier,
+		SpendingPolicy:       request.SpendingPolicy,
+		SpendingPolicyDigest: hex.EncodeToString(pending.PolicyDigest),
 	}, nil
+}
+
+func requireSpendingPolicyDigest(selected program.SpendingPolicy, encoded string) ([]byte, error) {
+	digest, err := program.SpendingPolicyDigest(selected)
+	if err != nil {
+		return nil, err
+	}
+	want := hex.EncodeToString(digest)
+	if encoded == "" || encoded != want {
+		return nil, fmt.Errorf("spending policy digest does not match the selected policy")
+	}
+	return digest, nil
+}
+
+func requirePendingSpendingPolicy(pending *policy.PendingEnrollment, selected program.SpendingPolicy, encoded string) error {
+	digest, err := requireSpendingPolicyDigest(selected, encoded)
+	if err != nil {
+		return err
+	}
+	if pending == nil || subtle.ConstantTimeCompare(pending.PolicyDigest, digest) != 1 {
+		return fmt.Errorf("spending policy does not match pending enrollment")
+	}
+	return nil
+}
+
+func requirePendingProtectionTier(pending *policy.PendingEnrollment, tier string) error {
+	if err := program.ValidateProtectionTier(tier); err != nil {
+		return err
+	}
+	if pending == nil || pending.ProtectionTier != tier {
+		return fmt.Errorf("protection tier does not match pending enrollment")
+	}
+	return nil
 }
 
 // ProposeEnrollment returns the descriptor that Finish will persist. It does
@@ -134,6 +188,12 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	}
 	if req.VaultID != "" && req.VaultID != pending.VaultID {
 		return nil, fmt.Errorf("vault id does not match pending enrollment")
+	}
+	if err := requirePendingProtectionTier(pending, req.ProtectionTier); err != nil {
+		return nil, err
+	}
+	if err := requirePendingSpendingPolicy(pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
+		return nil, err
 	}
 	return s.previewVaultBoardEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
 }
@@ -159,6 +219,12 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 	}
 	if subtle.ConstantTimeCompare(pending.TokenHash, hash) != 1 {
 		return nil, fmt.Errorf("pending enrollment not found")
+	}
+	if err := requirePendingProtectionTier(pending, req.ProtectionTier); err != nil {
+		return nil, err
+	}
+	if err := requirePendingSpendingPolicy(pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
+		return nil, err
 	}
 	now := s.currentEnrollmentTime().UTC()
 	if pending.ExpiresAt != "" && pending.ExpiresAt < now.Format(time.RFC3339) {
