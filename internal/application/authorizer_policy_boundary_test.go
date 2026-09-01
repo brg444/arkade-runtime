@@ -3,6 +3,7 @@ package application
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
 
@@ -29,6 +30,9 @@ func TestAuthorizerRequiresGatewaySecretOnV1WhenConfigured(t *testing.T) {
 	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
 	e := newEnv(t)
 	handler := AuthorizerHandler(e.svc)
+	if err := os.Unsetenv("VAULT_GATEWAY_SECRET"); err != nil {
+		t.Fatal(err)
+	}
 	denied := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 	denied.Header.Set("Origin", fixture.Origin)
 	rec := httptest.NewRecorder()
@@ -63,7 +67,7 @@ func TestAuthorizerDoesNotServeRegister(t *testing.T) {
 	}
 }
 
-func TestAuthorizerHTTPBoundaryHasNoGenericSigningOrStaticSurface(t *testing.T) {
+func TestAuthorizerHTTPBoundaryHasNoGenericSigningProviderKVOrDiscoverySurface(t *testing.T) {
 	e := newEnv(t)
 	handler := testAuthorizer(e.svc)
 	for _, path := range []string{
@@ -71,7 +75,18 @@ func TestAuthorizerHTTPBoundaryHasNoGenericSigningOrStaticSurface(t *testing.T) 
 		"/v1/onchain-tx/",
 		"/v1/submit-onchain-tx",
 		"/v1/sign",
+		"/v1/sign_psbt",
+		"/v1/sign_digest",
 		"/v1/emulator/onchain-tx",
+		"/v1/provider",
+		"/v1/providers",
+		"/v1/modules",
+		"/v1/profiles",
+		"/v1/discovery",
+		"/v1/kv",
+		"/v1/keys",
+		"/v1/policies",
+		"/.well-known/arkade-runtime",
 		"/v1/demo/info",
 		"/",
 	} {
@@ -119,6 +134,10 @@ func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
 		"/v1/vtxo/checkpoints/authorize": {http.MethodOptions, http.MethodPost},
 		"/v1/vtxo/finalize":              {http.MethodOptions, http.MethodPost},
 		"/v1/vtxo/operation":             {http.MethodGet, http.MethodOptions},
+		"/v1/vtxo/board/prepare":         {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/board/register":        {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/board/release":         {http.MethodOptions, http.MethodPost},
+		"/v1/vtxo/board/final":           {http.MethodOptions, http.MethodPost},
 	}
 	got := make(map[string][]string, len(authorizerRouteMethods))
 	for path, methods := range authorizerRouteMethods {

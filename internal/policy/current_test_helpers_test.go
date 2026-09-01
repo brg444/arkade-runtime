@@ -12,9 +12,9 @@ func testIntegrityKey() []byte {
 	return bytes.Repeat([]byte{0x5a}, sha256.Size)
 }
 
-func openPolicyTestLedger(t *testing.T, clock Clock) *Ledger {
+func openPolicyTestLedger(t testing.TB, clock Clock) *Ledger {
 	t.Helper()
-	led, err := OpenMainnetLedger(filepath.Join(t.TempDir(), "policy.sqlite"), clock)
+	led, err := OpenLedger(filepath.Join(t.TempDir(), "policy.sqlite"), clock)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func openPolicyTestLedger(t *testing.T, clock Clock) *Ledger {
 	return led
 }
 
-func createPolicyTestVault(t *testing.T, led *Ledger, vaultID string, tag byte) {
+func createPolicyTestVault(t testing.TB, led *Ledger, vaultID string, tag byte) {
 	t.Helper()
 	now := led.NowUTC()
 	tokenHash := bytes.Repeat([]byte{tag}, sha256.Size)
@@ -39,7 +39,7 @@ func createPolicyTestVault(t *testing.T, led *Ledger, vaultID string, tag byte) 
 	}
 }
 
-func policyTestVaultInput(t *testing.T, vaultID string, tag byte, tokenHash []byte) CreateVaultInput {
+func policyTestVaultInput(t testing.TB, vaultID string, tag byte, tokenHash []byte) CreateVaultInput {
 	t.Helper()
 	key := testIntegrityKey()
 	keyBytes := bytes.Repeat([]byte{tag}, 33)

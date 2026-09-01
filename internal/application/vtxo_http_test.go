@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/ports"
@@ -44,27 +46,23 @@ func (s stubArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy
 	return s.feePolicy, s.feeErr
 }
 
-func (s stubArkResolver) ReservedSpentByArkTxid(_ context.Context, _ []byte, reserved []ports.ResolvedVtxo, arkTxid string) error {
+func (s stubArkResolver) SubmittedVtxoState(_ context.Context, _ []byte, reserved []ports.ResolvedVtxo, arkTxid string, changeVout *uint32, _ uint64) (ports.SubmittedVtxoState, error) {
 	if s.spentErr != nil {
-		return s.spentErr
+		return ports.SubmittedVtxoPending, s.spentErr
 	}
 	if len(reserved) == 0 {
-		return fmt.Errorf("reserved outpoints required")
+		return ports.SubmittedVtxoPending, fmt.Errorf("reserved outpoints required")
 	}
 	if s.spentBy == "" {
-		return fmt.Errorf("reserved outpoints not spent")
+		return ports.SubmittedVtxoPending, nil
 	}
 	if !strings.EqualFold(s.spentBy, arkTxid) {
-		return fmt.Errorf("reserved outpoint not spent by ark txid")
+		return ports.SubmittedVtxoConflict, nil
 	}
-	return nil
-}
-
-func (s stubArkResolver) ChangeVtxoFromArkTx(_ context.Context, _ []byte, arkTxid string, vout uint32, _ uint64) error {
-	if !s.changeExists || vout != 1 || !strings.EqualFold(s.spentBy, arkTxid) {
-		return fmt.Errorf("change vtxo not yet projected")
+	if changeVout != nil && (!s.changeExists || *changeVout != 1) {
+		return ports.SubmittedVtxoPending, nil
 	}
-	return nil
+	return ports.SubmittedVtxoFinalized, nil
 }
 
 func (s stubArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), s.checkpoint...) }
@@ -219,19 +217,22 @@ func TestVaultBoardV1StatusUsesDistinctStandardBoardingTree(t *testing.T) {
 
 func TestVaultBoardV1MatchesSDKVector(t *testing.T) {
 	phone, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 1))
+	master, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 2))
+	boarding, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 3))
 	operator, _ := btcec.PrivKeyFromBytes(append(bytes.Repeat([]byte{0}, 31), 4))
 	svc := &Service{
 		Deployment:  deployment.Config{Network: deployment.NetworkMutinynet},
 		ArkResolver: stubArkResolver{signer: operator.PubKey().SerializeCompressed()},
+		keys:        testKeys(t, master, LocalSigner{Priv: operator}),
 	}
-	tree, err := svc.buildVtxoBoardTree(enrolledSnapshot{PhoneBIP340: phone.PubKey()})
+	tree, err := svc.buildVtxoBoardTree(fixture.VaultID, enrolledSnapshot{PhoneBIP340: phone.PubKey()}, boarding.PubKey())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(tree.PkScript); got != "5120a077fad544f052d9730fb622fc1e737ef932eb7db907d2f1ee3792ce9e5d4d2c" {
+	if got := hex.EncodeToString(tree.PkScript); got != "51205b05e624da25f8a138c64253650383731d40990ca80f5ab1855f86868be0d122" {
 		t.Fatalf("vault-board-v1 script = %s", got)
 	}
-	if tree.OnchainAddress != "tb1p5pml442y7pfdjuc0kc30c8nn0mun96mahyra9u0wx7fva8jaf5kqavcsgc" {
+	if tree.OnchainAddress != "tb1ptvz7vfx6yhu2zwxxgffk2qurwvw5pxgv4q844vv9t7rgdzlq6y3qnu6rvj" {
 		t.Fatalf("vault-board-v1 address = %s", tree.OnchainAddress)
 	}
 }
@@ -288,7 +289,7 @@ func TestReserveSpendHappyPathCanonicalDigest(t *testing.T) {
 	if out.ChangeSats != 15_000 || out.ChangeVout == nil || *out.ChangeVout != 1 || out.ChangeAddress != tree.ArkAddress {
 		t.Fatalf("change response = %+v", out)
 	}
-	op, err := e.svc.Ledger.GetVtxoOperation(context.Background(), out.OperationID)
+	op, err := e.ledger.GetVtxoOperation(context.Background(), out.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +340,7 @@ func TestReserveSelectsFragmentedInputsWithOperatorFees(t *testing.T) {
 	if out.FeePolicyDigest != "0315f524ae0610202998492284c074829ab156bea680b8313adfa25bdb782fb4" {
 		t.Fatalf("fee policy digest = %s", out.FeePolicyDigest)
 	}
-	stored, err := e.svc.Ledger.GetVtxoOperationInputs(context.Background(), out.OperationID)
+	stored, err := e.ledger.GetVtxoOperationInputs(context.Background(), out.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +398,7 @@ func TestVtxoFeePolicyDriftFailsBeforeAuthorize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	op, err := e.svc.Ledger.GetVtxoOperation(context.Background(), out.OperationID)
+	op, err := e.ledger.GetVtxoOperation(context.Background(), out.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,6 +455,19 @@ func TestSelectSpendVtxosRejectsUnsafeEconomicShapes(t *testing.T) {
 	}
 }
 
+func TestSolveVtxoSpendStopsWhenRequestIsCancelled(t *testing.T) {
+	estimator, _, err := newVtxoFeeEstimator(ports.IntentFeePolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, _, err = solveVtxoSpend(ctx, []reservedCoin{{ValueSats: 30_000}}, []byte{0x51}, []byte{0x52}, 20_000, uint64(program.AbsoluteFeeCeiling), estimator)
+	if !errors.Is(err, apperr.ErrBusy) {
+		t.Fatalf("cancelled fee selection = %v, want BUSY", err)
+	}
+}
+
 func TestReserveRequiresPhoneAuthenticationBeforePersisting(t *testing.T) {
 	e, resolver, arkd := vtxoTestEnv(t)
 	snap := e.svc.snapshot(fixture.VaultID)
@@ -476,7 +490,7 @@ func TestReserveRequiresPhoneAuthenticationBeforePersisting(t *testing.T) {
 	if _, err := e.svc.ReserveVtxo(context.Background(), req); err == nil || !strings.Contains(err.Error(), "phoneSignature") {
 		t.Fatalf("mutated authenticated reserve = %v", err)
 	}
-	ops, err := e.svc.Ledger.ListVtxoOperations(context.Background(), fixture.VaultID)
+	ops, err := e.ledger.ListVtxoOperations(context.Background(), fixture.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +526,7 @@ func TestReserveLostResponseReplaysExactReservation(t *testing.T) {
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("retry changed reservation:\nfirst=%+v\nsecond=%+v", first, second)
 	}
-	ops, err := e.svc.Ledger.ListVtxoOperations(context.Background(), fixture.VaultID)
+	ops, err := e.ledger.ListVtxoOperations(context.Background(), fixture.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,7 +604,7 @@ func TestConcurrentExactReserveHasOneDurableOperation(t *testing.T) {
 			t.Fatalf("concurrent exact retry changed reservation: %+v != %+v", first, out)
 		}
 	}
-	ops, err := e.svc.Ledger.ListVtxoOperations(context.Background(), fixture.VaultID)
+	ops, err := e.ledger.ListVtxoOperations(context.Background(), fixture.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -718,7 +732,7 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 	in := policy.VtxoOperationInput{
 		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(tree.PkScript),
 	}
-	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
+	if err := e.ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
 		OperationID: op.OperationID, VaultID: op.VaultID, Purpose: op.Purpose, BundleDigest: op.BundleDigest,
 		State: policy.VtxoStateReserved, AmountSats: op.AmountSats, FeePolicyDigest: op.FeePolicyDigest,
 		DestScript: op.DestScript, ChangeScript: op.ChangeScript, ChangeSats: op.ChangeSats, ChangeVout: op.ChangeVout,
@@ -726,13 +740,13 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), op.OperationID)
+	stored, err := e.ledger.GetVtxoOperation(context.Background(), op.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stored.State = policy.VtxoStateSubmitted
 	stored.ArkTxid = arkTxid
-	stored, swapped, err := e.svc.Ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateReserved, func() policy.VtxoOperation {
+	stored, swapped, err := e.ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateReserved, func() policy.VtxoOperation {
 		signed := stored
 		signed.State = policy.VtxoStateSigned
 		return signed
@@ -742,7 +756,7 @@ func TestFinalizeRequiresSpentByArkTxid(t *testing.T) {
 	}
 	stored.State = policy.VtxoStateSubmitted
 	stored.ArkTxid = arkTxid
-	if _, swapped, err := e.svc.Ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateSigned, stored); err != nil || !swapped {
+	if _, swapped, err := e.ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateSigned, stored); err != nil || !swapped {
 		t.Fatal(err)
 	}
 	_, err = e.svc.FinalizeVtxo(context.Background(), VtxoFinalizeRequest{
@@ -791,7 +805,7 @@ func insertSubmittedSpendShape(t *testing.T, e *env, operationID, arkTxid string
 	in := policy.VtxoOperationInput{
 		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(treePkScript),
 	}
-	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
+	if err := e.ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
 		OperationID: operationID, VaultID: fixture.VaultID, Purpose: policy.VtxoPurposeSpend, BundleDigest: digest,
 		State: policy.VtxoStateReserved, AmountSats: 10_000, FeePolicyDigest: feePolicyDigest,
 		DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: changeScript, ChangeSats: changeSats, ChangeVout: changeVout,
@@ -799,13 +813,13 @@ func insertSubmittedSpendShape(t *testing.T, e *env, operationID, arkTxid string
 	}, []policy.VtxoOperationInput{in}, program.PeriodAllowanceSats); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), operationID)
+	stored, err := e.ledger.GetVtxoOperation(context.Background(), operationID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stored.State = policy.VtxoStateSubmitted
 	stored.ArkTxid = arkTxid
-	stored, swapped, err := e.svc.Ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateReserved, func() policy.VtxoOperation {
+	stored, swapped, err := e.ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateReserved, func() policy.VtxoOperation {
 		signed := stored
 		signed.State = policy.VtxoStateSigned
 		return signed
@@ -815,7 +829,7 @@ func insertSubmittedSpendShape(t *testing.T, e *env, operationID, arkTxid string
 	}
 	stored.State = policy.VtxoStateSubmitted
 	stored.ArkTxid = arkTxid
-	if _, swapped, err := e.svc.Ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateSigned, stored); err != nil || !swapped {
+	if _, swapped, err := e.ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateSigned, stored); err != nil || !swapped {
 		t.Fatal(err)
 	}
 }
@@ -883,7 +897,7 @@ func TestRequestedOperationDoesNotTrustADifferentArkTxid(t *testing.T) {
 	if view.State != policy.VtxoStateUnresolved {
 		t.Fatalf("foreign spend was not quarantined: %s", view.State)
 	}
-	spent, err := e.svc.Ledger.SpentInPeriod(context.Background(), fixture.VaultID, "")
+	spent, err := e.ledger.SpentInPeriod(context.Background(), fixture.VaultID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -919,7 +933,7 @@ func TestGetVtxoOperationViewReturnsSignedPsbt(t *testing.T) {
 	}
 	arkTxid := strings.Repeat("cd", 32)
 	insertSubmittedSpend(t, e, "spend-signed", arkTxid, tree.PkScript)
-	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-signed")
+	stored, err := e.ledger.GetVtxoOperation(context.Background(), "spend-signed")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -930,17 +944,17 @@ func TestGetVtxoOperationViewReturnsSignedPsbt(t *testing.T) {
 	stored.AuthorizedPSBT = "cHNidP9signed"
 	stored.ArkTxid = arkTxid
 	stored.IntegrityMAC = nil
-	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), stored, []policy.VtxoOperationInput{{
+	if err := e.ledger.ReserveVtxoOperation(context.Background(), stored, []policy.VtxoOperationInput{{
 		Txid: bytes.Repeat([]byte{0x12}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(tree.PkScript),
 	}}, program.PeriodAllowanceSats); err != nil {
 		t.Fatal(err)
 	}
-	stored, err = e.svc.Ledger.GetVtxoOperation(context.Background(), stored.OperationID)
+	stored, err = e.ledger.GetVtxoOperation(context.Background(), stored.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stored.State = policy.VtxoStateSigned
-	if _, swapped, err := e.svc.Ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateReserved, stored); err != nil || !swapped {
+	if _, swapped, err := e.ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateReserved, stored); err != nil || !swapped {
 		t.Fatalf("reserve -> signed: swapped=%v err=%v", swapped, err)
 	}
 	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, stored.OperationID)
@@ -969,7 +983,7 @@ func TestGetVtxoOperationViewAbortsExpiredReservation(t *testing.T) {
 	in := policy.VtxoOperationInput{
 		Txid: bytes.Repeat([]byte{0x11}, 32), Vout: 0, ValueSats: 20_000, Script: bytes.Clone(tree.PkScript),
 	}
-	if err := e.svc.Ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
+	if err := e.ledger.ReserveVtxoOperation(context.Background(), policy.VtxoOperation{
 		OperationID: "spend-expired", VaultID: fixture.VaultID, Purpose: policy.VtxoPurposeSpend, BundleDigest: digest,
 		State: policy.VtxoStateReserved, AmountSats: 10_000, FeePolicyDigest: feePolicyDigest,
 		DestScript: bytes.Repeat([]byte{0x51}, 34), ChangeScript: bytes.Clone(tree.PkScript), ChangeSats: 10_000, ChangeVout: &changeVout,
@@ -984,7 +998,7 @@ func TestGetVtxoOperationViewAbortsExpiredReservation(t *testing.T) {
 	if view.State != policy.VtxoStateAborted {
 		t.Fatalf("expired reservation = %+v", view)
 	}
-	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), "spend-expired")
+	stored, err := e.ledger.GetVtxoOperation(context.Background(), "spend-expired")
 	if err != nil {
 		t.Fatal(err)
 	}

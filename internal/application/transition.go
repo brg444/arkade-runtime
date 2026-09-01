@@ -48,10 +48,7 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if strings.TrimSpace(req.VaultID) == "" {
 		return nil, fmt.Errorf("vault id required")
 	}
-	if err := s.attachLedgerIntegrity(); err != nil {
-		return nil, err
-	}
-	if err := s.allowTransition(req.VaultID); err != nil {
+	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
 	cred, err := s.loadVerifiedCredentialFor(req.VaultID)
@@ -79,6 +76,9 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err := verifyTransitionClaimantSig(ptx, bound); err != nil {
 		return nil, err
 	}
+	if err := s.allowTransition(cred.VaultID); err != nil {
+		return nil, err
+	}
 	if bound.Role == "phone" {
 		if _, err := s.authenticatePasskeySession(ctx, passkeyPurposeTransition, req.VaultID, req.SessionAssertionRequest); err != nil {
 			return nil, err
@@ -91,7 +91,7 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err != nil {
 		return nil, err
 	}
-	action, stored, err := s.Ledger.ApplyRecoveryReplay(policy.RecoverySession{
+	action, stored, err := s.Stores.RecoveryOperations.ApplyRecoveryReplay(policy.RecoverySession{
 		VaultID:     req.VaultID,
 		Purpose:     purpose,
 		InputTxid:   txid,
@@ -112,26 +112,24 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err != nil {
 		return nil, err
 	}
-	vaultSigner, err := s.vaultCosignerSigner(rec)
-	if err != nil {
-		return nil, err
-	}
-	if s.ArkadeCosignerSigner == nil || bound.VaultTweak == nil || bound.ArkadeTweak == nil {
+	if bound.VaultTweak == nil || bound.ArkadeTweak == nil {
 		return nil, fmt.Errorf("both VaultCosigner and ArkadeCosigner signers are required")
 	}
 	submitted, err := ptx.B64Encode()
 	if err != nil {
 		return nil, err
 	}
-	vaultStage, err := signExactStage(ctx, submitted, vaultSigner, schnorr.SerializePubKey(bound.VaultTweak), "VaultCosigner")
+	authorization, err := newSavingsRecoveryAuthorization(
+		rec, submitted, schnorr.SerializePubKey(bound.VaultTweak), schnorr.SerializePubKey(bound.ArkadeTweak),
+	)
 	if err != nil {
 		return nil, err
 	}
-	encoded, err := signExactStage(ctx, vaultStage, s.ArkadeCosignerSigner, schnorr.SerializePubKey(bound.ArkadeTweak), "ArkadeCosigner")
+	encoded, err := s.keys.savingsRecoveryAuthorization(ctx, authorization)
 	if err != nil {
 		return nil, err
 	}
-	_, _, err = s.Ledger.ApplyRecoveryReplay(policy.RecoverySession{
+	_, _, err = s.Stores.RecoveryOperations.ApplyRecoveryReplay(policy.RecoverySession{
 		VaultID:     req.VaultID,
 		Purpose:     purpose,
 		InputTxid:   txid,

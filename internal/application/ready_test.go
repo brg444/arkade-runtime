@@ -1,8 +1,10 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -16,6 +18,7 @@ type readyArkResolver struct {
 	network    string
 	checkpoint []byte
 	signer     []byte
+	feeErr     error
 }
 
 func (r readyArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.ResolvedVtxo, error) {
@@ -23,15 +26,11 @@ func (r readyArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.Resol
 }
 
 func (r readyArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy, error) {
-	return ports.IntentFeePolicy{}, nil
+	return ports.IntentFeePolicy{}, r.feeErr
 }
 
-func (r readyArkResolver) ReservedSpentByArkTxid(context.Context, []byte, []ports.ResolvedVtxo, string) error {
-	return nil
-}
-
-func (r readyArkResolver) ChangeVtxoFromArkTx(context.Context, []byte, string, uint32, uint64) error {
-	return nil
+func (r readyArkResolver) SubmittedVtxoState(context.Context, []byte, []ports.ResolvedVtxo, string, *uint32, uint64) (ports.SubmittedVtxoState, error) {
+	return ports.SubmittedVtxoFinalized, nil
 }
 
 func (r readyArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), r.checkpoint...) }
@@ -39,11 +38,16 @@ func (r readyArkResolver) OperatorSignerPub() []byte   { return append([]byte(ni
 func (r readyArkResolver) Network() string             { return r.network }
 
 func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
-	ledger, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "ledger.sqlite"), nil)
+	ledger, err := policy.OpenLedger(filepath.Join(t.TempDir(), "ledger.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ledger.Close()
+	integrityKey := bytes.Repeat([]byte{0x42}, 32)
+	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
+		t.Fatal(err)
+	}
+	vaultCosigner, _ := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{0x43}, 32))
 	arkadeCosigner, err := hex.DecodeString(deployment.MutinynetArkadeCosignerPubHex)
 	if err != nil {
 		t.Fatal(err)
@@ -65,25 +69,60 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		Network: deployment.NetworkMutinynet,
 	}
 	svc := New(Deps{
-		Ledger: ledger, Deployment: cfg, ArkadeCosignerPub: arkadeCosignerPub,
+		Stores: testStores(t, ledger), Deployment: cfg, IntegrityKey: integrityKey,
+		Keys:             testKeys(t, vaultCosigner, LocalSigner{Priv: vaultCosigner}),
+		VaultCosignerPub: vaultCosigner.PubKey(), ArkadeCosignerPub: arkadeCosignerPub,
 		ArkadeCosignerOrigin:  deployment.MutinynetArkadeCosignerOrigin,
 		ArkadeCosignerVersion: deployment.MutinynetArkadeCosignerVersion,
+		VaultBoardStore:       ledger,
 	})
-	if got := svc.Ready(); got.Ok || got.Error != "Arkade resolver unavailable" {
+	installedRuntime := &vaultBoardRuntime{
+		chain: &vaultBoardTestChain{},
+		operatorDial: func(context.Context) (vaultBoardOperator, error) {
+			return &vaultBoardTestOperator{}, nil
+		},
+		batchExpiry: deployment.MutinynetVtxoTreeExpirySeconds,
+	}
+	svc.vaultBoardRuntime = installedRuntime
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
 		t.Fatalf("missing resolver readiness = %+v", got)
 	}
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
 	}
-	if got := svc.Ready(); !got.Ok || got.Error != "" {
+	keys := svc.keys
+	svc.keys = KeyCapabilities{}
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "arkade signer not pinned" {
+		t.Fatalf("missing signer capability readiness = %+v", got)
+	}
+	svc.keys = keys
+	contractPack := append([]byte(nil), svc.contractPackJSON...)
+	svc.contractPackJSON[0] ^= 1
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "contract pack mismatch" {
+		t.Fatalf("mutated Contract Pack readiness = %+v", got)
+	}
+	svc.contractPackJSON = contractPack
+	svc.vaultBoardRuntime = nil
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "vault-board-v1 runtime unavailable" {
+		t.Fatalf("incomplete boarding runtime readiness = %+v", got)
+	}
+	svc.vaultBoardRuntime = installedRuntime
+	if got := svc.Ready(context.Background()); !got.Ok || got.Error != "" {
 		t.Fatalf("pinned resolver readiness = %+v", got)
+	}
+	svc.ArkResolver = readyArkResolver{
+		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
+		feeErr: errors.New("indexer unavailable"),
+	}
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
+		t.Fatalf("unreachable resolver readiness = %+v", got)
 	}
 	attackerCheckpoint := append([]byte(nil), checkpoint...)
 	attackerCheckpoint[len(attackerCheckpoint)-1] ^= 1
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: attackerCheckpoint, signer: signer,
 	}
-	if got := svc.Ready(); got.Ok || got.Error != "Arkade resolver policy mismatch" {
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver policy mismatch" {
 		t.Fatalf("mutated resolver readiness = %+v", got)
 	}
 }

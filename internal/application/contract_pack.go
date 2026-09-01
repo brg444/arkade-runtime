@@ -10,10 +10,17 @@ import (
 )
 
 func liveContractPackJSON() ([]byte, error) {
-	if len(contractpack.JSON) == 0 {
-		return nil, fmt.Errorf("contract pack")
+	if err := validateReleaseContractPack(contractpack.JSON); err != nil {
+		return nil, err
 	}
 	return append([]byte(nil), contractpack.JSON...), nil
+}
+
+func validateReleaseContractPack(raw []byte) error {
+	if err := contractpack.ValidateBytes(raw); err != nil {
+		return err
+	}
+	return validateVaultPolicyV1Pack(raw)
 }
 
 func (s *Service) requireVaultPolicyV1Exit() error {

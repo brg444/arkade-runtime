@@ -11,7 +11,8 @@ different contracts:
 | Database schema | `schema_meta.version = 1` | The exact v2 SQLite tables, columns, checks, foreign keys, and indexes. |
 | Savings descriptor schema | `arkade-vault/savings-v1` | The canonical L1 Savings descriptor encoding. |
 | Enrollment template | `phone-hww-recovery-savings-v1` | The Savings-only L1 tree family enrolled by this release. |
-| VTXO programs | `vault-board-v1`, `vault-policy-v1` | The boarding intermediate and the Spending VTXO tree. |
+| VTXO programs | `vault-board-v1`, `vault-policy-v1` | The worker-owned boarding intermediate and Spending VTXO tree. |
+| Recovery binding | `arkade-vault/recovery-binding/v3` | The signed credential envelope, complete Savings descriptor, and release-pinned Spending and boarding descriptors. |
 | Domain strings | Individual `.../vN` literals | One MAC, digest, KDF, or encrypted-envelope preimage. |
 
 The digits are local to each contract. A database schema change does not
@@ -54,3 +55,9 @@ The server and wallet copies of `contract-pack.json` must remain
 byte-identical. A release that changes an enrollment template, VTXO tree,
 delay, signing role, or economic-policy identifier updates both copies and the
 corresponding cross-implementation vectors in the same change.
+
+Recovery binding v3 is the only accepted binding in this fresh release. The
+server derives its Spending and boarding fields from the authenticated
+credential and release-pinned Operator policy. It does not trust a wallet
+status snapshot for those values. A missing resolver, incompatible deployment,
+or incomplete descriptor prevents binding creation and installation.

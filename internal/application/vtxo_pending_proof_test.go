@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -16,6 +18,7 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/ports"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
@@ -32,10 +35,12 @@ func pendingProofForInputs(
 	t.Helper()
 	proofInputs := make([]intent.Input, len(inputs))
 	for i, input := range inputs {
-		var hash chainhash.Hash
-		copy(hash[:], input.Txid)
+		hash, err := chainhash.NewHashFromStr(hex.EncodeToString(input.Txid))
+		if err != nil {
+			t.Fatal(err)
+		}
 		proofInputs[i] = intent.Input{
-			OutPoint:    &wire.OutPoint{Hash: hash, Index: uint32(input.Vout)},
+			OutPoint:    &wire.OutPoint{Hash: *hash, Index: uint32(input.Vout)},
 			Sequence:    wire.MaxTxInSequenceNum,
 			WitnessUtxo: &wire.TxOut{Value: input.ValueSats, PkScript: bytes.Clone(input.Script)},
 		}
@@ -80,6 +85,70 @@ func TestVerifyPhonePendingProofBindsCanonicalOperation(t *testing.T) {
 	}
 	if digest, err := pendingProofDigest(raw); err != nil || len(digest) != 32 {
 		t.Fatalf("digest = %x, %v", digest, err)
+	}
+}
+
+func TestVerifySDK0465PendingProofFixture(t *testing.T) {
+	var fixtureData struct {
+		SDKVersion string `json:"sdkVersion"`
+		Message    string `json:"message"`
+		Input      struct {
+			Txid      string `json:"txid"`
+			Vout      int    `json:"vout"`
+			ValueSats int64  `json:"valueSats"`
+		} `json:"input"`
+		Proof string `json:"proof"`
+	}
+	raw, err := os.ReadFile("testdata/sdk-0.4.65-pending-proof.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &fixtureData); err != nil {
+		t.Fatal(err)
+	}
+	if fixtureData.SDKVersion != "0.4.65" || fixtureData.Message != canonicalGetPendingTxMessage {
+		t.Fatal("unexpected SDK pending-proof fixture metadata")
+	}
+	key := func(scalar byte) *btcec.PrivateKey {
+		raw := make([]byte, 32)
+		raw[31] = scalar
+		priv, _ := btcec.PrivKeyFromBytes(raw)
+		return priv
+	}
+	phone, vault, operator := key(1), key(2), key(4)
+	device, hardware := key(6), key(7)
+	delegate, err := policy.PinnedDelegateXOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := policy.BuildVaultPolicyV1Tree(policy.VaultPolicyV1Params{
+		UserPub:              schnorr.SerializePubKey(phone.PubKey()),
+		VtxoVaultCosignerPub: schnorr.SerializePubKey(vault.PubKey()),
+		ArkdServerPub:        schnorr.SerializePubKey(operator.PubKey()),
+		DelegatePub:          delegate,
+		ExitDevicePub:        schnorr.SerializePubKey(device.PubKey()),
+		ExitHardwarePub:      schnorr.SerializePubKey(hardware.PubKey()),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := &vtxoPolicyTree{
+		CosignerPub:  vault.PubKey(),
+		ArkdPub:      operator.PubKey(),
+		PkScript:     encoded.PkScript,
+		SpendLeaf:    encoded.SpendScript,
+		SpendControl: encoded.SpendControlBlock,
+	}
+	txid, err := hex.DecodeString(fixtureData.Input.Txid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := []policy.VtxoOperationInput{{
+		Txid: txid, Vout: fixtureData.Input.Vout,
+		ValueSats: fixtureData.Input.ValueSats, Script: encoded.PkScript,
+	}}
+	if err := verifyPhonePendingProof(fixtureData.Proof, inputs, tree, phone.PubKey()); err != nil {
+		t.Fatalf("@arkade-os/sdk %s proof: %v", fixtureData.SDKVersion, err)
 	}
 }
 
@@ -174,11 +243,11 @@ func TestAuthorizeVtxoSpendLostResponseReturnsIdenticalPendingProof(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	op, err := e.svc.Ledger.GetVtxoOperation(context.Background(), reserve.OperationID)
+	op, err := e.ledger.GetVtxoOperation(context.Background(), reserve.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inputs, err := e.svc.Ledger.GetVtxoOperationInputs(context.Background(), reserve.OperationID)
+	inputs, err := e.ledger.GetVtxoOperationInputs(context.Background(), reserve.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +339,7 @@ func TestAuthorizeVtxoSpendLostResponseReturnsIdenticalPendingProof(t *testing.T
 	if err := verifyDualSignedPendingProof(first.AuthorizedPendingProof, inputs, tree, e.hot.PubKey()); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := e.svc.Ledger.GetVtxoOperation(context.Background(), op.OperationID)
+	stored, err := e.ledger.GetVtxoOperation(context.Background(), op.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}

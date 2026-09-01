@@ -11,18 +11,26 @@ import (
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/deployment"
 	"github.com/brg444/arkade-vault-server/internal/policy"
+	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
+	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
 type env struct {
-	svc     *Service
-	savings *savingsSnapshot
-	hot     *btcec.PrivateKey
-	p256    *ecdsa.PrivateKey
-	direct  *ecdsa.PrivateKey
-	credID  []byte
+	svc           *Service
+	ledger        *policy.Ledger
+	savings       *savingsSnapshot
+	hot           *btcec.PrivateKey
+	externalOwner *btcec.PrivateKey
+	master        *btcec.PrivateKey
+	operator      *btcec.PrivateKey
+	boarding      *btcec.PrivateKey
+	p256          *ecdsa.PrivateKey
+	direct        *ecdsa.PrivateKey
+	credID        []byte
+	dbPath        string
 }
 
 const (
@@ -38,6 +46,7 @@ func newEnv(t *testing.T) *env {
 	externalOwner, _ := btcec.NewPrivateKey()
 	master, _ := btcec.NewPrivateKey()
 	operator, _ := btcec.NewPrivateKey()
+	boarding, _ := btcec.NewPrivateKey()
 	passkey, err := webauthn.NewP256()
 	if err != nil {
 		t.Fatal(err)
@@ -46,19 +55,29 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ledger, err := policy.OpenMainnetLedger(filepath.Join(t.TempDir(), "policy.sqlite"), nil)
+	dbPath := filepath.Join(t.TempDir(), "policy.sqlite")
+	ledger, err := policy.OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = ledger.Close() })
 	integrityKey := append([]byte(nil), testCredentialIntegrityKey...)
+	stores, err := arkadevaultv1.StoresFromLedger(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operatorSigner, err := hex.DecodeString(deployment.MutinynetOperatorSignerPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := stubArkResolver{signer: operatorSigner}
 	service := New(Deps{
-		Ledger: ledger, Deployment: deployment.Config{
+		Stores: stores, Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		}, IntegrityKey: integrityKey,
-		MasterIKM: master, VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
+		Keys: testKeys(t, master, LocalSigner{Priv: operator}), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
-		ArkadeSigner: LocalSigner{Priv: operator},
+		ArkResolver: resolver, VaultBoardStore: ledger,
 	})
 	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
 		t.Fatal(err)
@@ -75,8 +94,10 @@ func newEnv(t *testing.T) *env {
 		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
 		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(externalOwner.PubKey())),
+		VtxoBoardingProgram:      program.VaultBoardV1,
+		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
 	}
-	preview, err := service.previewTenantDescriptor(fixture.VaultID, request)
+	preview, err := service.previewVaultBoardEnrollmentDescriptor(fixture.VaultID, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +110,26 @@ func newEnv(t *testing.T) *env {
 		t.Fatal("current Vault enrollment was not published")
 	}
 	return &env{
-		svc: service, savings: snapshot.Savings,
-		hot: hot, p256: passkey, direct: direct, credID: credentialID,
+		svc: service, ledger: ledger, savings: snapshot.Savings,
+		hot: hot, externalOwner: externalOwner, master: master, operator: operator, boarding: boarding,
+		p256: passkey, direct: direct, credID: credentialID, dbPath: dbPath,
 	}
+}
+
+func testStores(t *testing.T, ledger *policy.Ledger) arkadevaultv1.Stores {
+	t.Helper()
+	stores, err := arkadevaultv1.StoresFromLedger(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return stores
+}
+
+func testKeys(t *testing.T, master *btcec.PrivateKey, emulator Signer) KeyCapabilities {
+	t.Helper()
+	keys, err := NewFileBackedKeyCapabilities(master, emulator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keys
 }

@@ -50,7 +50,7 @@
         "pinnedPublicDelegate": "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a",
         "origin": "https://delegator.mutinynet.arkade.sh",
         "capability": "multi-presigned-signature",
-        "note": "SDK 0.4.64 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised."
+        "note": "SDK 0.4.65 DelegatorManager matches any Multisig containing the delegate pub. 4-key delegate-forfeit. Not DelegateVtxo.Script. Not OP_TUNNEL. Fulmine forwarding stays fail-closed until this capability is advertised."
       },
       "notes": "Spending only. Savings stays L1. VTXO Spending does not reuse the Savings Pending or Quarantine trees. No OP_TUNNEL. Guardian delay is product-chosen 4608 seconds, not arkd's 2048-second minimum. Boarding enters through the separately listed vault-board-v1 intermediate. Exactly one guardian CSV exit leaf. Collaborative spend is 3-key [user, VTXO VaultCosigner, Arkade Operator]. The required VaultCosigner independently enforces the Vault Program."
     },
@@ -58,16 +58,16 @@
       "status": "live",
       "module": "boarding",
       "schema": "arkade-vault/board-v1",
-      "template": "vault-board-v1-phone-and-arkd",
+      "template": "vault-board-v1-boarding-vault-and-operator",
       "source": "onchain-receive-or-savings-transfer",
       "destination": "vault-policy-v1",
-      "forfeit": "device-and-arkd",
+      "forfeit": "boarding-key-and-vault-board-cosigner-and-arkade-operator",
       "exit": {
         "delay": "604672",
         "delayUnit": "seconds",
-        "owner": "device-after-exitDelay"
+        "owner": "phone-after-exitDelay"
       },
-      "notes": "A distinct confirmed L1 intermediate and the only L1 entry into Spending. An onchain receive or a Savings transfer funds it, then the SDK settles it only to vault-policy-v1. If settlement never completes, the device can recover after the pinned boarding delay."
+      "notes": "A confirmed L1 intermediate and the only L1 entry into Spending. The persistent SDK worker settles it only to the fixed vault-policy-v1 destination. The phone can recover after the pinned boarding delay."
     }
   },
   "domains": {
@@ -77,7 +77,7 @@
     "vaultRecord": "arkade-vault/vault-record/v1",
     "vaultCredential": "arkade-vault/vault-credential/v1",
     "recoverySession": "arkade-2fa-vault/recovery-session/v2",
-    "recoveryBinding": "arkade-vault/recovery-binding/v2",
+    "recoveryBinding": "arkade-vault/recovery-binding/v3",
     "passkeyProof": "arkade-2fa-vault/passkey-proof/v1",
     "vtxoReserve": "arkade-vault/vtxo-reserve/v1"
   }

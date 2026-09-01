@@ -109,6 +109,7 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	}
 	note, ok := delegate["note"].(string)
 	if !ok ||
+		!strings.Contains(note, "SDK 0.4.65") ||
 		!strings.Contains(note, "DelegatorManager matches any Multisig containing the delegate pub") ||
 		!strings.Contains(note, "4-key delegate-forfeit") ||
 		!strings.Contains(note, "Not OP_TUNNEL") ||
@@ -143,6 +144,17 @@ func TestEmbeddedContractPackMatchesRootFile(t *testing.T) {
 	if string(raw) != string(contractpack.JSON) {
 		t.Fatal("embedded contract pack drifted from repo root")
 	}
+	if err := contractpack.ValidateBytes(raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := contractpack.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	mutated := append([]byte(nil), raw...)
+	mutated[0] ^= 1
+	if err := contractpack.ValidateBytes(mutated); err == nil {
+		t.Fatal("modified Contract Pack matched the release digest")
+	}
 }
 
 func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
@@ -159,6 +171,9 @@ func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
 	}
 	if _, ok := pack.Domains["enrollmentPop"]; ok {
 		t.Fatal("contract pack must not publish an enrollment proof domain")
+	}
+	if pack.Domains["recoveryBinding"] != "arkade-vault/recovery-binding/v3" {
+		t.Fatalf("recovery binding domain = %q", pack.Domains["recoveryBinding"])
 	}
 	if _, ok := pack.Programs["savings-recovery-v1"]["recoveryPopTag"]; ok {
 		t.Fatal("Savings recovery program must not publish a recovery proof tag")

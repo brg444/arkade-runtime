@@ -13,6 +13,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript"
 )
 
 type vtxoPolicyTree struct {
@@ -31,8 +32,14 @@ type vtxoPolicyTree struct {
 }
 
 type vtxoBoardTree struct {
-	PkScript       []byte
-	OnchainAddress string
+	BoardingPub     *btcec.PublicKey
+	CosignerPub     *btcec.PublicKey
+	OperatorPub     *btcec.PublicKey
+	PkScript        []byte
+	Collaborative   []byte
+	ControlBlock    []byte
+	RevealedScripts []string
+	OnchainAddress  string
 }
 
 func (s *Service) operatorSignerPub() []byte {
@@ -42,24 +49,21 @@ func (s *Service) operatorSignerPub() []byte {
 	return s.ArkResolver.OperatorSignerPub()
 }
 
-func (s *Service) deriveVtxoVaultCosigner(vaultID string) (*btcec.PrivateKey, error) {
-	master, err := s.vaultCosignerMaster()
-	if err != nil {
-		return nil, err
-	}
+func (s *Service) vtxoKeyContext(vaultID string) (vtxoKeyContext, error) {
 	operator := s.operatorSignerPub()
-	if len(operator) != 33 {
-		return nil, fmt.Errorf("Operator signer pubkey required")
-	}
 	cfg := s.runtimeConfig()
-	return policy.DeriveVtxoVaultCosignerScalar(master, vaultID, program.VaultPolicyV1, cfg.Network, operator)
+	return newVtxoKeyContext(vaultID, cfg.Network, operator)
 }
 
 func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*vtxoPolicyTree, error) {
 	if snap.PhoneBIP340 == nil || snap.ExternalOwnerWallet == nil {
 		return nil, fmt.Errorf("enrolled keys required")
 	}
-	cosigner, err := s.deriveVtxoVaultCosigner(vaultID)
+	keyContext, err := s.vtxoKeyContext(vaultID)
+	if err != nil {
+		return nil, err
+	}
+	cosigner, err := s.keys.vtxoPublic(keyContext)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +78,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	}
 	params := policy.VaultPolicyV1Params{
 		UserPub:              schnorr.SerializePubKey(snap.PhoneBIP340),
-		VtxoVaultCosignerPub: schnorr.SerializePubKey(cosigner.PubKey()),
+		VtxoVaultCosignerPub: schnorr.SerializePubKey(cosigner),
 		ArkdServerPub:        schnorr.SerializePubKey(arkd),
 		DelegatePub:          schnorr.SerializePubKey(delegate),
 		ExitDevicePub:        schnorr.SerializePubKey(snap.PhoneBIP340),
@@ -109,7 +113,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		return nil, err
 	}
 	return &vtxoPolicyTree{
-		CosignerPub:     cosigner.PubKey(),
+		CosignerPub:     cosigner,
 		DelegatePub:     delegate,
 		ArkdPub:         arkd,
 		TapKey:          tapKey,
@@ -160,34 +164,61 @@ func defaultVtxoPkScript(user, arkd *btcec.PublicKey) []byte {
 	return pk
 }
 
-// buildVtxoBoardTree constructs the distinct vault-board-v1 intermediate.
-// It is arkd's standard two-party boarding contract, distinct from the
-// vault-policy-v1 VTXO tree used after settlement.
-func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, error) {
-	if snap.PhoneBIP340 == nil {
-		return nil, fmt.Errorf("enrolled phone key required")
+func (s *Service) buildVtxoBoardTree(vaultID string, snap enrolledSnapshot, boarding *btcec.PublicKey) (*vtxoBoardTree, error) {
+	if s.runtimeConfig().Network != program.NetworkMutinynet {
+		return nil, fmt.Errorf("vault-board-v1 is Mutinynet-only")
 	}
-	arkd, err := btcec.ParsePubKey(s.operatorSignerPub())
+	if vaultID == "" || snap.PhoneBIP340 == nil || boarding == nil {
+		return nil, fmt.Errorf("vault-board-v1 enrolled phone and boarding keys required")
+	}
+	operator, err := btcec.ParsePubKey(s.operatorSignerPub())
 	if err != nil {
 		return nil, fmt.Errorf("Operator signer pubkey")
 	}
-	exit := arklib.RelativeLocktime{
-		Type:  arklib.LocktimeTypeSecond,
-		Value: program.VaultBoardV1ExitDelay,
+	keyContext, err := newVaultBoardKeyContext(vaultID, program.NetworkMutinynet, operator.SerializeCompressed())
+	if err != nil {
+		return nil, err
 	}
-	def := arkscript.NewDefaultVtxoScript(snap.PhoneBIP340, arkd, exit)
-	tap, _, err := def.TapTree()
+	cosigner, err := s.keys.vaultBoardPublic(keyContext)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireDistinctVaultBoardRoles(boarding, cosigner, snap.PhoneBIP340, operator); err != nil {
+		return nil, err
+	}
+	exit := &arkscript.CSVMultisigClosure{
+		MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{snap.PhoneBIP340}},
+		Locktime: arklib.RelativeLocktime{
+			Type: arklib.LocktimeTypeSecond, Value: program.VaultBoardV1ExitDelay,
+		},
+	}
+	cooperative := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{boarding, cosigner, operator}}
+	// Match the official TypeScript SDK's BoardingProgramScript encoding:
+	// collaborative leaf first, recovery leaf second. Taproot's two-leaf root
+	// is independent of this list order, but the intent proof carries the
+	// serialized revealed-tree field and both sides must use one canonical form.
+	board := &arkscript.TapscriptsVtxoScript{Closures: []arkscript.Closure{cooperative, exit}}
+	tapKey, tapTree, err := board.TapTree()
 	if err != nil {
 		return nil, fmt.Errorf("vault-board-v1 tree: %w", err)
 	}
-	pkScript, err := arkscript.P2TRScript(tap)
+	pkScript, err := arkscript.P2TRScript(tapKey)
 	if err != nil {
 		return nil, fmt.Errorf("vault-board-v1 script: %w", err)
 	}
-	if len(pkScript) != 34 || pkScript[0] != 0x51 || pkScript[1] != 0x20 {
-		return nil, fmt.Errorf("vault-board-v1 is not p2tr")
+	leaf, err := cooperative.Script()
+	if err != nil {
+		return nil, err
 	}
-	net, err := vtxoNetworkParams(s.runtimeConfig().Network)
+	proof, err := tapTree.GetTaprootMerkleProof(txscript.NewBaseTapLeaf(leaf).TapHash())
+	if err != nil {
+		return nil, err
+	}
+	revealed, err := board.Encode()
+	if err != nil {
+		return nil, err
+	}
+	net, err := vtxoNetworkParams(program.NetworkMutinynet)
 	if err != nil {
 		return nil, err
 	}
@@ -196,9 +227,35 @@ func (s *Service) buildVtxoBoardTree(snap enrolledSnapshot) (*vtxoBoardTree, err
 		return nil, err
 	}
 	return &vtxoBoardTree{
-		PkScript:       pkScript,
-		OnchainAddress: address.EncodeAddress(),
+		BoardingPub: boarding, CosignerPub: cosigner, OperatorPub: operator,
+		PkScript: pkScript, Collaborative: leaf, ControlBlock: proof.ControlBlock,
+		RevealedScripts: revealed, OnchainAddress: address.EncodeAddress(),
 	}, nil
+}
+
+func requireDistinctVaultBoardRoles(boarding, cosigner, phone, operator *btcec.PublicKey) error {
+	roles := []struct {
+		name string
+		pub  *btcec.PublicKey
+	}{
+		{name: "boarding", pub: boarding},
+		{name: "VaultBoardCosigner", pub: cosigner},
+		{name: "phone recovery", pub: phone},
+		{name: "Operator", pub: operator},
+	}
+	for i := range roles {
+		if roles[i].pub == nil {
+			return fmt.Errorf("vault-board-v1 %s key required", roles[i].name)
+		}
+		for j := 0; j < i; j++ {
+			// All four roles sign Taproot script paths, so compare their x-only
+			// identities rather than compressed-key parity.
+			if bytes.Equal(schnorr.SerializePubKey(roles[i].pub), schnorr.SerializePubKey(roles[j].pub)) {
+				return fmt.Errorf("vault-board-v1 %s and %s keys must be distinct", roles[j].name, roles[i].name)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) refuseDefaultVtxoChange(snap enrolledSnapshot, dest []byte) error {

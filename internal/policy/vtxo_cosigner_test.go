@@ -48,7 +48,7 @@ func TestVtxoHKDFSHA256V1MatchesRFC5869OneBlockExpand(t *testing.T) {
 	_, _ = expand.Write(info)
 	_, _ = expand.Write([]byte{1})
 	rawOKM := expand.Sum(nil)
-	if !scalarInRange(rawOKM, btcec.S256().N) {
+	if !scalarInRange(rawOKM) {
 		t.Fatal("test vector counter 0 is not a valid scalar; spec lock would hide a retry")
 	}
 	rawPriv, _ := btcec.PrivKeyFromBytes(rawOKM)
@@ -179,7 +179,7 @@ func TestVtxoEvenYSerialization(t *testing.T) {
 		_, _ = expand.Write(info)
 		_, _ = expand.Write([]byte{1})
 		rawOKM := expand.Sum(nil)
-		if !scalarInRange(rawOKM, btcec.S256().N) {
+		if !scalarInRange(rawOKM) {
 			continue
 		}
 		rawPriv, _ := btcec.PrivKeyFromBytes(rawOKM)
