@@ -83,24 +83,44 @@ func reservePendingEnrollmentTx(tx *sql.Tx, p PendingEnrollment) (*PendingEnroll
 		return nil, err
 	}
 	if existing != nil {
-		if existing.ProtectionTier != p.ProtectionTier {
-			return nil, fmt.Errorf("pending enrollment protection tier changed")
-		}
-		if !bytes.Equal(existing.PolicyDigest, p.PolicyDigest) {
-			return nil, fmt.Errorf("pending enrollment policy changed")
-		}
 		if existing.ExpiresAt != "" && existing.ExpiresAt >= p.CreatedAt {
+			if existing.ProtectionTier != p.ProtectionTier {
+				return nil, fmt.Errorf("pending enrollment protection tier changed")
+			}
+			if !bytes.Equal(existing.PolicyDigest, p.PolicyDigest) {
+				return nil, fmt.Errorf("pending enrollment policy changed")
+			}
 			return existing, nil
 		}
-		if _, err := tx.Exec(
-			`UPDATE pending_enrollment SET challenge = ?, expires_at = ? WHERE token_hash = ? AND challenge = ?`,
-			p.Challenge, p.ExpiresAt, p.TokenHash, existing.Challenge,
-		); err != nil {
+		result, err := tx.Exec(
+			`UPDATE pending_enrollment
+			    SET handle = ?, vault_id = ?, challenge = ?, protection_tier = ?,
+			        policy_digest = ?, expires_at = ?, created_at = ?
+			  WHERE token_hash = ? AND handle = ? AND challenge = ?`,
+			p.Handle, p.VaultID, p.Challenge, p.ProtectionTier,
+			p.PolicyDigest, p.ExpiresAt, p.CreatedAt,
+			p.TokenHash, existing.Handle, existing.Challenge,
+		)
+		if err != nil {
 			return nil, err
 		}
-		existing.Challenge = append([]byte(nil), p.Challenge...)
-		existing.ExpiresAt = p.ExpiresAt
-		return existing, nil
+		updated, err := result.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if updated != 1 {
+			return nil, fmt.Errorf("pending enrollment changed concurrently")
+		}
+		return &PendingEnrollment{
+			Handle:         p.Handle,
+			VaultID:        p.VaultID,
+			TokenHash:      append([]byte(nil), p.TokenHash...),
+			Challenge:      append([]byte(nil), p.Challenge...),
+			ProtectionTier: p.ProtectionTier,
+			PolicyDigest:   append([]byte(nil), p.PolicyDigest...),
+			ExpiresAt:      p.ExpiresAt,
+			CreatedAt:      p.CreatedAt,
+		}, nil
 	}
 	if _, err := tx.Exec(`
 INSERT INTO pending_enrollment (handle, vault_id, token_hash, challenge, protection_tier, policy_digest, expires_at, created_at)

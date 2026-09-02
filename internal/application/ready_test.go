@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/internal/deployment"
@@ -19,6 +20,7 @@ type readyArkResolver struct {
 	checkpoint []byte
 	signer     []byte
 	feeErr     error
+	feeCalls   *int
 }
 
 func (r readyArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.ResolvedVtxo, error) {
@@ -26,6 +28,9 @@ func (r readyArkResolver) SpendableVtxos(context.Context, []byte) ([]ports.Resol
 }
 
 func (r readyArkResolver) IntentFeePolicy(context.Context) (ports.IntentFeePolicy, error) {
+	if r.feeCalls != nil {
+		(*r.feeCalls)++
+	}
 	return ports.IntentFeePolicy{}, r.feeErr
 }
 
@@ -87,8 +92,10 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
 		t.Fatalf("missing resolver readiness = %+v", got)
 	}
+	feeCalls := 0
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
+		feeCalls: &feeCalls,
 	}
 	keys := svc.keys
 	svc.keys = KeyCapabilities{}
@@ -110,12 +117,40 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 	if got := svc.Ready(context.Background()); !got.Ok || got.Error != "" {
 		t.Fatalf("pinned resolver readiness = %+v", got)
 	}
+	if got := svc.Ready(context.Background()); !got.Ok || feeCalls != 1 {
+		t.Fatalf("cached resolver readiness = %+v, probes=%d", got, feeCalls)
+	}
+	svc.resetResolverReadinessCache()
+	var probes sync.WaitGroup
+	for range 25 {
+		probes.Add(1)
+		go func() {
+			defer probes.Done()
+			if got := svc.Ready(context.Background()); !got.Ok {
+				t.Errorf("concurrent readiness = %+v", got)
+			}
+		}()
+	}
+	probes.Wait()
+	if feeCalls != 2 {
+		t.Fatalf("readiness burst made %d upstream probes, want 2 total", feeCalls)
+	}
+	svc.resetResolverReadinessCache()
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := svc.Ready(cancelled); !got.Ok || feeCalls != 3 {
+		t.Fatalf("caller cancellation poisoned shared readiness = %+v, probes=%d", got, feeCalls)
+	}
 	svc.ArkResolver = readyArkResolver{
 		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
-		feeErr: errors.New("indexer unavailable"),
+		feeErr: errors.New("indexer unavailable"), feeCalls: &feeCalls,
 	}
+	svc.resetResolverReadinessCache()
 	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
 		t.Fatalf("unreachable resolver readiness = %+v", got)
+	}
+	if got := svc.Ready(context.Background()); got.Ok || feeCalls != 4 {
+		t.Fatalf("failed readiness was not cached = %+v, probes=%d", got, feeCalls)
 	}
 	attackerCheckpoint := append([]byte(nil), checkpoint...)
 	attackerCheckpoint[len(attackerCheckpoint)-1] ^= 1

@@ -827,6 +827,25 @@ func TestStaleStartChallengeCannotFinishAfterExpiryRotation(t *testing.T) {
 	}
 }
 
+func TestExpiredEnrollmentMayChooseANewTierAndPolicy(t *testing.T) {
+	svc, token, start := enrollReady(t)
+	now := time.Now().UTC()
+	svc.EnrollmentNow = func() time.Time { return now.Add(pendingEnrollmentTTL + time.Minute) }
+	selected := program.SpendingPolicyFromValues(
+		25_000, 250_000, program.AbsoluteFeeCeiling, program.FeerateCeilingSatPerV,
+	)
+	restarted, err := svc.StartEnrollment(token, enrollStartRequestWithTier(t, selected, program.ProtectionTierAdvanced))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restarted.Handle == start.Handle || restarted.VaultID == start.VaultID || restarted.Challenge == start.Challenge {
+		t.Fatal("expired enrollment retained stale ceremony identity")
+	}
+	if restarted.ProtectionTier != program.ProtectionTierAdvanced || restarted.SpendingPolicy != selected {
+		t.Fatalf("restarted enrollment = %+v", restarted)
+	}
+}
+
 func TestConcurrentFinishAndStatusDoNotRaceSharedKeyFields(t *testing.T) {
 	svc, token, start := enrollReady(t)
 	pass, _ := webauthn.NewP256()

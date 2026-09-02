@@ -42,6 +42,8 @@ type VtxoOperationStore interface {
 	GetVtxoOperation(context.Context, string) (policy.VtxoOperation, error)
 	GetVtxoOperationInputs(context.Context, string) ([]policy.VtxoOperationInput, error)
 	TransitionVtxoOperation(context.Context, string, policy.VtxoOperation) (policy.VtxoOperation, bool, error)
+	CommitSignedVtxoOperation(context.Context, policy.VtxoOperation, []byte, uint32) (policy.VtxoOperation, bool, error)
+	VerifySignedVtxoReplay(context.Context, string, string, []byte, uint32) error
 }
 
 // RecoveryOperationStore is the replay-safe Savings recovery operation store.

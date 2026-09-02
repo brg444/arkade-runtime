@@ -3,6 +3,7 @@ package application
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,7 +90,7 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 	return w.ResponseWriter.Write(p)
 }
 
-func safeVaultID(id string) string {
+func safeVaultLogID(id string) string {
 	id = strings.TrimSpace(id)
 	if id == "" || len(id) > 80 {
 		return ""
@@ -99,7 +100,8 @@ func safeVaultID(id string) string {
 			return ""
 		}
 	}
-	return id
+	digest := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(digest[:8])
 }
 
 func withRequestLog(next http.Handler) http.Handler {
@@ -111,7 +113,7 @@ func withRequestLog(next http.Handler) http.Handler {
 		w.Header().Set("X-Request-Id", id)
 		rec := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(rec, r)
-		vault := safeVaultID(r.URL.Query().Get("vault"))
+		vault := safeVaultLogID(r.URL.Query().Get("vault"))
 		if vault == "" {
 			vault = "-"
 		}
@@ -300,27 +302,35 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 		}
 		w.Header().Set("X-Vault-Error-Code", string(code))
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": publicErrorMessage(err), "code": string(code)})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": publicErrorMessage(code, err), "code": string(code)})
 		return
 	}
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func publicErrorMessage(err error) string {
+func publicErrorMessage(code apperr.Code, err error) string {
 	if err == nil {
 		return "request rejected"
 	}
-	msg := err.Error()
-	lower := strings.ToLower(msg)
-	for _, leak := range []string{
-		"http ", "esplora", "sqlite", "sql:", "public arkade", "/app/",
-		"panic", "stack", "goroutine", "\n",
-	} {
-		if strings.Contains(lower, leak) {
-			return "request rejected"
-		}
+	// Only errors deliberately classified at the application boundary may
+	// expose their message. Unknown dependency, parser, database, and transport
+	// errors are never made public, regardless of their current wording.
+	var classified *apperr.Error
+	if errors.As(err, &classified) && classified.Code == code && classified.Msg != "" {
+		return classified.Msg
 	}
-	return msg
+	switch code {
+	case apperr.CodeNotFound:
+		return "not found"
+	case apperr.CodeBusy:
+		return "busy"
+	case apperr.CodeVaultIDRequired:
+		return "vault id required"
+	case apperr.CodeNotEnrolled:
+		return "not enrolled"
+	default:
+		return "request rejected"
+	}
 }
 
 func withCORS(next http.Handler, origin string) http.Handler {

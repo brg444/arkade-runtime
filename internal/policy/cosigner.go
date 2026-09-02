@@ -215,6 +215,7 @@ func evenYPrivateKey(priv *btcec.PrivateKey) *btcec.PrivateKey {
 		return priv
 	}
 	key := priv.Key
+	priv.Key.Zero()
 	key.Negate()
 	return &btcec.PrivateKey{Key: key}
 }
@@ -226,6 +227,7 @@ func VerifyVaultCosignerPub(master *btcec.PrivateKey, rec VaultRecord) error {
 	if err != nil {
 		return err
 	}
+	defer derived.Key.Zero()
 	got := derived.PubKey().SerializeCompressed()
 	if !hmac.Equal(got, rec.VaultCosignerBase) {
 		return fmt.Errorf("stored vault cosigner pubkey does not match %s derivation", rec.CosignerMode)

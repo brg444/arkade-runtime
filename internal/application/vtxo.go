@@ -365,7 +365,13 @@ func (s *Service) selectSpendVtxos(ctx context.Context, pkScript, destScript []b
 	if err != nil {
 		return nil, 0, 0, apperr.New(apperr.CodeRejected, "ark indexer")
 	}
-	coins, err := vtxosToCoins(vtxos, pkScript, estimator)
+	releaseFeeSelection, err := s.acquireFeeSelection(ctx)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer releaseFeeSelection()
+	budget := feeEvaluationBudget{remaining: maxVtxoFeeProgramEvaluations}
+	coins, err := vtxosToCoins(vtxos, pkScript, estimator, &budget)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -390,7 +396,7 @@ func (s *Service) selectSpendVtxos(ctx context.Context, pkScript, destScript []b
 		limit = maxVtxoSpendInputs
 	}
 	for count := 1; count <= limit; count++ {
-		fee, change, ok, solveErr := solveVtxoSpend(ctx, coins[:count], destScript, pkScript, amountSats, feeCap, estimator)
+		fee, change, ok, solveErr := solveVtxoSpendWithBudget(ctx, coins[:count], destScript, pkScript, amountSats, feeCap, estimator, &budget)
 		if solveErr != nil {
 			return nil, 0, 0, solveErr
 		}
@@ -411,7 +417,7 @@ func (s *Service) selectSpendVtxos(ctx context.Context, pkScript, destScript []b
 
 const maxVtxoSpendInputs = policy.MaxVtxoOperationInputs
 
-func vtxosToCoins(vtxos []ports.ResolvedVtxo, pkScript []byte, estimator *arkfee.Estimator) ([]reservedCoin, error) {
+func vtxosToCoins(vtxos []ports.ResolvedVtxo, pkScript []byte, estimator *arkfee.Estimator, budget *feeEvaluationBudget) ([]reservedCoin, error) {
 	out := make([]reservedCoin, 0, len(vtxos))
 	for _, v := range vtxos {
 		raw, err := hex.DecodeString(v.Txid)
@@ -419,6 +425,9 @@ func vtxosToCoins(vtxos []ports.ResolvedVtxo, pkScript []byte, estimator *arkfee
 			return nil, apperr.New(apperr.CodeRejected, "invalid indexed vtxo")
 		}
 		feeInput := resolvedArkFeeInput(v)
+		if err := budget.consume(); err != nil {
+			return nil, err
+		}
 		inputFee, err := estimator.EvalOffchainInput(feeInput)
 		if err != nil {
 			return nil, apperr.New(apperr.CodeRejected, "Operator input fee evaluation")
@@ -491,6 +500,25 @@ func exactFeeSats(fee arkfee.FeeAmount) (uint64, error) {
 }
 
 func solveVtxoSpend(ctx context.Context, coins []reservedCoin, destScript, changeScript []byte, amount, feeCap uint64, estimator *arkfee.Estimator) (fee, change uint64, ok bool, err error) {
+	budget := feeEvaluationBudget{remaining: maxVtxoFeeProgramEvaluations}
+	return solveVtxoSpendWithBudget(ctx, coins, destScript, changeScript, amount, feeCap, estimator, &budget)
+}
+
+const maxVtxoFeeProgramEvaluations = 20_000
+
+type feeEvaluationBudget struct {
+	remaining int
+}
+
+func (b *feeEvaluationBudget) consume() error {
+	if b == nil || b.remaining == 0 {
+		return apperr.New(apperr.CodeBusy, "Operator fee policy exceeds evaluation limit")
+	}
+	b.remaining--
+	return nil
+}
+
+func solveVtxoSpendWithBudget(ctx context.Context, coins []reservedCoin, destScript, changeScript []byte, amount, feeCap uint64, estimator *arkfee.Estimator, budget *feeEvaluationBudget) (fee, change uint64, ok bool, err error) {
 	if err := ctx.Err(); err != nil {
 		return 0, 0, false, apperr.New(apperr.CodeBusy, "fee selection cancelled")
 	}
@@ -507,6 +535,9 @@ func solveVtxoSpend(ctx context.Context, coins []reservedCoin, destScript, chang
 		return 0, 0, false, nil
 	}
 	dest := arkfee.Output{Amount: amount, Script: hex.EncodeToString(destScript)}
+	if err := budget.consume(); err != nil {
+		return 0, 0, false, err
+	}
 	withoutChange, evalErr := estimator.Eval(feeInputs, nil, []arkfee.Output{dest}, nil)
 	if evalErr != nil {
 		return 0, 0, false, apperr.New(apperr.CodeRejected, "Operator fee evaluation")
@@ -529,6 +560,9 @@ func solveVtxoSpend(ctx context.Context, coins []reservedCoin, destScript, chang
 		candidateChange := total - amount - candidate
 		if candidateChange < uint64(program.DustSats) {
 			continue
+		}
+		if err := budget.consume(); err != nil {
+			return 0, 0, false, err
 		}
 		withChange, evalErr := estimator.Eval(feeInputs, nil, []arkfee.Output{
 			dest,
@@ -755,7 +789,7 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 	}
 	// Reconcile only the operation the client asked about. Scanning every
 	// historical operation made one status read trigger unbounded remote work.
-	if op.State == policy.VtxoStateSubmitted {
+	if op.State == policy.VtxoStateSigned || op.State == policy.VtxoStateSubmitted {
 		if err := s.promoteSubmittedVtxo(ctx, op); err == nil {
 			if current, loadErr := s.Stores.VtxoOperations.GetVtxoOperation(ctx, operationID); loadErr == nil {
 				op = current
@@ -786,7 +820,7 @@ func (s *Service) GetVtxoOperationView(ctx context.Context, vaultID, operationID
 }
 
 func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperation) error {
-	if op.State != policy.VtxoStateSubmitted {
+	if op.State != policy.VtxoStateSigned && op.State != policy.VtxoStateSubmitted {
 		return nil
 	}
 	inputs, err := s.Stores.VtxoOperations.GetVtxoOperationInputs(ctx, op.OperationID)
@@ -816,9 +850,29 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 	if state == ports.SubmittedVtxoPending {
 		return nil
 	}
+	if op.State == policy.VtxoStateSigned {
+		submitted := op
+		submitted.State = policy.VtxoStateSubmitted
+		current, swapped, transitionErr := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateSigned, submitted)
+		if transitionErr != nil {
+			return transitionErr
+		}
+		if !swapped {
+			if current.State == policy.VtxoStateFinalized || current.State == policy.VtxoStateUnresolved {
+				return nil
+			}
+			if current.State != policy.VtxoStateSubmitted {
+				return apperr.New(apperr.CodeRejected, "vtxo operation changed concurrently")
+			}
+			op = current
+		} else {
+			op = submitted
+		}
+	}
 	if state == ports.SubmittedVtxoConflict {
 		next := op
 		next.State = policy.VtxoStateUnresolved
+		next.CreatedAt = s.vtxoNow().Format(time.RFC3339)
 		current, swapped, transitionErr := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
 		if transitionErr != nil {
 			return transitionErr
@@ -833,6 +887,7 @@ func (s *Service) promoteSubmittedVtxo(ctx context.Context, op policy.VtxoOperat
 	}
 	next := op
 	next.State = policy.VtxoStateFinalized
+	next.CreatedAt = s.vtxoNow().Format(time.RFC3339)
 	current, swapped, err := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateSubmitted, next)
 	if err != nil {
 		return err
@@ -902,16 +957,22 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	if err != nil {
 		return nil, apperr.New(apperr.CodeRejected, err.Error())
 	}
-	if err := s.bindVtxoAuthorization(ctx, vaultID, op.BundleDigest, WebAuthnAssertionRequest{
+	signedReplay := op.State == policy.VtxoStateSigned
+	if signedReplay && (op.UnsignedPSBT != req.UnsignedArkPsbt ||
+		op.CheckpointPSBTs != encodeJSONStringSlice(req.UnsignedCheckpointPsbts) ||
+		!bytes.Equal(op.PendingProofDigest, pendingDigest) || op.AuthorizedPendingProof == "") {
+		return nil, apperr.New(apperr.CodeRejected, "changed psbt")
+	}
+	credentialID, signCount, err := s.verifyVtxoAuthorization(ctx, vaultID, op.BundleDigest, WebAuthnAssertionRequest{
 		CredentialID: req.CredentialID, ClientDataJSON: req.ClientDataJSON,
 		AuthenticatorData: req.AuthenticatorData, Signature: req.Signature,
-	}, req.DirectSig); err != nil {
+	}, req.DirectSig)
+	if err != nil {
 		return nil, err
 	}
-	if op.State == policy.VtxoStateSigned {
-		if op.UnsignedPSBT != req.UnsignedArkPsbt || op.CheckpointPSBTs != encodeJSONStringSlice(req.UnsignedCheckpointPsbts) ||
-			!bytes.Equal(op.PendingProofDigest, pendingDigest) || op.AuthorizedPendingProof == "" {
-			return nil, apperr.New(apperr.CodeRejected, "changed psbt")
+	if signedReplay {
+		if err := s.Stores.VtxoOperations.VerifySignedVtxoReplay(ctx, op.OperationID, vaultID, credentialID, signCount); err != nil {
+			return nil, err
 		}
 		return &VtxoAuthorizeResponse{
 			OperationID:            op.OperationID,
@@ -960,7 +1021,7 @@ func (s *Service) AuthorizeVtxoSpend(ctx context.Context, req VtxoAuthorizeReque
 	// discarded before finalization.
 	op.CheckpointPSBTs = encodeJSONStringSlice(req.UnsignedCheckpointPsbts)
 	op.State = policy.VtxoStateSigned
-	current, swapped, err := s.Stores.VtxoOperations.TransitionVtxoOperation(ctx, policy.VtxoStateReserved, op)
+	current, swapped, err := s.Stores.VtxoOperations.CommitSignedVtxoOperation(ctx, op, credentialID, signCount)
 	if err != nil {
 		return nil, err
 	}
@@ -1142,31 +1203,31 @@ func (s *Service) FinalizeVtxo(ctx context.Context, req VtxoFinalizeRequest) (*V
 	return &VtxoFinalizeResponse{OperationID: op.OperationID, BundleDigest: digestHex, State: op.State, ArkTxid: op.ArkTxid}, nil
 }
 
-func (s *Service) bindVtxoAuthorization(ctx context.Context, vaultID string, digest []byte, req WebAuthnAssertionRequest, directSigHex string) error {
+func (s *Service) verifyVtxoAuthorization(ctx context.Context, vaultID string, digest []byte, req WebAuthnAssertionRequest, directSigHex string) ([]byte, uint32, error) {
 	release, err := s.acquireVerification(ctx)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	defer release()
 	if len(digest) != 32 {
-		return apperr.New(apperr.CodeRejected, "bundle digest must be 32 bytes")
+		return nil, 0, apperr.New(apperr.CodeRejected, "bundle digest must be 32 bytes")
 	}
 	assertion, err := decodeAssertion(req)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	if err := rejectPRF(assertion.ClientDataJSON); err != nil {
-		return err
+		return nil, 0, err
 	}
 	cred, err := s.loadVerifiedCredentialFor(vaultID)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	if cred == nil {
-		return fmt.Errorf("not enrolled")
+		return nil, 0, fmt.Errorf("not enrolled")
 	}
 	if err := s.rejectCrossVaultCredential(vaultID, cred.ID); err != nil {
-		return err
+		return nil, 0, err
 	}
 	verified, err := webauthn.Validate(assertion, webauthn.Expected{
 		CredentialID: cred.ID,
@@ -1176,16 +1237,16 @@ func (s *Service) bindVtxoAuthorization(ctx context.Context, vaultID string, dig
 		RPID:         cred.RPID,
 	})
 	if err != nil {
-		return err
-	}
-	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
-		return err
+		return nil, 0, err
 	}
 	directSig, err := decodeHex(directSigHex)
 	if err != nil {
-		return apperr.New(apperr.CodeRejected, "directSig")
+		return nil, 0, apperr.New(apperr.CodeRejected, "directSig")
 	}
-	return verifyDirectAuth(cred.PhoneDirectP256, digest, directSig)
+	if err := verifyDirectAuth(cred.PhoneDirectP256, digest, directSig); err != nil {
+		return nil, 0, err
+	}
+	return bytes.Clone(cred.ID), verified.SignCount, nil
 }
 
 func matchReservedOutpoint(seen map[string]policy.VtxoOperationInput, op wire.OutPoint) (policy.VtxoOperationInput, bool) {

@@ -490,3 +490,20 @@ func vtxoStateCountsTowardAllowance(state string) bool {
 		return false
 	}
 }
+
+func vtxoStateAwaitingSettlement(state string) bool {
+	return state == vtxoStateSigned || state == vtxoStateSubmitted
+}
+
+// vtxoStateLocksInputs is deliberately narrower than allowance accounting.
+// Unresolved means the indexer proved that a different transaction already
+// spent a reserved outpoint: the debit remains, but that dead reservation no
+// longer needs to block overlap checks.
+func vtxoStateLocksInputs(state string) bool {
+	switch state {
+	case vtxoStateReserved, vtxoStateSigned, vtxoStateSubmitted, vtxoStateFinalized:
+		return true
+	default:
+		return false
+	}
+}

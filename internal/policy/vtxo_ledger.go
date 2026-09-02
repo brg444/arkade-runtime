@@ -2,7 +2,9 @@ package policy
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -27,6 +29,11 @@ const vtxoOverlapSelectColumns = `o.operation_id, o.vault_id, o.purpose, o.bundl
 		        o.created_at, o.last_dest_script, o.integrity_mac`
 
 const maxReservedVtxoInputs = MaxVtxoOperationInputs
+
+// ErrPeriodAllowanceExceeded is returned when a reservation would exceed the
+// vault's enrolled rolling-period allowance. The application boundary maps
+// this sentinel to the stable, deliberately public wallet error contract.
+var ErrPeriodAllowanceExceeded = errors.New("period allowance exceeded")
 
 // NowUTC is the ledger clock. Reservation expiry and allowance share it.
 func (l *Ledger) NowUTC() time.Time {
@@ -138,10 +145,10 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 		return err
 	}
 	if usedAmt > remainingCap {
-		return fmt.Errorf("period allowance exceeded")
+		return ErrPeriodAllowanceExceeded
 	}
 	if need > remainingCap-usedAmt {
-		return fmt.Errorf("period allowance exceeded")
+		return ErrPeriodAllowanceExceeded
 	}
 	key, err := l.integrityKeyCopy()
 	if err != nil {
@@ -220,7 +227,103 @@ func (l *Ledger) TransitionVtxoOperation(ctx context.Context, expectedState stri
 	if err := SealVtxoOperation(&rec, key); err != nil {
 		return VtxoOperation{}, false, err
 	}
-	res, err := l.db.ExecContext(ctx, `
+	res, err := updateVtxoOperation(ctx, l.db, expectedState, rec)
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	if n == 1 {
+		return rec, true, nil
+	}
+	current, err = l.loadVtxoOperation(ctx, l.db, rec.OperationID)
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	return current, false, nil
+}
+
+// CommitSignedVtxoOperation atomically advances the reserved operation and the
+// authenticator counter. A crash can therefore leave either both durable or
+// neither durable, preserving exact authorize retry for counterful passkeys.
+func (l *Ledger) CommitSignedVtxoOperation(
+	ctx context.Context, rec VtxoOperation, credentialID []byte, signCount uint32,
+) (current VtxoOperation, swapped bool, err error) {
+	if rec.OperationID == "" || rec.VaultID == "" || len(credentialID) == 0 || rec.State != vtxoStateSigned {
+		return VtxoOperation{}, false, fmt.Errorf("signed vtxo operation identity required")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key, err := l.integrityKeyCopy()
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	defer zeroBytes(key)
+	if err := SealVtxoOperation(&rec, key); err != nil {
+		return VtxoOperation{}, false, err
+	}
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	defer tx.Rollback()
+	res, err := updateVtxoOperation(ctx, tx, vtxoStateReserved, rec)
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return VtxoOperation{}, false, err
+	}
+	if n != 1 {
+		current, err = l.loadVtxoOperation(ctx, tx, rec.OperationID)
+		if err != nil {
+			return VtxoOperation{}, false, err
+		}
+		if current.State == vtxoStateSigned {
+			if err := l.verifySignCountReplayLocked(tx, rec.VaultID, credentialID, signCount); err != nil {
+				return VtxoOperation{}, false, err
+			}
+		}
+		return current, false, nil
+	}
+	if err := l.advanceSignCountLocked(tx, rec.VaultID, credentialID, signCount); err != nil {
+		return VtxoOperation{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return VtxoOperation{}, false, err
+	}
+	return rec, true, nil
+}
+
+// VerifySignedVtxoReplay accepts an equal authenticator counter only when it
+// belongs to the same durable signed operation. General authentications remain
+// strictly monotonic through AdvanceSignCount.
+func (l *Ledger) VerifySignedVtxoReplay(
+	ctx context.Context, operationID, vaultID string, credentialID []byte, signCount uint32,
+) error {
+	if operationID == "" || vaultID == "" || len(credentialID) == 0 {
+		return fmt.Errorf("signed vtxo replay identity required")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.integrityKey) != sha256.Size {
+		return fmt.Errorf("sign count ledger required")
+	}
+	rec, err := l.loadVtxoOperation(ctx, l.db, operationID)
+	if err != nil {
+		return err
+	}
+	if rec.VaultID != vaultID || rec.State != vtxoStateSigned {
+		return fmt.Errorf("signed vtxo replay state mismatch")
+	}
+	return l.verifySignCountReplayLocked(l.db, vaultID, credentialID, signCount)
+}
+
+func updateVtxoOperation(ctx context.Context, q queryContext, expectedState string, rec VtxoOperation) (sql.Result, error) {
+	return q.ExecContext(ctx, `
 UPDATE vtxo_operation SET
   purpose = ?, bundle_digest = ?, state = ?, amount_sats = ?, fee_sats = ?,
   fee_policy_digest = ?, dest_script = ?, change_script = ?, change_sats = ?, change_vout = ?,
@@ -238,21 +341,6 @@ UPDATE vtxo_operation SET
 		rec.ArkTxid, rec.ExpiresAt, rec.CreatedAt, rec.LastDestScript,
 		rec.IntegrityMAC, rec.OperationID, rec.VaultID, expectedState,
 	)
-	if err != nil {
-		return VtxoOperation{}, false, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return VtxoOperation{}, false, err
-	}
-	if n == 1 {
-		return rec, true, nil
-	}
-	current, err = l.loadVtxoOperation(ctx, l.db, rec.OperationID)
-	if err != nil {
-		return VtxoOperation{}, false, err
-	}
-	return current, false, nil
 }
 
 func validVtxoTransition(from, to string) bool {
@@ -434,7 +522,7 @@ SELECT `+vtxoOverlapSelectColumns+`,
 			continue
 		}
 		// State is deliberately evaluated only after the operation MAC verifies.
-		if vtxoStateCountsTowardAllowance(match.state) {
+		if vtxoStateLocksInputs(match.state) {
 			return fmt.Errorf("vtxo outpoint already reserved")
 		}
 	}

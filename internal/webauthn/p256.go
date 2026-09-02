@@ -20,7 +20,15 @@ func ParseCompressedP256(b []byte) (*ecdsa.PublicKey, error) {
 	if x == nil {
 		return nil, fmt.Errorf("p256 point is off-curve")
 	}
-	return &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, nil
+	uncompressed := make([]byte, 65)
+	uncompressed[0] = 0x04
+	x.FillBytes(uncompressed[1:33])
+	y.FillBytes(uncompressed[33:])
+	pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), uncompressed)
+	if err != nil {
+		return nil, fmt.Errorf("p256 point is off-curve")
+	}
+	return pub, nil
 }
 
 // VerifyES256 checks compact r||s over Digest(authData, clientDataJSON).
