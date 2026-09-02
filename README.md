@@ -102,6 +102,12 @@ secret header. Unknown JSON fields are rejected. The gateway secret protects
 the private service boundary; passkeys and transaction signatures provide user
 authorization.
 
+Tenant read routes are also behind the gateway, but currently use the random
+vault ID as their capability; operation recovery additionally requires the
+random operation ID. Request logs emit only a hashed vault tag. Mainnet must
+explicitly qualify that privacy boundary or add a purpose-bound read session
+without breaking fresh-device recovery and lost-response recovery.
+
 | Route | Purpose |
 | --- | --- |
 | `GET /health` | Process liveness only. |
@@ -141,6 +147,11 @@ permissions, backup jobs, and restore decisions. Two paths or two named volumes
 under one restore authority leave a single failure domain. Losing sequence
 persistence is a fail-closed event and never permits recreation from a database
 backup.
+
+The current Railway Mutinynet deployment does not meet that topology: both
+files share one volume and restore authority. Its sequence detects
+database-only rollback or sequence loss, but not restoration of the whole
+volume. This is an accepted Mutinynet limitation, not mainnet evidence.
 
 Allowance evaluation authenticates ledger rows before trusting their state or
 time. The current implementation therefore has a bounded-history mainnet gate:

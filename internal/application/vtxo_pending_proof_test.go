@@ -304,7 +304,7 @@ func TestAuthorizeVtxoSpendLostResponseReturnsIdenticalPendingProof(t *testing.T
 		t.Fatal(err)
 	}
 	pendingRaw := pendingProofForInputs(t, canonicalGetPendingTxMessage, inputs, tree, e.hot)
-	assertion, err := webauthn.Synth(e.p256, e.credID, op.BundleDigest, fixture.Origin, fixture.RPID, true, true)
+	assertion, err := webauthn.SynthWithSignCount(e.p256, e.credID, op.BundleDigest, fixture.Origin, fixture.RPID, true, true, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,6 +320,12 @@ func TestAuthorizeVtxoSpendLostResponseReturnsIdenticalPendingProof(t *testing.T
 		AuthenticatorData: hex.EncodeToString(assertion.AuthenticatorData), Signature: hex.EncodeToString(assertion.DERSignature),
 		DirectSig: hex.EncodeToString(direct),
 	}
+	badDirect := req
+	badDirect.DirectSig = strings.Repeat("00", 64)
+	if _, err := e.svc.AuthorizeVtxoSpend(context.Background(), badDirect); err == nil {
+		t.Fatal("invalid direct proof was accepted")
+	}
+	// The failed direct proof must not consume the authenticator counter.
 	first, err := e.svc.AuthorizeVtxoSpend(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)

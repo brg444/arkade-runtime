@@ -3,6 +3,7 @@ package application
 import (
 	"bytes"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/brg444/arkade-vault-server/fixture"
 	"github.com/brg444/arkade-vault-server/internal/apperr"
+	"github.com/brg444/arkade-vault-server/internal/policy"
 )
 
 func TestHTTPBoundaryDoesNotExposeRawEmulatorSigningRoute(t *testing.T) {
@@ -161,6 +163,30 @@ func TestRequestLogAcceptsOnlyBoundedSafeRequestIDs(t *testing.T) {
 	}
 }
 
+func TestRequestLogHashesVaultIdentifiers(t *testing.T) {
+	var logs bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previous) })
+	handler := withRequestLog(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	const vaultID = "vault-private-identifier"
+	request := httptest.NewRequest(http.MethodGet, "/v1/status?vault="+vaultID, nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if strings.Contains(logs.String(), vaultID) {
+		t.Fatalf("request log exposed raw vault id: %s", logs.String())
+	}
+	const want = "b02116f4a11d61cc"
+	if want == "" || !strings.Contains(logs.String(), "vault="+want) {
+		t.Fatalf("request log missing stable vault correlation: %s", logs.String())
+	}
+	if got := safeVaultLogID("vault\nforged"); got != "" {
+		t.Fatalf("unsafe vault log id accepted: %q", got)
+	}
+}
+
 func TestMutationDecoderErrorsAreGenericAndCoded(t *testing.T) {
 	response := httptest.NewRecorder()
 	writeMutationError(response, errors.New(`json: unknown field "sqlitePassword"`))
@@ -172,6 +198,75 @@ func TestMutationDecoderErrorsAreGenericAndCoded(t *testing.T) {
 	}
 	if got := strings.TrimSpace(response.Body.String()); got != "invalid request" {
 		t.Fatalf("decoder error leaked: %q", got)
+	}
+}
+
+func TestPublicErrorsRequireExplicitApplicationClassification(t *testing.T) {
+	unknown := errors.New("sql: SELECT secret FROM vault")
+	if got := publicErrorMessage(apperr.CodeRejected, unknown); got != "request rejected" {
+		t.Fatalf("unknown error was exposed: %q", got)
+	}
+	classified := apperr.New(apperr.CodeRejected, "recipient exceeds transaction cap")
+	if got := publicErrorMessage(apperr.CodeRejected, classified); got != classified.Error() {
+		t.Fatalf("classified error changed: %q", got)
+	}
+	if got := publicErrorMessage(apperr.CodeBusy, classified); got != "busy" {
+		t.Fatalf("mismatched classification was exposed: %q", got)
+	}
+}
+
+func TestPublicErrorsKeepWalletControlFlowContracts(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "passkey authentication",
+			err:  failPasskeyAuth("test", errors.New("private verifier detail")),
+			want: "passkey authentication failed",
+		},
+		{
+			name: "period allowance",
+			err:  mapLedgerBusy(policy.ErrPeriodAllowanceExceeded),
+			want: "period allowance exceeded",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			writeJSON(response, nil, test.err)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", response.Code)
+			}
+			if got := response.Header().Get("X-Vault-Error-Code"); got != string(apperr.CodeRejected) {
+				t.Fatalf("error code = %q, want %q", got, apperr.CodeRejected)
+			}
+			body := response.Body.String()
+			if !strings.Contains(body, `"error":"`+test.want+`"`) {
+				t.Fatalf("public error = %s, want %q", body, test.want)
+			}
+			if strings.Contains(body, "private verifier detail") {
+				t.Fatalf("private error detail leaked: %s", body)
+			}
+		})
+	}
+}
+
+func TestMissingRecoveryKitMapKeepsNotFoundContract(t *testing.T) {
+	e := newEnv(t)
+	response := boundaryHTTPCall(
+		t, testAuthorizer(e.svc), http.MethodGet,
+		"/v1/map?vault="+fixture.VaultID, "", fixture.Origin, "",
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing map status = %d, want 404: %s", response.Code, response.Body.String())
+	}
+	if got := response.Header().Get("X-Vault-Error-Code"); got != string(apperr.CodeNotFound) {
+		t.Fatalf("missing map code = %q, want %q", got, apperr.CodeNotFound)
+	}
+	if got := strings.TrimSpace(response.Body.String()); got != `{"code":"NOT_FOUND","error":"not found"}` && got != `{"error":"not found","code":"NOT_FOUND"}` {
+		t.Fatalf("missing map body = %s", got)
 	}
 }
 

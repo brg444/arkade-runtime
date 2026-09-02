@@ -48,6 +48,9 @@ type Service struct {
 	// MaxConcurrentVerifications bounds the CPU-heavy WebAuthn, P-256 and
 	// Schnorr verification stage. Zero uses the conservative default.
 	MaxConcurrentVerifications int
+	// MaxConcurrentFeeSelections bounds authenticated but potentially
+	// adversarial Operator CEL evaluation. Zero uses the conservative default.
+	MaxConcurrentFeeSelections int
 	ArkResolver                ports.ArkResolver
 	contractPackJSON           []byte
 	vaultPolicyHasExit         *bool
@@ -55,11 +58,16 @@ type Service struct {
 	published                  atomic.Pointer[publishedIndex]
 	verificationOnce           sync.Once
 	verificationSlots          chan struct{}
+	feeSelectionOnce           sync.Once
+	feeSelectionSlots          chan struct{}
 	sessionMu                  sync.Mutex
 	sessionChallenges          map[string]passkeyChallenge
 	SessionNow                 func() time.Time
 	afterLoadPending           func()
 	vaultBoardRuntime          *vaultBoardRuntime
+	resolverReadyMu            sync.Mutex
+	resolverReadyAt            time.Time
+	resolverReadyErr           error
 }
 
 // Deps is the constructor input. Private keys stay behind scoped capabilities.
@@ -124,6 +132,7 @@ func (s *Service) WipeSecrets() {
 }
 
 const defaultConcurrentVerifications = 4
+const defaultConcurrentFeeSelections = 2
 
 var ErrVerificationBusy = errors.New("crypto verification capacity exhausted")
 
@@ -950,6 +959,9 @@ func mapLedgerBusy(err error) error {
 	if errors.Is(err, policy.ErrRecoveryBusy) {
 		return apperr.ErrBusy
 	}
+	if errors.Is(err, policy.ErrPeriodAllowanceExceeded) {
+		return apperr.New(apperr.CodeRejected, "period allowance exceeded")
+	}
 	return err
 }
 
@@ -972,6 +984,28 @@ func (s *Service) acquireVerification(ctx context.Context) (func(), error) {
 		return func() { <-s.verificationSlots }, nil
 	default:
 		return nil, ErrVerificationBusy
+	}
+}
+
+func (s *Service) acquireFeeSelection(ctx context.Context) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.feeSelectionOnce.Do(func() {
+		limit := s.MaxConcurrentFeeSelections
+		if limit <= 0 {
+			limit = defaultConcurrentFeeSelections
+		}
+		s.feeSelectionSlots = make(chan struct{}, limit)
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case s.feeSelectionSlots <- struct{}{}:
+		return func() { <-s.feeSelectionSlots }, nil
+	default:
+		return nil, apperr.New(apperr.CodeBusy, "fee selection capacity exhausted")
 	}
 }
 

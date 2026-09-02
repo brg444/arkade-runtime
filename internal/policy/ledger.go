@@ -194,8 +194,10 @@ func nullableVtxoDigest(digest []byte) any {
 	return digest
 }
 
-// SpentInPeriod returns authenticated VTXO outflow reserved during the rolling
-// allowance window. The period argument exists only for the status API.
+// SpentInPeriod returns authenticated VTXO outflow in the rolling allowance
+// window. Signed and submitted authorizations remain charged until an
+// authoritative settlement result prevents delayed execution outside the
+// original reservation window. The period argument exists only for status.
 func (l *Ledger) SpentInPeriod(ctx context.Context, vaultID, _ string) (int64, error) {
 	if vaultID == "" {
 		return 0, fmt.Errorf("vault id required")
@@ -233,7 +235,7 @@ func (l *Ledger) spentInWindow(ctx context.Context, q queryContext, vaultID stri
 		if err != nil {
 			return 0, fmt.Errorf("vtxo operation created_at: %w", err)
 		}
-		if now.After(created.Add(allowanceWindow)) {
+		if !vtxoStateAwaitingSettlement(rec.State) && now.After(created.Add(allowanceWindow)) {
 			continue
 		}
 		need, err := addOutflow(rec.AmountSats, rec.FeeSats)

@@ -8,7 +8,10 @@ import (
 	"github.com/brg444/arkade-vault-server/internal/vault/savings"
 )
 
-const resolverReadyTimeout = 5 * time.Second
+const (
+	resolverReadyTimeout = 5 * time.Second
+	resolverReadyTTL     = 30 * time.Second
+)
 
 // ReadyStatus is the unauthenticated readiness body. It never includes keys,
 // tokens, PSBTs, or credential envelopes.
@@ -83,12 +86,37 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "Arkade resolver policy mismatch"
 		return st
 	}
-	readyCtx, cancel := context.WithTimeout(ctx, resolverReadyTimeout)
-	defer cancel()
-	if _, err := s.ArkResolver.IntentFeePolicy(readyCtx); err != nil {
+	if err := s.cachedResolverReadiness(ctx); err != nil {
 		st.Error = "Arkade resolver unavailable"
 		return st
 	}
 	st.Ok = true
 	return st
+}
+
+// cachedResolverReadiness bounds the unauthenticated readiness endpoint to at
+// most one external Operator probe per TTL. The mutex also coalesces concurrent
+// probes, preventing a readiness burst from becoming upstream amplification.
+func (s *Service) cachedResolverReadiness(_ context.Context) error {
+	s.resolverReadyMu.Lock()
+	defer s.resolverReadyMu.Unlock()
+	now := time.Now()
+	if !s.resolverReadyAt.IsZero() && now.Sub(s.resolverReadyAt) < resolverReadyTTL {
+		return s.resolverReadyErr
+	}
+	// A public caller must not be able to poison the cached result by
+	// cancelling its own request while the shared probe is in flight.
+	readyCtx, cancel := context.WithTimeout(context.Background(), resolverReadyTimeout)
+	defer cancel()
+	_, err := s.ArkResolver.IntentFeePolicy(readyCtx)
+	s.resolverReadyAt = now
+	s.resolverReadyErr = err
+	return err
+}
+
+func (s *Service) resetResolverReadinessCache() {
+	s.resolverReadyMu.Lock()
+	defer s.resolverReadyMu.Unlock()
+	s.resolverReadyAt = time.Time{}
+	s.resolverReadyErr = nil
 }

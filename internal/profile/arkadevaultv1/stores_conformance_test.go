@@ -28,7 +28,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 		},
 		{
 			name: "VTXO operation", typ: reflect.TypeOf((*arkadevaultv1.VtxoOperationStore)(nil)).Elem(),
-			want: []string{"GetVtxoOperation", "GetVtxoOperationInputs", "NowUTC", "TransitionVtxoOperation"},
+			want: []string{"CommitSignedVtxoOperation", "GetVtxoOperation", "GetVtxoOperationInputs", "NowUTC", "TransitionVtxoOperation", "VerifySignedVtxoReplay"},
 		},
 		{
 			name: "recovery operation", typ: reflect.TypeOf((*arkadevaultv1.RecoveryOperationStore)(nil)).Elem(),
