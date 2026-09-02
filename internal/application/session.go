@@ -12,6 +12,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 	"github.com/brg444/arkade-vault-server/internal/program"
 	"github.com/brg444/arkade-vault-server/internal/webauthn"
@@ -280,7 +281,7 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 		return nil, failPasskeyAuth("assertion", err)
 	}
 	if !bytes.Equal(assertion.CredentialID, cred.ID) {
-		return nil, fmt.Errorf("this passkey does not belong to this vault")
+		return nil, apperr.New(apperr.CodeRejected, "this passkey does not belong to this vault")
 	}
 	if err := rejectPRF(assertion.ClientDataJSON); err != nil {
 		return nil, failPasskeyAuth("prf", err)
@@ -312,7 +313,7 @@ func failPasskeyAuth(stage string, err error) error {
 	} else {
 		log.Printf("passkey authentication failed (%s)", stage)
 	}
-	return fmt.Errorf("passkey authentication failed")
+	return apperr.New(apperr.CodeRejected, "passkey authentication failed")
 }
 
 func decodeBoundedSessionAssertion(req SessionAssertionRequest) (webauthn.Assertion, error) {

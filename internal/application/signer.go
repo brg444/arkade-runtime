@@ -66,6 +66,7 @@ func (s LocalSigner) Sign(_ context.Context, ptx *psbt.Packet) (*psbt.Packet, er
 	if key == nil {
 		return nil, fmt.Errorf("arkade tweak is degenerate")
 	}
+	defer key.Key.Zero()
 	if ptx.Inputs[0].SighashType != txscript.SigHashDefault {
 		return nil, fmt.Errorf("unsupported sighash")
 	}

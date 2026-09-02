@@ -5,6 +5,11 @@ runbook does not migrate or restore the current Mutinynet service.
 
 ## Durable state
 
+The current Railway Mutinynet deployment keeps both files on one volume under
+one backup and restore authority. The sequence still detects database-only
+rollback and sequence loss, but restoring the whole volume defeats the
+control. This topology is limited to Mutinynet.
+
 Configure two independently controlled durable stores:
 
 - `VAULT_DB_PATH=/app/data/vault.sqlite`
