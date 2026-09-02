@@ -73,7 +73,7 @@ func (s *Service) applyVaultBoardEnrollmentRequest(parsed parsedRegisterRequest,
 	if req.VtxoBoardingProgram != program.VaultBoardV1 {
 		return parsed, fmt.Errorf("explicit %s enrollment required", program.VaultBoardV1)
 	}
-	if s.VaultBoardStore == nil {
+	if s.Stores.VaultBoard == nil {
 		return parsed, fmt.Errorf("vault-board-v1 release store is not active")
 	}
 	pub, err := s.parseOnboardingKey("vaultBoardingBip340Pub", req.VaultBoardingBIP340Pub)

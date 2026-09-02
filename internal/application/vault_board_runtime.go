@@ -12,7 +12,7 @@ import (
 // the HTTP server is made ready; it cannot be reconfigured at
 // runtime and does not accept origins or policy values from the environment.
 func (s *Service) InstallMutinynetVaultBoardAuthorization(ctx context.Context) error {
-	if s == nil || s.VaultBoardStore == nil || s.runtimeConfig().Network != deployment.NetworkMutinynet {
+	if s == nil || s.Stores.VaultBoard == nil || s.runtimeConfig().Network != deployment.NetworkMutinynet {
 		return fmt.Errorf("explicit Mutinynet vault-board-v1 service required")
 	}
 	chain, err := dialVaultBoardChain()
@@ -34,7 +34,7 @@ func (s *Service) installVaultBoardRuntime(
 	operatorDial func(context.Context) (vaultBoardOperator, error),
 	batchExpiry uint32,
 ) error {
-	if s == nil || s.VaultBoardStore == nil || chain == nil || operatorDial == nil ||
+	if s == nil || s.Stores.VaultBoard == nil || chain == nil || operatorDial == nil ||
 		batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
 		return fmt.Errorf("complete release-pinned vault-board-v1 runtime required")
 	}

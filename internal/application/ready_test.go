@@ -79,7 +79,6 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		VaultCosignerPub: vaultCosigner.PubKey(), ArkadeCosignerPub: arkadeCosignerPub,
 		ArkadeCosignerOrigin:  deployment.MutinynetArkadeCosignerOrigin,
 		ArkadeCosignerVersion: deployment.MutinynetArkadeCosignerVersion,
-		VaultBoardStore:       ledger,
 	})
 	installedRuntime := &vaultBoardRuntime{
 		chain: &vaultBoardTestChain{},
@@ -89,6 +88,18 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		batchExpiry: deployment.MutinynetVtxoTreeExpirySeconds,
 	}
 	svc.vaultBoardRuntime = installedRuntime
+	boardStore := svc.Stores.VaultBoard
+	svc.Stores.VaultBoard = nil
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "vault-board-v1 store unavailable" {
+		t.Fatalf("missing boarding store readiness = %+v", got)
+	}
+	identityStore := svc.Stores.Identity
+	svc.Stores.Identity = nil
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "ledger unavailable" {
+		t.Fatalf("missing identity and boarding stores readiness = %+v", got)
+	}
+	svc.Stores.Identity = identityStore
+	svc.Stores.VaultBoard = boardStore
 	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
 		t.Fatalf("missing resolver readiness = %+v", got)
 	}
