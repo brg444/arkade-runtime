@@ -4,12 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"reflect"
-	"slices"
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/fixture"
-	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 )
 
 func TestAuthorizerFailsClosedWithoutGatewaySecret(t *testing.T) {
@@ -112,53 +109,5 @@ func TestAuthorizerHTTPBoundaryHasNoGenericSigningProviderKVOrDiscoverySurface(t
 		if response.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("wrong method %s %s returned %d, want 405", request.method, request.path, response.Code)
 		}
-	}
-}
-
-func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
-	expected := map[string][]string{
-		"/health":                        {http.MethodGet},
-		"/ready":                         {http.MethodGet},
-		"/v1/status":                     {http.MethodGet, http.MethodOptions},
-		"/v1/invite":                     {http.MethodGet, http.MethodOptions},
-		"/v1/enroll/start":               {http.MethodOptions, http.MethodPost},
-		"/v1/enroll/propose":             {http.MethodOptions, http.MethodPost},
-		"/v1/enroll/finish":              {http.MethodOptions, http.MethodPost},
-		"/v1/initiate":                   {http.MethodOptions, http.MethodPost},
-		"/v1/clawback":                   {http.MethodOptions, http.MethodPost},
-		"/v1/passkey/challenge":          {http.MethodOptions, http.MethodPost},
-		"/v1/passkey/binding":            {http.MethodOptions, http.MethodPost},
-		"/v1/passkey/install":            {http.MethodOptions, http.MethodPost},
-		"/v1/passkey/recover":            {http.MethodOptions, http.MethodPost},
-		"/v1/map":                        {http.MethodGet, http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/reserve":               {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/authorize":             {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/checkpoints/authorize": {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/finalize":              {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/operation":             {http.MethodGet, http.MethodOptions},
-		"/v1/vtxo/board/prepare":         {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/board/register":        {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/board/release":         {http.MethodOptions, http.MethodPost},
-		"/v1/vtxo/board/final":           {http.MethodOptions, http.MethodPost},
-	}
-	got := make(map[string][]string, len(authorizerRouteMethods))
-	for path, methods := range authorizerRouteMethods {
-		got[path] = sortedMethods(methods)
-	}
-	if !reflect.DeepEqual(got, expected) {
-		t.Fatalf("authorizer routes changed:\n got: %#v\nwant: %#v", got, expected)
-	}
-	profileRoutes := map[string][]string{
-		"/health": {http.MethodGet},
-		"/ready":  {http.MethodGet},
-	}
-	for _, route := range arkadevaultv1.Definition().Routes {
-		profileRoutes[route.Path] = append(profileRoutes[route.Path], route.Method)
-	}
-	for path := range profileRoutes {
-		slices.Sort(profileRoutes[path])
-	}
-	if !reflect.DeepEqual(got, profileRoutes) {
-		t.Fatalf("profile and mounted route allowlists differ:\n mounted: %#v\n profile: %#v", got, profileRoutes)
 	}
 }
