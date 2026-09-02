@@ -226,7 +226,6 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
 		ArkadeCosignerVersion: arkadeIdentity.Version,
 		ArkResolver:           resolver,
-		VaultBoardStore:       ledger,
 	}
 	svc := application.New(deps)
 	keyOwnedByService = true
