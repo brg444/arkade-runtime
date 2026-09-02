@@ -405,10 +405,10 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 	snap.ExternalOwnerWallet = externalOwner
 	snap.RecoveryKey = recovery
 	if snap.Board == nil {
-		if s.VaultBoardStore == nil {
+		if s.Stores.VaultBoard == nil {
 			return "", fmt.Errorf("recovery binding boarding store unavailable")
 		}
-		record, err := s.VaultBoardStore.GetVaultBoardEnrollment(cred.VaultID)
+		record, err := s.Stores.VaultBoard.GetVaultBoardEnrollment(cred.VaultID)
 		if err != nil {
 			return "", fmt.Errorf("recovery binding boarding descriptor: %w", err)
 		}

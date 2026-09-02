@@ -342,10 +342,10 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 		policy.VaultCredentialsCanonicallyEqual(*cred, wantCredential) != nil {
 		return nil, false
 	}
-	if s.VaultBoardStore == nil {
+	if s.Stores.VaultBoard == nil {
 		return nil, false
 	}
-	storedBoard, loadErr := s.VaultBoardStore.GetVaultBoardEnrollment(vaultID)
+	storedBoard, loadErr := s.Stores.VaultBoard.GetVaultBoardEnrollment(vaultID)
 	wantBoard, _, buildErr := s.mintVaultBoardEnrollment(vaultID, parsed)
 	if loadErr != nil || buildErr != nil || storedBoard == nil || wantBoard == nil ||
 		storedBoard.Program != wantBoard.Program || !bytesEqualConst(storedBoard.BoardingPub, wantBoard.BoardingPub) ||
