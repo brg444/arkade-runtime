@@ -57,6 +57,18 @@ type MapStore interface {
 	PutVaultMap(policy.VaultMap) error
 }
 
+// VaultBoardStore is the authenticated lifecycle boundary for boarding. It
+// exposes neither allowance mutation nor generic storage.
+type VaultBoardStore interface {
+	CreateVaultWithBoard(policy.CreateVaultInput, policy.VaultBoardEnrollment) error
+	GetVaultBoardEnrollment(string) (*policy.VaultBoardEnrollment, error)
+	GetCurrentVaultBoardAttempt(context.Context, string) (*policy.VaultBoardAttemptSnapshot, error)
+	BeginVaultBoardAttempt(context.Context, policy.VaultBoardOperation, policy.VaultBoardRegisterRequest, policy.VaultBoardChainState) (*policy.VaultBoardOperation, *policy.VaultBoardAuthorization, bool, error)
+	AppendVaultBoardAuthorizationAndDispatch(context.Context, policy.VaultBoardAuthorization, policy.VaultBoardChainState) (*policy.VaultBoardAuthorization, *policy.VaultBoardDispatch, bool, error)
+	AppendVaultBoardDispatch(context.Context, policy.VaultBoardDispatch, policy.VaultBoardChainState) (*policy.VaultBoardDispatch, bool, error)
+	AppendVaultBoardSubmission(context.Context, policy.VaultBoardSubmission) (*policy.VaultBoardSubmission, bool, error)
+}
+
 // Stores is the complete persistence capability set compiled into the
 // arkade-vault-v1 profile.
 type Stores struct {
@@ -65,6 +77,7 @@ type Stores struct {
 	VtxoOperations     VtxoOperationStore
 	RecoveryOperations RecoveryOperationStore
 	Maps               MapStore
+	VaultBoard         VaultBoardStore
 }
 
 func (s Stores) Validate() error {
@@ -79,6 +92,8 @@ func (s Stores) Validate() error {
 		return fmt.Errorf("arkade-vault-v1 recovery operation store required")
 	case s.Maps == nil:
 		return fmt.Errorf("arkade-vault-v1 map store required")
+	case s.VaultBoard == nil:
+		return fmt.Errorf("arkade-vault-v1 Vault Board store required")
 	default:
 		return nil
 	}
@@ -97,5 +112,6 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		VtxoOperations:     ledger,
 		RecoveryOperations: ledger,
 		Maps:               ledger,
+		VaultBoard:         ledger,
 	}, nil
 }
