@@ -134,6 +134,13 @@ signature prevents a caller who only knows a vault ID from creating a
 reservation, and server state transitions use compare-and-swap updates. Edge
 rate limiting remains necessary for load protection.
 
+The current tenant read routes remain behind the shared gateway but use the
+random vault ID as their capability; operation recovery additionally requires
+the random operation ID. Application logs record only a hashed vault tag. A
+mainnet release must either qualify this privacy boundary explicitly or add a
+purpose-bound read session without breaking fresh-device Recovery Kit and
+lost-response reconciliation flows.
+
 ## Availability boundaries
 
 Passkey challenge issuance is intentionally possible before tenant
@@ -168,6 +175,10 @@ The database and authenticated policy sequence require separate storage
 permissions, backup jobs, restore authorities, and failure drills. Deleting a
 nonempty deployment's sequence file is fatal. Restoring the database and
 sequence together to an earlier point defeats rollback detection.
+
+The current Railway Mutinynet service deliberately falls short of this gate:
+its database and sequence share one volume and backup/restore authority. That
+topology may be used for test funds only and cannot be promoted to mainnet.
 
 The Mutinynet 4,608-second guardian delay is not a mainnet pin. Mainnet tree
 vectors and both Contract Packs must be regenerated from the deployed Operator

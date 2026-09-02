@@ -2,12 +2,12 @@ package webauthn
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math/big"
 )
 
 const (
@@ -171,14 +171,16 @@ func compressedP256XY(x, y []byte) ([]byte, error) {
 	if len(x) != 32 || len(y) != 32 {
 		return nil, fmt.Errorf("p256 coordinates")
 	}
-	px := new(big.Int).SetBytes(x)
-	py := new(big.Int).SetBytes(y)
-	if !elliptic.P256().IsOnCurve(px, py) {
+	uncompressed := make([]byte, 65)
+	uncompressed[0] = 0x04
+	copy(uncompressed[1:33], x)
+	copy(uncompressed[33:], y)
+	if _, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), uncompressed); err != nil {
 		return nil, fmt.Errorf("p256 point is off-curve")
 	}
 	out := make([]byte, 33)
 	out[0] = 0x02
-	if py.Bit(0) == 1 {
+	if y[len(y)-1]&1 == 1 {
 		out[0] = 0x03
 	}
 	copy(out[1:], x)
@@ -194,10 +196,12 @@ func EncodeCOSEES256(compressed []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	x := make([]byte, 32)
-	y := make([]byte, 32)
-	pub.X.FillBytes(x)
-	pub.Y.FillBytes(y)
+	uncompressed, err := pub.Bytes()
+	if err != nil || len(uncompressed) != 65 || uncompressed[0] != 0x04 {
+		return nil, fmt.Errorf("p256 point is off-curve")
+	}
+	x := append([]byte(nil), uncompressed[1:33]...)
+	y := append([]byte(nil), uncompressed[33:65]...)
 	pairs := [][]byte{
 		append(encodeCBORUnsigned(1), encodeCBORUnsigned(coseKtyEC2)...),
 		append(encodeCBORUnsigned(3), encodeCBORNegative(coseAlgES256)...),

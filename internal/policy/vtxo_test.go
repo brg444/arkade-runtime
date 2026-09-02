@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -245,6 +246,22 @@ func TestSpentInWindowCountsOnlyLiveRecentVtxoOperations(t *testing.T) {
 	}
 }
 
+func TestSpentInWindowKeepsOldExecutableAuthorizationCharged(t *testing.T) {
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x60)
+	old := now.Add(-25 * time.Hour)
+	insertTestVtxoOperation(t, led, testVtxoOperation("vault-a", "signed-old", vtxoPurposeSpend, vtxoStateSigned, 9_000, 100, old))
+	insertTestVtxoOperation(t, led, testVtxoOperation("vault-a", "submitted-old", vtxoPurposeSpend, vtxoStateSubmitted, 8_000, 100, old))
+	got, err := led.SpentInPeriod(context.Background(), "vault-a", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 17_200 {
+		t.Fatalf("old executable authorizations aged out: %d", got)
+	}
+}
+
 func TestConcurrentVtxoReservationsCannotOversubscribeAllowance(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	led := openPolicyTestLedger(t, func() time.Time { return now })
@@ -270,7 +287,7 @@ func TestConcurrentVtxoReservationsCannotOversubscribeAllowance(t *testing.T) {
 	for err := range errs {
 		if err == nil {
 			succeeded++
-		} else if strings.Contains(err.Error(), "allowance") {
+		} else if errors.Is(err, ErrPeriodAllowanceExceeded) {
 			failed++
 		} else {
 			t.Fatalf("unexpected reservation error: %v", err)
@@ -337,6 +354,100 @@ func TestVtxoTransitionCompareAndSwap(t *testing.T) {
 	}
 }
 
+func TestSignedVtxoAndSignCountCommitAtomically(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-atomic", 0x66)
+	rec := testVtxoOperation("vault-atomic", "atomic-op", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x66}, 32), ValueSats: 20_000, Script: []byte{0x51}}
+	if err := led.ReserveVtxoOperation(context.Background(), rec, []VtxoOperationInput{input}, 100_000); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := led.GetVtxoOperation(context.Background(), rec.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.State = VtxoStateSigned
+	stored.AuthorizedPSBT = "signed"
+	if _, err := led.db.Exec(`DROP TABLE webauthn_sign_count`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := led.CommitSignedVtxoOperation(context.Background(), stored, []byte("credential"), 7); err == nil {
+		t.Fatal("signed operation committed without its sign counter")
+	}
+	got, err := led.GetVtxoOperation(context.Background(), rec.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != VtxoStateReserved || got.AuthorizedPSBT != "" {
+		t.Fatalf("partial signed commit survived rollback: %+v", got)
+	}
+}
+
+func TestSignedVtxoCommitLoserMustMatchDurableCounter(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-counter-cas", 0x68)
+	rec := testVtxoOperation("vault-counter-cas", "counter-cas-op", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x68}, 32), ValueSats: 20_000, Script: []byte{0x51}}
+	if err := led.ReserveVtxoOperation(context.Background(), rec, []VtxoOperationInput{input}, 100_000); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := led.GetVtxoOperation(context.Background(), rec.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.State = VtxoStateSigned
+	stored.AuthorizedPSBT = "signed"
+	credentialID := []byte("credential")
+	if _, swapped, err := led.CommitSignedVtxoOperation(context.Background(), stored, credentialID, 8); err != nil || !swapped {
+		t.Fatalf("winning signed commit: swapped=%v err=%v", swapped, err)
+	}
+	if _, _, err := led.CommitSignedVtxoOperation(context.Background(), stored, credentialID, 7); err == nil {
+		t.Fatal("CAS loser accepted a backward authenticator counter")
+	}
+	if _, _, err := led.CommitSignedVtxoOperation(context.Background(), stored, credentialID, 9); err == nil {
+		t.Fatal("CAS loser returned success without persisting a newer authenticator counter")
+	}
+	current, swapped, err := led.CommitSignedVtxoOperation(context.Background(), stored, credentialID, 8)
+	if err != nil || swapped || current.State != VtxoStateSigned {
+		t.Fatalf("exact CAS-loser replay = %+v swapped=%v err=%v", current, swapped, err)
+	}
+}
+
+func TestSignedVtxoReplayIsScopedToExactOperationAndCounter(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-replay", 0x67)
+	rec := testVtxoOperation("vault-replay", "replay-op", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x67}, 32), ValueSats: 20_000, Script: []byte{0x51}}
+	if err := led.ReserveVtxoOperation(context.Background(), rec, []VtxoOperationInput{input}, 100_000); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := led.GetVtxoOperation(context.Background(), rec.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.State = VtxoStateSigned
+	stored.AuthorizedPSBT = "signed"
+	credentialID := []byte("credential")
+	if _, swapped, err := led.CommitSignedVtxoOperation(context.Background(), stored, credentialID, 7); err != nil || !swapped {
+		t.Fatalf("commit signed operation: swapped=%v err=%v", swapped, err)
+	}
+	if err := led.VerifySignedVtxoReplay(context.Background(), rec.OperationID, rec.VaultID, credentialID, 7); err != nil {
+		t.Fatalf("exact replay rejected: %v", err)
+	}
+	if err := led.VerifySignedVtxoReplay(context.Background(), rec.OperationID, rec.VaultID, credentialID, 6); err == nil {
+		t.Fatal("different counter accepted for signed replay")
+	}
+	if err := led.VerifySignedVtxoReplay(context.Background(), rec.OperationID, "another-vault", credentialID, 7); err == nil {
+		t.Fatal("cross-vault signed replay accepted")
+	}
+	if err := led.VerifySignedVtxoReplay(context.Background(), "another-operation", rec.VaultID, credentialID, 7); err == nil {
+		t.Fatal("cross-operation signed replay accepted")
+	}
+}
+
 func TestVtxoReservationRejectsMultiInputOverlap(t *testing.T) {
 	now := time.Now().UTC()
 	led := openPolicyTestLedger(t, func() time.Time { return now })
@@ -359,8 +470,7 @@ func TestVtxoReservationRejectsMultiInputOverlap(t *testing.T) {
 func TestVtxoReservationRejectsOverlapForEveryCountingState(t *testing.T) {
 	now := time.Now().UTC()
 	for i, state := range []string{
-		vtxoStateReserved, vtxoStateSigned, vtxoStateSubmitted,
-		vtxoStateFinalized, vtxoStateUnresolved,
+		vtxoStateReserved, vtxoStateSigned, vtxoStateSubmitted, vtxoStateFinalized,
 	} {
 		t.Run(state, func(t *testing.T) {
 			led := openPolicyTestLedger(t, func() time.Time { return now })
@@ -379,6 +489,32 @@ func TestVtxoReservationRejectsOverlapForEveryCountingState(t *testing.T) {
 				t.Fatalf("state %s accepted overlapping input: %v", state, err)
 			}
 		})
+	}
+}
+
+func TestVtxoOverlapAllowsChainProvenUnresolvedRowWithoutRefundingAllowance(t *testing.T) {
+	now := time.Now().UTC()
+	led := openPolicyTestLedger(t, func() time.Time { return now })
+	createPolicyTestVault(t, led, "vault-a", 0x7a)
+	input := VtxoOperationInput{
+		OperationID: "unresolved", Txid: bytes.Repeat([]byte{0x6a}, 32),
+		Vout: 2, ValueSats: 20_000, Script: []byte{0x51},
+	}
+	insertTestVtxoOperation(t, led, testVtxoOperation(
+		"vault-a", input.OperationID, vtxoPurposeSpend, vtxoStateUnresolved, 10_000, 500, now,
+	))
+	insertTestVtxoOperationInput(t, led, input)
+
+	candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+	if err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000); err != nil {
+		t.Fatalf("chain-dead unresolved input remained locked: %v", err)
+	}
+	spent, err := led.SpentInPeriod(context.Background(), "vault-a", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spent != 20_500 {
+		t.Fatalf("unresolved allowance debit changed: %d", spent)
 	}
 }
 

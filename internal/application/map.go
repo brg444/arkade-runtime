@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/brg444/arkade-vault-server/internal/apperr"
 	"github.com/brg444/arkade-vault-server/internal/policy"
 )
 
@@ -26,7 +27,7 @@ func (s *Service) GetMap(vaultID string) (json.RawMessage, error) {
 		return nil, err
 	}
 	if rec == nil {
-		return nil, fmt.Errorf("map not found")
+		return nil, apperr.ErrNotFound
 	}
 	return json.RawMessage(rec.Payload), nil
 }

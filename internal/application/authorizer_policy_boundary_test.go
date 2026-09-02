@@ -5,9 +5,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/brg444/arkade-vault-server/fixture"
+	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
 )
 
 func TestAuthorizerFailsClosedWithoutGatewaySecret(t *testing.T) {
@@ -145,5 +147,18 @@ func TestAuthorizerRouteAllowlistIsExact(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("authorizer routes changed:\n got: %#v\nwant: %#v", got, expected)
+	}
+	profileRoutes := map[string][]string{
+		"/health": {http.MethodGet},
+		"/ready":  {http.MethodGet},
+	}
+	for _, route := range arkadevaultv1.Definition().Routes {
+		profileRoutes[route.Path] = append(profileRoutes[route.Path], route.Method)
+	}
+	for path := range profileRoutes {
+		slices.Sort(profileRoutes[path])
+	}
+	if !reflect.DeepEqual(got, profileRoutes) {
+		t.Fatalf("profile and mounted route allowlists differ:\n mounted: %#v\n profile: %#v", got, profileRoutes)
 	}
 }

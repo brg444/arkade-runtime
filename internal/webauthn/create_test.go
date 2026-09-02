@@ -2,8 +2,39 @@ package webauthn
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"encoding/hex"
 	"testing"
 )
+
+func TestP256EncodingMatchesSEC1AndCOSEVector(t *testing.T) {
+	raw := make([]byte, 32)
+	raw[31] = 1
+	priv, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const compressedHex = "036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+	const uncompressedHex = "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"
+	const coseHex = "a50102032620012158206b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2962258204fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"
+	compressed := CompressedP256(priv)
+	if hex.EncodeToString(compressed) != compressedHex {
+		t.Fatalf("compressed P-256 = %x", compressed)
+	}
+	pub, err := ParseCompressedP256(compressed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uncompressed, err := pub.Bytes()
+	if err != nil || hex.EncodeToString(uncompressed) != uncompressedHex {
+		t.Fatalf("uncompressed P-256 = %x, %v", uncompressed, err)
+	}
+	cose, err := EncodeCOSEES256(compressed)
+	if err != nil || hex.EncodeToString(cose) != coseHex {
+		t.Fatalf("COSE ES256 = %x, %v", cose, err)
+	}
+}
 
 func TestValidateCreateRequiresAttestedES256Key(t *testing.T) {
 	challenge := bytes32(0xaa)

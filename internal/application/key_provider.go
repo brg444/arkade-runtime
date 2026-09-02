@@ -217,6 +217,7 @@ func (k *fileBackedVaultKeys) vaultCosignerPublic(vaultID string) (*btcec.Public
 		if err != nil {
 			return err
 		}
+		defer child.Key.Zero()
 		pub = child.PubKey()
 		return nil
 	})
@@ -276,6 +277,7 @@ func (a *fileBackedSavingsRecoveryAuthorizer) authorizeSavingsRecovery(
 		if err != nil {
 			return err
 		}
+		defer child.Key.Zero()
 		vaultStage, err = signExactStage(ctx, req.unsignedPSBT, LocalSigner{Priv: child}, req.vaultExpectedXOnly, "VaultCosigner")
 		return err
 	})
@@ -328,6 +330,7 @@ func (k *fileBackedVaultKeys) vtxoVaultCosignerPublic(req vtxoKeyContext) (*btce
 		if err != nil {
 			return err
 		}
+		defer priv.Key.Zero()
 		pub = priv.PubKey()
 		return nil
 	})
@@ -368,6 +371,7 @@ func (k *fileBackedVaultKeys) authorizeVtxoTransaction(
 		if err != nil {
 			return err
 		}
+		defer priv.Key.Zero()
 		if !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), req.key.expectedXOnly) {
 			return fmt.Errorf("vault-policy-v1 signer key mismatch")
 		}
@@ -421,6 +425,7 @@ func (k *fileBackedVaultKeys) authorizeVtxoCheckpoints(
 		if err != nil {
 			return err
 		}
+		defer priv.Key.Zero()
 		if !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), req.key.expectedXOnly) {
 			return fmt.Errorf("vault-policy-v1 signer key mismatch")
 		}
@@ -477,6 +482,7 @@ func (k *fileBackedVaultKeys) vaultBoardCosignerPublic(req vaultBoardKeyContext)
 		if err != nil {
 			return err
 		}
+		defer priv.Key.Zero()
 		pub = priv.PubKey()
 		return nil
 	})
@@ -550,6 +556,7 @@ func (k *fileBackedVaultKeys) authorizeVaultBoard(
 		if err != nil {
 			return err
 		}
+		defer priv.Key.Zero()
 		if !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), req.key.expectedXOnly) {
 			return fmt.Errorf("vault-board-v1 signer key mismatch")
 		}

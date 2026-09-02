@@ -335,12 +335,13 @@ func extractChecksByTable(schemaSQL string) map[string][]string {
 
 func extractNormalizedChecks(createSQL string) []string {
 	var out []string
+	upper := strings.ToUpper(createSQL)
 	for i := 0; i < len(createSQL); {
 		if skip, next := skipQuotedSQL(createSQL, i); skip {
 			i = next
 			continue
 		}
-		if hasKeywordAt(strings.ToUpper(createSQL), i, "CHECK") {
+		if hasKeywordAt(upper, i, "CHECK") {
 			j := skipSQLSpace(createSQL, i+5)
 			if j < len(createSQL) && createSQL[j] == '(' {
 				end, ok := matchParen(createSQL, j)

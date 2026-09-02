@@ -468,6 +468,63 @@ func TestSolveVtxoSpendStopsWhenRequestIsCancelled(t *testing.T) {
 	}
 }
 
+func TestSelectSpendVtxosBoundsExactFeeProgramWork(t *testing.T) {
+	pkScript := []byte{0x51, 0x20, 0x01}
+	destScript := []byte{0x51, 0x20, 0x02}
+	estimator, _, err := newVtxoFeeEstimator(ports.IntentFeePolicy{OffchainOutput: "5001.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := &stubArkResolver{}
+	for i := 1; i <= 5; i++ {
+		resolver.vtxos = append(resolver.vtxos, ports.ResolvedVtxo{
+			Txid: fmt.Sprintf("%064x", i), ValueSats: 10_000, Script: pkScript,
+		})
+	}
+	svc := &Service{ArkResolver: resolver}
+	_, _, _, err = svc.selectSpendVtxos(context.Background(), pkScript, destScript, 1_000, uint64(program.AbsoluteFeeCeiling), estimator)
+	if !errors.Is(err, apperr.ErrBusy) || !strings.Contains(err.Error(), "evaluation limit") {
+		t.Fatalf("unbounded fee schedule = %v", err)
+	}
+}
+
+func TestSelectSpendVtxosAllowsValidFragmentedExactFee(t *testing.T) {
+	pkScript := []byte{0x51, 0x20, 0x01}
+	destScript := []byte{0x51, 0x20, 0x02}
+	estimator, _, err := newVtxoFeeEstimator(ports.IntentFeePolicy{OffchainOutput: "250.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := &stubArkResolver{}
+	for i := 1; i <= maxVtxoSpendInputs; i++ {
+		resolver.vtxos = append(resolver.vtxos, ports.ResolvedVtxo{
+			Txid: fmt.Sprintf("%064x", i), ValueSats: 1_000, Script: pkScript,
+		})
+	}
+	svc := &Service{ArkResolver: resolver}
+	coins, fee, change, err := svc.selectSpendVtxos(
+		context.Background(), pkScript, destScript, 49_001, uint64(program.AbsoluteFeeCeiling), estimator,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(coins) != maxVtxoSpendInputs || fee != 500 || change != 499 {
+		t.Fatalf("fragmented selection = inputs %d fee %d change %d", len(coins), fee, change)
+	}
+}
+
+func TestFeeSelectionConcurrencyIsBounded(t *testing.T) {
+	svc := &Service{MaxConcurrentFeeSelections: 1}
+	release, err := svc.acquireFeeSelection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if _, err := svc.acquireFeeSelection(context.Background()); !errors.Is(err, apperr.ErrBusy) {
+		t.Fatalf("second fee selection = %v, want BUSY", err)
+	}
+}
+
 func TestReserveRequiresPhoneAuthenticationBeforePersisting(t *testing.T) {
 	e, resolver, arkd := vtxoTestEnv(t)
 	snap := e.svc.snapshot(fixture.VaultID)
@@ -789,6 +846,10 @@ func insertSubmittedSpend(t *testing.T, e *env, operationID, arkTxid string, tre
 }
 
 func insertSubmittedSpendShape(t *testing.T, e *env, operationID, arkTxid string, treePkScript []byte, withChange bool) {
+	insertSpendShape(t, e, operationID, arkTxid, treePkScript, withChange, policy.VtxoStateSubmitted)
+}
+
+func insertSpendShape(t *testing.T, e *env, operationID, arkTxid string, treePkScript []byte, withChange bool, targetState string) {
 	t.Helper()
 	now := e.svc.vtxoNow().Format(timeRFC3339)
 	digest := bytes.Repeat([]byte{0x33}, 32)
@@ -827,10 +888,35 @@ func insertSubmittedSpendShape(t *testing.T, e *env, operationID, arkTxid string
 	if err != nil || !swapped {
 		t.Fatalf("reserve -> signed: swapped=%v err=%v", swapped, err)
 	}
+	if targetState == policy.VtxoStateSigned {
+		return
+	}
 	stored.State = policy.VtxoStateSubmitted
 	stored.ArkTxid = arkTxid
 	if _, swapped, err := e.ledger.TransitionVtxoOperation(context.Background(), policy.VtxoStateSigned, stored); err != nil || !swapped {
 		t.Fatal(err)
+	}
+}
+
+func TestRequestedSignedOperationReconcilesFromAuthoritativeIndexerFacts(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, e.svc.snapshot(fixture.VaultID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	arkTxid := strings.Repeat("ad", 32)
+	insertSpendShape(t, e, "spend-signed", arkTxid, tree.PkScript, true, policy.VtxoStateSigned)
+	resolver.spentBy = strings.Repeat("ce", 32)
+	view, err := e.svc.GetVtxoOperationView(context.Background(), fixture.VaultID, "spend-signed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.State != policy.VtxoStateUnresolved {
+		t.Fatalf("chain-dead signed operation = %s", view.State)
+	}
+	spent, err := e.ledger.SpentInPeriod(context.Background(), fixture.VaultID, "")
+	if err != nil || spent < 10_000 {
+		t.Fatalf("signed conflict allowance = %d, %v", spent, err)
 	}
 }
 
