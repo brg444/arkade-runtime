@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/brg444/arkade-vault-server/internal/policy"
@@ -367,19 +366,17 @@ func verifyTransitionClaimantSig(ptx *psbt.Packet, bound *transitionBinding) err
 	return nil
 }
 
-var (
-	transitionRateMu   sync.Mutex
-	transitionRateHits = map[string][]time.Time{}
-)
-
 func (s *Service) allowTransition(vaultID string) error {
 	now := time.Now()
-	if s != nil && s.EnrollmentNow != nil {
+	if s.EnrollmentNow != nil {
 		now = s.EnrollmentNow()
 	}
-	transitionRateMu.Lock()
-	defer transitionRateMu.Unlock()
-	hits := transitionRateHits[vaultID]
+	s.transitionRateMu.Lock()
+	defer s.transitionRateMu.Unlock()
+	if s.transitionRateHits == nil {
+		s.transitionRateHits = make(map[string][]time.Time)
+	}
+	hits := s.transitionRateHits[vaultID]
 	cut := now.Add(-transitionRateWindow)
 	kept := hits[:0]
 	for _, ts := range hits {
@@ -388,9 +385,9 @@ func (s *Service) allowTransition(vaultID string) error {
 		}
 	}
 	if len(kept) >= maxTransitionsPerVaultPerMinute {
-		transitionRateHits[vaultID] = kept
+		s.transitionRateHits[vaultID] = kept
 		return fmt.Errorf("too many recovery signatures")
 	}
-	transitionRateHits[vaultID] = append(kept, now)
+	s.transitionRateHits[vaultID] = append(kept, now)
 	return nil
 }
