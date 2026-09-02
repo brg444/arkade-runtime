@@ -59,6 +59,8 @@ type Service struct {
 	verificationSlots          chan struct{}
 	feeSelectionOnce           sync.Once
 	feeSelectionSlots          chan struct{}
+	transitionRateMu           sync.Mutex
+	transitionRateHits         map[string][]time.Time
 	sessionMu                  sync.Mutex
 	sessionChallenges          map[string]passkeyChallenge
 	SessionNow                 func() time.Time

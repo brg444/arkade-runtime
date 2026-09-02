@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -65,26 +64,17 @@ func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
 
 func TestSignTransitionOnlyVerifiedClaimantsConsumeRateLimiter(t *testing.T) {
 	e := newEnv(t)
-	transitionRateMu.Lock()
-	previous := transitionRateHits
-	transitionRateHits = map[string][]time.Time{}
-	transitionRateMu.Unlock()
-	t.Cleanup(func() {
-		transitionRateMu.Lock()
-		transitionRateHits = previous
-		transitionRateMu.Unlock()
-	})
 
 	for i := 0; i < 20; i++ {
 		_, _ = e.svc.SignTransition(context.Background(), TransitionRequest{
 			VaultID: fmt.Sprintf("unknown-vault-%d", i), Purpose: "initiate",
 		})
 	}
-	transitionRateMu.Lock()
-	if len(transitionRateHits) != 0 {
-		t.Fatalf("unknown vault IDs entered rate state: %v", transitionRateHits)
+	e.svc.transitionRateMu.Lock()
+	if len(e.svc.transitionRateHits) != 0 {
+		t.Fatalf("unknown vault IDs entered rate state: %v", e.svc.transitionRateHits)
 	}
-	transitionRateMu.Unlock()
+	e.svc.transitionRateMu.Unlock()
 
 	valid := hardwareInitiatePSBT(t, e.svc, e.externalOwner)
 	unsigned, err := parsePSBT(valid)
@@ -103,9 +93,9 @@ func TestSignTransitionOnlyVerifiedClaimantsConsumeRateLimiter(t *testing.T) {
 			t.Fatal("transition without a claimant signature unexpectedly signed")
 		}
 	}
-	transitionRateMu.Lock()
-	_, limited := transitionRateHits[fixture.VaultID]
-	transitionRateMu.Unlock()
+	e.svc.transitionRateMu.Lock()
+	_, limited := e.svc.transitionRateHits[fixture.VaultID]
+	e.svc.transitionRateMu.Unlock()
 	if limited {
 		t.Fatal("unverified requests consumed the enrolled vault rate limit")
 	}
@@ -119,15 +109,15 @@ func TestSignTransitionOnlyVerifiedClaimantsConsumeRateLimiter(t *testing.T) {
 	if response == nil || response.SignedPSBT == "" {
 		t.Fatalf("verified claimant response = %+v", response)
 	}
-	transitionRateMu.Lock()
-	hits := len(transitionRateHits[fixture.VaultID])
-	transitionRateMu.Unlock()
+	e.svc.transitionRateMu.Lock()
+	hits := len(e.svc.transitionRateHits[fixture.VaultID])
+	e.svc.transitionRateMu.Unlock()
 	if hits != 1 {
 		t.Fatalf("verified claimant rate hits = %d, want 1", hits)
 	}
 }
 
-func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
+func TestSignTransitionNewServiceResetsQuotaAndRetriesDurablePendingRequest(t *testing.T) {
 	e := newEnv(t)
 	encoded := hardwareInitiatePSBT(t, e.svc, e.externalOwner)
 	transition := TransitionRequest{VaultID: fixture.VaultID, Purpose: "initiate", PSBT: encoded}
@@ -139,6 +129,14 @@ func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
 	pending, err := e.ledger.GetRecoverySession(fixture.VaultID, transitionPrevTxID(t, encoded), 0, "initiate")
 	if err != nil || pending == nil || len(pending.Signature) != 0 {
 		t.Fatalf("pending session was not persisted: %+v %v", pending, err)
+	}
+	for i := 1; i < maxTransitionsPerVaultPerMinute; i++ {
+		if err := e.svc.allowTransition(fixture.VaultID); err != nil {
+			t.Fatalf("fill old service quota %d: %v", i, err)
+		}
+	}
+	if err := e.svc.allowTransition(fixture.VaultID); err == nil || err.Error() != "too many recovery signatures" {
+		t.Fatalf("old service quota was not exhausted: %v", err)
 	}
 	if err := e.ledger.Close(); err != nil {
 		t.Fatal(err)
