@@ -15,7 +15,7 @@ const vaultBoardResultPersistTimeout = 5 * time.Second
 func (s *Service) persistVaultBoardSubmission(rec policy.VaultBoardSubmission) error {
 	ctx, cancel := context.WithTimeout(context.Background(), vaultBoardResultPersistTimeout)
 	defer cancel()
-	_, _, err := s.VaultBoardStore.AppendVaultBoardSubmission(ctx, rec)
+	_, _, err := s.Stores.VaultBoard.AppendVaultBoardSubmission(ctx, rec)
 	return err
 }
 
@@ -62,7 +62,7 @@ func (s *Service) registerVaultBoard(ctx context.Context, req vaultBoardRegister
 	if _, err := s.requireVaultBoardFee(ctx, ctxState.record, operation.ValueSats, verified.ReceiverSats, operation.ReceiverScript); err != nil {
 		return vaultBoardRegisterResponse{}, err
 	}
-	storedOperation, auth, _, err := s.VaultBoardStore.BeginVaultBoardAttempt(ctx, operation, policy.VaultBoardRegisterRequest{
+	storedOperation, auth, _, err := s.Stores.VaultBoard.BeginVaultBoardAttempt(ctx, operation, policy.VaultBoardRegisterRequest{
 		RequestDigest: verified.RequestDigest, TreeSessionPub: verified.TreeSession,
 		ReceiverSats: verified.ReceiverSats, FeeSats: verified.FeeSats, ExpireAt: verified.ExpireAt,
 	}, vaultBoardChainPolicy(ctxState.chain))
@@ -106,7 +106,7 @@ func (s *Service) registerVaultBoard(ctx context.Context, req vaultBoardRegister
 	if claims.RegisterExpireAt-s.vtxoNow().Unix() < int64(vaultBoardDispatchMargin/time.Second) {
 		return vaultBoardRegisterResponse{Status: vaultBoardDefinitelyNotSubmitted}, nil
 	}
-	if _, created, err := s.VaultBoardStore.AppendVaultBoardDispatch(ctx, policy.VaultBoardDispatch{
+	if _, created, err := s.Stores.VaultBoard.AppendVaultBoardDispatch(ctx, policy.VaultBoardDispatch{
 		OperationID: auth.OperationID, Attempt: auth.Attempt, Phase: policy.VaultBoardPhaseRegister,
 		RequestDigest: bytes.Clone(auth.RequestDigest),
 	}, vaultBoardChainPolicy(chain)); err != nil {
@@ -137,7 +137,7 @@ func (s *Service) registerVaultBoard(ctx context.Context, req vaultBoardRegister
 }
 
 func (s *Service) replayVaultBoardRegister(ctx context.Context, auth *policy.VaultBoardAuthorization) (vaultBoardRegisterResponse, bool, error) {
-	snapshot, err := s.VaultBoardStore.GetCurrentVaultBoardAttempt(ctx, auth.OperationID)
+	snapshot, err := s.Stores.VaultBoard.GetCurrentVaultBoardAttempt(ctx, auth.OperationID)
 	if err != nil {
 		return vaultBoardRegisterResponse{}, true, err
 	}
@@ -184,7 +184,7 @@ func (s *Service) releaseVaultBoard(ctx context.Context, req vaultBoardDeletePha
 	if err != nil {
 		return "", err
 	}
-	snapshot, err := s.VaultBoardStore.GetCurrentVaultBoardAttempt(ctx, claims.OperationID)
+	snapshot, err := s.Stores.VaultBoard.GetCurrentVaultBoardAttempt(ctx, claims.OperationID)
 	if err != nil || snapshot == nil || snapshot.Register.Attempt != claims.Attempt {
 		return "", fmt.Errorf("vault-board-v1 release attempt is no longer current")
 	}
@@ -242,7 +242,7 @@ func (s *Service) releaseVaultBoard(ctx context.Context, req vaultBoardDeletePha
 	if claims.DeleteExpireAt-s.vtxoNow().Unix() < int64(vaultBoardDispatchMargin/time.Second) {
 		return "", fmt.Errorf("vault-board-v1 release proof expires too soon")
 	}
-	auth, _, created, err := s.VaultBoardStore.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, vaultBoardChainPolicy(chain))
+	auth, _, created, err := s.Stores.VaultBoard.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, vaultBoardChainPolicy(chain))
 	if err != nil || !created {
 		return vaultBoardReleaseAmbiguous, nil
 	}
@@ -288,7 +288,7 @@ func (s *Service) submitVaultBoardCommitment(ctx context.Context, req vaultBoard
 	if err != nil {
 		return "", err
 	}
-	snapshot, err := s.VaultBoardStore.GetCurrentVaultBoardAttempt(ctx, claims.OperationID)
+	snapshot, err := s.Stores.VaultBoard.GetCurrentVaultBoardAttempt(ctx, claims.OperationID)
 	if err != nil || snapshot == nil || snapshot.Register.Attempt != claims.Attempt || snapshot.RegisterSubmission == nil ||
 		snapshot.RegisterSubmission.Outcome != policy.VaultBoardAuthSubmitted {
 		return "", fmt.Errorf("vault-board-v1 accepted register attempt required")
@@ -342,7 +342,7 @@ func (s *Service) submitVaultBoardCommitment(ctx context.Context, req vaultBoard
 	if err != nil {
 		return vaultBoardCommitmentAmbiguous, nil
 	}
-	auth, _, created, err := s.VaultBoardStore.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, vaultBoardChainPolicy(chain))
+	auth, _, created, err := s.Stores.VaultBoard.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, vaultBoardChainPolicy(chain))
 	if err != nil || !created {
 		return vaultBoardCommitmentAmbiguous, nil
 	}

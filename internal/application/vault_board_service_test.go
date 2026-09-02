@@ -133,7 +133,7 @@ func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	}
 	svc.keys = keys
 	svc.VaultCosignerPub = master.PubKey()
-	svc.VaultBoardStore = ledger
+	svc.Stores.VaultBoard = ledger
 	svc.EnrollmentNow = func() time.Time { return *clock }
 	resolver := &vaultBoardTestResolver{stubArkResolver: stubArkResolver{
 		feePolicy: ports.IntentFeePolicy{OnchainInput: "1000.0"},
@@ -649,7 +649,7 @@ func TestVaultBoardPersistedEnrollmentRequiresResolverBeforeReload(t *testing.T)
 		t.Fatal(err)
 	}
 	reloaded := New(Deps{
-		Stores: testStores(t, reopened), VaultBoardStore: reopened,
+		Stores:     testStores(t, reopened),
 		Deployment: fixture.svc.Deployment, IntegrityKey: append([]byte(nil), testCredentialIntegrityKey...), Keys: keys,
 		VaultCosignerPub: fixture.master.PubKey(), ArkadeCosignerPub: fixture.svc.ArkadeCosignerPub,
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,

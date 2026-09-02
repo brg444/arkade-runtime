@@ -77,7 +77,7 @@ func newEnv(t *testing.T) *env {
 		}, IntegrityKey: integrityKey,
 		Keys: testKeys(t, master, LocalSigner{Priv: operator}), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
-		ArkResolver: resolver, VaultBoardStore: ledger,
+		ArkResolver: resolver,
 	})
 	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
 		t.Fatal(err)

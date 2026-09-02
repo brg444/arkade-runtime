@@ -42,7 +42,11 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "deployment not ready"
 		return st
 	}
-	if err := s.Stores.Validate(); err != nil {
+	// Preserve the established readiness precedence: the five original ledger
+	// capabilities fail before integrity and signer checks, while the profile's
+	// boarding capability retains its release-specific error below.
+	if s.Stores.Identity == nil || s.Stores.Allowance == nil || s.Stores.VtxoOperations == nil ||
+		s.Stores.RecoveryOperations == nil || s.Stores.Maps == nil {
 		st.Error = "ledger unavailable"
 		return st
 	}
@@ -65,8 +69,12 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "contract pack mismatch"
 		return st
 	}
-	if s.VaultBoardStore == nil {
+	if s.Stores.VaultBoard == nil {
 		st.Error = "vault-board-v1 store unavailable"
+		return st
+	}
+	if err := s.Stores.Validate(); err != nil {
+		st.Error = "ledger unavailable"
 		return st
 	}
 	runtime, err := s.requireVaultBoardRuntime()

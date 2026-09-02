@@ -132,7 +132,7 @@ type exactVaultBoardVtxoResolver interface {
 }
 
 func (s *Service) requireVaultBoardRuntime() (*vaultBoardRuntime, error) {
-	if s == nil || s.VaultBoardStore == nil || s.vaultBoardRuntime == nil ||
+	if s == nil || s.Stores.VaultBoard == nil || s.vaultBoardRuntime == nil ||
 		s.vaultBoardRuntime.chain == nil || s.vaultBoardRuntime.operatorDial == nil {
 		return nil, fmt.Errorf("vault-board-v1 authorization runtime unavailable")
 	}
@@ -160,7 +160,7 @@ func (s *Service) prepareVaultBoard(ctx context.Context, req vaultBoardPrepareRe
 	if err != nil {
 		return vaultBoardPrepareResult{}, err
 	}
-	snapshot, err := s.VaultBoardStore.GetCurrentVaultBoardAttempt(ctx, operationID)
+	snapshot, err := s.Stores.VaultBoard.GetCurrentVaultBoardAttempt(ctx, operationID)
 	if err != nil {
 		return vaultBoardPrepareResult{}, err
 	}

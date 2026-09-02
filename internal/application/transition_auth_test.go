@@ -157,7 +157,7 @@ func TestSignTransitionRetriesExactPendingRequestAfterRestart(t *testing.T) {
 		IntegrityKey: append([]byte(nil), testCredentialIntegrityKey...),
 		Keys:         testKeys(t, e.master, LocalSigner{Priv: e.operator}), VaultCosignerPub: e.master.PubKey(), ArkadeCosignerPub: e.operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
-		ArkResolver: e.svc.ArkResolver, VaultBoardStore: reopened,
+		ArkResolver: e.svc.ArkResolver,
 	})
 	if err := restarted.LoadVaults(); err != nil {
 		t.Fatal(err)

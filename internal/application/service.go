@@ -31,9 +31,8 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
-	Stores          arkadevaultv1.Stores
-	VaultBoardStore VaultBoardStore
-	Deployment      deployment.Config
+	Stores     arkadevaultv1.Stores
+	Deployment deployment.Config
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
 	// scalar with a domain-separated KDF.
@@ -81,7 +80,6 @@ type Deps struct {
 	ArkadeCosignerOrigin  string
 	ArkadeCosignerVersion string
 	ArkResolver           ports.ArkResolver
-	VaultBoardStore       VaultBoardStore
 }
 
 // New builds the application service without receiving raw key material or a
@@ -97,7 +95,6 @@ func New(d Deps) *Service {
 		ArkadeCosignerVersion:  d.ArkadeCosignerVersion,
 		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
-		VaultBoardStore:        d.VaultBoardStore,
 	}
 	if raw, err := liveContractPackJSON(); err == nil {
 		s.contractPackJSON = raw
@@ -282,14 +279,14 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err != nil {
 		return err
 	}
-	if boardRec == nil || boardSnap == nil || s.VaultBoardStore == nil {
+	if boardRec == nil || boardSnap == nil || s.Stores.VaultBoard == nil {
 		return fmt.Errorf("vault-board-v1 release store is not active")
 	}
 	create := policy.CreateVaultInput{Record: rec, Credential: vcred, TokenHash: tokenHash, Pending: pending}
-	if err := s.VaultBoardStore.CreateVaultWithBoard(create, *boardRec); err != nil {
+	if err := s.Stores.VaultBoard.CreateVaultWithBoard(create, *boardRec); err != nil {
 		return err
 	}
-	stored, err := s.VaultBoardStore.GetVaultBoardEnrollment(vaultID)
+	stored, err := s.Stores.VaultBoard.GetVaultBoardEnrollment(vaultID)
 	if err != nil || stored == nil || !bytes.Equal(stored.IntegrityMAC, boardRec.IntegrityMAC) {
 		return fmt.Errorf("vault-board-v1 enrollment readback failed")
 	}
@@ -446,10 +443,10 @@ func (s *Service) publishStoredEnrollment(cred *policy.Credential) error {
 	if err != nil {
 		return err
 	}
-	if s.VaultBoardStore == nil {
+	if s.Stores.VaultBoard == nil {
 		return fmt.Errorf("vault-board-v1 store required")
 	}
-	rec, loadErr := s.VaultBoardStore.GetVaultBoardEnrollment(cred.VaultID)
+	rec, loadErr := s.Stores.VaultBoard.GetVaultBoardEnrollment(cred.VaultID)
 	if loadErr != nil || rec == nil {
 		return fmt.Errorf("vault-board-v1 enrollment required")
 	}

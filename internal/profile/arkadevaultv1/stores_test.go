@@ -28,6 +28,7 @@ func TestStoresFromLedgerKeepsOnePhysicalDatabase(t *testing.T) {
 		"identity": stores.Identity, "allowance": stores.Allowance,
 		"VTXO operation":     stores.VtxoOperations,
 		"recovery operation": stores.RecoveryOperations, "map": stores.Maps,
+		"Vault Board": stores.VaultBoard,
 	} {
 		if got := reflect.ValueOf(store).Pointer(); got != want {
 			t.Fatalf("%s store uses a different backend: %x != %x", name, got, want)
@@ -63,5 +64,34 @@ func TestStoresRejectMissingCapabilities(t *testing.T) {
 	}
 	if err := (Stores{}).Validate(); err == nil {
 		t.Fatal("empty stores accepted")
+	}
+
+	ledger, err := policy.OpenLedger(t.TempDir()+"/vault.db", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	stores, err := StoresFromLedger(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		clear func(*Stores)
+	}{
+		{name: "identity", clear: func(s *Stores) { s.Identity = nil }},
+		{name: "allowance", clear: func(s *Stores) { s.Allowance = nil }},
+		{name: "VTXO operation", clear: func(s *Stores) { s.VtxoOperations = nil }},
+		{name: "recovery operation", clear: func(s *Stores) { s.RecoveryOperations = nil }},
+		{name: "map", clear: func(s *Stores) { s.Maps = nil }},
+		{name: "Vault Board", clear: func(s *Stores) { s.VaultBoard = nil }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			missing := stores
+			test.clear(&missing)
+			if err := missing.Validate(); err == nil {
+				t.Fatal("missing capability accepted")
+			}
+		})
 	}
 }

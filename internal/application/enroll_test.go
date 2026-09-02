@@ -92,8 +92,7 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 		Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		},
-		VaultBoardStore: led,
-		ArkResolver:     stubArkResolver{signer: arkade.PubKey().SerializeCompressed()},
+		ArkResolver: stubArkResolver{signer: arkade.PubKey().SerializeCompressed()},
 	}
 	raw := bytes.Repeat([]byte{0x3c}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -236,7 +235,6 @@ func TestCurrentSavingsDescriptorRebuildsExactlyAfterRestart(t *testing.T) {
 		ArkadeCosignerOrigin:  svc.ArkadeCosignerOrigin,
 		ArkadeCosignerVersion: svc.ArkadeCosignerVersion,
 		ArkResolver:           svc.ArkResolver,
-		VaultBoardStore:       svc.VaultBoardStore,
 	})
 	if err := restarted.LoadVaults(); err != nil {
 		t.Fatal(err)
@@ -342,7 +340,7 @@ func TestEnrollmentBindsImmutableCustomSpendingPolicy(t *testing.T) {
 		IntegrityKey: append([]byte(nil), svc.CredentialIntegrityKey...), Keys: svc.keys,
 		VaultCosignerPub: svc.VaultCosignerPub, ArkadeCosignerPub: svc.ArkadeCosignerPub,
 		ArkadeCosignerOrigin: svc.ArkadeCosignerOrigin, ArkadeCosignerVersion: svc.ArkadeCosignerVersion,
-		ArkResolver: svc.ArkResolver, VaultBoardStore: svc.VaultBoardStore,
+		ArkResolver: svc.ArkResolver,
 	})
 	if err := restarted.LoadVaults(); err != nil {
 		t.Fatal(err)
@@ -633,7 +631,7 @@ func TestVaultBoardProposeHashFinishesExactCompositeEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.VaultBoardStore = ledger
+	svc.Stores.VaultBoard = ledger
 	svc.ArkResolver = stubArkResolver{signer: svc.ArkadeCosignerPub.SerializeCompressed()}
 	raw := bytes.Repeat([]byte{0x7c}, 32)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -980,8 +978,7 @@ func enrollService(t *testing.T, led *policy.Ledger) *Service {
 		Deployment: deployment.Config{
 			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
 		},
-		VaultBoardStore: led,
-		ArkResolver:     stubArkResolver{signer: arkade.PubKey().SerializeCompressed()},
+		ArkResolver: stubArkResolver{signer: arkade.PubKey().SerializeCompressed()},
 	}
 }
 
