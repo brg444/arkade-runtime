@@ -128,7 +128,10 @@ without breaking fresh-device recovery and lost-response recovery.
 | `GET /v1/vtxo/operation` | Read one operation for retry reconciliation. |
 | `POST /v1/initiate` | Authorize a Savings-to-Pending recovery transition. |
 | `POST /v1/clawback` | Authorize a Pending-to-Quarantine transition. |
-| `POST /v1/passkey/*` | Challenge, bind, install, or recover a passkey envelope. |
+| `POST /v1/passkey/challenge` | Issue a purpose-bound passkey challenge. |
+| `POST /v1/passkey/binding` | Build the authenticated Recovery Kit binding. |
+| `POST /v1/passkey/install` | Install a passkey credential envelope. |
+| `POST /v1/passkey/recover` | Recover a passkey credential envelope. |
 | `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
 
 The boarding phase routes use release-pinned public Operator and Esplora adapters;
