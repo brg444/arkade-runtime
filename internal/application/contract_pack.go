@@ -69,10 +69,6 @@ func (s *Service) requireVaultPolicyV1Exit() error {
 	return nil
 }
 
-func validateVaultPolicyV1Pack(raw []byte) error {
-	return validateVaultPolicyV1PackFor(program.NetworkMutinynet, raw)
-}
-
 func validateVaultPolicyV1PackFor(network string, raw []byte) error {
 	pins, err := program.PinsFor(network)
 	if err != nil {

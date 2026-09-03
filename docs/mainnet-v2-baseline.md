@@ -207,3 +207,11 @@ On August 23, 2026, `https://arkade.computer/v1/info` reported network
 output intent fee. These are observed compatibility facts, not release pins.
 The final manifest must capture and verify the complete values immediately
 before Contract Pack generation.
+
+On September 4, 2026, the candidate pin check observed Operator version
+`v0.9.16` with the same signer, forfeit key, checkpoint tapscript, and delays,
+and Emulator version `v0.0.7` with signer
+`0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e`.
+The current mainnet profile freezes those identities and rejects drift. Real
+traffic still requires the independent-storage and shared-edge declarations,
+plus external audit evidence that those controls are actually provisioned.
