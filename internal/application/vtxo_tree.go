@@ -72,7 +72,11 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if err != nil {
 		return nil, fmt.Errorf("Operator signer pubkey")
 	}
-	delegate, err := btcec.ParsePubKey(mustDecodeCompressed(program.VaultPolicyV1PinnedDelegate))
+	pins, err := program.PinsFor(s.runtimeConfig().Network)
+	if err != nil {
+		return nil, err
+	}
+	delegate, err := btcec.ParsePubKey(mustDecodeCompressed(pins.DelegatePub))
 	if err != nil {
 		return nil, fmt.Errorf("pinned public delegate")
 	}
@@ -83,6 +87,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		DelegatePub:          schnorr.SerializePubKey(delegate),
 		ExitDevicePub:        schnorr.SerializePubKey(snap.PhoneBIP340),
 		ExitHardwarePub:      schnorr.SerializePubKey(snap.ExternalOwnerWallet),
+		Network:              s.runtimeConfig().Network,
 	}
 	if snap.RecoveryKey != nil {
 		params.ExitRecoveryPub = schnorr.SerializePubKey(snap.RecoveryKey)
@@ -165,8 +170,10 @@ func defaultVtxoPkScript(user, arkd *btcec.PublicKey) []byte {
 }
 
 func (s *Service) buildVtxoBoardTree(vaultID string, snap enrolledSnapshot, boarding *btcec.PublicKey) (*vtxoBoardTree, error) {
-	if s.runtimeConfig().Network != program.NetworkMutinynet {
-		return nil, fmt.Errorf("vault-board-v1 is Mutinynet-only")
+	network := s.runtimeConfig().Network
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		return nil, fmt.Errorf("vault-board-v1: %w", err)
 	}
 	if vaultID == "" || snap.PhoneBIP340 == nil || boarding == nil {
 		return nil, fmt.Errorf("vault-board-v1 enrolled phone and boarding keys required")
@@ -175,7 +182,7 @@ func (s *Service) buildVtxoBoardTree(vaultID string, snap enrolledSnapshot, boar
 	if err != nil {
 		return nil, fmt.Errorf("Operator signer pubkey")
 	}
-	keyContext, err := newVaultBoardKeyContext(vaultID, program.NetworkMutinynet, operator.SerializeCompressed())
+	keyContext, err := newVaultBoardKeyContext(vaultID, network, operator.SerializeCompressed())
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +196,7 @@ func (s *Service) buildVtxoBoardTree(vaultID string, snap enrolledSnapshot, boar
 	exit := &arkscript.CSVMultisigClosure{
 		MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{snap.PhoneBIP340}},
 		Locktime: arklib.RelativeLocktime{
-			Type: arklib.LocktimeTypeSecond, Value: program.VaultBoardV1ExitDelay,
+			Type: arklib.LocktimeTypeSecond, Value: pins.BoardExitDelay,
 		},
 	}
 	cooperative := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{boarding, cosigner, operator}}
@@ -218,7 +225,7 @@ func (s *Service) buildVtxoBoardTree(vaultID string, snap enrolledSnapshot, boar
 	if err != nil {
 		return nil, err
 	}
-	net, err := vtxoNetworkParams(program.NetworkMutinynet)
+	net, err := vtxoNetworkParams(network)
 	if err != nil {
 		return nil, err
 	}

@@ -97,7 +97,7 @@ func (s *Service) mintVaultBoardEnrollment(vaultID string, parsed parsedRegister
 		VaultID: vaultID, Program: program.VaultBoardV1,
 		BoardingPub: tree.BoardingPub.SerializeCompressed(),
 		CosignerPub: tree.CosignerPub.SerializeCompressed(), OperatorPub: tree.OperatorPub.SerializeCompressed(),
-		ExitDelay: program.VaultBoardV1ExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
+		ExitDelay: s.boardExitDelay(), ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		PkScript: append([]byte(nil), tree.PkScript...), Address: tree.OnchainAddress,
 	}
 	key, err := s.credentialIntegrityKey()
@@ -124,12 +124,12 @@ func (s *Service) buildVaultBoardEnrollment(vaultID string, parsed parsedRegiste
 	}
 	desc := vaultBoardPublicDescriptor{
 		Schema: program.VaultBoardV1Schema, Program: program.VaultBoardV1, Template: program.VaultBoardV1Template,
-		Network:          program.NetworkMutinynet,
+		Network:          s.runtimeConfig().Network,
 		BoardingPub:      hex.EncodeToString(tree.BoardingPub.SerializeCompressed()),
 		RecoveryPhonePub: hex.EncodeToString(parsed.phone.SerializeCompressed()),
 		CosignerPub:      hex.EncodeToString(tree.CosignerPub.SerializeCompressed()),
 		OperatorPub:      hex.EncodeToString(tree.OperatorPub.SerializeCompressed()),
-		ExitDelay:        program.VaultBoardV1ExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
+		ExitDelay:        s.boardExitDelay(), ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		Script: hex.EncodeToString(tree.PkScript), Address: tree.OnchainAddress,
 	}
 	return desc, tree, nil
@@ -189,7 +189,7 @@ func (s *Service) statusVaultBoardDescriptor(cred *policy.Credential, snap enrol
 		RecoveryPhonePub: hex.EncodeToString(phone.SerializeCompressed()),
 		CosignerPub:      hex.EncodeToString(boardTree.CosignerPub.SerializeCompressed()),
 		OperatorPub:      hex.EncodeToString(boardTree.OperatorPub.SerializeCompressed()),
-		ExitDelay:        program.VaultBoardV1ExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
+		ExitDelay:        s.boardExitDelay(), ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		Script: hex.EncodeToString(boardTree.PkScript), Address: boardTree.OnchainAddress,
 	}
 	desc := vaultBoardCompositeDescriptor{Schema: vaultBoardEnrollmentSchema, VaultID: cred.VaultID, Savings: savingsDesc, Boarding: board}

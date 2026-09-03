@@ -45,7 +45,11 @@ type arkResolver struct {
 // DialArkResolver constructs the release-pinned Mutinynet ark indexer client.
 // The origin is baked into the binary; there is no argument or env override.
 func DialArkResolver(ctx context.Context, network string) (ports.ArkResolver, error) {
-	return dialArkResolver(ctx, deployment.MutinynetArkIndexerOrigin, network, newArkResolverHTTPClient())
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		return nil, err
+	}
+	return dialArkResolver(ctx, id.OperatorOrigin, network, newArkResolverHTTPClient())
 }
 
 func newArkResolverHTTPClient() *http.Client {
@@ -58,27 +62,28 @@ func newArkResolverHTTPClient() *http.Client {
 }
 
 func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer) (ports.ArkResolver, error) {
-	if network != deployment.NetworkMutinynet {
-		return nil, fmt.Errorf("ark indexer network %q is not %s", network, deployment.NetworkMutinynet)
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		return nil, fmt.Errorf("ark indexer network %q is not supported", network)
 	}
 	height, hash, err := (deployment.Config{Network: network}).BitcoinCheckpoint()
 	if err != nil {
 		return nil, err
 	}
-	if height != 1 || hash != deployment.MutinynetCheckpoint1 {
-		return nil, fmt.Errorf("ark indexer checkpoint is %d:%s, want 1:%s", height, hash, deployment.MutinynetCheckpoint1)
+	if height != id.CheckpointHeight || hash != id.CheckpointHash {
+		return nil, fmt.Errorf("ark indexer checkpoint is %d:%s, want %d:%s", height, hash, id.CheckpointHeight, id.CheckpointHash)
 	}
 	origin, err := canonicalHTTPSOrigin(rawOrigin)
 	if err != nil {
 		return nil, err
 	}
-	if origin != deployment.MutinynetArkIndexerOrigin {
+	if origin != id.OperatorOrigin {
 		return nil, fmt.Errorf("ark indexer origin must be the release pin")
 	}
 	if hc == nil {
 		return nil, fmt.Errorf("ark indexer HTTP client required")
 	}
-	client := &arkResolver{origin: origin, hc: hc, network: deployment.NetworkMutinynet}
+	client := &arkResolver{origin: origin, hc: hc, network: network}
 	info, err := client.getInfo(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("ark indexer info: %w", err)
@@ -95,14 +100,15 @@ func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer
 // validateArkResolverPolicy prevents a remote Operator from redefining the
 // checkpoint fallback that the VaultCosigner will authorize.
 func validateArkResolverPolicy(network string, checkpoint, signerPub []byte) error {
-	if network != deployment.NetworkMutinynet {
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
 		return fmt.Errorf("unsupported Operator policy network %q", network)
 	}
-	wantSigner, err := hex.DecodeString(deployment.MutinynetOperatorSignerPubHex)
+	wantSigner, err := hex.DecodeString(id.OperatorSignerPubHex)
 	if err != nil || !bytes.Equal(signerPub, wantSigner) {
 		return fmt.Errorf("Operator signer does not match the release policy")
 	}
-	wantCheckpoint, err := hex.DecodeString(deployment.MutinynetCheckpointTapscriptHex)
+	wantCheckpoint, err := hex.DecodeString(id.CheckpointTapscriptHex)
 	if err != nil || !bytes.Equal(checkpoint, wantCheckpoint) {
 		return fmt.Errorf("checkpoint tapscript does not match the release policy")
 	}
@@ -114,10 +120,10 @@ func validateArkResolverPolicy(network string, checkpoint, signerPub []byte) err
 	if !ok || csv.Type != arkscript.MultisigTypeChecksig || len(csv.PubKeys) != 1 {
 		return fmt.Errorf("checkpoint closure does not match the release policy")
 	}
-	if csv.Locktime.Type != arklib.LocktimeTypeSecond || csv.Locktime.Value != deployment.MutinynetCheckpointDelaySeconds {
+	if csv.Locktime.Type != arklib.LocktimeTypeSecond || csv.Locktime.Value != id.CheckpointDelaySeconds {
 		return fmt.Errorf("checkpoint delay does not match the release policy")
 	}
-	wantForfeit, err := hex.DecodeString(deployment.MutinynetCheckpointForfeitPubHex)
+	wantForfeit, err := hex.DecodeString(id.CheckpointForfeitPubHex)
 	if err != nil || !bytes.Equal(csv.PubKeys[0].SerializeCompressed(), wantForfeit) {
 		return fmt.Errorf("checkpoint key does not match the release policy")
 	}
@@ -125,9 +131,17 @@ func validateArkResolverPolicy(network string, checkpoint, signerPub []byte) err
 }
 
 func validateArkResolverReleaseInfo(network string, info arkIndexerInfo) ([]byte, []byte, ports.IntentFeePolicy, error) {
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		return nil, nil, ports.IntentFeePolicy{}, err
+	}
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		return nil, nil, ports.IntentFeePolicy{}, err
+	}
 	gotNetwork := strings.TrimSpace(info.Network)
-	if gotNetwork != deployment.NetworkMutinynet || network != deployment.NetworkMutinynet {
-		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("ark indexer network %q does not match %s", gotNetwork, deployment.NetworkMutinynet)
+	if gotNetwork != id.OperatorGetInfoNetwork || network != id.Network {
+		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("ark indexer network %q does not match %s", gotNetwork, id.OperatorGetInfoNetwork)
 	}
 	checkpoint, err := decodeHex(strings.TrimSpace(info.CheckpointTapscript))
 	if err != nil || len(checkpoint) == 0 {
@@ -140,15 +154,15 @@ func validateArkResolverReleaseInfo(network string, info arkIndexerInfo) ([]byte
 	if err := validateArkResolverPolicy(network, checkpoint, signerPub); err != nil {
 		return nil, nil, ports.IntentFeePolicy{}, err
 	}
-	if info.ForfeitPubkey != deployment.MutinynetCheckpointForfeitPubHex {
+	if info.ForfeitPubkey != id.CheckpointForfeitPubHex {
 		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("Operator forfeit key does not match the release policy")
 	}
 	unilateralExitDelay, err := parseCanonicalReleaseUint32(info.UnilateralExitDelay, "unilateral exit delay")
-	if err != nil || unilateralExitDelay != program.VaultPolicyV1ArkdMinExitDelay {
+	if err != nil || unilateralExitDelay != pins.ArkdMinExitDelay {
 		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("Operator unilateral exit delay does not match the release policy")
 	}
 	boardingExitDelay, err := parseCanonicalReleaseUint32(info.BoardingExitDelay, "boarding exit delay")
-	if err != nil || boardingExitDelay != program.VaultBoardV1ExitDelay {
+	if err != nil || boardingExitDelay != pins.BoardExitDelay {
 		return nil, nil, ports.IntentFeePolicy{}, fmt.Errorf("Operator boarding exit delay does not match the release policy")
 	}
 	dust, err := parseCanonicalReleaseUint32(info.Dust, "dust")

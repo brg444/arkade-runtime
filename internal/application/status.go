@@ -221,10 +221,10 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	if st == nil {
 		return
 	}
-	st.VtxoExitDelay = program.VaultPolicyV1ExitDelay
+	st.VtxoExitDelay = s.policyExitDelay()
 	st.VtxoExitDelayUnit = program.VaultPolicyV1ExitDelayUnit
 	st.VtxoBoardingProgram = program.VaultBoardV1
-	st.VtxoBoardingExitDelay = program.VaultBoardV1ExitDelay
+	st.VtxoBoardingExitDelay = s.boardExitDelay()
 	st.VtxoBoardingExitDelayUnit = program.VaultBoardV1ExitDelayUnit
 	if vaultID == "" || snap.PhoneBIP340 == nil {
 		return

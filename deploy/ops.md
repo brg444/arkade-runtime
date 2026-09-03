@@ -28,6 +28,10 @@ normally retains the current sequence. If the current sequence is unavailable,
 stop the service and investigate; replacing it with a sequence from the
 database backup is forbidden.
 
+For mainnet, set `VAULT_STORAGE_ISOLATION=independent-authorities` only after
+the two stores have different IAM, backup, restore, and approval authorities.
+The process rejects mainnet startup without that declaration.
+
 ## Backup
 
 Back up a consistent SQLite snapshot without changing the current policy
@@ -84,6 +88,11 @@ vault identifier on passkey challenge issuance and VTXO reservation. Phone
 authentication protects the reservation mutation, but it does not replace
 load protection. A process-local or serverless instance-local counter does not
 close this gate.
+
+Set `VAULT_EDGE_RATE_LIMIT=shared-durable` only after that edge policy is live
+across every wallet gateway instance. Set `VAULT_MAINNET_ACK=fresh-state-v1`
+only for a new service with new key material, empty state, and a distinct
+WebAuthn origin. None of these declarations may be copied into Mutinynet.
 
 Before a public release, remove the private Emulator module replacement after
 the required signing checks land in an official package, commit an explicit

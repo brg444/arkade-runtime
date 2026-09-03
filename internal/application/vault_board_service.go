@@ -176,7 +176,7 @@ func (s *Service) prepareVaultBoard(ctx context.Context, req vaultBoardPrepareRe
 	}
 	// Final reconciliation above is factual and remains available after the
 	// recovery leaf matures. Only new cooperative signing is cut off by MTP.
-	if err := requireVaultBoardMTP(ctxState.chain); err != nil {
+	if err := requireVaultBoardMTP(ctxState.chain, s.boardExitDelay()); err != nil {
 		return vaultBoardPrepareResult{}, err
 	}
 	if ctxState.chain.Spent {
@@ -255,13 +255,13 @@ func (s *Service) loadVaultBoardContext(ctx context.Context, runtime *vaultBoard
 	}, nil
 }
 
-func requireVaultBoardMTP(chain vaultBoardConfirmedOutpoint) error {
-	return requireVaultBoardCooperativeMTP(chain.SequenceAnchorMTP, chain.TipMTP)
+func requireVaultBoardMTP(chain vaultBoardConfirmedOutpoint, delay uint32) error {
+	return requireVaultBoardCooperativeMTP(chain.SequenceAnchorMTP, chain.TipMTP, int64(delay))
 }
 
-func requireVaultBoardCooperativeMTP(anchor, tip int64) error {
-	if anchor <= 0 || tip <= 0 || anchor > math.MaxInt64-int64(program.VaultBoardV1ExitDelay) ||
-		tip >= anchor+int64(program.VaultBoardV1ExitDelay) {
+func requireVaultBoardCooperativeMTP(anchor, tip, delay int64) error {
+	if delay <= 0 || anchor <= 0 || tip <= 0 || anchor > math.MaxInt64-delay ||
+		tip >= anchor+delay {
 		return fmt.Errorf("vault-board-v1 cooperative path has matured")
 	}
 	return nil

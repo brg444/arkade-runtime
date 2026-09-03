@@ -778,6 +778,22 @@ func (s *Service) runtimeConfig() deployment.Config {
 	return s.Deployment
 }
 
+func (s *Service) programPins() program.NetworkPins {
+	pins, err := program.PinsFor(s.runtimeConfig().Network)
+	if err != nil {
+		return program.NetworkPins{}
+	}
+	return pins
+}
+
+func (s *Service) boardExitDelay() uint32 {
+	return s.programPins().BoardExitDelay
+}
+
+func (s *Service) policyExitDelay() uint32 {
+	return s.programPins().PolicyExitDelay
+}
+
 func (s *Service) credentialIntegrityKey() ([]byte, error) {
 	if len(s.CredentialIntegrityKey) == sha256.Size {
 		return append([]byte(nil), s.CredentialIntegrityKey...), nil
