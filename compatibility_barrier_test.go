@@ -16,7 +16,7 @@ func TestArkadeVaultV1CompatibilityArtifacts(t *testing.T) {
 	want := map[string]string{
 		"contract-pack.json":                                          "3a30b9819a071d6bcec4d5ae5a27a0bae20a1e3445293998a60402525ba44526",
 		"internal/contractpack/contract-pack.json":                    "3a30b9819a071d6bcec4d5ae5a27a0bae20a1e3445293998a60402525ba44526",
-		"internal/application/testdata/http-v1-compatibility.json":    "3b1d1f67152c67bf7805e0ecc5509bad9ccf00e4d2557d43b92c9c9b6227361e",
+		"internal/application/testdata/http-v1-compatibility.json":    "79bcc94631916dec8bcc4a09884d74b86bf0337718578c31ebb0789c469b7dae",
 		"internal/policy/testdata/hkdf-sha256-v1.json":                "0739edebb44f122e70aee6153e9aaf6875c73a01412469d8f16124a8f9186cde",
 		"internal/policy/testdata/vtxo-hkdf-sha256-v1.json":           "9b376662c2d33f51981d2e8b1aa1f0134ccb06b556aa2536c5f93ad2c48b1285",
 		"internal/policy/testdata/vault-policy-v1-tree.json":          "2774756345e8cc01aa43743f62afe831baa9cbba0f4f7117e7b9a2f38776e993",

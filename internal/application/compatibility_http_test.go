@@ -69,6 +69,8 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"VtxoFinalizeRequest":               reflect.TypeOf(VtxoFinalizeRequest{}),
 		"VtxoFinalizeResponse":              reflect.TypeOf(VtxoFinalizeResponse{}),
 		"VtxoOperationView":                 reflect.TypeOf(VtxoOperationView{}),
+		"VtxoAbortRequest":                  reflect.TypeOf(VtxoAbortRequest{}),
+		"VtxoAbortResponse":                 reflect.TypeOf(VtxoAbortResponse{}),
 		"SavingsPublicDescriptor":           reflect.TypeOf(savings.PublicDescriptor{}),
 		"SavingsPublicKeys":                 reflect.TypeOf(savings.PublicKeys{}),
 		"SavingsPublicPair":                 reflect.TypeOf(savings.PublicPair{}),
