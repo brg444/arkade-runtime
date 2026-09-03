@@ -35,7 +35,7 @@ func (s *Service) registerVaultBoard(ctx context.Context, req vaultBoardRegister
 	if err != nil {
 		return vaultBoardRegisterResponse{}, err
 	}
-	if err := requireVaultBoardMTP(ctxState.chain); err != nil {
+	if err := requireVaultBoardMTP(ctxState.chain, s.boardExitDelay()); err != nil {
 		return vaultBoardRegisterResponse{}, err
 	}
 	if ctxState.chain.Spent {
@@ -96,7 +96,7 @@ func (s *Service) registerVaultBoard(ctx context.Context, req vaultBoardRegister
 	}
 	defer func() { signed = "" }()
 	chain, err := revalidateVaultBoardOutpoint(runtime, ctxState.chain)
-	if err != nil || chain.Spent || requireSameVaultBoardChainFacts(*storedOperation, chain, operation.ReceiverScript) != nil || requireVaultBoardMTP(chain) != nil {
+	if err != nil || chain.Spent || requireSameVaultBoardChainFacts(*storedOperation, chain, operation.ReceiverScript) != nil || requireVaultBoardMTP(chain, s.boardExitDelay()) != nil {
 		return vaultBoardRegisterResponse{Status: vaultBoardDefinitelyNotSubmitted}, nil
 	}
 	operator, err := runtime.operatorDial(ctx)
@@ -174,7 +174,7 @@ func (s *Service) releaseVaultBoard(ctx context.Context, req vaultBoardDeletePha
 	if err != nil {
 		return "", err
 	}
-	if err := requireVaultBoardMTP(ctxState.chain); err != nil {
+	if err := requireVaultBoardMTP(ctxState.chain, s.boardExitDelay()); err != nil {
 		return "", err
 	}
 	if ctxState.chain.Spent {
@@ -232,7 +232,7 @@ func (s *Service) releaseVaultBoard(ctx context.Context, req vaultBoardDeletePha
 	}
 	defer func() { signed = "" }()
 	chain, err := revalidateVaultBoardOutpoint(runtime, ctxState.chain)
-	if err != nil || chain.Spent || requireSameVaultBoardChainFacts(operation, chain, operation.ReceiverScript) != nil || requireVaultBoardMTP(chain) != nil {
+	if err != nil || chain.Spent || requireSameVaultBoardChainFacts(operation, chain, operation.ReceiverScript) != nil || requireVaultBoardMTP(chain, s.boardExitDelay()) != nil {
 		return vaultBoardReleaseAmbiguous, nil
 	}
 	operator, err := runtime.operatorDial(ctx)
@@ -278,7 +278,7 @@ func (s *Service) submitVaultBoardCommitment(ctx context.Context, req vaultBoard
 	if err != nil {
 		return "", err
 	}
-	if err := requireVaultBoardMTP(ctxState.chain); err != nil {
+	if err := requireVaultBoardMTP(ctxState.chain, s.boardExitDelay()); err != nil {
 		return "", err
 	}
 	if ctxState.chain.Spent {
@@ -335,7 +335,7 @@ func (s *Service) submitVaultBoardCommitment(ctx context.Context, req vaultBoard
 	}
 	defer func() { signed = "" }()
 	chain, err := revalidateVaultBoardOutpoint(runtime, ctxState.chain)
-	if err != nil || chain.Spent || requireSameVaultBoardChainFacts(operation, chain, operation.ReceiverScript) != nil || requireVaultBoardMTP(chain) != nil {
+	if err != nil || chain.Spent || requireSameVaultBoardChainFacts(operation, chain, operation.ReceiverScript) != nil || requireVaultBoardMTP(chain, s.boardExitDelay()) != nil {
 		return vaultBoardCommitmentAmbiguous, nil
 	}
 	operator, err := runtime.operatorDial(ctx)

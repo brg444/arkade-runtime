@@ -24,7 +24,7 @@ func main() {
 		tokenFile = flag.String("enrollment-token-file", os.Getenv("VAULT_ENROLLMENT_TOKEN_FILE"), "offline-provisioned one-time enrollment token file")
 		origin    = flag.String("client-origin", os.Getenv("VAULT_CLIENT_ORIGIN"), "exact HTTPS signing-client origin")
 		rpID      = flag.String("rp-id", os.Getenv("VAULT_RP_ID"), "exact WebAuthn relying-party ID")
-		network   = flag.String("network", envOr("VAULT_NETWORK", deployment.NetworkMutinynet), "must be mutinynet")
+		network   = flag.String("network", envOr("VAULT_NETWORK", deployment.NetworkMutinynet), "mutinynet or mainnet")
 	)
 	flag.Parse()
 
@@ -54,7 +54,7 @@ func main() {
 	go func() {
 		errCh <- server.ListenAndServe()
 	}()
-	log.Printf("Mutinynet software authorizer listening internally on %s; key and ledger share this process", *addr)
+	log.Printf("%s software authorizer listening internally on %s; key and ledger share this process", *network, *addr)
 
 	select {
 	case err := <-errCh:
