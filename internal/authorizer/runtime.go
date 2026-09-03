@@ -87,7 +87,7 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := rt.service.InstallMutinynetVaultBoardAuthorization(ctx); err != nil {
+	if err := rt.service.InstallVaultBoardAuthorization(ctx); err != nil {
 		_ = rt.Close()
 		return nil, fmt.Errorf("vault-board-v1 authorization runtime: %w", err)
 	}
@@ -102,8 +102,9 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	if err := cfg.Deployment.Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
-	if cfg.Deployment.Network != deployment.NetworkMutinynet {
-		return nil, fmt.Errorf("protected authorizer is mutinynet-only")
+	identity, err := deployment.IdentityFor(cfg.Deployment.Network)
+	if err != nil {
+		return nil, fmt.Errorf("deployment: %w", err)
 	}
 	if strings.TrimSpace(os.Getenv("VAULT_GATEWAY_SECRET")) == "" {
 		return nil, fmt.Errorf("VAULT_GATEWAY_SECRET is required")
@@ -117,7 +118,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	if dialArkade == nil {
 		return nil, fmt.Errorf("public arkade emulator dialer required")
 	}
-	if err := contractpack.Validate(); err != nil {
+	if err := contractpack.ValidateFor(cfg.Deployment.Network); err != nil {
 		return nil, fmt.Errorf("release Contract Pack: %w", err)
 	}
 
@@ -131,7 +132,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 			wipePrivateKey(vaultCosignerKey)
 		}
 	}()
-	arkadeBase, err := parseCanonicalCompressedPub("ArkadeCosigner", deployment.MutinynetArkadeCosignerPubHex)
+	arkadeBase, err := parseCanonicalCompressedPub("ArkadeCosigner", identity.EmulatorPubHex)
 	if err != nil {
 		return nil, err
 	}
@@ -184,16 +185,16 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 
 	arkadeSigner, arkadeIdentity, err := dialArkade(
 		ctx,
-		deployment.MutinynetArkadeCosignerOrigin,
+		identity.EmulatorOrigin,
 		arkadeBase,
-		[]string{deployment.MutinynetArkadeCosignerVersion},
+		[]string{identity.EmulatorVersion},
 		false,
 	)
 	if err != nil {
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	if err := validateArkadeDialResult(arkadeSigner, arkadeIdentity, arkadeBase); err != nil {
+	if err := validateArkadeDialResult(arkadeSigner, arkadeIdentity, arkadeBase, identity); err != nil {
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
@@ -267,12 +268,12 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	return &Runtime{host: host, service: svc, ledger: ledger}, nil
 }
 
-func validateArkadeDialResult(signer application.Signer, identity application.PublicEmulatorIdentity, expected *btcec.PublicKey) error {
+func validateArkadeDialResult(signer application.Signer, identity application.PublicEmulatorIdentity, expected *btcec.PublicKey, pins deployment.Identity) error {
 	if signerUnavailable(signer) {
 		return fmt.Errorf("public arkade emulator signer capability required")
 	}
-	if identity.Origin != deployment.MutinynetArkadeCosignerOrigin ||
-		identity.Version != deployment.MutinynetArkadeCosignerVersion ||
+	if identity.Origin != pins.EmulatorOrigin ||
+		identity.Version != pins.EmulatorVersion ||
 		identity.BasePub == nil || expected == nil ||
 		!bytes.Equal(identity.BasePub.SerializeCompressed(), expected.SerializeCompressed()) {
 		return fmt.Errorf("public arkade emulator identity does not match the release pin")

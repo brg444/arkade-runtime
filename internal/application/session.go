@@ -394,10 +394,10 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 	if err := validateArkResolverPolicy(cfg.Network, s.ArkResolver.CheckpointTapscript(), s.ArkResolver.OperatorSignerPub()); err != nil {
 		return "", fmt.Errorf("recovery binding Arkade resolver policy: %w", err)
 	}
-	if err := program.ValidateVaultPolicyV1ExitDelay(program.VaultPolicyV1ExitDelay, program.VaultPolicyV1ExitDelayUnit); err != nil {
+	if err := program.ValidateVaultPolicyV1ExitDelayFor(cfg.Network, s.policyExitDelay(), program.VaultPolicyV1ExitDelayUnit); err != nil {
 		return "", fmt.Errorf("recovery binding Spending exit: %w", err)
 	}
-	if err := program.ValidateVaultBoardV1ExitDelay(program.VaultBoardV1ExitDelay, program.VaultBoardV1ExitDelayUnit); err != nil {
+	if err := program.ValidateVaultBoardV1ExitDelayFor(cfg.Network, s.boardExitDelay(), program.VaultBoardV1ExitDelayUnit); err != nil {
 		return "", fmt.Errorf("recovery binding boarding exit: %w", err)
 	}
 	snap := s.snapshot(cred.VaultID)
@@ -448,7 +448,7 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		ProtectionTier: cred.ProtectionTier,
 		SavingsAddress: cred.SavingsAddress, SavingsScript: hex.EncodeToString(cred.SavingsScript),
 		VtxoVaultCosignerPub:      hex.EncodeToString(spending.CosignerPub.SerializeCompressed()),
-		VtxoExitDelay:             program.VaultPolicyV1ExitDelay,
+		VtxoExitDelay:             s.policyExitDelay(),
 		VtxoExitDelayUnit:         program.VaultPolicyV1ExitDelayUnit,
 		SpendingArkAddress:        spending.ArkAddress,
 		SpendingArkScript:         hex.EncodeToString(spending.PkScript),
@@ -457,7 +457,7 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		VtxoBoardingProgram:       program.VaultBoardV1,
 		VtxoBoardingAddress:       boarding.OnchainAddress,
 		VtxoBoardingScript:        hex.EncodeToString(boarding.PkScript),
-		VtxoBoardingExitDelay:     program.VaultBoardV1ExitDelay,
+		VtxoBoardingExitDelay:     s.boardExitDelay(),
 		VtxoBoardingExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		RecipientDustSats:         cred.RecipientDustSats,
 		TxRecipientCapSats:        cred.TxRecipientCapSats,

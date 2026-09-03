@@ -169,7 +169,11 @@ func TestProtectedRuntimeRevalidatesEmulatorDialResult(t *testing.T) {
 	valid := application.PublicEmulatorIdentity{
 		Origin: deployment.MutinynetArkadeCosignerOrigin, Version: deployment.MutinynetArkadeCosignerVersion, BasePub: expected,
 	}
-	if err := validateArkadeDialResult(stubEmulatorSigner{}, valid, expected); err != nil {
+	pins, err := deployment.IdentityFor(deployment.NetworkMutinynet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateArkadeDialResult(stubEmulatorSigner{}, valid, expected, pins); err != nil {
 		t.Fatal(err)
 	}
 	var typedNil *nilEmulatorSigner
@@ -202,7 +206,7 @@ func TestProtectedRuntimeRevalidatesEmulatorDialResult(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := validateArkadeDialResult(test.signer, test.identity, expected); err == nil {
+			if err := validateArkadeDialResult(test.signer, test.identity, expected, pins); err == nil {
 				t.Fatal("untrusted dial result accepted")
 			}
 		})
