@@ -721,6 +721,9 @@ func mapLedgerBusy(err error) error {
 	if errors.Is(err, policy.ErrPeriodAllowanceExceeded) {
 		return apperr.New(apperr.CodeRejected, "period allowance exceeded")
 	}
+	if errors.Is(err, policy.ErrVtxoOperationActive) {
+		return apperr.New(apperr.CodeRejected, policy.ErrVtxoOperationActive.Error())
+	}
 	return err
 }
 

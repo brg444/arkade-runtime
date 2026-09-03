@@ -47,4 +47,13 @@ func attachVtxoRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		)
 		writeJSON(w, response, err)
 	})
+	mux.HandleFunc("POST /v1/vtxo/abort", func(w http.ResponseWriter, r *http.Request) {
+		var request VtxoAbortRequest
+		if err := decodeMutation(r, &request, origin); err != nil {
+			writeMutationError(w, err)
+			return
+		}
+		response, err := svc.AbortVtxo(r.Context(), request)
+		writeJSON(w, response, err)
+	})
 }

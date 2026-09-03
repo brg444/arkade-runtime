@@ -1023,6 +1023,13 @@ func TestGetVtxoOperationViewReturnsSignedPsbt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	finalized := stored
+	finalized.State = policy.VtxoStateFinalized
+	if _, swapped, err := e.ledger.TransitionVtxoOperation(
+		context.Background(), policy.VtxoStateSubmitted, finalized,
+	); err != nil || !swapped {
+		t.Fatalf("retire submitted fixture: swapped=%v err=%v", swapped, err)
+	}
 	// The helper created a submitted operation. Use a separate current
 	// reservation because state transitions are deliberately irreversible.
 	stored.OperationID = "spend-signed-current"
