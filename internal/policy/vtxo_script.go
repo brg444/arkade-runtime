@@ -25,11 +25,24 @@ type VaultPolicyV1Params struct {
 	ExitDevicePub        []byte
 	ExitHardwarePub      []byte
 	ExitRecoveryPub      []byte // optional; when set, exit is hardware+recovery
+	Network              string // empty selects Mutinynet pins
 }
 
-// PinnedDelegateXOnly returns the x-only key committed by vault-policy-v1.
+// PinnedDelegateXOnly returns the Mutinynet x-only key committed by vault-policy-v1.
 func PinnedDelegateXOnly() ([]byte, error) {
-	raw, err := hex.DecodeString(program.VaultPolicyV1PinnedDelegate)
+	return PinnedDelegateXOnlyFor(program.NetworkMutinynet)
+}
+
+// PinnedDelegateXOnlyFor returns the x-only delegate key for a product network.
+func PinnedDelegateXOnlyFor(network string) ([]byte, error) {
+	if network == "" {
+		network = program.NetworkMutinynet
+	}
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := hex.DecodeString(pins.DelegatePub)
 	if err != nil || len(raw) != 33 {
 		return nil, fmt.Errorf("pinned public delegate")
 	}
@@ -58,7 +71,15 @@ type VaultPolicyV1Tree struct {
 // delegate, Arkade Operator]. It refuses OP_TUNNEL and DefaultVtxo /
 // DelegateVtxo trees. The emulator is not a tree signer.
 func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
-	if err := program.ValidateVaultPolicyV1ExitDelay(program.VaultPolicyV1ExitDelay, program.VaultPolicyV1ExitDelayUnit); err != nil {
+	network := p.Network
+	if network == "" {
+		network = program.NetworkMutinynet
+	}
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		return nil, err
+	}
+	if err := program.ValidateVaultPolicyV1ExitDelayFor(network, pins.PolicyExitDelay, program.VaultPolicyV1ExitDelayUnit); err != nil {
 		return nil, err
 	}
 	user, err := parsePolicyPub(p.UserPub, "userPub")
@@ -93,13 +114,13 @@ func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
 		}
 		exitPubs = []*btcec.PublicKey{hardware, recovery}
 	}
-	exitDelay := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: program.VaultPolicyV1ExitDelay}
+	exitDelay := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: pins.PolicyExitDelay}
 	spend := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{user, vtxoVault, arkd}}
 	exit := &arkscript.CSVMultisigClosure{
 		MultisigClosure: arkscript.MultisigClosure{PubKeys: exitPubs},
 		Locktime:        exitDelay,
 	}
-	wantDelegate, err := PinnedDelegateXOnly()
+	wantDelegate, err := PinnedDelegateXOnlyFor(network)
 	if err != nil {
 		return nil, err
 	}

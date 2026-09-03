@@ -10,17 +10,29 @@ import (
 )
 
 func liveContractPackJSON() ([]byte, error) {
-	if err := validateReleaseContractPack(contractpack.JSON); err != nil {
+	return liveContractPackJSONFor(program.NetworkMutinynet)
+}
+
+func liveContractPackJSONFor(network string) ([]byte, error) {
+	raw, err := contractpack.JSONFor(network)
+	if err != nil {
 		return nil, err
 	}
-	return append([]byte(nil), contractpack.JSON...), nil
+	if err := validateReleaseContractPackFor(network, raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
 
 func validateReleaseContractPack(raw []byte) error {
-	if err := contractpack.ValidateBytes(raw); err != nil {
+	return validateReleaseContractPackFor(program.NetworkMutinynet, raw)
+}
+
+func validateReleaseContractPackFor(network string, raw []byte) error {
+	if err := contractpack.ValidateBytesFor(network, raw); err != nil {
 		return err
 	}
-	return validateVaultPolicyV1Pack(raw)
+	return validateVaultPolicyV1PackFor(network, raw)
 }
 
 func (s *Service) requireVaultPolicyV1Exit() error {
@@ -35,18 +47,37 @@ func (s *Service) requireVaultPolicyV1Exit() error {
 		raw = s.contractPackJSON
 	} else {
 		var err error
-		raw, err = liveContractPackJSON()
+		network := program.NetworkMutinynet
+		if s != nil {
+			network = s.runtimeConfig().Network
+			if network == "" {
+				network = program.NetworkMutinynet
+			}
+		}
+		raw, err = liveContractPackJSONFor(network)
 		if err != nil {
 			return apperr.New(apperr.CodeRejected, err.Error())
 		}
 	}
-	if err := validateVaultPolicyV1Pack(raw); err != nil {
+	network := program.NetworkMutinynet
+	if s != nil && s.runtimeConfig().Network != "" {
+		network = s.runtimeConfig().Network
+	}
+	if err := validateVaultPolicyV1PackFor(network, raw); err != nil {
 		return apperr.New(apperr.CodeRejected, err.Error())
 	}
 	return nil
 }
 
 func validateVaultPolicyV1Pack(raw []byte) error {
+	return validateVaultPolicyV1PackFor(program.NetworkMutinynet, raw)
+}
+
+func validateVaultPolicyV1PackFor(network string, raw []byte) error {
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		return err
+	}
 	var pack struct {
 		Programs map[string]json.RawMessage `json:"programs"`
 	}
@@ -73,8 +104,8 @@ func validateVaultPolicyV1Pack(raw []byte) error {
 	} else if err := json.Unmarshal(rawExit, &exit); err != nil {
 		return fmt.Errorf("vault-policy-v1 exit")
 	}
-	if exit.Delay != fmt.Sprintf("%d", program.VaultPolicyV1ExitDelay) || exit.DelayUnit != program.VaultPolicyV1ExitDelayUnit {
-		return fmt.Errorf("vault-policy-v1 exit delay must be %d seconds", program.VaultPolicyV1ExitDelay)
+	if exit.Delay != fmt.Sprintf("%d", pins.PolicyExitDelay) || exit.DelayUnit != program.VaultPolicyV1ExitDelayUnit {
+		return fmt.Errorf("vault-policy-v1 exit delay must be %d seconds", pins.PolicyExitDelay)
 	}
 	var delegate struct {
 		Pinned string `json:"pinnedPublicDelegate"`
@@ -85,7 +116,7 @@ func validateVaultPolicyV1Pack(raw []byte) error {
 	} else if err := json.Unmarshal(rawDel, &delegate); err != nil {
 		return fmt.Errorf("vault-policy-v1 delegate")
 	}
-	if delegate.Pinned != program.VaultPolicyV1PinnedDelegate {
+	if delegate.Pinned != pins.DelegatePub {
 		return fmt.Errorf("vault-policy-v1 pinned delegate")
 	}
 	if delegate.Cap != program.VaultPolicyV1DelegateCapability {

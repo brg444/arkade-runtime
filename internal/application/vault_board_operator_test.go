@@ -68,7 +68,7 @@ func TestVaultBoardOperatorUsesOnlyPinnedStockPublicRoutes(t *testing.T) {
 			return nil, nil
 		}
 	})
-	operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, doer)
+	operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,10 +91,10 @@ func TestVaultBoardOperatorFailsClosedOnIdentityAndAmbiguousResponse(t *testing.
 	infoDoer := rpcDoerFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResponse(http.StatusOK, vaultBoardOperatorInfoJSON("not-a-digest")), nil
 	})
-	if _, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, infoDoer); err == nil || !strings.Contains(err.Error(), "digest") {
+	if _, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, infoDoer); err == nil || !strings.Contains(err.Error(), "digest") {
 		t.Fatalf("invalid digest accepted: %v", err)
 	}
-	if _, err := dialVaultBoardOperatorWithClient(context.Background(), "https://attacker.example", infoDoer); err == nil || !strings.Contains(err.Error(), "release pin") {
+	if _, err := dialVaultBoardOperatorWithClient(context.Background(), "https://attacker.example", deployment.NetworkMutinynet, infoDoer); err == nil || !strings.Contains(err.Error(), "release pin") {
 		t.Fatalf("attacker origin accepted: %v", err)
 	}
 
@@ -106,7 +106,7 @@ func TestVaultBoardOperatorFailsClosedOnIdentityAndAmbiguousResponse(t *testing.
 		}
 		return nil, fmt.Errorf("connection reset")
 	})
-	operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, ambiguousDoer)
+	operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, ambiguousDoer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestVaultBoardOperatorRejectsResponseShapeDrift(t *testing.T) {
 		}
 		return jsonResponse(http.StatusOK, `{"intentId":"intent","unexpected":true}`), nil
 	})
-	operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, doer)
+	operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestVaultBoardOperatorClassifiesOnlyStockPreAcceptanceRejections(t *testing
 				}
 				return jsonResponse(test.status, `{}`), nil
 			})
-			operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, doer)
+			operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer)
 			if err != nil {
 				t.Fatal(err)
 			}
