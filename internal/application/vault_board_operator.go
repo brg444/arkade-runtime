@@ -45,24 +45,32 @@ func isDefiniteVaultBoardRegisterRejection(err error) bool {
 	return ok
 }
 
-func dialVaultBoardOperator(ctx context.Context) (vaultBoardOperator, error) {
-	return dialVaultBoardOperatorWithClient(ctx, deployment.MutinynetArkIndexerOrigin, newArkResolverHTTPClient())
+func dialVaultBoardOperator(ctx context.Context, network string) (vaultBoardOperator, error) {
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		return nil, err
+	}
+	return dialVaultBoardOperatorWithClient(ctx, id.OperatorOrigin, network, newArkResolverHTTPClient())
 }
 
-func dialVaultBoardOperatorWithClient(ctx context.Context, rawOrigin string, hc httpDoer) (vaultBoardOperator, error) {
+func dialVaultBoardOperatorWithClient(ctx context.Context, rawOrigin, network string, hc httpDoer) (vaultBoardOperator, error) {
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		return nil, err
+	}
 	origin, err := canonicalHTTPSOrigin(rawOrigin)
-	if err != nil || origin != deployment.MutinynetArkIndexerOrigin {
+	if err != nil || origin != id.OperatorOrigin {
 		return nil, fmt.Errorf("vault-board-v1 Operator origin must be the release pin")
 	}
 	if hc == nil {
 		return nil, fmt.Errorf("vault-board-v1 Operator HTTP client required")
 	}
-	resolver := &arkResolver{origin: origin, hc: hc, network: deployment.NetworkMutinynet}
+	resolver := &arkResolver{origin: origin, hc: hc, network: network}
 	info, err := resolver.getInfo(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("vault-board-v1 Operator info: %w", err)
 	}
-	if _, _, _, err := validateArkResolverReleaseInfo(deployment.NetworkMutinynet, info); err != nil {
+	if _, _, _, err := validateArkResolverReleaseInfo(network, info); err != nil {
 		return nil, err
 	}
 	if err := requireTxid(info.Digest); err != nil {

@@ -47,8 +47,27 @@ type esploraVaultBoardChain struct {
 	hc     httpDoer
 }
 
-func dialVaultBoardChain() (vaultBoardChain, error) {
-	return dialVaultBoardChainWithClient(deployment.MutinynetEsploraOrigin, &http.Client{
+func identityForEsploraOrigin(rawOrigin string) (deployment.Identity, error) {
+	for _, network := range []string{deployment.NetworkMutinynet, deployment.NetworkMainnet} {
+		id, err := deployment.IdentityFor(network)
+		if err == nil && id.EsploraOrigin == rawOrigin {
+			return id, nil
+		}
+	}
+	return deployment.Identity{}, fmt.Errorf("vault-board-v1 Esplora origin must be the release pin")
+}
+
+func pinnedEsploraOrigin(origin string) bool {
+	_, err := identityForEsploraOrigin(origin)
+	return err == nil
+}
+
+func dialVaultBoardChain(network string) (vaultBoardChain, error) {
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		return nil, err
+	}
+	return dialVaultBoardChainWithClient(id.EsploraOrigin, &http.Client{
 		Timeout: vaultBoardChainTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return fmt.Errorf("vault-board-v1 Esplora redirects are disabled")
@@ -59,7 +78,8 @@ func dialVaultBoardChain() (vaultBoardChain, error) {
 func dialVaultBoardChainWithClient(rawOrigin string, hc httpDoer) (vaultBoardChain, error) {
 	base := strings.TrimSuffix(rawOrigin, "/api")
 	origin, err := canonicalHTTPSOrigin(base)
-	if err != nil || rawOrigin != origin+"/api" || rawOrigin != deployment.MutinynetEsploraOrigin {
+	id, idErr := identityForEsploraOrigin(rawOrigin)
+	if err != nil || idErr != nil || rawOrigin != origin+"/api" || id.EsploraOrigin != rawOrigin {
 		return nil, fmt.Errorf("vault-board-v1 Esplora origin must be the release pin")
 	}
 	if hc == nil {
@@ -96,7 +116,7 @@ type vaultBoardEsploraOutspend struct {
 }
 
 func (e *esploraVaultBoardChain) confirmedOutpoint(ctx context.Context, txid string, vout uint32) (vaultBoardConfirmedOutpoint, error) {
-	if e == nil || e.hc == nil || e.origin != deployment.MutinynetEsploraOrigin || requireTxid(txid) != nil {
+	if e == nil || e.hc == nil || !pinnedEsploraOrigin(e.origin) || requireTxid(txid) != nil {
 		return vaultBoardConfirmedOutpoint{}, fmt.Errorf("vault-board-v1 release-pinned chain query required")
 	}
 	var funding vaultBoardEsploraTx
@@ -187,7 +207,7 @@ func (e *esploraVaultBoardChain) confirmedOutpoint(ctx context.Context, txid str
 
 func (e *esploraVaultBoardChain) revalidateOutpoint(ctx context.Context, prior vaultBoardConfirmedOutpoint) (vaultBoardConfirmedOutpoint, error) {
 	txid := hex.EncodeToString(prior.Txid)
-	if e == nil || e.hc == nil || e.origin != deployment.MutinynetEsploraOrigin || requireTxid(txid) != nil ||
+	if e == nil || e.hc == nil || !pinnedEsploraOrigin(e.origin) || requireTxid(txid) != nil ||
 		requireTxid(prior.FundingBlockHash) != nil || prior.FundingBlockHeight <= 0 {
 		return vaultBoardConfirmedOutpoint{}, fmt.Errorf("vault-board-v1 release-pinned chain revalidation required")
 	}

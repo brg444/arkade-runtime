@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestConfigValidatesOnlyMutinynetCandidate(t *testing.T) {
+func TestConfigValidatesPinnedProductNetworks(t *testing.T) {
 	mutiny := func(origin, rp string) Config {
 		return Config{ClientOrigin: origin, RPID: rp, Network: NetworkMutinynet}
 	}
@@ -27,7 +27,8 @@ func TestConfigValidatesOnlyMutinynetCandidate(t *testing.T) {
 		{name: "empty port rejected", config: mutiny("https://vault.example.com:", "vault.example.com"), wantErr: "empty"},
 		{name: "zero padded port rejected", config: mutiny("https://vault.example.com:0443", "vault.example.com"), wantErr: "canonical decimal"},
 		{name: "unicode hostname rejected", config: mutiny("https://v\u00e4ult.example.com", "v\u00e4ult.example.com"), wantErr: "ASCII"},
-		{name: "mainnet rejected until release pins exist", config: Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: "mainnet"}, wantErr: "unsupported"},
+		{name: "mainnet", config: Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: NetworkMainnet}},
+		{name: "mainnet needs https", config: Config{ClientOrigin: "http://vault.example.com", RPID: "vault.example.com", Network: NetworkMainnet}, wantErr: "https"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -47,6 +48,9 @@ func TestConfigValidatesOnlyMutinynetCandidate(t *testing.T) {
 			}
 			if test.config.Network == NetworkMutinynet && (height != 1 || checkpoint != MutinynetCheckpoint1) {
 				t.Fatalf("mutinynet checkpoint = %d:%s", height, checkpoint)
+			}
+			if test.config.Network == NetworkMainnet && (height != 0 || checkpoint != BitcoinGenesisHash) {
+				t.Fatalf("mainnet checkpoint = %d:%s", height, checkpoint)
 			}
 		})
 	}

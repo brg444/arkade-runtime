@@ -466,7 +466,10 @@ type vaultBoardKeyContext struct {
 }
 
 func newVaultBoardKeyContext(vaultID, network string, operatorPub []byte) (vaultBoardKeyContext, error) {
-	if vaultID == "" || network != program.NetworkMutinynet || len(operatorPub) != btcec.PubKeyBytesLenCompressed {
+	if vaultID == "" || len(operatorPub) != btcec.PubKeyBytesLenCompressed {
+		return vaultBoardKeyContext{}, fmt.Errorf("vault-board-v1 key context required")
+	}
+	if _, err := program.PinsFor(network); err != nil {
 		return vaultBoardKeyContext{}, fmt.Errorf("vault-board-v1 key context required")
 	}
 	if _, err := btcec.ParsePubKey(operatorPub); err != nil {
@@ -572,7 +575,10 @@ func (k *fileBackedVaultKeys) authorizeVaultBoard(
 }
 
 func deriveVaultBoardKey(master *btcec.PrivateKey, req vaultBoardKeyContext) (*btcec.PrivateKey, error) {
-	if master == nil || req.vaultID == "" || req.network != program.NetworkMutinynet || len(req.operatorPub) != btcec.PubKeyBytesLenCompressed {
+	if master == nil || req.vaultID == "" || len(req.operatorPub) != btcec.PubKeyBytesLenCompressed {
+		return nil, fmt.Errorf("vault-board-v1 key context required")
+	}
+	if _, err := program.PinsFor(req.network); err != nil {
 		return nil, fmt.Errorf("vault-board-v1 key context required")
 	}
 	return policy.DeriveVaultBoardCosignerScalar(master, req.vaultID, req.network, req.operatorPub)

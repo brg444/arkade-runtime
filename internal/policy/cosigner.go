@@ -128,8 +128,8 @@ func DeriveVaultBoardCosignerScalar(master *btcec.PrivateKey, vaultID, network s
 	if vaultID == "" {
 		return nil, fmt.Errorf("vault id required")
 	}
-	if network != program.NetworkMutinynet {
-		return nil, fmt.Errorf("vault-board-v1 is Mutinynet-only")
+	if _, err := program.PinsFor(network); err != nil {
+		return nil, fmt.Errorf("vault-board-v1 is not enabled for this network")
 	}
 	if len(operatorPub) != 33 || (operatorPub[0] != 0x02 && operatorPub[0] != 0x03) {
 		return nil, fmt.Errorf("Operator pub must be compressed secp256k1")

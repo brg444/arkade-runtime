@@ -1,6 +1,6 @@
 // Package deployment defines the runtime identity of one vault deployment.
 // Policy and template versions stay code-pinned; operators may choose only
-// the WebAuthn origin/RP ID and one explicitly supported non-mainnet network.
+// the WebAuthn origin/RP ID and one explicitly supported product network.
 package deployment
 
 import (
@@ -59,12 +59,13 @@ type Config struct {
 	Network      string
 }
 
-// BitcoinCheckpoint returns the release-pinned custom-signet checkpoint.
+// BitcoinCheckpoint returns the release-pinned chain identity for this network.
 func (c Config) BitcoinCheckpoint() (int64, string, error) {
-	if c.Network != NetworkMutinynet {
-		return 0, "", fmt.Errorf("unsupported network %q", c.Network)
+	id, err := IdentityFor(c.Network)
+	if err != nil {
+		return 0, "", err
 	}
-	return 1, MutinynetCheckpoint1, nil
+	return id.CheckpointHeight, id.CheckpointHash, nil
 }
 
 // Validate accepts only the release-pinned Mutinynet candidate. The RP ID is
@@ -105,11 +106,11 @@ func (c Config) Validate() error {
 	if net.ParseIP(rp) != nil {
 		return fmt.Errorf("IP relying party is not supported")
 	}
-	if c.Network != NetworkMutinynet {
-		return fmt.Errorf("unsupported network %q", c.Network)
+	if _, err := IdentityFor(c.Network); err != nil {
+		return err
 	}
 	if u.Scheme != "https" {
-		return fmt.Errorf("mutinynet requires an https origin")
+		return fmt.Errorf("%s requires an https origin", c.Network)
 	}
 	return nil
 }
