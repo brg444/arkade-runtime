@@ -216,6 +216,29 @@ func TestVtxoReserveDigestWalletVector(t *testing.T) {
 	}
 }
 
+func TestVtxoAbortDigestRejectsNonCanonicalIdentity(t *testing.T) {
+	if _, err := ComputeVtxoAbortDigest("AA", "vault-vector-1", vtxoPurposeSpend); err == nil {
+		t.Fatal("uppercase operation id accepted")
+	}
+	if _, err := ComputeVtxoAbortDigest("000102030405060708090a0b0c0d0e0f", "", vtxoPurposeSpend); err == nil {
+		t.Fatal("empty vault id accepted")
+	}
+	if _, err := ComputeVtxoAbortDigest("000102030405060708090a0b0c0d0e0f", "vault-vector-1", "board"); err == nil {
+		t.Fatal("non-spend purpose accepted")
+	}
+	digest, err := ComputeVtxoAbortDigest("000102030405060708090a0b0c0d0e0f", "vault-vector-1", vtxoPurposeSpend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := ComputeVtxoAbortDigest("000102030405060708090a0b0c0d0e0e", "vault-vector-1", vtxoPurposeSpend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(digest, other) {
+		t.Fatal("abort digest ignores operation id")
+	}
+}
+
 func TestSpentInWindowAuthenticatesRowsBeforeStateDecision(t *testing.T) {
 	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 	led := openPolicyTestLedger(t, func() time.Time { return now })
@@ -287,7 +310,7 @@ func TestConcurrentVtxoReservationsCannotOversubscribeAllowance(t *testing.T) {
 	for err := range errs {
 		if err == nil {
 			succeeded++
-		} else if errors.Is(err, ErrPeriodAllowanceExceeded) {
+		} else if errors.Is(err, ErrPeriodAllowanceExceeded) || strings.Contains(err.Error(), "operation already active") {
 			failed++
 		} else {
 			t.Fatalf("unexpected reservation error: %v", err)
@@ -467,6 +490,34 @@ func TestVtxoReservationRejectsMultiInputOverlap(t *testing.T) {
 	}
 }
 
+func TestVtxoReservationRejectsDisjointSecondOperationForEveryUnresolvedState(t *testing.T) {
+	now := time.Now().UTC()
+	for i, state := range []string{
+		vtxoStateReserved, vtxoStateSigned, vtxoStateSubmitted, vtxoStateUnresolved,
+	} {
+		t.Run(state, func(t *testing.T) {
+			led := openPolicyTestLedger(t, func() time.Time { return now })
+			createPolicyTestVault(t, led, "vault-a", byte(0x40+i))
+			existing := testVtxoOperation("vault-a", "existing", vtxoPurposeSpend, state, 10_000, 0, now)
+			if state == vtxoStateReserved {
+				existing.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+			}
+			insertTestVtxoOperation(t, led, existing)
+
+			candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
+			candidate.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+			input := VtxoOperationInput{
+				Txid: bytes.Repeat([]byte{byte(0x20 + i)}, 32), Vout: 1,
+				ValueSats: 20_000, Script: []byte{0x51},
+			}
+			err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000)
+			if err == nil || !strings.Contains(err.Error(), "operation already active") {
+				t.Fatalf("state %s allowed a second operation: %v", state, err)
+			}
+		})
+	}
+}
+
 func TestVtxoReservationRejectsOverlapForEveryCountingState(t *testing.T) {
 	now := time.Now().UTC()
 	for i, state := range []string{
@@ -485,14 +536,15 @@ func TestVtxoReservationRejectsOverlapForEveryCountingState(t *testing.T) {
 			insertTestVtxoOperationInput(t, led, input)
 
 			candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
-			if err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000); err == nil || !strings.Contains(err.Error(), "already reserved") {
+			err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000)
+			if err == nil || !strings.Contains(err.Error(), "already reserved") {
 				t.Fatalf("state %s accepted overlapping input: %v", state, err)
 			}
 		})
 	}
 }
 
-func TestVtxoOverlapAllowsChainProvenUnresolvedRowWithoutRefundingAllowance(t *testing.T) {
+func TestVtxoReservationKeepsChainProvenUnresolvedRowAsGlobalFence(t *testing.T) {
 	now := time.Now().UTC()
 	led := openPolicyTestLedger(t, func() time.Time { return now })
 	createPolicyTestVault(t, led, "vault-a", 0x7a)
@@ -506,14 +558,14 @@ func TestVtxoOverlapAllowsChainProvenUnresolvedRowWithoutRefundingAllowance(t *t
 	insertTestVtxoOperationInput(t, led, input)
 
 	candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now)
-	if err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000); err != nil {
-		t.Fatalf("chain-dead unresolved input remained locked: %v", err)
+	if err := led.ReserveVtxoOperation(context.Background(), candidate, []VtxoOperationInput{input}, 100_000); err == nil || !strings.Contains(err.Error(), "operation already active") {
+		t.Fatalf("unresolved operation allowed a new reservation: %v", err)
 	}
 	spent, err := led.SpentInPeriod(context.Background(), "vault-a", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spent != 20_500 {
+	if spent != 10_500 {
 		t.Fatalf("unresolved allowance debit changed: %d", spent)
 	}
 }
@@ -627,7 +679,7 @@ func TestVtxoOverlapDoesNotLoadUnrelatedVaultInputs(t *testing.T) {
 		Vout: 5, ValueSats: 20_000, Script: []byte{0x51},
 	}
 	insertTestVtxoOperation(t, led, testVtxoOperation(
-		"vault-a", unrelated.OperationID, vtxoPurposeSpend, vtxoStateReserved, 10_000, 0, now,
+		"vault-a", unrelated.OperationID, vtxoPurposeSpend, vtxoStateFinalized, 10_000, 0, now,
 	))
 	insertTestVtxoOperationInput(t, led, unrelated)
 	if _, err := led.db.Exec(`UPDATE vtxo_operation_input SET value_sats = value_sats + 1 WHERE operation_id = ?`, unrelated.OperationID); err != nil {

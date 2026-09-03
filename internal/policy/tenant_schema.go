@@ -15,6 +15,7 @@ const (
 	vtxoOperationMACDomain   = "arkade-2fa-vault/vtxo-operation/v1"
 	vtxoBundleDigestTag      = "arkade-2fa-vault/vtxo-bundle/v1"
 	vtxoReserveDigestTag     = "arkade-vault/vtxo-reserve/v1"
+	vtxoAbortDigestTag       = "arkade-vault/vtxo-abort/v1"
 )
 
 const createMultiTenantSchema = `

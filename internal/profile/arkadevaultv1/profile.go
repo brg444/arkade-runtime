@@ -89,6 +89,8 @@ func routes() []arkaderuntime.Route {
 		{Method: http.MethodOptions, Path: "/v1/vtxo/finalize"},
 		{Method: http.MethodGet, Path: "/v1/vtxo/operation"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/operation"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/abort"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/abort"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/board/prepare"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/board/prepare"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/board/register"},

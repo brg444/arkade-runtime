@@ -324,6 +324,34 @@ func ComputeVtxoReserveDigest(operationID, vaultID, purpose string, destScript [
 	return digest, nil
 }
 
+// ComputeVtxoAbortDigest authenticates the mutation that releases a
+// pre-signature reservation. Signed and submitted operations have no digest
+// because they are not abortable.
+func ComputeVtxoAbortDigest(operationID, vaultID, purpose string) ([]byte, error) {
+	operationRaw, err := hex.DecodeString(operationID)
+	if err != nil || len(operationRaw) != 16 || operationID != strings.ToLower(operationID) {
+		return nil, fmt.Errorf("operation id must be 16 bytes encoded as lowercase hex")
+	}
+	if vaultID == "" {
+		return nil, fmt.Errorf("vault id required")
+	}
+	if purpose != vtxoPurposeSpend {
+		return nil, fmt.Errorf("vtxo purpose must be spend")
+	}
+	payload := make([]byte, 0, 128)
+	payload = binary.LittleEndian.AppendUint32(payload, 1)
+	for _, field := range [][]byte{operationRaw, []byte(vaultID), []byte(purpose)} {
+		payload, err = appendCredentialField(payload, field)
+		if err != nil {
+			zeroBytes(payload)
+			return nil, err
+		}
+	}
+	digest := taggedSHA256(vtxoAbortDigestTag, payload)
+	zeroBytes(payload)
+	return digest, nil
+}
+
 func taggedSHA256(tag string, msg []byte) []byte {
 	th := sha256.Sum256([]byte(tag))
 	h := sha256.New()
@@ -493,6 +521,15 @@ func vtxoStateCountsTowardAllowance(state string) bool {
 
 func vtxoStateAwaitingSettlement(state string) bool {
 	return state == vtxoStateSigned || state == vtxoStateSubmitted
+}
+
+func vtxoStateBlocksNewOperation(state string) bool {
+	switch state {
+	case vtxoStateReserved, vtxoStateSigned, vtxoStateSubmitted, vtxoStateUnresolved:
+		return true
+	default:
+		return false
+	}
 }
 
 // vtxoStateLocksInputs is deliberately narrower than allowance accounting.
