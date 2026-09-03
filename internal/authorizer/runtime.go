@@ -42,6 +42,9 @@ type Config struct {
 	VaultCosignerKeyFile string
 	EnrollmentTokenFile  string
 	EnrollmentWindow     time.Duration
+	StorageIsolation     string
+	EdgeRateLimit        string
+	MainnetAcknowledged  string
 }
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
@@ -114,6 +117,17 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	}
 	if !filepath.IsAbs(cfg.PolicySequencePath) || cfg.PolicySequencePath == "/" || cfg.PolicySequencePath == cfg.DatabasePath {
 		return nil, fmt.Errorf("policy sequence must be a distinct absolute on-disk file path")
+	}
+	if cfg.Deployment.Network == deployment.NetworkMainnet {
+		if cfg.StorageIsolation != "independent-authorities" {
+			return nil, fmt.Errorf("mainnet requires independently controlled database and policy-sequence storage")
+		}
+		if cfg.EdgeRateLimit != "shared-durable" {
+			return nil, fmt.Errorf("mainnet requires a shared durable edge rate limit")
+		}
+		if cfg.MainnetAcknowledged != "fresh-state-v1" {
+			return nil, fmt.Errorf("mainnet requires explicit fresh-state deployment acknowledgement")
+		}
 	}
 	if dialArkade == nil {
 		return nil, fmt.Errorf("public arkade emulator dialer required")

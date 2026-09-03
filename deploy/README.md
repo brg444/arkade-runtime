@@ -9,6 +9,7 @@ binary.
 | [Dockerfile.mutinynet](../Dockerfile.mutinynet) | Local Mutinynet image |
 | [entrypoint.railway.sh](entrypoint.railway.sh) | Key-file materialization and privilege drop |
 | [ops.md](ops.md) | Mainnet v2 state, restore, readiness, and release procedure |
+| [mainnet.env.example](mainnet.env.example) | Non-secret, fail-closed mainnet environment contract |
 
 The mainnet v2 service is a greenfield deployment. It does not open or migrate
 the existing Mutinynet ledger. Use fresh database and policy-sequence volumes,
@@ -22,5 +23,7 @@ deployment topology.
 
 The public Arkade cosigner and Arkade Operator resolver identities are release
 pins in `internal/deployment`. Environment overrides for custody or checkpoint
-policy are forbidden. Mainnet values remain intentionally absent until review
-freezes them.
+policy are forbidden. A mainnet process additionally refuses to start unless
+the operator declares independent storage authorities, shared durable edge
+limiting, and fresh state using `mainnet.env.example`. These declarations
+prevent accidental promotion; they do not replace infrastructure audit evidence.
