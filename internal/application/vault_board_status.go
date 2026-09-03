@@ -1,6 +1,10 @@
 package application
 
-import "github.com/brg444/arkade-vault-server/internal/policy"
+import (
+	"time"
+
+	"github.com/brg444/arkade-vault-server/internal/policy"
+)
 
 type vaultBoardPrepareState string
 
@@ -17,7 +21,7 @@ type vaultBoardPreparation struct {
 	Reason  string
 }
 
-func classifyVaultBoardAttempt(snapshot *policy.VaultBoardAttemptSnapshot) vaultBoardPreparation {
+func classifyVaultBoardAttempt(snapshot *policy.VaultBoardAttemptSnapshot, now time.Time) vaultBoardPreparation {
 	if snapshot == nil {
 		return vaultBoardPreparation{State: vaultBoardReady}
 	}
@@ -44,9 +48,26 @@ func classifyVaultBoardAttempt(snapshot *policy.VaultBoardAttemptSnapshot) vault
 		out.Attempt++
 		return out
 	}
-	if snapshot.RegisterSubmission != nil || snapshot.RegisterDispatch != nil {
+	if snapshot.DeleteDispatch != nil {
 		out.State = vaultBoardBlocked
-		out.Reason = "existing registration crossed the Operator boundary"
+		out.Reason = "existing registration is still active"
+		return out
+	}
+	if snapshot.RegisterDispatch != nil && snapshot.RegisterSubmission == nil {
+		out.State = vaultBoardBlocked
+		out.Reason = "existing registration is still active"
+		return out
+	}
+	if snapshot.RegisterSubmission != nil || snapshot.RegisterDispatch != nil {
+		if snapshot.RegisterSubmission != nil &&
+			snapshot.RegisterSubmission.Outcome == policy.VaultBoardAuthSubmitted &&
+			policy.VaultBoardRegisterCanSupersede(snapshot.Register.ExpireAt, now) {
+			out.State = vaultBoardReady
+			out.Attempt++
+			return out
+		}
+		out.State = vaultBoardBlocked
+		out.Reason = "existing registration is still active"
 		return out
 	}
 	// The previous register authorization never crossed the durable dispatch

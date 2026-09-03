@@ -145,7 +145,7 @@ func TestVaultBoardAttemptIsServerAllocatedAndRotatesOnlyAfterRelease(t *testing
 	}, vaultBoardTestChainState(ledger)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x42), vaultBoardTestChainState(ledger)); err == nil || !strings.Contains(err.Error(), "Operator boundary") {
+	if _, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x42), vaultBoardTestChainState(ledger)); err == nil || !strings.Contains(err.Error(), "still active") {
 		t.Fatalf("rotated dispatched attempt: %v", err)
 	}
 	submitVaultBoardRegister(t, ledger, *first)
@@ -203,8 +203,7 @@ func TestVaultBoardUndispatchedRegisterRotatesAfterRestart(t *testing.T) {
 	}, vaultBoardTestChainState(restarted)); err != nil {
 		t.Fatal(err)
 	}
-	now = time.Unix(second.ExpireAt, 0).UTC().Add(24 * time.Hour)
-	if _, _, _, err := restarted.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(restarted, 0x75), vaultBoardTestChainState(restarted)); err == nil || !strings.Contains(err.Error(), "Operator boundary") {
+	if _, _, _, err := restarted.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(restarted, 0x75), vaultBoardTestChainState(restarted)); err == nil || !strings.Contains(err.Error(), "still active") {
 		t.Fatalf("post-dispatch restart rotated ambiguous attempt: %v", err)
 	}
 }
@@ -274,13 +273,29 @@ func TestVaultBoardDefiniteRegisterRejectionAllowsFreshAttempt(t *testing.T) {
 	}
 }
 
-func TestVaultBoardExpiredRegisterNeverSupersedesFinalAuthorization(t *testing.T) {
+func TestVaultBoardRegisterCanSupersede(t *testing.T) {
+	now := time.Date(2026, 8, 26, 12, 2, 30, 0, time.UTC)
+	expireAt := now.Add(-30 * time.Second).Unix()
+	if !VaultBoardRegisterCanSupersede(expireAt, now) {
+		t.Fatal("expired register plus quarantine should supersede")
+	}
+	if VaultBoardRegisterCanSupersede(expireAt, now.Add(-time.Second)) {
+		t.Fatal("quarantine must still block rotation")
+	}
+	if VaultBoardRegisterCanSupersede(0, now) {
+		t.Fatal("zero expire_at must never supersede")
+	}
+}
+
+func TestVaultBoardExpiredSupersessionSerializesWithFinalAuthorization(t *testing.T) {
 	for _, test := range []struct {
-		name       string
-		finalFirst bool
+		name          string
+		finalFirst    bool
+		wantFinal     bool
+		wantSupersede bool
 	}{
-		{name: "final before rejected supersession", finalFirst: true},
-		{name: "rejected supersession before final"},
+		{name: "final wins", finalFirst: true, wantFinal: true},
+		{name: "supersession wins", wantSupersede: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
@@ -301,7 +316,7 @@ func TestVaultBoardExpiredRegisterNeverSupersedesFinalAuthorization(t *testing.T
 				t.Fatal(err)
 			}
 			submitVaultBoardRegister(t, ledger, *first)
-			clock = time.Unix(first.ExpireAt, 0).UTC().Add(24 * time.Hour)
+			clock = time.Unix(first.ExpireAt, 0).UTC().Add(vaultBoardRegisterQuarantine)
 			final := VaultBoardAuthorization{
 				OperationID: first.OperationID, Attempt: first.Attempt, Phase: VaultBoardPhaseFinalize,
 				RequestDigest:  bytes.Repeat([]byte{0x7c}, sha256.Size),
@@ -323,7 +338,7 @@ func TestVaultBoardExpiredRegisterNeverSupersedesFinalAuthorization(t *testing.T
 				supersedeErr = supersede()
 				finalErr = finalize()
 			}
-			if finalErr != nil || supersedeErr == nil {
+			if (finalErr == nil) != test.wantFinal || (supersedeErr == nil) != test.wantSupersede {
 				t.Fatalf("final=%v supersede=%v", finalErr, supersedeErr)
 			}
 		})
