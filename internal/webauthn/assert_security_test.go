@@ -192,6 +192,19 @@ func TestDecodeChallengeRequiresRawBase64URL(t *testing.T) {
 	}
 }
 
+func TestChallengeFromClientDataJSON(t *testing.T) {
+	t.Parallel()
+	raw := bytes.Repeat([]byte{7}, 32)
+	cd := []byte(`{"type":"webauthn.get","challenge":"` + EncodeChallenge(raw) + `","origin":"https://vault.test","crossOrigin":false}`)
+	got, err := ChallengeFromClientDataJSON(cd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, raw) {
+		t.Fatalf("got %x want %x", got, raw)
+	}
+}
+
 func TestParseCompressedP256AndVerifyES256FailClosed(t *testing.T) {
 	t.Parallel()
 

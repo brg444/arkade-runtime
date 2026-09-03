@@ -136,6 +136,25 @@ func decodeChallenge(s string) ([]byte, error) {
 	return raw, nil
 }
 
+// ChallengeFromClientDataJSON returns the 32-byte WebAuthn challenge the
+// authenticator signed. Spend authorization binds the payment with
+// PhoneDirectP256 over the bundle digest, so this challenge is user-presence,
+// not the sighash.
+func ChallengeFromClientDataJSON(clientDataJSON []byte) ([]byte, error) {
+	var cd ClientData
+	if err := json.Unmarshal(clientDataJSON, &cd); err != nil {
+		return nil, fmt.Errorf("clientDataJSON: %w", err)
+	}
+	raw, err := decodeChallenge(cd.Challenge)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) != 32 {
+		return nil, fmt.Errorf("challenge must be 32 bytes")
+	}
+	return raw, nil
+}
+
 // EncodeChallenge returns the base64url form browsers put in clientDataJSON.
 func EncodeChallenge(raw []byte) string {
 	return base64.RawURLEncoding.EncodeToString(raw)
