@@ -187,7 +187,7 @@ func (s *Service) prepareVaultBoard(ctx context.Context, req vaultBoardPrepareRe
 		return vaultBoardPrepareResult{}, err
 	}
 	now := s.vtxoNow()
-	preparation := classifyVaultBoardAttempt(snapshot, now)
+	preparation := classifyVaultBoardAttempt(snapshot)
 	nowUnix := now.Unix()
 	switch preparation.State {
 	case vaultBoardReady:
