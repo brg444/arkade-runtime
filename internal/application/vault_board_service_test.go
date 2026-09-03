@@ -319,6 +319,28 @@ func TestVaultBoardServiceRotatesDefiniteRejectionAndKeepsSubmittedAttemptCurren
 	}
 }
 
+func TestVaultBoardServiceRejoinsAfterSubmittedRegisterExpires(t *testing.T) {
+	fixture := newVaultBoardServiceFixture(t)
+	first := fixture.prepare(t)
+	if got := fixture.register(t, first); got.Status != vaultBoardRegistered {
+		t.Fatalf("register = %+v", got)
+	}
+	if blocked := fixture.prepare(t); blocked.State != vaultBoardBlocked || blocked.Handle != "" {
+		t.Fatalf("active register = %+v", blocked)
+	}
+	*fixture.clock = time.Unix(first.RegisterExpireAt, 0).UTC().Add(30 * time.Second)
+	next := fixture.prepare(t)
+	claims, err := fixture.svc.openVaultBoardHandle(next.Handle, string(vaultBoardReady))
+	if err != nil || next.State != vaultBoardReady || claims.Attempt != 1 {
+		t.Fatalf("expired register did not rotate: %+v claims=%+v err=%v", next, claims, err)
+	}
+	nextSession, _ := btcec.NewPrivateKey()
+	fixture.proof.treePubHex = hex.EncodeToString(nextSession.PubKey().SerializeCompressed())
+	if got := fixture.register(t, next); got.Status != vaultBoardRegistered || fixture.operator.registers != 2 {
+		t.Fatalf("rejoin register = %+v calls=%d", got, fixture.operator.registers)
+	}
+}
+
 func TestVaultBoardServiceKeepsExpiredRegisterBlockedAfterAmbiguousDelete(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
 	prepared := fixture.prepare(t)

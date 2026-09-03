@@ -18,47 +18,48 @@ func TestClassifyVaultBoardAttemptFailsClosedAcrossNetworkBoundaries(t *testing.
 	tests := []struct {
 		name        string
 		mutate      func(*policy.VaultBoardAttemptSnapshot)
+		at          time.Time
 		state       vaultBoardPrepareState
 		nextAttempt bool
 	}{
-		{name: "authorized not dispatched", mutate: func(*policy.VaultBoardAttemptSnapshot) {}, state: vaultBoardReady, nextAttempt: true},
-		{name: "register dispatched active", mutate: func(s *policy.VaultBoardAttemptSnapshot) { s.RegisterDispatch = &policy.VaultBoardDispatch{} }, state: vaultBoardBlocked},
+		{name: "authorized not dispatched", mutate: func(*policy.VaultBoardAttemptSnapshot) {}, at: now, state: vaultBoardReady, nextAttempt: true},
+		{name: "register dispatched active", mutate: func(s *policy.VaultBoardAttemptSnapshot) { s.RegisterDispatch = &policy.VaultBoardDispatch{} }, at: now, state: vaultBoardBlocked},
 		{name: "registered active", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.RegisterSubmission = &policy.VaultBoardSubmission{Outcome: policy.VaultBoardAuthSubmitted}
-		}, state: vaultBoardBlocked},
-		{name: "register dispatched expired", mutate: func(s *policy.VaultBoardAttemptSnapshot) { s.RegisterDispatch = &policy.VaultBoardDispatch{} }, state: vaultBoardBlocked},
+		}, at: now, state: vaultBoardBlocked},
+		{name: "register dispatched expired", mutate: func(s *policy.VaultBoardAttemptSnapshot) { s.RegisterDispatch = &policy.VaultBoardDispatch{} }, at: now.Add(2*time.Minute + 30*time.Second), state: vaultBoardBlocked},
 		{name: "registered expired", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.RegisterSubmission = &policy.VaultBoardSubmission{Outcome: policy.VaultBoardAuthSubmitted}
-		}, state: vaultBoardBlocked},
+		}, at: now.Add(2*time.Minute + 30*time.Second), state: vaultBoardReady, nextAttempt: true},
 		{name: "register definitely rejected", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.RegisterSubmission = &policy.VaultBoardSubmission{Outcome: policy.VaultBoardAuthRejected}
-		}, state: vaultBoardReady, nextAttempt: true},
+		}, at: now, state: vaultBoardReady, nextAttempt: true},
 		{name: "delete dispatched active", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.RegisterSubmission = &policy.VaultBoardSubmission{Outcome: policy.VaultBoardAuthSubmitted}
 			s.DeleteAuthorization = &policy.VaultBoardAuthorization{}
 			s.DeleteDispatch = &policy.VaultBoardDispatch{}
-		}, state: vaultBoardBlocked},
+		}, at: now, state: vaultBoardBlocked},
 		{name: "delete dispatched after register expiry", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.RegisterSubmission = &policy.VaultBoardSubmission{Outcome: policy.VaultBoardAuthSubmitted}
 			s.DeleteAuthorization = &policy.VaultBoardAuthorization{}
 			s.DeleteDispatch = &policy.VaultBoardDispatch{}
-		}, state: vaultBoardBlocked},
+		}, at: now.Add(2*time.Minute + 30*time.Second), state: vaultBoardBlocked},
 		{name: "released", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.DeleteSubmission = &policy.VaultBoardSubmission{Outcome: policy.VaultBoardAuthReleased}
-		}, state: vaultBoardReady, nextAttempt: true},
+		}, at: now, state: vaultBoardReady, nextAttempt: true},
 		{name: "final authorized", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.FinalAuthorization = &policy.VaultBoardAuthorization{}
-		}, state: vaultBoardBlocked},
-		{name: "final dispatched", mutate: func(s *policy.VaultBoardAttemptSnapshot) { s.FinalDispatch = &policy.VaultBoardDispatch{} }, state: vaultBoardBlocked},
+		}, at: now.Add(time.Hour), state: vaultBoardBlocked},
+		{name: "final dispatched", mutate: func(s *policy.VaultBoardAttemptSnapshot) { s.FinalDispatch = &policy.VaultBoardDispatch{} }, at: now.Add(time.Hour), state: vaultBoardBlocked},
 		{name: "final submitted", mutate: func(s *policy.VaultBoardAttemptSnapshot) {
 			s.FinalSubmission = &policy.VaultBoardSubmission{CommitmentTxid: "commitment"}
-		}, state: vaultBoardBlocked},
+		}, at: now.Add(time.Hour), state: vaultBoardBlocked},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			snapshot := base()
 			test.mutate(snapshot)
-			got := classifyVaultBoardAttempt(snapshot)
+			got := classifyVaultBoardAttempt(snapshot, test.at)
 			if got.State != test.state {
 				t.Fatalf("state = %q, want %q", got.State, test.state)
 			}
@@ -70,7 +71,7 @@ func TestClassifyVaultBoardAttemptFailsClosedAcrossNetworkBoundaries(t *testing.
 			}
 		})
 	}
-	if got := classifyVaultBoardAttempt(nil); got.State != vaultBoardReady {
+	if got := classifyVaultBoardAttempt(nil, now); got.State != vaultBoardReady {
 		t.Fatalf("new operation = %+v", got)
 	}
 }
