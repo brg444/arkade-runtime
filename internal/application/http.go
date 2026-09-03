@@ -189,6 +189,7 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/operation":             {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/vtxo/abort":                 {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/board/prepare":         {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/board/register":        {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/board/release":         {http.MethodPost: {}, http.MethodOptions: {}},

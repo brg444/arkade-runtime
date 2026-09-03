@@ -19,6 +19,7 @@
     "/v1/vtxo/checkpoints/authorize": ["OPTIONS", "POST"],
     "/v1/vtxo/finalize": ["OPTIONS", "POST"],
     "/v1/vtxo/operation": ["GET", "OPTIONS"],
+    "/v1/vtxo/abort": ["OPTIONS", "POST"],
     "/v1/vtxo/board/prepare": ["OPTIONS", "POST"],
     "/v1/vtxo/board/register": ["OPTIONS", "POST"],
     "/v1/vtxo/board/release": ["OPTIONS", "POST"],
@@ -141,6 +142,10 @@
       "changeVout:integer|null,omitempty", "changeScript:string", "authorizedPsbt:string,omitempty",
       "authorizedPendingProof:string,omitempty", "checkpointPsbts:array<string>,omitempty"
     ],
+    "VtxoAbortRequest": [
+      "operationId:string", "vaultId:string", "purpose:string", "phoneSignature:string"
+    ],
+    "VtxoAbortResponse": ["operationId:string", "state:string"],
     "SavingsPublicDescriptor": [
       "schema:string", "network:string", "vaultId:string", "templateVersion:string",
       "policyVersion:string", "protectionTier:string", "keys:object", "tweaks:object", "arkadeCosigner:object",

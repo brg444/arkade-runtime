@@ -126,6 +126,7 @@ without breaking fresh-device recovery and lost-response recovery.
 | `POST /v1/vtxo/checkpoints/authorize` | Validate and sign Operator checkpoints. |
 | `POST /v1/vtxo/finalize` | Verify the recorded spend and finalize the operation. |
 | `GET /v1/vtxo/operation` | Read one operation for retry reconciliation. |
+| `POST /v1/vtxo/abort` | Abort a pre-signature reservation and release its inputs. |
 | `POST /v1/initiate` | Authorize a Savings-to-Pending recovery transition. |
 | `POST /v1/clawback` | Authorize a Pending-to-Quarantine transition. |
 | `POST /v1/passkey/challenge` | Issue a purpose-bound passkey challenge. |

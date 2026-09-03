@@ -35,6 +35,10 @@ const maxReservedVtxoInputs = MaxVtxoOperationInputs
 // this sentinel to the stable, deliberately public wallet error contract.
 var ErrPeriodAllowanceExceeded = errors.New("period allowance exceeded")
 
+// ErrVtxoOperationActive is returned when any nonterminal Spending lifecycle
+// already fences the vault against a second reservation.
+var ErrVtxoOperationActive = errors.New("vtxo operation already active")
+
 // NowUTC is the ledger clock. Reservation expiry and allowance share it.
 func (l *Ledger) NowUTC() time.Time {
 	if l == nil || l.clock == nil {
@@ -136,6 +140,9 @@ func (l *Ledger) ReserveVtxoOperation(ctx context.Context, rec VtxoOperation, in
 	if err := l.rejectOverlappingVtxoInputs(ctx, conn, rec.OperationID, inputs); err != nil {
 		return err
 	}
+	if err := l.rejectConcurrentVtxoOperationLocked(ctx, conn, rec.VaultID, rec.OperationID); err != nil {
+		return err
+	}
 	usedAmt, err := l.spentInWindow(ctx, conn, rec.VaultID)
 	if err != nil {
 		return err
@@ -203,6 +210,45 @@ INSERT INTO vtxo_operation_input (
 		return err
 	}
 	commit = true
+	return nil
+}
+
+// rejectConcurrentVtxoOperationLocked enforces one unresolved Spending
+// lifecycle per vault. This prevents a client that lost or discarded its
+// local operation record from reserving successive, disjoint sets of coins.
+// Every row is authenticated before its state is trusted.
+func (l *Ledger) rejectConcurrentVtxoOperationLocked(
+	ctx context.Context, q queryContext, vaultID, operationID string,
+) error {
+	key, err := l.integrityKeyCopy()
+	if err != nil {
+		return err
+	}
+	defer zeroBytes(key)
+	rows, err := q.QueryContext(ctx, `SELECT `+vtxoSelectColumns+` FROM vtxo_operation WHERE vault_id = ?`, vaultID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	blocked := false
+	for rows.Next() {
+		rec, err := scanVtxoOperation(rows)
+		if err != nil {
+			return err
+		}
+		if err := VerifyVtxoOperation(&rec, key); err != nil {
+			return fmt.Errorf("vtxo operation integrity: %w", err)
+		}
+		if rec.OperationID != operationID && vtxoStateBlocksNewOperation(rec.State) {
+			blocked = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if blocked {
+		return ErrVtxoOperationActive
+	}
 	return nil
 }
 
