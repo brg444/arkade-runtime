@@ -145,7 +145,7 @@ func TestVaultBoardAttemptIsServerAllocatedAndRotatesOnlyAfterRelease(t *testing
 	}, vaultBoardTestChainState(ledger)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x42), vaultBoardTestChainState(ledger)); err == nil || !strings.Contains(err.Error(), "still active") {
+	if _, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x42), vaultBoardTestChainState(ledger)); err == nil || !strings.Contains(err.Error(), "Operator boundary") {
 		t.Fatalf("rotated dispatched attempt: %v", err)
 	}
 	submitVaultBoardRegister(t, ledger, *first)
@@ -203,7 +203,8 @@ func TestVaultBoardUndispatchedRegisterRotatesAfterRestart(t *testing.T) {
 	}, vaultBoardTestChainState(restarted)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := restarted.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(restarted, 0x75), vaultBoardTestChainState(restarted)); err == nil || !strings.Contains(err.Error(), "still active") {
+	now = time.Unix(second.ExpireAt, 0).UTC().Add(24 * time.Hour)
+	if _, _, _, err := restarted.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(restarted, 0x75), vaultBoardTestChainState(restarted)); err == nil || !strings.Contains(err.Error(), "Operator boundary") {
 		t.Fatalf("post-dispatch restart rotated ambiguous attempt: %v", err)
 	}
 }
@@ -273,15 +274,13 @@ func TestVaultBoardDefiniteRegisterRejectionAllowsFreshAttempt(t *testing.T) {
 	}
 }
 
-func TestVaultBoardExpiredSupersessionSerializesWithFinalAuthorization(t *testing.T) {
+func TestVaultBoardExpiredRegisterNeverSupersedesFinalAuthorization(t *testing.T) {
 	for _, test := range []struct {
-		name          string
-		finalFirst    bool
-		wantFinal     bool
-		wantSupersede bool
+		name       string
+		finalFirst bool
 	}{
-		{name: "final wins", finalFirst: true, wantFinal: true},
-		{name: "supersession wins", wantSupersede: true},
+		{name: "final before rejected supersession", finalFirst: true},
+		{name: "rejected supersession before final"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
@@ -302,7 +301,7 @@ func TestVaultBoardExpiredSupersessionSerializesWithFinalAuthorization(t *testin
 				t.Fatal(err)
 			}
 			submitVaultBoardRegister(t, ledger, *first)
-			clock = time.Unix(first.ExpireAt, 0).UTC().Add(vaultBoardRegisterQuarantine)
+			clock = time.Unix(first.ExpireAt, 0).UTC().Add(24 * time.Hour)
 			final := VaultBoardAuthorization{
 				OperationID: first.OperationID, Attempt: first.Attempt, Phase: VaultBoardPhaseFinalize,
 				RequestDigest:  bytes.Repeat([]byte{0x7c}, sha256.Size),
@@ -324,7 +323,7 @@ func TestVaultBoardExpiredSupersessionSerializesWithFinalAuthorization(t *testin
 				supersedeErr = supersede()
 				finalErr = finalize()
 			}
-			if (finalErr == nil) != test.wantFinal || (supersedeErr == nil) != test.wantSupersede {
+			if finalErr != nil || supersedeErr == nil {
 				t.Fatalf("final=%v supersede=%v", finalErr, supersedeErr)
 			}
 		})
