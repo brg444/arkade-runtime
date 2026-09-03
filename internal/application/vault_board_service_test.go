@@ -560,6 +560,64 @@ func TestVaultBoardAttemptRepricesAfterDefiniteRejection(t *testing.T) {
 	}
 }
 
+func TestVaultBoardPrepareRequiresExactAggregateOperatorFee(t *testing.T) {
+	tests := []struct {
+		name           string
+		onchainInput   string
+		offchainOutput string
+		wrongReceiver  uint64
+		exactReceiver  uint64
+	}{
+		{
+			name: "receiver-dependent output fee", onchainInput: "0.0", offchainOutput: "amount * 0.01",
+			wrongReceiver: 49_500, exactReceiver: 49_504,
+		},
+		{
+			name: "aggregate rounding", onchainInput: "0.4", offchainOutput: "0.4",
+			wrongReceiver: 49_998, exactReceiver: 49_999,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newVaultBoardServiceFixture(t)
+			fixture.resolver.feePolicy.OnchainInput = test.onchainInput
+			fixture.resolver.feePolicy.OffchainOutput = test.offchainOutput
+			request := vaultBoardPrepareRequest{
+				VaultID: fixture.vaultID,
+				Inputs:  []vaultBoardPrepareInput{{Txid: hex.EncodeToString(fixture.proof.operation.Txid), Vout: fixture.proof.operation.Vout}},
+				Recipients: []vaultBoardPrepareRecipient{{
+					Address: fixture.receiver, AmountSats: test.wrongReceiver,
+				}},
+			}
+			if _, err := fixture.svc.prepareVaultBoard(context.Background(), request); err == nil {
+				t.Fatal("inexact independently rounded fee accepted")
+			}
+
+			request.Recipients[0].AmountSats = test.exactReceiver
+			prepared, err := fixture.svc.prepareVaultBoard(context.Background(), request)
+			if err != nil || prepared.State != vaultBoardReady || prepared.Handle == "" {
+				t.Fatalf("exact aggregate fee prepare = %+v, %v", prepared, err)
+			}
+		})
+	}
+}
+
+func TestVaultBoardPrepareRejectsExactOperatorFeeAboveEnrolledCap(t *testing.T) {
+	fixture := newVaultBoardServiceFixture(t)
+	fixture.resolver.feePolicy.OnchainInput = "5001.0"
+	fixture.resolver.feePolicy.OffchainOutput = "0.0"
+	_, err := fixture.svc.prepareVaultBoard(context.Background(), vaultBoardPrepareRequest{
+		VaultID: fixture.vaultID,
+		Inputs:  []vaultBoardPrepareInput{{Txid: hex.EncodeToString(fixture.proof.operation.Txid), Vout: fixture.proof.operation.Vout}},
+		Recipients: []vaultBoardPrepareRecipient{{
+			Address: fixture.receiver, AmountSats: 44_999,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "fee exceeds vault ceiling") {
+		t.Fatalf("above-cap exact fee = %v", err)
+	}
+}
+
 func TestVaultBoardLostFinalResponseReconcilesExactVtxo(t *testing.T) {
 	fixture := newVaultBoardServiceFixture(t)
 	prepared := fixture.prepare(t)
