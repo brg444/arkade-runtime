@@ -1229,10 +1229,14 @@ func (s *Service) verifyVtxoAuthorization(ctx context.Context, vaultID string, d
 	if err := s.rejectCrossVaultCredential(vaultID, cred.ID); err != nil {
 		return nil, 0, err
 	}
+	presenceChallenge, err := webauthn.ChallengeFromClientDataJSON(assertion.ClientDataJSON)
+	if err != nil {
+		return nil, 0, apperr.New(apperr.CodeRejected, err.Error())
+	}
 	verified, err := webauthn.Validate(assertion, webauthn.Expected{
 		CredentialID: cred.ID,
 		WebAuthnP256: cred.WebAuthnP256,
-		Challenge:    digest,
+		Challenge:    presenceChallenge,
 		Origin:       cred.Origin,
 		RPID:         cred.RPID,
 	})
