@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 // CreateVaultInput is one new tenant: sealed vault + credential + optional

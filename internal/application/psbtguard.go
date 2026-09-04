@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brg444/vaulted-guardian/internal/vault"
+	"github.com/brg444/arkade-runtime/internal/vault"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"

@@ -5,7 +5,7 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/brg444/vaulted-guardian/internal/application"
+	"github.com/brg444/arkade-runtime/internal/application"
 )
 
 // Authorizer is the protected software-box surface. No static files or raw

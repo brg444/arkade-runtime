@@ -1,6 +1,6 @@
 # Mainnet v2 baseline
 
-Vaulted Guardian begins with a fresh v2 service and database. The executable
+The `arkade-vault-v1` Arkade Runtime profile begins with a fresh v2 service and database. The executable
 remains Mutinynet-only until the mainnet pins and release gates in this document
 close. Mainnet does not import Mutinynet databases, vault identifiers,
 allowance rows, keys, or contract packs.

@@ -1,4 +1,4 @@
-name: vaulted-guardian
+name: arkade-runtime
 
 services:
   vault-authorizer:

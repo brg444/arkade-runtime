@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/brg444/vaulted-guardian/internal/deployment"
+	"github.com/brg444/arkade-runtime/internal/deployment"
 )
 
 // InstallVaultBoardAuthorization installs the one release-pinned chain and

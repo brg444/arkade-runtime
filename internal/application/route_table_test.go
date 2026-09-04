@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	arkadevaultv1 "github.com/brg444/vaulted-guardian/internal/profile/arkadevaultv1"
+	arkadevaultv1 "github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 )
 
 func TestRouteTablesMatchProfileGoldenAndREADME(t *testing.T) {

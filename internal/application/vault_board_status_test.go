@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
 func TestClassifyVaultBoardAttemptFailsClosedAcrossNetworkBoundaries(t *testing.T) {

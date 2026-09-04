@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/brg444/vaulted-guardian/internal/contractpack"
-	"github.com/brg444/vaulted-guardian/internal/vault/savings"
+	"github.com/brg444/arkade-runtime/internal/contractpack"
+	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
 func TestContractPackMatchesLiveEnroll(t *testing.T) {
