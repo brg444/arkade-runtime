@@ -7,8 +7,8 @@ import (
 
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
-	"github.com/brg444/arkade-vault-server/internal/policy"
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/policy"
+	"github.com/brg444/vaulted-guardian/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"

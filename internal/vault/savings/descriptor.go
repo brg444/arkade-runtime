@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/program"
 )
 
 const PolicyVersion = program.PolicyVersion

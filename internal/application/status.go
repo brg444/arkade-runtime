@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/policy"
-	"github.com/brg444/arkade-vault-server/internal/program"
-	"github.com/brg444/arkade-vault-server/internal/vault/savings"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/policy"
+	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )

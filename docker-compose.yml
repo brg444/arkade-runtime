@@ -1,4 +1,4 @@
-name: arkade-vault-server
+name: vaulted-guardian
 
 services:
   vault-authorizer:

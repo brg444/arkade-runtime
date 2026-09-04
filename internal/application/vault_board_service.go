@@ -15,9 +15,9 @@ import (
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/arkade-os/arkd/pkg/ark-lib/arkfee"
-	"github.com/brg444/arkade-vault-server/internal/policy"
-	"github.com/brg444/arkade-vault-server/internal/ports"
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/policy"
+	"github.com/brg444/vaulted-guardian/internal/ports"
+	"github.com/brg444/vaulted-guardian/internal/program"
 )
 
 const (

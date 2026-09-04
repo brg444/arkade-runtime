@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/program"
 )
 
 func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {

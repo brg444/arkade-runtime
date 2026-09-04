@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/vault/savings"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/vault/savings"
 )
 
 const (

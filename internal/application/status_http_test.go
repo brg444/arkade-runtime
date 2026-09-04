@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/vaulted-guardian/fixture"
 )
 
 func TestPublicStatusIsRedactedWhileVaultQueryReturnsNamedVault(t *testing.T) {

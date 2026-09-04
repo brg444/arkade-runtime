@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brg444/arkade-vault-server/fixture"
-	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/webauthn"
+	"github.com/brg444/vaulted-guardian/fixture"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 

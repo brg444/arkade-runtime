@@ -4,7 +4,7 @@ package fixture
 import (
 	"net/url"
 
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/program"
 )
 
 const (

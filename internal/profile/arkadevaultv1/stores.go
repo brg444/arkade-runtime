@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/vaulted-guardian/internal/policy"
 )
 
 // IdentityStore is the authenticated enrollment and credential persistence
