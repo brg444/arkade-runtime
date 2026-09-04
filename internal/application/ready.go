@@ -78,7 +78,12 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		return st
 	}
 	runtime, err := s.requireVaultBoardRuntime()
-	if err != nil || runtime.batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
+	if err != nil {
+		st.Error = "vault-board-v1 runtime unavailable"
+		return st
+	}
+	id, err := deployment.IdentityFor(cfg.Network)
+	if err != nil || runtime.batchExpiry != id.VtxoTreeExpirySeconds {
 		st.Error = "vault-board-v1 runtime unavailable"
 		return st
 	}
