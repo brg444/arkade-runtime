@@ -396,7 +396,7 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 	parsed.protectionTier = req.ProtectionTier
 	parsed.vaultID = req.VaultID
 	parsed.boardingProgram = program.VaultBoardV1
-	if _, err := requireSpendingPolicyDigest(req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
+	if _, err := requireSpendingPolicyDigest(s.runtimeConfig().Network, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return parsed, err
 	}
 	parsed.spendingPolicy = req.SpendingPolicy
@@ -507,7 +507,7 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	if cred.RecipientDustSats != program.DustSats {
 		return fmt.Errorf("stored economic policy incompatible with runtime")
 	}
-	if err := program.ValidateSpendingPolicy(spendingPolicyFromCredential(cred)); err != nil {
+	if err := program.ValidateSpendingPolicyFor(cfg.Network, spendingPolicyFromCredential(cred)); err != nil {
 		return fmt.Errorf("stored economic policy: %w", err)
 	}
 	wantOrigin, wantVersion := s.arkadeIdentity()
@@ -693,7 +693,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	if rec == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
-	if err := program.ValidateSpendingPolicy(spendingPolicyFromRecord(rec)); err != nil {
+	if err := program.ValidateSpendingPolicyFor(s.runtimeConfig().Network, spendingPolicyFromRecord(rec)); err != nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("stored economic policy: %w", err)
 	}
 	if err := program.ValidateProtectionTierRecovery(rec.ProtectionTier, len(rec.RecoveryKey) > 0); err != nil {

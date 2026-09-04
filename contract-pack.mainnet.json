@@ -39,21 +39,21 @@
         "bounds": {
           "periodAllowanceSats": { "min": 330, "max": 1000000000 },
           "txRecipientCapSats": { "min": 330, "max": 100000000 },
-          "absoluteFeeCapSats": { "min": 5000, "max": 5000 },
-          "feerateCapSatPerV": { "min": 10, "max": 10 }
+          "absoluteFeeCapSats": { "min": 20000, "max": 20000 },
+          "feerateCapSatPerV": { "min": 25, "max": 25 }
         },
         "presets": {
           "lower-exposure": {
             "periodAllowanceSats": 50000,
             "txRecipientCapSats": 25000,
-            "absoluteFeeCapSats": 5000,
-            "feerateCapSatPerV": 10
+            "absoluteFeeCapSats": 20000,
+            "feerateCapSatPerV": 25
           },
           "everyday": {
             "periodAllowanceSats": 100000,
             "txRecipientCapSats": 50000,
-            "absoluteFeeCapSats": 5000,
-            "feerateCapSatPerV": 10
+            "absoluteFeeCapSats": 20000,
+            "feerateCapSatPerV": 25
           }
         }
       },

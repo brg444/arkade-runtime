@@ -59,14 +59,34 @@ type SpendingPolicyCapabilities struct {
 }
 
 func DefaultSpendingPolicy() SpendingPolicy {
+	p, err := DefaultSpendingPolicyFor(NetworkMutinynet)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+
+func DefaultSpendingPolicyFor(network string) (SpendingPolicy, error) {
+	pins, err := PinsFor(network)
+	if err != nil {
+		return SpendingPolicy{}, err
+	}
 	return SpendingPolicy{
 		Program: SpendingPolicyProgram, Schema: PolicyVersion, Period: SpendingPolicyPeriod,
 		PeriodAllowanceSats: PeriodAllowanceSats, TxRecipientCapSats: TxRecipientCapSats,
-		AbsoluteFeeCapSats: AbsoluteFeeCeiling, FeerateCapSatPerV: FeerateCeilingSatPerV,
-	}
+		AbsoluteFeeCapSats: pins.AbsoluteFeeCeiling, FeerateCapSatPerV: pins.FeerateCeilingSatPerV,
+	}, nil
 }
 
 func ValidateSpendingPolicy(p SpendingPolicy) error {
+	return ValidateSpendingPolicyFor(NetworkMutinynet, p)
+}
+
+func ValidateSpendingPolicyFor(network string, p SpendingPolicy) error {
+	pins, err := PinsFor(network)
+	if err != nil {
+		return err
+	}
 	if p.Program != SpendingPolicyProgram {
 		return fmt.Errorf("spending policy program must be %s", SpendingPolicyProgram)
 	}
@@ -88,14 +108,14 @@ func ValidateSpendingPolicy(p SpendingPolicy) error {
 	if err := validatePolicyBound("absolute fee cap", p.AbsoluteFeeCapSats, MinAbsoluteFeeCapSats, MaxAbsoluteFeeCapSats); err != nil {
 		return err
 	}
-	if p.AbsoluteFeeCapSats != AbsoluteFeeCeiling {
-		return fmt.Errorf("absolute fee cap must match the release value %d", AbsoluteFeeCeiling)
+	if p.AbsoluteFeeCapSats != pins.AbsoluteFeeCeiling {
+		return fmt.Errorf("absolute fee cap must match the release value %d", pins.AbsoluteFeeCeiling)
 	}
 	if err := validatePolicyBound("feerate cap", p.FeerateCapSatPerV, MinFeerateCapSatPerV, MaxFeerateCapSatPerV); err != nil {
 		return err
 	}
-	if p.FeerateCapSatPerV != FeerateCeilingSatPerV {
-		return fmt.Errorf("feerate cap must match the release value %d", FeerateCeilingSatPerV)
+	if p.FeerateCapSatPerV != pins.FeerateCeilingSatPerV {
+		return fmt.Errorf("feerate cap must match the release value %d", pins.FeerateCeilingSatPerV)
 	}
 	return nil
 }
@@ -110,14 +130,22 @@ func validatePolicyBound(name string, value, min, max int64) error {
 // CanonicalSpendingPolicyJSON returns the exact compact JSON bytes committed
 // by enrollment. encoding/json preserves struct field order.
 func CanonicalSpendingPolicyJSON(p SpendingPolicy) ([]byte, error) {
-	if err := ValidateSpendingPolicy(p); err != nil {
+	return CanonicalSpendingPolicyJSONFor(NetworkMutinynet, p)
+}
+
+func CanonicalSpendingPolicyJSONFor(network string, p SpendingPolicy) ([]byte, error) {
+	if err := ValidateSpendingPolicyFor(network, p); err != nil {
 		return nil, err
 	}
 	return json.Marshal(p)
 }
 
 func SpendingPolicyDigest(p SpendingPolicy) ([]byte, error) {
-	raw, err := CanonicalSpendingPolicyJSON(p)
+	return SpendingPolicyDigestFor(NetworkMutinynet, p)
+}
+
+func SpendingPolicyDigestFor(network string, p SpendingPolicy) ([]byte, error) {
+	raw, err := CanonicalSpendingPolicyJSONFor(network, p)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +157,11 @@ func SpendingPolicyDigest(p SpendingPolicy) ([]byte, error) {
 }
 
 func SpendingPolicyDigestHex(p SpendingPolicy) (string, error) {
-	digest, err := SpendingPolicyDigest(p)
+	return SpendingPolicyDigestHexFor(NetworkMutinynet, p)
+}
+
+func SpendingPolicyDigestHexFor(network string, p SpendingPolicy) (string, error) {
+	digest, err := SpendingPolicyDigestFor(network, p)
 	if err != nil {
 		return "", err
 	}
@@ -146,17 +178,33 @@ func SpendingPolicyFromValues(txCap, allowance, feeCap, feerate int64) SpendingP
 }
 
 func CurrentSpendingPolicyCapabilities() SpendingPolicyCapabilities {
+	caps, err := CurrentSpendingPolicyCapabilitiesFor(NetworkMutinynet)
+	if err != nil {
+		panic(err)
+	}
+	return caps
+}
+
+func CurrentSpendingPolicyCapabilitiesFor(network string) (SpendingPolicyCapabilities, error) {
+	pins, err := PinsFor(network)
+	if err != nil {
+		return SpendingPolicyCapabilities{}, err
+	}
+	everyday, err := DefaultSpendingPolicyFor(network)
+	if err != nil {
+		return SpendingPolicyCapabilities{}, err
+	}
 	var out SpendingPolicyCapabilities
 	out.Program = SpendingPolicyProgram
 	out.Schema = PolicyVersion
 	out.Period = SpendingPolicyPeriod
 	out.Bounds.PeriodAllowanceSats = SpendingPolicyBounds{Min: MinPeriodAllowanceSats, Max: MaxPeriodAllowanceSats}
 	out.Bounds.TxRecipientCapSats = SpendingPolicyBounds{Min: MinTxRecipientCapSats, Max: MaxTxRecipientCapSats}
-	out.Bounds.AbsoluteFeeCapSats = SpendingPolicyBounds{Min: AbsoluteFeeCeiling, Max: AbsoluteFeeCeiling}
-	out.Bounds.FeerateCapSatPerV = SpendingPolicyBounds{Min: FeerateCeilingSatPerV, Max: FeerateCeilingSatPerV}
+	out.Bounds.AbsoluteFeeCapSats = SpendingPolicyBounds{Min: pins.AbsoluteFeeCeiling, Max: pins.AbsoluteFeeCeiling}
+	out.Bounds.FeerateCapSatPerV = SpendingPolicyBounds{Min: pins.FeerateCeilingSatPerV, Max: pins.FeerateCeilingSatPerV}
 	out.Presets = []SpendingPolicyPreset{
-		{ID: "lower-exposure", Label: "Lower exposure", Policy: SpendingPolicyFromValues(25_000, 50_000, AbsoluteFeeCeiling, FeerateCeilingSatPerV)},
-		{ID: "everyday", Label: "Everyday", Policy: DefaultSpendingPolicy()},
+		{ID: "lower-exposure", Label: "Lower exposure", Policy: SpendingPolicyFromValues(25_000, 50_000, pins.AbsoluteFeeCeiling, pins.FeerateCeilingSatPerV)},
+		{ID: "everyday", Label: "Everyday", Policy: everyday},
 	}
-	return out
+	return out, nil
 }

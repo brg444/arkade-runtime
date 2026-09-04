@@ -51,6 +51,26 @@ func TestValidateSpendingPolicyBoundsAndRelationship(t *testing.T) {
 	}
 }
 
+func TestMainnetSpendingPolicyFeeCeilings(t *testing.T) {
+	p, err := DefaultSpendingPolicyFor(NetworkMainnet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.AbsoluteFeeCapSats != 20_000 || p.FeerateCapSatPerV != 25 {
+		t.Fatalf("%+v", p)
+	}
+	if err := ValidateSpendingPolicyFor(NetworkMainnet, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSpendingPolicy(p); err == nil {
+		t.Fatal("mainnet fee ceilings accepted as Mutinynet policy")
+	}
+	mutinynet := DefaultSpendingPolicy()
+	if err := ValidateSpendingPolicyFor(NetworkMainnet, mutinynet); err == nil {
+		t.Fatal("Mutinynet fee ceilings accepted on mainnet")
+	}
+}
+
 func TestSpendingPolicyCapabilitiesAreValid(t *testing.T) {
 	caps := CurrentSpendingPolicyCapabilities()
 	if caps.Program != SpendingPolicyProgram || caps.Schema != PolicyVersion || len(caps.Presets) != 2 {

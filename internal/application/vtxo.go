@@ -603,7 +603,9 @@ func cloneVout(vout *uint32) *uint32 {
 func vtxoFeeCap(rec *policy.VaultRecord) (uint64, error) {
 	capSats := program.AbsoluteFeeCeiling
 	if rec != nil {
-		capSats = rec.AbsoluteFeeCapSats
+		if rec.AbsoluteFeeCapSats >= 0 {
+			capSats = rec.AbsoluteFeeCapSats
+		}
 	}
 	if capSats < 0 {
 		return 0, apperr.New(apperr.CodeRejected, "fee ceiling invalid")

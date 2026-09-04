@@ -12,6 +12,8 @@ const (
 
 	TxRecipientCapSats    int64 = 50_000
 	PeriodAllowanceSats   int64 = 100_000
+	// Mutinynet maxima. Operational L1 fees should follow the mempool at or
+	// below these values. Mainnet alpha ceilings are in pins.go.
 	AbsoluteFeeCeiling    int64 = 5_000
 	FeerateCeilingSatPerV int64 = 10
 	DustSats              int64 = 330
