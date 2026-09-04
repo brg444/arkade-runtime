@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/brg444/vaulted-guardian/fixture"
-	"github.com/brg444/vaulted-guardian/internal/apperr"
-	"github.com/brg444/vaulted-guardian/internal/policy"
+	"github.com/brg444/arkade-runtime/fixture"
+	"github.com/brg444/arkade-runtime/internal/apperr"
+	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
 func TestHTTPBoundaryDoesNotExposeRawEmulatorSigningRoute(t *testing.T) {

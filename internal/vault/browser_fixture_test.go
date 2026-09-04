@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/brg444/vaulted-guardian/internal/webauthn"
+	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
 
 func TestBrowserAssertionFixtureIsOffChainWebAuthnEvidence(t *testing.T) {

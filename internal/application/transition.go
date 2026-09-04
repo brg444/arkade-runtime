@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/policy"
-	"github.com/brg444/vaulted-guardian/internal/vault"
-	"github.com/brg444/vaulted-guardian/internal/vault/savings"
+	"github.com/brg444/arkade-runtime/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/vault"
+	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"

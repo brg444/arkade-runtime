@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/brg444/vaulted-guardian/fixture"
+	"github.com/brg444/arkade-runtime/fixture"
 )
 
 func TestAuthorizerFailsClosedWithoutGatewaySecret(t *testing.T) {

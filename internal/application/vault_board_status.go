@@ -3,7 +3,7 @@ package application
 import (
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
 type vaultBoardPrepareState string

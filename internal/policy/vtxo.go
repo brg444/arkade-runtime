@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 const (

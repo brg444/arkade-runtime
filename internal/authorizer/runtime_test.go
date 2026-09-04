@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/fixture"
-	"github.com/brg444/vaulted-guardian/internal/application"
-	"github.com/brg444/vaulted-guardian/internal/deployment"
-	"github.com/brg444/vaulted-guardian/internal/policy"
-	"github.com/brg444/vaulted-guardian/internal/ports"
-	"github.com/brg444/vaulted-guardian/internal/profile/arkadevaultv1"
+	"github.com/brg444/arkade-runtime/fixture"
+	"github.com/brg444/arkade-runtime/internal/application"
+	"github.com/brg444/arkade-runtime/internal/deployment"
+	"github.com/brg444/arkade-runtime/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/ports"
+	"github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 )

@@ -1,8 +1,9 @@
-# Vaulted Guardian documentation
+# Arkade Runtime documentation
 
-Vaulted Guardian enforces Spending policy and coordinates delayed recovery for
-Vaulted. It cannot spend Savings alone. These documents describe the security
-boundary, versioned contracts, payment-rail integration, and deployment model.
+Arkade Runtime hosts compiled application profiles made from named programs,
+policies, stores, routes, and key capabilities. These documents currently
+cover the `arkade-vault-v1` profile used by Vaulted, including its security
+boundary, versioned contracts, Arkade integration, and deployment model.
 
 | Document | Scope |
 | --- | --- |

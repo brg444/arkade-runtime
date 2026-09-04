@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/brg444/vaulted-guardian/internal/deployment"
+	"github.com/brg444/arkade-runtime/internal/deployment"
 )
 
 func TestVaultBoardRuntimeRequiresExactReleaseExpiry(t *testing.T) {

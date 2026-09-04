@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/apperr"
+	"github.com/brg444/arkade-runtime/internal/apperr"
 )
 
 const GatewaySecretHeader = "X-Vault-Gateway-Secret"

@@ -1,4 +1,4 @@
-module github.com/brg444/vaulted-guardian
+module github.com/brg444/arkade-runtime
 
 go 1.26.6
 

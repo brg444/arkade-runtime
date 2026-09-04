@@ -1,7 +1,8 @@
-# Vaulted Guardian contributor guide
+# Arkade Runtime contributor guide
 
-This repository builds the `arkade-vault-v1` Guardian profile using released
-Arkade protocol libraries and stock public Operator interfaces.
+This repository builds Arkade Runtime and its first compiled profile,
+`arkade-vault-v1`, using released Arkade protocol libraries and stock public
+Operator interfaces.
 `arkd` remains outside the repository's ownership and change scope. The
 official Arkade SDK owns wallet-side transaction coordination.
 

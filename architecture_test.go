@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const modulePath = "github.com/brg444/vaulted-guardian"
+const modulePath = "github.com/brg444/arkade-runtime"
 
 func TestInternalImportBoundaries(t *testing.T) {
 	goBinary := filepath.Join(goruntime.GOROOT(), "bin", "go")

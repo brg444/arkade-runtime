@@ -12,10 +12,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/apperr"
-	"github.com/brg444/vaulted-guardian/internal/policy"
-	"github.com/brg444/vaulted-guardian/internal/program"
-	"github.com/brg444/vaulted-guardian/internal/webauthn"
+	"github.com/brg444/arkade-runtime/internal/apperr"
+	"github.com/brg444/arkade-runtime/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
