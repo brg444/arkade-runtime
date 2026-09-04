@@ -1,6 +1,6 @@
 # Security policy
 
-Arkade Vault Server is under active security review, with no public bug-bounty
+Vaulted Guardian is under active security review, with no public bug-bounty
 program. The current release candidate is restricted to Mutinynet, and
 real-fund use remains out of scope.
 

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/apperr"
-	"github.com/brg444/arkade-vault-server/internal/ports"
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/apperr"
+	"github.com/brg444/vaulted-guardian/internal/ports"
+	"github.com/brg444/vaulted-guardian/internal/program"
 )
 
 func BenchmarkSelectSpendVtxosFeeWork(b *testing.B) {

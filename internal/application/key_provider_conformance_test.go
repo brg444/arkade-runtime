@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/application"
+	"github.com/brg444/vaulted-guardian/internal/application"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 

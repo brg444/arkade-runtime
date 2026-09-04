@@ -1,4 +1,8 @@
-# Arkade Vault Server documentation
+# Vaulted Guardian documentation
+
+Vaulted Guardian enforces Spending policy and coordinates delayed recovery for
+Vaulted. It cannot spend Savings alone. These documents describe the security
+boundary, versioned contracts, payment-rail integration, and deployment model.
 
 | Document | Scope |
 | --- | --- |
@@ -12,4 +16,4 @@
 
 The wallet owns transaction coordination, device ceremonies, user-facing
 recovery, and SDK integration. Its current documentation lives in
-[arkade-wallet-vault](https://github.com/brg444/arkade-wallet-vault/tree/main/docs).
+[Vaulted](https://github.com/brg444/vaulted-bitcoin-wallet/tree/main/docs).

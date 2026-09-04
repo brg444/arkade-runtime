@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/deployment"
-	"github.com/brg444/arkade-vault-server/internal/policy"
-	"github.com/brg444/arkade-vault-server/internal/ports"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/policy"
+	"github.com/brg444/vaulted-guardian/internal/ports"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 

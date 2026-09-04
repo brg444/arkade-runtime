@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/vaulted-guardian/fixture"
 )
 
 // Fixture is a captured navigator.credentials.get() assertion.
