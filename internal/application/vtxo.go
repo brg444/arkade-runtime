@@ -651,13 +651,20 @@ func enforceVtxoAmount(amount, fee uint64, rec *policy.VaultRecord) error {
 	return nil
 }
 
+func (s *Service) vtxoAddrHRP() string {
+	if s.runtimeConfig().Network == program.NetworkMainnet {
+		return arklib.Bitcoin.Addr
+	}
+	return arklib.BitcoinMutinyNet.Addr
+}
+
 func (s *Service) decodeVtxoDest(addr string) ([]byte, string, error) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return nil, "", apperr.New(apperr.CodeRejected, "destAddress required")
 	}
 	if decoded, err := arklib.DecodeAddressV0(addr); err == nil {
-		if decoded.HRP != arklib.BitcoinTestNet.Addr {
+		if decoded.HRP != s.vtxoAddrHRP() {
 			return nil, "", apperr.New(apperr.CodeRejected, "destAddress network")
 		}
 		operator, err := btcec.ParsePubKey(s.operatorSignerPub())

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brg444/arkade-runtime/internal/apperr"
 	"github.com/brg444/arkade-runtime/internal/deployment"
 )
 
@@ -358,7 +359,10 @@ func (e *esploraVaultBoardChain) get(ctx context.Context, path string) (*http.Re
 	if res.StatusCode != http.StatusOK {
 		defer res.Body.Close()
 		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4*1024))
-		return nil, fmt.Errorf("vault-board-v1 Esplora HTTP %d", res.StatusCode)
+		if res.StatusCode == http.StatusNotFound {
+			return nil, apperr.New(apperr.CodeRejected, "vault-board-v1 confirmed funding transaction required")
+		}
+		return nil, apperr.New(apperr.CodeRejected, "vault-board-v1 chain query failed")
 	}
 	return res, nil
 }

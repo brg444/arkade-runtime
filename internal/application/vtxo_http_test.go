@@ -152,6 +152,30 @@ func TestDecodeVtxoDestAcceptsXOnlyOperatorWithOddY(t *testing.T) {
 	}
 }
 
+func TestDecodeVtxoDestPinsHRPToTheReleaseNetwork(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	operator := mustOddYPrivateKey(t)
+	resolver.signer = operator.PubKey().SerializeCompressed()
+	mainnetAddr, err := (&arklib.Address{
+		Version: 0, HRP: arklib.Bitcoin.Addr,
+		Signer: operator.PubKey(), VtxoTapKey: operator.PubKey(),
+	}).EncodeV0()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.svc.decodeVtxoDest(mainnetAddr); err == nil {
+		t.Fatal("mutinynet env accepted a mainnet ark address")
+	}
+
+	e.svc.Deployment.Network = deployment.NetworkMainnet
+	if _, _, err := e.svc.decodeVtxoDest(mainnetAddr); err != nil {
+		t.Fatalf("mainnet env rejected ark HRP: %v", err)
+	}
+	if _, _, err := e.svc.decodeVtxoDest(mustArkadeDest(t, operator)); err == nil {
+		t.Fatal("mainnet env accepted a mutinynet tark address")
+	}
+}
+
 func TestReserveSpendWithoutPackExitRejected(t *testing.T) {
 	e, resolver, _ := vtxoTestEnv(t)
 	falseVal := false

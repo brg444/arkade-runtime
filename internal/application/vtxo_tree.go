@@ -100,11 +100,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if err != nil {
 		return nil, err
 	}
-	hrp := arklib.BitcoinMutinyNet.Addr
-	if s.runtimeConfig().Network == program.NetworkMainnet {
-		hrp = arklib.Bitcoin.Addr
-	}
-	arkAddr := &arklib.Address{Version: 0, HRP: hrp, Signer: arkd, VtxoTapKey: tapKey}
+	arkAddr := &arklib.Address{Version: 0, HRP: s.vtxoAddrHRP(), Signer: arkd, VtxoTapKey: tapKey}
 	addr, err := arkAddr.EncodeV0()
 	if err != nil {
 		return nil, err
