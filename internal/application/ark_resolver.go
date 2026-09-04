@@ -124,10 +124,34 @@ func validateArkResolverPolicy(network string, checkpoint, signerPub []byte) err
 		return fmt.Errorf("checkpoint delay does not match the release policy")
 	}
 	wantForfeit, err := hex.DecodeString(id.CheckpointForfeitPubHex)
-	if err != nil || !bytes.Equal(csv.PubKeys[0].SerializeCompressed(), wantForfeit) {
+	if err != nil || !sameXOnlyPub(csv.PubKeys[0].SerializeCompressed(), wantForfeit) {
 		return fmt.Errorf("checkpoint key does not match the release policy")
 	}
 	return nil
+}
+
+// sameXOnlyPub compares taproot x-only identity. GetInfo forfeit keys are
+// compressed 33-byte pubs; decoded checkpoint closures may reconstruct the
+// even-Y 02 prefix for the same X coordinate.
+func sameXOnlyPub(got, want []byte) bool {
+	gx, ok := xOnly(got)
+	if !ok {
+		return false
+	}
+	wx, ok := xOnly(want)
+	return ok && bytes.Equal(gx, wx)
+}
+
+func xOnly(pub []byte) ([]byte, bool) {
+	switch len(pub) {
+	case 32:
+		return pub, true
+	case 33:
+		if pub[0] == 0x02 || pub[0] == 0x03 {
+			return pub[1:], true
+		}
+	}
+	return nil, false
 }
 
 func validateArkResolverReleaseInfo(network string, info arkIndexerInfo) ([]byte, []byte, ports.IntentFeePolicy, error) {
