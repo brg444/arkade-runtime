@@ -1,0 +1,55 @@
+[Unit]
+Description=Vaulted Guardian (Arkade Runtime authorizer)
+Documentation=file:///usr/local/share/doc/vaulted-guardian/linux-host.md
+After=network-online.target
+Wants=network-online.target
+# Do not start automatically after reboot. The VaultCosigner key is unlocked
+# into tmpfs by an operator and is not stored on the VM.
+DefaultDependencies=yes
+
+[Service]
+Type=simple
+User=vaulted-guardian
+Group=vaulted-guardian
+EnvironmentFile=/etc/vaulted-guardian/guardian.env
+EnvironmentFile=-/run/vaulted-guardian/gateway.env
+ExecStart=/usr/local/bin/vault-authorizer
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @raw-io @obsolete
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/etc/vaulted-guardian
+ReadWritePaths=/var/lib/vaulted-guardian/data /var/lib/vaulted-guardian/sequence
+RuntimeDirectory=vaulted-guardian
+RuntimeDirectoryMode=0700
+WorkingDirectory=/var/lib/vaulted-guardian
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vaulted-guardian
+# Bind only to loopback. Cloudflare Tunnel is the sole public ingress.
+# VAULT_AUTHORIZER_ADDR is set in guardian.env to 127.0.0.1:8788.
+# No [Install] section: reboot requires a manual unlock and must not start signing.

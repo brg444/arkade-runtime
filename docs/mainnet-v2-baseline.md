@@ -1,9 +1,11 @@
 # Mainnet v2 baseline
 
-The `arkade-vault-v1` Arkade Runtime profile begins with a fresh v2 service and database. The executable
-remains Mutinynet-only until the mainnet pins and release gates in this document
-close. Mainnet does not import Mutinynet databases, vault identifiers,
-allowance rows, keys, or contract packs.
+The `arkade-vault-v1` Arkade Runtime profile begins with a fresh v2 service and
+database. Mainnet is a separate fail-closed profile with pinned Operator,
+Emulator, delays, and Vaulted wallet origins. It does not import Mutinynet
+databases, vault identifiers, allowance rows, keys, or contract packs. The
+cheap VaultCosigner host is the hardened Linux package in `deploy/linux/`, not
+the Mutinynet Railway topology.
 
 ## Service boundary
 

@@ -1,0 +1,40 @@
+[Unit]
+Description=Cloudflare Tunnel for guardian.getvaulted.xyz
+Documentation=https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+After=network-online.target
+Wants=network-online.target
+# The tunnel may start without the authorizer. Cloudflare will 502 until unlock.
+
+[Service]
+Type=simple
+User=cloudflared
+Group=cloudflared
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate --config /etc/vaulted-guardian/cloudflared.yml run
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/etc/vaulted-guardian
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cloudflared-guardian
+
+[Install]
+WantedBy=multi-user.target
