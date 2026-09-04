@@ -1,4 +1,4 @@
-module github.com/brg444/arkade-vault-server
+module github.com/brg444/vaulted-guardian
 
 go 1.26.6
 

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brg444/arkade-vault-server/internal/apperr"
-	"github.com/brg444/arkade-vault-server/internal/contractpack"
-	"github.com/brg444/arkade-vault-server/internal/program"
+	"github.com/brg444/vaulted-guardian/internal/apperr"
+	"github.com/brg444/vaulted-guardian/internal/contractpack"
+	"github.com/brg444/vaulted-guardian/internal/program"
 )
 
 func liveContractPackJSON() ([]byte, error) {

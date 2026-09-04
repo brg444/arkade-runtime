@@ -1,14 +1,32 @@
-# Arkade Vault Server
+# Vaulted Guardian
+
+**Policy enforcement and delayed recovery infrastructure for
+[Vaulted](https://github.com/brg444/vaulted-bitcoin-wallet).**
 
 > [!WARNING]
 > This release candidate runs only on Mutinynet. Real-fund custody is out of
 > scope. Mainnet requires reviewed Emulator and Operator pins and
 > hardware-isolated VaultCosigner keys.
 
-Arkade Vault Server is the protected policy and signing service for
-[Arkade Wallet Vault](https://github.com/brg444/arkade-wallet-vault). It owns
-the VaultCosigner key and the authoritative policy ledger. It does not build a
-general wallet, broadcast arbitrary transactions, or expose a raw signing API.
+Vaulted Guardian helps contain a compromised phone and coordinate recovery
+after a key is lost. It owns the service key used by the Spending policy and
+the authoritative allowance ledger. It cannot spend Savings by itself, build
+arbitrary transactions, broadcast Savings transfers, or expose a raw signing
+API.
+
+The security model is deliberately narrow:
+
+- **Limits contain compromise.** Guardian enforces the vault's immutable
+  per-payment and rolling Spending limits before adding its approval.
+- **Independent keys protect Savings.** Routine Savings transfers require the
+  user's device and hardware keys; Guardian has no ordinary Savings-spend key.
+- **Delayed recovery protects against loss.** Guardian validates recovery and
+  clawback transitions, while Bitcoin scripts enforce the waiting period and
+  preserve time to cancel an unauthorized attempt.
+
+Arkade is one payment rail used by Spending. The public Operator coordinates
+VTXO transactions, while Guardian independently verifies the exact transaction
+and policy state before authorizing its constrained part.
 
 The wallet and server independently validate the same versioned Vault Program.
 The server may add a VaultCosigner signature only after the complete operation
@@ -27,6 +45,15 @@ rebuild the same descriptor and persist the selection in the authenticated
 vault record. The service does not load arbitrary policy code or allow these
 conditions to change after enrollment.
 
+## What Guardian can—and cannot—do
+
+| Event | Outcome |
+| --- | --- |
+| Phone is compromised | The attacker remains constrained by the enrolled Spending limits and cannot spend Savings with the phone alone. |
+| Hardware key is lost | An enrolled delayed recovery path can move Savings after its waiting period; guardians can cancel an unexpected attempt. |
+| Guardian is unavailable | New policy-assisted Spending and Guardian-assisted recovery pause, but Guardian does not gain custody and cannot take Savings. |
+| Guardian key is compromised | Spending policy authorization is weakened, but the attacker still needs the other required transaction signatures. Savings remains protected by its independent keys and scripts. |
+
 ## Responsibilities
 
 The service is organized around four product workflows:
@@ -42,7 +69,7 @@ Spending uses `vault-policy-v1`. Its collaborative leaf requires the user,
 VaultCosigner, and Arkade Operator. Savings remains an L1 vault and has no
 routine path that the VaultCosigner can use to pay an arbitrary recipient.
 
-The VaultCosigner key and ledger intentionally share one protected process.
+The Guardian service key and ledger intentionally share one protected process.
 Separating the key from the authoritative allowance would create a path that
 could sign without observing the policy state.
 

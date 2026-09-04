@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
 )
 
 func TestMainnetInfrastructureDeclarationsFailClosed(t *testing.T) {
 	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
 	dir := t.TempDir()
 	cfg := Config{
-		Deployment: deployment.Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: deployment.NetworkMainnet},
-		DatabasePath: filepath.Join(dir, "vault.sqlite"),
+		Deployment:         deployment.Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: deployment.NetworkMainnet},
+		DatabasePath:       filepath.Join(dir, "vault.sqlite"),
 		PolicySequencePath: filepath.Join(dir, "policy-sequence"),
 	}
 	_, err := openWithArkadeDialers(context.Background(), cfg, nil, nil)

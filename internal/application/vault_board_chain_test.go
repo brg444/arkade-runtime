@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
 )
 
 func vaultBoardTextResponse(status int, body string) *http.Response {

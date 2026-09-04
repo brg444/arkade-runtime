@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	arkadevaultv1 "github.com/brg444/arkade-vault-server/internal/profile/arkadevaultv1"
+	arkadevaultv1 "github.com/brg444/vaulted-guardian/internal/profile/arkadevaultv1"
 )
 
 func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {

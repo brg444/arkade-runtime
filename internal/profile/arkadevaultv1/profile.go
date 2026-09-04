@@ -6,8 +6,8 @@ package arkadevaultv1
 import (
 	"net/http"
 
-	"github.com/brg444/arkade-vault-server/internal/program"
-	arkaderuntime "github.com/brg444/arkade-vault-server/internal/runtime"
+	"github.com/brg444/vaulted-guardian/internal/program"
+	arkaderuntime "github.com/brg444/vaulted-guardian/internal/runtime"
 )
 
 const (

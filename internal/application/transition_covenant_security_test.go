@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/fixture"
+	"github.com/brg444/vaulted-guardian/fixture"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/wire"

@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/fixture"
-	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/vaulted-guardian/fixture"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
 )
 
 const testGatewaySecret = "test-gateway-secret"

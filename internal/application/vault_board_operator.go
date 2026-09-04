@@ -9,7 +9,7 @@ import (
 	"mime"
 	"net/http"
 
-	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
 )
 
 const (
