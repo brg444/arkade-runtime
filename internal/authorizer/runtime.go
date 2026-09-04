@@ -45,6 +45,7 @@ type Config struct {
 	StorageIsolation     string
 	EdgeRateLimit        string
 	MainnetAcknowledged  string
+	CosignerKeyUnlink    string
 }
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
@@ -138,6 +139,10 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 
 	vaultCosignerKey, err := LoadVaultCosignerKey(cfg.VaultCosignerKeyFile)
 	if err != nil {
+		return nil, err
+	}
+	if err := unlinkCosignerKeyAfterLoad(cfg.VaultCosignerKeyFile, cfg.CosignerKeyUnlink); err != nil {
+		wipePrivateKey(vaultCosignerKey)
 		return nil, err
 	}
 	keyOwnedByService := false
@@ -401,6 +406,20 @@ func deriveCredentialIntegrityKey(vaultCosignerKey *btcec.PrivateKey) ([]byte, e
 // LoadVaultCosignerKey reads exactly one strict secp256k1 scalar from a bounded
 // hex file. btcec.PrivKeyFromBytes is called only after rejecting zero and
 // every value greater than or equal to the curve order.
+func unlinkCosignerKeyAfterLoad(path, mode string) error {
+	switch strings.TrimSpace(mode) {
+	case "":
+		return nil
+	case "after-load":
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove plaintext VaultCosigner key: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("VAULT_COSIGNER_KEY_UNLINK must be after-load or empty")
+	}
+}
+
 func LoadVaultCosignerKey(path string) (*btcec.PrivateKey, error) {
 	encoded, err := readBoundedSecret(path, "VaultCosigner key", 64, 64)
 	if err != nil {

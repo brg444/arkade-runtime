@@ -13,7 +13,7 @@ func TestMainnetInfrastructureDeclarationsFailClosed(t *testing.T) {
 	t.Setenv("VAULT_GATEWAY_SECRET", "test-gateway-secret")
 	dir := t.TempDir()
 	cfg := Config{
-		Deployment:         deployment.Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: deployment.NetworkMainnet},
+		Deployment:         deployment.Config{ClientOrigin: deployment.MainnetWalletOrigin, RPID: deployment.MainnetWalletRPID, Network: deployment.NetworkMainnet},
 		DatabasePath:       filepath.Join(dir, "vault.sqlite"),
 		PolicySequencePath: filepath.Join(dir, "policy-sequence"),
 	}

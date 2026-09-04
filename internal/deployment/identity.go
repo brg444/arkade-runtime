@@ -9,6 +9,13 @@ const (
 	// this as the chain identity instead of a custom-signet checkpoint.
 	BitcoinGenesisHash = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
 
+	// Mainnet wallet WebAuthn origins. Parent-domain getvaulted.xyz and the
+	// Guardian ingress are not valid relying parties for this release.
+	MainnetWalletOrigin = "https://app.getvaulted.xyz"
+	MainnetWalletRPID   = "app.getvaulted.xyz"
+	MainnetRCOrigin     = "https://rc.getvaulted.xyz"
+	MainnetRCRPID       = "rc.getvaulted.xyz"
+
 	MainnetArkadeCosignerOrigin  = "https://mainnet-signer.invalid"
 	MainnetArkadeCosignerPubHex  = "0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e"
 	MainnetArkadeCosignerVersion = "v0.0.7"

@@ -28,6 +28,7 @@ func main() {
 		storageIsolation    = flag.String("storage-isolation", os.Getenv("VAULT_STORAGE_ISOLATION"), "mainnet storage control attestation")
 		edgeRateLimit       = flag.String("edge-rate-limit", os.Getenv("VAULT_EDGE_RATE_LIMIT"), "mainnet edge rate-limit attestation")
 		mainnetAcknowledged = flag.String("mainnet-ack", os.Getenv("VAULT_MAINNET_ACK"), "mainnet fresh-state acknowledgement")
+		cosignerKeyUnlink   = flag.String("cosigner-key-unlink", os.Getenv("VAULT_COSIGNER_KEY_UNLINK"), "after-load deletes the plaintext VaultCosigner key file once it is in process memory")
 	)
 	flag.Parse()
 
@@ -40,6 +41,7 @@ func main() {
 		StorageIsolation:     *storageIsolation,
 		EdgeRateLimit:        *edgeRateLimit,
 		MainnetAcknowledged:  *mainnetAcknowledged,
+		CosignerKeyUnlink:    *cosignerKeyUnlink,
 	}
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 40*time.Second)
 	runtime, err := authorizer.Open(startupCtx, cfg)

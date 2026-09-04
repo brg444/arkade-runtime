@@ -26,3 +26,21 @@ func TestIdentityForMainnetPinsLiveOperator(t *testing.T) {
 		t.Fatalf("%+v", id)
 	}
 }
+
+func TestMainnetWalletHostsArePinnedProductNames(t *testing.T) {
+	if MainnetWalletOrigin != "https://app.getvaulted.xyz" || MainnetWalletRPID != "app.getvaulted.xyz" {
+		t.Fatalf("%s %s", MainnetWalletOrigin, MainnetWalletRPID)
+	}
+	if MainnetRCOrigin != "https://rc.getvaulted.xyz" || MainnetRCRPID != "rc.getvaulted.xyz" {
+		t.Fatalf("%s %s", MainnetRCOrigin, MainnetRCRPID)
+	}
+	if !AllowedMainnetWallet(MainnetWalletOrigin, MainnetWalletRPID) || !AllowedMainnetWallet(MainnetRCOrigin, MainnetRCRPID) {
+		t.Fatal("pinned hosts rejected")
+	}
+	if AllowedMainnetWallet("https://getvaulted.xyz", "getvaulted.xyz") {
+		t.Fatal("marketing origin accepted")
+	}
+	if AllowedMainnetWallet("https://guardian.getvaulted.xyz", "guardian.getvaulted.xyz") {
+		t.Fatal("guardian origin accepted as wallet RP")
+	}
+}
