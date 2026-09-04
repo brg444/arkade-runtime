@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/authorizer"
-	"github.com/brg444/vaulted-guardian/internal/deployment"
-	httpapi "github.com/brg444/vaulted-guardian/internal/iface/http"
+	"github.com/brg444/arkade-runtime/internal/authorizer"
+	"github.com/brg444/arkade-runtime/internal/deployment"
+	httpapi "github.com/brg444/arkade-runtime/internal/iface/http"
 )
 
 func main() {

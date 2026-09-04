@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/fixture"
-	"github.com/brg444/vaulted-guardian/internal/policy"
-	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/arkade-runtime/fixture"
+	"github.com/brg444/arkade-runtime/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 func insertExpiredVtxoOperation(

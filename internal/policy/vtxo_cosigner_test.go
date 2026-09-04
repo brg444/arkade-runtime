@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/brg444/vaulted-guardian/internal/deployment"
-	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/arkade-runtime/internal/deployment"
+	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 

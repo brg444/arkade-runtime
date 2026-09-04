@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/deployment"
+	"github.com/brg444/arkade-runtime/internal/deployment"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
-	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 

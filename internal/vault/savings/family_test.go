@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 const fixturePhoneDirectP256 = "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721"

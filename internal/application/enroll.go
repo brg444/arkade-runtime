@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brg444/vaulted-guardian/internal/policy"
-	"github.com/brg444/vaulted-guardian/internal/program"
-	"github.com/brg444/vaulted-guardian/internal/webauthn"
+	"github.com/brg444/arkade-runtime/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
 
 const pendingEnrollmentTTL = 5 * time.Minute

@@ -7,7 +7,7 @@ import (
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
 	"github.com/arkade-os/emulator/pkg/arkade"
-	"github.com/brg444/vaulted-guardian/internal/program"
+	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )

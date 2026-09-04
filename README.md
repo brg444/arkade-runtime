@@ -1,14 +1,42 @@
-# Vaulted Guardian
+# Arkade Runtime
 
-**Policy enforcement and delayed recovery infrastructure for
-[Vaulted](https://github.com/brg444/vaulted-bitcoin-wallet).**
+**A compiled runtime for policy-constrained signing, recovery, and stateful
+applications built with Arkade.**
 
 > [!WARNING]
 > This release candidate runs only on Mutinynet. Real-fund custody is out of
 > scope. Mainnet requires reviewed Emulator and Operator pins and
 > hardware-isolated VaultCosigner keys.
 
-Vaulted Guardian helps contain a compromised phone and coordinate recovery
+Arkade Runtime hosts immutable application profiles that compose named
+programs, policies, stores, key capabilities, routes, and lifecycle checks.
+Profiles are linked into the binary and selected when the process starts; the
+runtime exposes no dynamic plugin loader, arbitrary signing API, or mutable
+policy registry.
+
+The first compiled profile is `arkade-vault-v1`, used by
+[Vaulted](https://github.com/brg444/vaulted-bitcoin-wallet). It combines
+Arkade's VTXO and collaborative-signing foundation with stateful Spending
+limits, passkey authorization, L1 Savings verification, and delayed recovery.
+This profile is one application of the Runtime—not the boundary of what the
+Runtime can host.
+
+## Runtime model
+
+| Layer | Responsibility |
+| --- | --- |
+| Runtime | Compiles immutable profile metadata, mounts one selected profile, and owns readiness, lifecycle, and shutdown. |
+| Profile | Defines one complete application composition and its allowed modules, routes, stores, and key scopes. |
+| Module | Groups named programs and policies behind narrow semantic capabilities. |
+| Program | Defines versioned transaction, signing, and recovery behavior shared with its client. |
+
+The current binary deliberately compiles only `arkade-vault-v1`. Adding a
+future profile is a source-reviewed composition and release decision; it cannot
+be installed or selected through an external request.
+
+## Current Vault profile
+
+The Vault profile helps contain a compromised phone and coordinate recovery
 after a key is lost. It owns the service key used by the Spending policy and
 the authoritative allowance ledger. It cannot spend Savings by itself, build
 arbitrary transactions, broadcast Savings transfers, or expose a raw signing
@@ -16,17 +44,18 @@ API.
 
 The security model is deliberately narrow:
 
-- **Limits contain compromise.** Guardian enforces the vault's immutable
+- **Limits contain compromise.** The profile enforces the vault's immutable
   per-payment and rolling Spending limits before adding its approval.
 - **Independent keys protect Savings.** Routine Savings transfers require the
-  user's device and hardware keys; Guardian has no ordinary Savings-spend key.
-- **Delayed recovery protects against loss.** Guardian validates recovery and
+  user's device and hardware keys; the Runtime has no ordinary Savings-spend key.
+- **Delayed recovery protects against loss.** The profile validates recovery and
   clawback transitions, while Bitcoin scripts enforce the waiting period and
   preserve time to cancel an unauthorized attempt.
 
-Arkade is one payment rail used by Spending. The public Operator coordinates
-VTXO transactions, while Guardian independently verifies the exact transaction
-and policy state before authorizing its constrained part.
+Arkade supplies the VTXO lifecycle, collaborative signing paths, checkpoints,
+forfeiture mechanics, and Operator coordination on which the current profile
+is built. The profile independently verifies each permitted transaction and
+its policy state before contributing a constrained signature.
 
 The wallet and server independently validate the same versioned Vault Program.
 The server may add a VaultCosigner signature only after the complete operation
@@ -45,14 +74,14 @@ rebuild the same descriptor and persist the selection in the authenticated
 vault record. The service does not load arbitrary policy code or allow these
 conditions to change after enrollment.
 
-## What Guardian can—and cannot—do
+## What the Vault profile can—and cannot—do
 
 | Event | Outcome |
 | --- | --- |
 | Phone is compromised | The attacker remains constrained by the enrolled Spending limits and cannot spend Savings with the phone alone. |
 | Hardware key is lost | An enrolled delayed recovery path can move Savings after its waiting period; guardians can cancel an unexpected attempt. |
-| Guardian is unavailable | New policy-assisted Spending and Guardian-assisted recovery pause, but Guardian does not gain custody and cannot take Savings. |
-| Guardian key is compromised | Spending policy authorization is weakened, but the attacker still needs the other required transaction signatures. Savings remains protected by its independent keys and scripts. |
+| Runtime service is unavailable | New policy-assisted Spending and service-assisted recovery pause, but the service does not gain custody and cannot take Savings. |
+| VaultCosigner key is compromised | Spending policy authorization is weakened, but the attacker still needs the other required transaction signatures. Savings remains protected by its independent keys and scripts. |
 
 ## Responsibilities
 
@@ -69,7 +98,7 @@ Spending uses `vault-policy-v1`. Its collaborative leaf requires the user,
 VaultCosigner, and Arkade Operator. Savings remains an L1 vault and has no
 routine path that the VaultCosigner can use to pay an arbitrary recipient.
 
-The Guardian service key and ledger intentionally share one protected process.
+The VaultCosigner key and ledger intentionally share one protected process.
 Separating the key from the authoritative allowance would create a path that
 could sign without observing the policy state.
 
