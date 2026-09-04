@@ -14,6 +14,10 @@ Product names:
 Do not provision this host, create Cloudflare resources, or generate keys
 until the operator explicitly approves those external actions.
 
+Buy the VM using [HETZNER.md](HETZNER.md). Mint operator secrets on a laptop
+with [mint-operator-secrets.sh](mint-operator-secrets.sh); never paste those
+files into chat.
+
 ## Threat model (honest)
 
 The VaultCosigner is a software key on this VM.

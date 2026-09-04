@@ -1,0 +1,31 @@
+#cloud-config
+# Hetzner CX22 (or equivalent) first boot. No public inbound services.
+# After create: Hetzner console → tailscale up → admin only over Tailscale.
+
+package_update: true
+package_upgrade: true
+packages:
+  - ufw
+  - sqlite3
+  - ca-certificates
+  - curl
+
+users:
+  - name: operator
+    groups: [sudo]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+
+ssh_pwauth: false
+
+runcmd:
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw --force enable
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - systemctl enable --now tailscaled
+  - install -d -m 0750 /etc/vaulted-guardian
+  - install -d -m 0750 /var/lib/vaulted-guardian
+  - printf '%s\n' 'net.ipv6.conf.all.disable_ipv6=0' >/etc/sysctl.d/99-vaulted.conf
+  - sysctl --system

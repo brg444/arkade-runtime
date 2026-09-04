@@ -12,6 +12,8 @@ binary.
 | [ops.md](ops.md) | Mainnet v2 state, restore, readiness, and release procedure |
 | [mainnet.env.example](mainnet.env.example) | Non-secret, fail-closed mainnet environment contract |
 | [linux/](linux/) | Hardened Linux micro-VM, Cloudflare Tunnel, and manual key unlock |
+| [linux/HETZNER.md](linux/HETZNER.md) | CX22 order, volumes, Tailscale-first admin |
+| [linux/mint-operator-secrets.sh](linux/mint-operator-secrets.sh) | Laptop-only age-encrypted secret mint |
 
 The mainnet v2 service is a greenfield deployment. It does not open or migrate
 the existing Mutinynet ledger. Use fresh database and policy-sequence volumes,
