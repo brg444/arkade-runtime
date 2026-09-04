@@ -46,6 +46,8 @@ ReadOnlyPaths=/etc/vaulted-guardian
 ReadWritePaths=/var/lib/vaulted-guardian/data /var/lib/vaulted-guardian/sequence
 RuntimeDirectory=vaulted-guardian
 RuntimeDirectoryMode=0700
+# Unlock writes plaintext into this directory before start. Do not empty it.
+RuntimeDirectoryPreserve=yes
 WorkingDirectory=/var/lib/vaulted-guardian
 StandardOutput=journal
 StandardError=journal
