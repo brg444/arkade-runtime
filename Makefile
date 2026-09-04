@@ -20,12 +20,12 @@ vuln:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 images:
-	docker build -f Dockerfile.railway -t arkade-vault-server:railway .
-	docker build -f Dockerfile.mutinynet -t arkade-vault-server:mutinynet .
+	docker build -f Dockerfile.railway -t vaulted-guardian:railway .
+	docker build -f Dockerfile.mutinynet -t vaulted-guardian:mutinynet .
 	docker run --rm --entrypoint sh \
 		--mount type=volume,destination=/app/data \
 		--mount type=volume,destination=/app/sequence \
-		arkade-vault-server:mutinynet \
+		vaulted-guardian:mutinynet \
 		-c 'test -w /app/data && test -w /app/sequence'
 
 bench:

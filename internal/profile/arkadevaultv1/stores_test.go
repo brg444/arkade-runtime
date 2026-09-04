@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/vaulted-guardian/internal/policy"
 )
 
 func TestStoresFromLedgerKeepsOnePhysicalDatabase(t *testing.T) {

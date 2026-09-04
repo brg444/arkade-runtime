@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/vault/savings"
+	"github.com/brg444/vaulted-guardian/internal/vault/savings"
 )
 
 type httpV1CompatibilityGolden struct {

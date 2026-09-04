@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/brg444/arkade-vault-server/internal/deployment"
+	"github.com/brg444/vaulted-guardian/internal/deployment"
 )
 
 const vaultBoardTestOperatorDigest = "2e14a884689aba877ecdf423a61862f01b9627927e65cccf119c2aee48fdf4d9"

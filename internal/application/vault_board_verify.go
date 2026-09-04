@@ -10,7 +10,7 @@ import (
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
-	"github.com/brg444/arkade-vault-server/internal/policy"
+	"github.com/brg444/vaulted-guardian/internal/policy"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
