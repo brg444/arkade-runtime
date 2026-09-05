@@ -13,7 +13,7 @@ import (
 const SHA256 = "3a30b9819a071d6bcec4d5ae5a27a0bae20a1e3445293998a60402525ba44526"
 
 // MainnetSHA256 is the mainnet release-pinned digest of contract-pack.mainnet.json.
-const MainnetSHA256 = "0bcb424a597a11c23be3bca27a83cc50aed4550690ad65bacb46145326f794b4"
+const MainnetSHA256 = "7d78c79aaebf4b85e1996fb8e7ad119dd37aae610bdf6ac794a4304a71abfcd3"
 
 // JSON is the exact Mutinynet contract-pack.json committed at the repo root.
 //

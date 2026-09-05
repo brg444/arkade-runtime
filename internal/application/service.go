@@ -31,8 +31,9 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
-	Stores     arkadevaultv1.Stores
-	Deployment deployment.Config
+	Stores         arkadevaultv1.Stores
+	Deployment     deployment.Config
+	OpenEnrollment bool // admission only; existing sessions retain their expiry
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
 	// scalar with a domain-separated KDF.
@@ -75,6 +76,7 @@ type Service struct {
 type Deps struct {
 	Stores                arkadevaultv1.Stores
 	Deployment            deployment.Config
+	OpenEnrollment        bool
 	IntegrityKey          []byte
 	Keys                  KeyCapabilities
 	VaultCosignerPub      *btcec.PublicKey
@@ -90,6 +92,7 @@ func New(d Deps) *Service {
 	s := &Service{
 		Stores:                 d.Stores,
 		Deployment:             d.Deployment,
+		OpenEnrollment:         d.OpenEnrollment,
 		CredentialIntegrityKey: d.IntegrityKey,
 		VaultCosignerPub:       d.VaultCosignerPub,
 		ArkadeCosignerPub:      d.ArkadeCosignerPub,
@@ -98,7 +101,7 @@ func New(d Deps) *Service {
 		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
 	}
-	if raw, err := liveContractPackJSON(); err == nil {
+	if raw, err := liveContractPackJSONFor(d.Deployment.Network); err == nil {
 		s.contractPackJSON = raw
 	}
 	return s
@@ -396,7 +399,7 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 	parsed.protectionTier = req.ProtectionTier
 	parsed.vaultID = req.VaultID
 	parsed.boardingProgram = program.VaultBoardV1
-	if _, err := requireSpendingPolicyDigest(req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
+	if _, err := requireSpendingPolicyDigest(s.runtimeConfig().Network, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return parsed, err
 	}
 	parsed.spendingPolicy = req.SpendingPolicy
@@ -507,12 +510,12 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	if cred.RecipientDustSats != program.DustSats {
 		return fmt.Errorf("stored economic policy incompatible with runtime")
 	}
-	if err := program.ValidateSpendingPolicy(spendingPolicyFromCredential(cred)); err != nil {
+	if err := program.ValidateSpendingPolicyFor(cfg.Network, spendingPolicyFromCredential(cred)); err != nil {
 		return fmt.Errorf("stored economic policy: %w", err)
 	}
 	wantOrigin, wantVersion := s.arkadeIdentity()
 	if cred.ArkadeCosignerOrigin != wantOrigin {
-		return fmt.Errorf("stored ArkadeCosigner origin %q incompatible with runtime %q", cred.ArkadeCosignerOrigin, wantOrigin)
+		return fmt.Errorf("stored signing identity requires enrollment migration")
 	}
 	if cred.ArkadeCosignerVersion != wantVersion {
 		return fmt.Errorf("stored ArkadeCosigner version %q incompatible with runtime %q", cred.ArkadeCosignerVersion, wantVersion)
@@ -693,7 +696,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 	if rec == nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
-	if err := program.ValidateSpendingPolicy(spendingPolicyFromRecord(rec)); err != nil {
+	if err := program.ValidateSpendingPolicyFor(s.runtimeConfig().Network, spendingPolicyFromRecord(rec)); err != nil {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("stored economic policy: %w", err)
 	}
 	if err := program.ValidateProtectionTierRecovery(rec.ProtectionTier, len(rec.RecoveryKey) > 0); err != nil {

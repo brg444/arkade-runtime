@@ -8,16 +8,23 @@ const (
 	MainnetVaultBoardV1ExitDelay       = uint32(7776256)
 	MainnetVaultPolicyV1PinnedDelegate = "026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6"
 	MainnetVaultPolicyV1DelegateOrigin = "https://delegate.arkade.money"
+	// Alpha mainnet fee ceilings. These are compromise maxima, not the
+	// operational fee. L1 spends should pay a current mempool estimate at or
+	// below these values.
+	MainnetAbsoluteFeeCeiling    int64 = 20_000
+	MainnetFeerateCeilingSatPerV int64 = 25
 )
 
 // NetworkPins is the frozen named-program contract for one product network.
 type NetworkPins struct {
-	Network          string
-	PolicyExitDelay  uint32
-	BoardExitDelay   uint32
-	ArkdMinExitDelay uint32
-	DelegatePub      string
-	DelegateOrigin   string
+	Network               string
+	PolicyExitDelay       uint32
+	BoardExitDelay        uint32
+	ArkdMinExitDelay      uint32
+	DelegatePub           string
+	DelegateOrigin        string
+	AbsoluteFeeCeiling    int64
+	FeerateCeilingSatPerV int64
 }
 
 // PinsFor returns the immutable program pins for network. Values are not env knobs.
@@ -25,21 +32,25 @@ func PinsFor(network string) (NetworkPins, error) {
 	switch network {
 	case NetworkMutinynet:
 		return NetworkPins{
-			Network:          NetworkMutinynet,
-			PolicyExitDelay:  VaultPolicyV1ExitDelay,
-			BoardExitDelay:   VaultBoardV1ExitDelay,
-			ArkdMinExitDelay: VaultPolicyV1ArkdMinExitDelay,
-			DelegatePub:      VaultPolicyV1PinnedDelegate,
-			DelegateOrigin:   VaultPolicyV1DelegateOrigin,
+			Network:               NetworkMutinynet,
+			PolicyExitDelay:       VaultPolicyV1ExitDelay,
+			BoardExitDelay:        VaultBoardV1ExitDelay,
+			ArkdMinExitDelay:      VaultPolicyV1ArkdMinExitDelay,
+			DelegatePub:           VaultPolicyV1PinnedDelegate,
+			DelegateOrigin:        VaultPolicyV1DelegateOrigin,
+			AbsoluteFeeCeiling:    AbsoluteFeeCeiling,
+			FeerateCeilingSatPerV: FeerateCeilingSatPerV,
 		}, nil
 	case NetworkMainnet:
 		return NetworkPins{
-			Network:          NetworkMainnet,
-			PolicyExitDelay:  MainnetVaultPolicyV1ExitDelay,
-			BoardExitDelay:   MainnetVaultBoardV1ExitDelay,
-			ArkdMinExitDelay: MainnetVaultPolicyV1ArkdMinDelay,
-			DelegatePub:      MainnetVaultPolicyV1PinnedDelegate,
-			DelegateOrigin:   MainnetVaultPolicyV1DelegateOrigin,
+			Network:               NetworkMainnet,
+			PolicyExitDelay:       MainnetVaultPolicyV1ExitDelay,
+			BoardExitDelay:        MainnetVaultBoardV1ExitDelay,
+			ArkdMinExitDelay:      MainnetVaultPolicyV1ArkdMinDelay,
+			DelegatePub:           MainnetVaultPolicyV1PinnedDelegate,
+			DelegateOrigin:        MainnetVaultPolicyV1DelegateOrigin,
+			AbsoluteFeeCeiling:    MainnetAbsoluteFeeCeiling,
+			FeerateCeilingSatPerV: MainnetFeerateCeilingSatPerV,
 		}, nil
 	default:
 		return NetworkPins{}, fmt.Errorf("unsupported network %q", network)

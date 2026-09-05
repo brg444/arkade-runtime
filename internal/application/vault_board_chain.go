@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brg444/arkade-runtime/internal/apperr"
 	"github.com/brg444/arkade-runtime/internal/deployment"
 )
 
@@ -77,7 +78,7 @@ func dialVaultBoardChain(network string) (vaultBoardChain, error) {
 
 func dialVaultBoardChainWithClient(rawOrigin string, hc httpDoer) (vaultBoardChain, error) {
 	base := strings.TrimSuffix(rawOrigin, "/api")
-	origin, err := canonicalHTTPSOrigin(base)
+	origin, err := CanonicalHTTPSOrigin(base)
 	id, idErr := identityForEsploraOrigin(rawOrigin)
 	if err != nil || idErr != nil || rawOrigin != origin+"/api" || id.EsploraOrigin != rawOrigin {
 		return nil, fmt.Errorf("vault-board-v1 Esplora origin must be the release pin")
@@ -358,7 +359,10 @@ func (e *esploraVaultBoardChain) get(ctx context.Context, path string) (*http.Re
 	if res.StatusCode != http.StatusOK {
 		defer res.Body.Close()
 		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4*1024))
-		return nil, fmt.Errorf("vault-board-v1 Esplora HTTP %d", res.StatusCode)
+		if res.StatusCode == http.StatusNotFound {
+			return nil, apperr.New(apperr.CodeRejected, "vault-board-v1 confirmed funding transaction required")
+		}
+		return nil, apperr.New(apperr.CodeRejected, "vault-board-v1 chain query failed")
 	}
 	return res, nil
 }

@@ -58,6 +58,8 @@ func routes() []arkaderuntime.Route {
 		{Method: http.MethodOptions, Path: "/v1/status"},
 		{Method: http.MethodGet, Path: "/v1/invite"},
 		{Method: http.MethodOptions, Path: "/v1/invite"},
+		{Method: http.MethodPost, Path: "/v1/enroll/session"},
+		{Method: http.MethodOptions, Path: "/v1/enroll/session"},
 		{Method: http.MethodPost, Path: "/v1/enroll/start"},
 		{Method: http.MethodOptions, Path: "/v1/enroll/start"},
 		{Method: http.MethodPost, Path: "/v1/enroll/propose"},

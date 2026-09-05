@@ -103,22 +103,28 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 	if err := cfg.Validate(); err != nil {
 		return PublicStatus{}, fmt.Errorf("deployment: %w", err)
 	}
+	caps, err := program.CurrentSpendingPolicyCapabilitiesFor(cfg.Network)
+	if err != nil {
+		return PublicStatus{}, err
+	}
 	st := PublicStatus{
 		Network:                    cfg.Network,
 		ClientOrigin:               cfg.ClientOrigin,
 		RPID:                       cfg.RPID,
 		TemplateVersion:            publicEnrollTemplate(s),
 		PolicyVersion:              program.PolicyVersion,
-		SpendingPolicyCapabilities: program.CurrentSpendingPolicyCapabilities(),
+		SpendingPolicyCapabilities: caps,
 	}
 	st.EnrollmentMode, st.EnrollmentExpiresAt = s.publicEnrollmentMode()
 	return st, nil
 }
 
-// publicEnrollmentMode is the unauthenticated setup state. Invite-gated
-// multi-tenant does not inherit the singleton 30-minute first-claim window;
-// each invite has its own expires_at.
+// publicEnrollmentMode advertises admission policy only. Switching admission
+// never changes existing vault descriptors or the expiry of issued sessions.
 func (s *Service) publicEnrollmentMode() (mode, expires string) {
+	if s.OpenEnrollment {
+		return "open", ""
+	}
 	return "token", ""
 }
 
@@ -145,10 +151,10 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		return Status{}, err
 	}
 	selected := spendingPolicyFromCredential(cred)
-	if err := program.ValidateSpendingPolicy(selected); err != nil {
+	if err := program.ValidateSpendingPolicyFor(cfg.Network, selected); err != nil {
 		return Status{}, fmt.Errorf("stored economic policy: %w", err)
 	}
-	digest, err := program.SpendingPolicyDigestHex(selected)
+	digest, err := program.SpendingPolicyDigestHexFor(cfg.Network, selected)
 	if err != nil {
 		return Status{}, err
 	}

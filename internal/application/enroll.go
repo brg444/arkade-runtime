@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -89,7 +90,7 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 	if err := program.ValidateProtectionTier(request.ProtectionTier); err != nil {
 		return nil, err
 	}
-	policyDigest, err := requireSpendingPolicyDigest(request.SpendingPolicy, request.SpendingPolicyDigest)
+	policyDigest, err := requireSpendingPolicyDigest(s.runtimeConfig().Network, request.SpendingPolicy, request.SpendingPolicyDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +136,8 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 	}, nil
 }
 
-func requireSpendingPolicyDigest(selected program.SpendingPolicy, encoded string) ([]byte, error) {
-	digest, err := program.SpendingPolicyDigest(selected)
+func requireSpendingPolicyDigest(network string, selected program.SpendingPolicy, encoded string) ([]byte, error) {
+	digest, err := program.SpendingPolicyDigestFor(network, selected)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +148,8 @@ func requireSpendingPolicyDigest(selected program.SpendingPolicy, encoded string
 	return digest, nil
 }
 
-func requirePendingSpendingPolicy(pending *policy.PendingEnrollment, selected program.SpendingPolicy, encoded string) error {
-	digest, err := requireSpendingPolicyDigest(selected, encoded)
+func requirePendingSpendingPolicy(network string, pending *policy.PendingEnrollment, selected program.SpendingPolicy, encoded string) error {
+	digest, err := requireSpendingPolicyDigest(network, selected, encoded)
 	if err != nil {
 		return err
 	}
@@ -192,7 +193,7 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	if err := requirePendingProtectionTier(pending, req.ProtectionTier); err != nil {
 		return nil, err
 	}
-	if err := requirePendingSpendingPolicy(pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
+	if err := requirePendingSpendingPolicy(s.runtimeConfig().Network, pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return nil, err
 	}
 	return s.previewVaultBoardEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
@@ -223,7 +224,7 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 	if err := requirePendingProtectionTier(pending, req.ProtectionTier); err != nil {
 		return nil, err
 	}
-	if err := requirePendingSpendingPolicy(pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
+	if err := requirePendingSpendingPolicy(s.runtimeConfig().Network, pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return nil, err
 	}
 	now := s.currentEnrollmentTime().UTC()
@@ -386,4 +387,35 @@ func bytesEqualConst(a, b []byte) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare(a, b) == 1
+}
+
+// EnrollmentSession removes manual admission without removing one-vault,
+// expiring enrollment authorization. No token is logged or persisted in plaintext.
+type EnrollmentSession struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func (s *Service) IssueEnrollmentSession() (*EnrollmentSession, error) {
+	if !s.OpenEnrollment {
+		return nil, fmt.Errorf("invite required")
+	}
+	if err := s.requireLedgerIntegrity(); err != nil {
+		return nil, err
+	}
+	raw, err := randomBytes(32)
+	if err != nil {
+		return nil, err
+	}
+	defer zeroServiceBytes(raw)
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	hash, err := HashEnrollmentToken(token)
+	if err != nil {
+		return nil, err
+	}
+	expires, err := s.Stores.Identity.IssueEnrollmentSession(hash, s.currentEnrollmentTime().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return &EnrollmentSession{Token: token, ExpiresAt: expires.Format(time.RFC3339)}, nil
 }

@@ -584,7 +584,7 @@ func (l *Ledger) BeginVaultBoardAttempt(ctx context.Context, operation VaultBoar
 	default:
 		return nil, nil, false, err
 	}
-	if err := requireVaultBoardCooperativeWindow(stored, chain); err != nil {
+	if err := l.requireVaultBoardCooperativeWindow(stored, chain); err != nil {
 		return nil, nil, false, err
 	}
 
@@ -683,7 +683,7 @@ func (l *Ledger) AppendVaultBoardAuthorizationAndDispatch(ctx context.Context, a
 	if err := VerifyVaultBoardOperation(&operation, key); err != nil {
 		return nil, nil, false, err
 	}
-	if err := requireVaultBoardCooperativeWindow(operation, chain); err != nil {
+	if err := l.requireVaultBoardCooperativeWindow(operation, chain); err != nil {
 		return nil, nil, false, err
 	}
 	latest, err := loadLatestVaultBoardRegister(ctx, conn, auth.OperationID)
@@ -773,12 +773,17 @@ func sameVaultBoardAuthorizationRequest(stored, proposed VaultBoardAuthorization
 		stored.CommitmentTxid == proposed.CommitmentTxid && stored.ReceiverTxid == proposed.ReceiverTxid && stored.ReceiverVout == proposed.ReceiverVout
 }
 
-func requireVaultBoardCooperativeWindow(operation VaultBoardOperation, chain VaultBoardChainState) error {
+func (l *Ledger) requireVaultBoardCooperativeWindow(operation VaultBoardOperation, chain VaultBoardChainState) error {
+	pins, err := program.PinsFor(l.network)
+	if err != nil {
+		return err
+	}
+	delay := int64(pins.BoardExitDelay)
 	if operation.SequenceAnchorMTP <= 0 || chain.TipMTP <= 0 {
 		return fmt.Errorf("authoritative vault-board-v1 chain MTP required")
 	}
-	if operation.SequenceAnchorMTP > (1<<63-1)-int64(program.VaultBoardV1ExitDelay) ||
-		chain.TipMTP >= operation.SequenceAnchorMTP+int64(program.VaultBoardV1ExitDelay) {
+	if operation.SequenceAnchorMTP > (1<<63-1)-delay ||
+		chain.TipMTP >= operation.SequenceAnchorMTP+delay {
 		return fmt.Errorf("vault-board-v1 cooperative path has matured")
 	}
 	return nil
@@ -1000,7 +1005,7 @@ func (l *Ledger) AppendVaultBoardDispatch(ctx context.Context, rec VaultBoardDis
 	if err := VerifyVaultBoardOperation(&operation, key); err != nil {
 		return nil, false, err
 	}
-	if err := requireVaultBoardCooperativeWindow(operation, chain); err != nil {
+	if err := l.requireVaultBoardCooperativeWindow(operation, chain); err != nil {
 		return nil, false, err
 	}
 	if existing, err := loadVaultBoardDispatch(ctx, conn, rec.OperationID, rec.Attempt, rec.Phase); err == nil {

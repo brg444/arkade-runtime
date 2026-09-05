@@ -9,7 +9,9 @@ import (
 	"sort"
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
 	arktree "github.com/arkade-os/arkd/pkg/ark-lib/tree"
+	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -64,12 +66,15 @@ func verifyVaultBoardFinal(
 	register policy.VaultBoardAuthorization,
 	boardTree *vtxoBoardTree,
 	expectedExpiry arklib.RelativeLocktime,
+	network string,
 ) (verifiedVaultBoardFinal, error) {
 	if evidence.BatchID == "" || len(evidence.BatchID) > maxVaultBoardBatchIDBytes ||
 		len(evidence.InputIndexes) != 1 || evidence.InputIndexes[0] < 0 ||
-		expectedExpiry.Type != arklib.LocktimeTypeSecond || expectedExpiry.Value == 0 ||
-		evidence.BatchExpiry != expectedExpiry.Value {
+		expectedExpiry.Type != arklib.LocktimeTypeSecond || expectedExpiry.Value == 0 {
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final batch policy")
+	}
+	if evidence.BatchExpiry != expectedExpiry.Value {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final batch policy: expiry got=%d want=%d", evidence.BatchExpiry, expectedExpiry.Value)
 	}
 	if len(evidence.Recipients) != 1 || evidence.Recipients[0].HasAssets ||
 		evidence.Recipients[0].AmountSats <= 0 ||
@@ -85,7 +90,11 @@ func verifyVaultBoardFinal(
 		!bytes.Equal(boardTree.PkScript, operation.BoardingScript) {
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final boarding policy")
 	}
-	forfeitPubkey, err := hex.DecodeString(deployment.MutinynetCheckpointForfeitPubHex)
+	id, err := deployment.IdentityFor(network)
+	if err != nil || expectedExpiry.Value != id.VtxoTreeExpirySeconds {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final deployment policy")
+	}
+	forfeitPubkey, err := hex.DecodeString(id.CheckpointForfeitPubHex)
 	if err != nil || len(forfeitPubkey) != btcec.PubKeyBytesLenCompressed {
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 pinned forfeit key")
 	}
@@ -152,6 +161,9 @@ func verifyVaultBoardFinal(
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 VTXO tree: %w", err)
 	}
 	if err := arktree.ValidateVtxoTree(txTree, unsignedPacket, forfeit, expectedExpiry); err != nil {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 VTXO tree policy: %w", err)
+	}
+	if err := verifyVaultBoardBatchOutput(txTree, unsignedPacket, forfeit, expectedExpiry); err != nil {
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 VTXO tree policy: %w", err)
 	}
 	receiverTxid, receiverVout, err := findExactVaultBoardReceiver(txTree, operation.ReceiverScript, evidence.Recipients[0].AmountSats)
@@ -295,4 +307,43 @@ func vaultBoardFinalRequestDigest(evidence vaultBoardFinalEvidence, flat arktree
 	binary.LittleEndian.PutUint64(value[:], uint64(evidence.Recipients[0].AmountSats))
 	_, _ = h.Write(value[:])
 	return h.Sum(nil), nil
+}
+
+// The pinned ark-lib validates child outputs but does not bind the root's
+// aggregate key and sweep leaf to the commitment's Batch Output. Check that
+// boundary explicitly, including the single-leaf case with no child nodes.
+func verifyVaultBoardBatchOutput(tree *arktree.TxTree, commitment *psbt.Packet, forfeit *btcec.PublicKey, expiry arklib.RelativeLocktime) error {
+	cosigners, err := txutils.ParseCosignerKeysFromArkPsbt(tree.Root, 0)
+	if err != nil || len(cosigners) == 0 {
+		return fmt.Errorf("batch root cosigners required")
+	}
+	unique := make([]*btcec.PublicKey, 0, len(cosigners))
+	seen := make(map[string]bool, len(cosigners))
+	for _, key := range cosigners {
+		encoded := string(schnorr.SerializePubKey(key))
+		if !seen[encoded] {
+			unique = append(unique, key)
+			seen[encoded] = true
+		}
+	}
+	sweep := &arkscript.CSVMultisigClosure{
+		MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{forfeit}}, Locktime: expiry,
+	}
+	script, err := sweep.Script()
+	if err != nil {
+		return err
+	}
+	root := txscript.NewBaseTapLeaf(script).TapHash()
+	aggregate, err := arktree.AggregateKeys(unique, root[:])
+	if err != nil {
+		return err
+	}
+	expected, err := txscript.PayToTaprootScript(aggregate.FinalKey)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(commitment.UnsignedTx.TxOut[0].PkScript, expected) {
+		return fmt.Errorf("batch output does not commit to the pinned sweep policy")
+	}
+	return nil
 }

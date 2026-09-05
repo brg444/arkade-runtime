@@ -71,8 +71,7 @@ VTXO routes remain unavailable indefinitely.
    contract registration, refund, and ordinary VTXO funding gates pass. This
    service adds no Lightning-specific API or ledger state.
 
-Mainnet deployment uses the confirmed Emulator discovery endpoint at
-`https://mainnet-signer.invalid/v1/info` and requires every release pin in
+Mainnet deployment uses a privately configured signer endpoint and requires every release pin in
 [the mainnet v2 baseline](../docs/mainnet-v2-baseline.md). The Arkade Operator
 is `https://arkade.computer`; this deployment does not include or modify
 `arkd`.
@@ -98,3 +97,16 @@ Before a public release, remove the private Emulator module replacement after
 the required signing checks land in an official package, commit an explicit
 server distribution license, and record clean `govulncheck` output with the
 other release checks.
+
+### Private mainnet signing endpoint
+
+Provision `VAULT_ARKADE_COSIGNER_ORIGIN` in the server's private environment.
+Startup requires a canonical HTTPS origin and verifies the configured service
+against the compiled signer key and version. Public readiness reports only
+that a signer is configured. New mainnet descriptors use
+`urn:vaulted:mainnet-signer:v1` as their signer identity.
+
+Vaults enrolled with a transport URL in their descriptor must migrate before
+this release is activated. Existing descriptor hashes are preserved in the
+old release; this release rejects incompatible enrollments without printing
+their transport address.

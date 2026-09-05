@@ -1,9 +1,11 @@
 # Mainnet v2 baseline
 
-The `arkade-vault-v1` Arkade Runtime profile begins with a fresh v2 service and database. The executable
-remains Mutinynet-only until the mainnet pins and release gates in this document
-close. Mainnet does not import Mutinynet databases, vault identifiers,
-allowance rows, keys, or contract packs.
+The `arkade-vault-v1` Arkade Runtime profile begins with a fresh v2 service and
+database. Mainnet is a separate fail-closed profile with pinned Operator,
+Emulator, delays, and Vaulted wallet origins. It does not import Mutinynet
+databases, vault identifiers, allowance rows, keys, or contract packs. The
+cheap VaultCosigner host is the hardened Linux package in `deploy/linux/`, not
+the Mutinynet Railway topology.
 
 ## Service boundary
 
@@ -77,8 +79,7 @@ dependencies. Vault code must stay within the deployed `getInfo`, indexer,
 changes to `arkd`, exact intent-release endpoints, replayable event streams,
 and private Operator lifecycle state are outside the deployment boundary.
 
-The confirmed mainnet Emulator discovery endpoint is
-`https://mainnet-signer.invalid/v1/info`. Its
+The mainnet signer endpoint is configured privately. Its
 advertised signer,
 `0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e`,
 matches the official SDK pin. Mainnet remains fail-closed until that identity
@@ -214,4 +215,4 @@ and Emulator version `v0.0.7` with signer
 `0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e`.
 The current mainnet profile freezes those identities and rejects drift. Real
 traffic still requires the independent-storage and shared-edge declarations,
-plus external audit evidence that those controls are actually provisioned.
+plus external audit evidence that those controls are provisioned.

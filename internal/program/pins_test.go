@@ -26,6 +26,9 @@ func TestPinsForMainnetMatchesOperatorContract(t *testing.T) {
 	if pins.PolicyExitDelay != 605184 || pins.BoardExitDelay != 7776256 || pins.ArkdMinExitDelay != 605184 {
 		t.Fatalf("%+v", pins)
 	}
+	if pins.AbsoluteFeeCeiling != 20_000 || pins.FeerateCeilingSatPerV != 25 {
+		t.Fatalf("alpha mainnet fee ceilings = %+v", pins)
+	}
 	if pins.PolicyExitDelay%VaultPolicyV1BIP68SecondsMod != 0 || pins.BoardExitDelay%VaultPolicyV1BIP68SecondsMod != 0 {
 		t.Fatal("BIP68")
 	}

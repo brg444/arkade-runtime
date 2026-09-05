@@ -15,6 +15,7 @@ import (
 
 	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
 	"github.com/arkade-os/arkd/pkg/ark-lib/arkfee"
+	"github.com/brg444/arkade-runtime/internal/apperr"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/ports"
 	"github.com/brg444/arkade-runtime/internal/program"
@@ -153,7 +154,7 @@ func (s *Service) prepareVaultBoard(ctx context.Context, req vaultBoardPrepareRe
 	}
 	destScript, _, err := s.decodeVtxoDest(req.Recipients[0].Address)
 	if err != nil || !bytes.Equal(destScript, ctxState.receiverScript) {
-		return vaultBoardPrepareResult{}, fmt.Errorf("vault-board-v1 receiver must be the enrolled Spending script")
+		return vaultBoardPrepareResult{}, apperr.New(apperr.CodeRejected, "vault-board-v1 receiver must be the enrolled Spending script")
 	}
 	receiverSats := int64(req.Recipients[0].AmountSats)
 	operationID, err := policy.ComputeVaultBoardOperationID(ctxState.vaultID, ctxState.chain.Txid, ctxState.chain.Vout)
@@ -232,7 +233,7 @@ func (s *Service) loadVaultBoardContext(ctx context.Context, runtime *vaultBoard
 		return vaultBoardContext{}, err
 	}
 	if snap.Board == nil || snap.Board.BoardingPub == nil {
-		return vaultBoardContext{}, fmt.Errorf("vault is not enrolled for vault-board-v1")
+		return vaultBoardContext{}, apperr.New(apperr.CodeRejected, "vault is not enrolled for vault-board-v1")
 	}
 	boardTree, err := s.buildVtxoBoardTree(id, snap, snap.Board.BoardingPub)
 	if err != nil || !bytes.Equal(boardTree.PkScript, snap.Board.PkScript) {
@@ -247,7 +248,7 @@ func (s *Service) loadVaultBoardContext(ctx context.Context, runtime *vaultBoard
 		return vaultBoardContext{}, err
 	}
 	if !bytes.Equal(chain.PkScript, boardTree.PkScript) || chain.ValueSats <= 0 {
-		return vaultBoardContext{}, fmt.Errorf("confirmed enrolled vault-board-v1 outpoint required")
+		return vaultBoardContext{}, apperr.New(apperr.CodeRejected, "confirmed enrolled vault-board-v1 outpoint required")
 	}
 	return vaultBoardContext{
 		vaultID: id, snapshot: snap, record: rec, boardTree: boardTree,
@@ -298,10 +299,10 @@ func (s *Service) requireVaultBoardFee(ctx context.Context, rec *policy.VaultRec
 	if err != nil || want > math.MaxInt64 || int64(want) != value-receiver {
 		return 0, fmt.Errorf("vault-board-v1 exact Operator fee required")
 	}
-	capSats := int64(program.AbsoluteFeeCeiling)
-	if rec != nil {
-		capSats = rec.AbsoluteFeeCapSats
+	if rec == nil {
+		return 0, fmt.Errorf("vault spending policy required")
 	}
+	capSats := rec.AbsoluteFeeCapSats
 	if capSats < 0 || int64(want) > capSats {
 		return 0, fmt.Errorf("vault-board-v1 fee exceeds vault ceiling")
 	}

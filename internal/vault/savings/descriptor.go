@@ -107,7 +107,7 @@ func BuildPublicDescriptor(in FamilyInput, origin, version string) (PublicDescri
 		return PublicDescriptor{}, nil, err
 	}
 	selected := in.SpendingPolicy
-	policyDigest, err := program.SpendingPolicyDigestHex(selected)
+	policyDigest, err := program.SpendingPolicyDigestHexFor(in.Network, selected)
 	if err != nil {
 		return PublicDescriptor{}, nil, err
 	}

@@ -7,9 +7,13 @@ binary.
 | --- | --- |
 | [Dockerfile.railway](../Dockerfile.railway) | Hosted image that binds `$PORT` |
 | [Dockerfile.mutinynet](../Dockerfile.mutinynet) | Local Mutinynet image |
+| [Dockerfile.linux](../Dockerfile.linux) | Production binary image without env-hex key materialization |
 | [entrypoint.railway.sh](entrypoint.railway.sh) | Key-file materialization and privilege drop |
 | [ops.md](ops.md) | Mainnet v2 state, restore, readiness, and release procedure |
 | [mainnet.env.example](mainnet.env.example) | Non-secret, fail-closed mainnet environment contract |
+| [linux/](linux/) | Hardened Linux micro-VM, Cloudflare Tunnel, and manual key unlock |
+| [linux/HETZNER.md](linux/HETZNER.md) | CX22 order, volumes, Tailscale-first admin |
+| [linux/mint-operator-secrets.sh](linux/mint-operator-secrets.sh) | Laptop-only age-encrypted secret mint |
 
 The mainnet v2 service is a greenfield deployment. It does not open or migrate
 the existing Mutinynet ledger. Use fresh database and policy-sequence volumes,

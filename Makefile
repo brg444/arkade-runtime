@@ -22,6 +22,7 @@ vuln:
 images:
 	docker build -f Dockerfile.railway -t arkade-runtime:railway .
 	docker build -f Dockerfile.mutinynet -t arkade-runtime:mutinynet .
+	docker build -f Dockerfile.linux -t arkade-runtime:linux .
 	docker run --rm --entrypoint sh \
 		--mount type=volume,destination=/app/data \
 		--mount type=volume,destination=/app/sequence \

@@ -170,6 +170,7 @@ without breaking fresh-device recovery and lost-response recovery.
 | `GET /ready` | Database and release-pinned signer/resolver readiness. |
 | `GET /v1/status` | Public service status or one vault's status with `?vault=`. |
 | `GET /v1/invite` | Invitation availability. |
+| `POST /v1/enroll/session` | Issue a ten-minute, single-use setup session when invite-only admission is off. |
 | `POST /v1/enroll/start` | Freeze the protection tier and canonical policy digest, reserve a vault ID, and return the create-ceremony challenge. |
 | `POST /v1/enroll/propose` | Return the Savings and `vault-board-v1` descriptors for wallet review. |
 | `POST /v1/enroll/finish` | Verify the complete enrollment and consume the invitation. |
@@ -253,8 +254,7 @@ server.
 
 The complete gate and operations posture are recorded in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md) and
-[deploy/ops.md](deploy/ops.md). The confirmed mainnet Emulator discovery
-endpoint is `https://mainnet-signer.invalid/v1/info`, whose advertised signer matches the
+[deploy/ops.md](deploy/ops.md). The mainnet signer endpoint is configured privately and its advertised signer matches the
 official SDK pin. The release uses `arkade.computer` and the official Arkade
 SDK as deployed; it does not require a modified `arkd` or a Vault-specific
 Operator API. Mainnet configuration must pin and qualify the deployed Emulator

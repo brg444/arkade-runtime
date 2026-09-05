@@ -68,9 +68,10 @@ func (c Config) BitcoinCheckpoint() (int64, string, error) {
 	return id.CheckpointHeight, id.CheckpointHash, nil
 }
 
-// Validate accepts only the release-pinned Mutinynet candidate. The RP ID is
+// Validate accepts only the release-pinned product networks. The RP ID is
 // required to equal the secure origin hostname, which prevents a broader
-// parent-domain credential scope.
+// parent-domain credential scope. Mainnet additionally accepts only the
+// Vaulted wallet hosts.
 func (c Config) Validate() error {
 	if c.ClientOrigin == "" || c.RPID == "" || c.Network == "" {
 		return fmt.Errorf("origin, rp id and network are required")
@@ -112,7 +113,23 @@ func (c Config) Validate() error {
 	if u.Scheme != "https" {
 		return fmt.Errorf("%s requires an https origin", c.Network)
 	}
+	if c.Network == NetworkMainnet && !AllowedMainnetWallet(c.ClientOrigin, c.RPID) {
+		return fmt.Errorf("mainnet origin is not a release-pinned Vaulted wallet host")
+	}
 	return nil
+}
+
+// AllowedMainnetWallet reports whether origin and RP ID are a release-pinned
+// Vaulted wallet pair. Guardian and marketing hosts are rejected.
+func AllowedMainnetWallet(origin, rpID string) bool {
+	switch {
+	case origin == MainnetWalletOrigin && rpID == MainnetWalletRPID:
+		return true
+	case origin == MainnetRCOrigin && rpID == MainnetRCRPID:
+		return true
+	default:
+		return false
+	}
 }
 
 func canonicalPort(u *url.URL) (string, error) {

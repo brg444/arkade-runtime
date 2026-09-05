@@ -1,0 +1,21 @@
+FROM golang:1.26.6@sha256:640a234f4bea3e399c056b7b8f9c667c4939befae8db2f14e9785e16eccd4205 AS builder
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/vault-authorizer ./cmd/authorizer
+
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+RUN apk add --no-cache ca-certificates sqlite \
+    && addgroup -S -g 10001 vaulted-guardian \
+    && adduser -S -D -H -u 10001 -G vaulted-guardian vaulted-guardian \
+    && install -d -o vaulted-guardian -g vaulted-guardian -m 0700 /var/lib/vaulted-guardian/data \
+    && install -d -o vaulted-guardian -g vaulted-guardian -m 0700 /var/lib/vaulted-guardian/sequence
+COPY --from=builder /out/vault-authorizer /usr/local/bin/vault-authorizer
+USER vaulted-guardian
+WORKDIR /var/lib/vaulted-guardian
+# Loopback-only. Secrets are file-backed; this image does not materialize keys from env hex.
+EXPOSE 8788
+ENTRYPOINT ["vault-authorizer"]

@@ -601,13 +601,10 @@ func cloneVout(vout *uint32) *uint32 {
 }
 
 func vtxoFeeCap(rec *policy.VaultRecord) (uint64, error) {
-	capSats := program.AbsoluteFeeCeiling
-	if rec != nil {
-		capSats = rec.AbsoluteFeeCapSats
-	}
-	if capSats < 0 {
+	if rec == nil || rec.AbsoluteFeeCapSats < 0 {
 		return 0, apperr.New(apperr.CodeRejected, "fee ceiling invalid")
 	}
+	capSats := rec.AbsoluteFeeCapSats
 	return uint64(capSats), nil
 }
 
@@ -627,16 +624,11 @@ func (s *Service) requireCurrentVtxoFeePolicy(ctx context.Context, op policy.Vtx
 }
 
 func enforceVtxoAmount(amount, fee uint64, rec *policy.VaultRecord) error {
-	capSats := program.TxRecipientCapSats
-	feeCap := program.AbsoluteFeeCeiling
-	if rec != nil {
-		if rec.TxRecipientCapSats > 0 {
-			capSats = rec.TxRecipientCapSats
-		}
-		if rec.AbsoluteFeeCapSats >= 0 {
-			feeCap = rec.AbsoluteFeeCapSats
-		}
+	if rec == nil || rec.TxRecipientCapSats <= 0 || rec.AbsoluteFeeCapSats < 0 {
+		return apperr.New(apperr.CodeRejected, "vault spending policy required")
 	}
+	capSats := rec.TxRecipientCapSats
+	feeCap := rec.AbsoluteFeeCapSats
 	if amount > math.MaxInt64 || capSats < 0 || amount > uint64(capSats) {
 		return apperr.New(apperr.CodeRejected, "recipient exceeds transaction cap")
 	}
@@ -649,13 +641,20 @@ func enforceVtxoAmount(amount, fee uint64, rec *policy.VaultRecord) error {
 	return nil
 }
 
+func (s *Service) vtxoAddrHRP() string {
+	if s.runtimeConfig().Network == program.NetworkMainnet {
+		return arklib.Bitcoin.Addr
+	}
+	return arklib.BitcoinMutinyNet.Addr
+}
+
 func (s *Service) decodeVtxoDest(addr string) ([]byte, string, error) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return nil, "", apperr.New(apperr.CodeRejected, "destAddress required")
 	}
 	if decoded, err := arklib.DecodeAddressV0(addr); err == nil {
-		if decoded.HRP != arklib.BitcoinTestNet.Addr {
+		if decoded.HRP != s.vtxoAddrHRP() {
 			return nil, "", apperr.New(apperr.CodeRejected, "destAddress network")
 		}
 		operator, err := btcec.ParsePubKey(s.operatorSignerPub())

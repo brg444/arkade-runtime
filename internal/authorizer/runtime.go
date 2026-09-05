@@ -42,9 +42,12 @@ type Config struct {
 	VaultCosignerKeyFile string
 	EnrollmentTokenFile  string
 	EnrollmentWindow     time.Duration
+	OpenEnrollment       bool // false preserves invite-only admission
 	StorageIsolation     string
 	EdgeRateLimit        string
 	MainnetAcknowledged  string
+	CosignerKeyUnlink    string
+	ArkadeCosignerOrigin string
 }
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
@@ -129,6 +132,14 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 			return nil, fmt.Errorf("mainnet requires explicit fresh-state deployment acknowledgement")
 		}
 	}
+	if cfg.Deployment.Network == deployment.NetworkMainnet {
+		identity.EmulatorOrigin, err = application.CanonicalHTTPSOrigin(cfg.ArkadeCosignerOrigin)
+		if err != nil {
+			return nil, fmt.Errorf("mainnet signing endpoint configuration: %w", err)
+		}
+	} else if cfg.ArkadeCosignerOrigin != "" {
+		return nil, fmt.Errorf("signing endpoint configuration is mainnet-only")
+	}
 	if dialArkade == nil {
 		return nil, fmt.Errorf("public arkade emulator dialer required")
 	}
@@ -138,6 +149,10 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 
 	vaultCosignerKey, err := LoadVaultCosignerKey(cfg.VaultCosignerKeyFile)
 	if err != nil {
+		return nil, err
+	}
+	if err := unlinkCosignerKeyAfterLoad(cfg.VaultCosignerKeyFile, cfg.CosignerKeyUnlink); err != nil {
+		wipePrivateKey(vaultCosignerKey)
 		return nil, err
 	}
 	keyOwnedByService := false
@@ -150,7 +165,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := policy.OpenLedger(cfg.DatabasePath, nil)
+	ledger, err := policy.OpenLedgerForNetwork(cfg.DatabasePath, nil, cfg.Deployment.Network)
 	if err != nil {
 		return nil, fmt.Errorf("authoritative ledger: %w", err)
 	}
@@ -234,6 +249,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	deps := application.Deps{
 		Stores:                stores,
 		Deployment:            cfg.Deployment,
+		OpenEnrollment:        cfg.OpenEnrollment,
 		IntegrityKey:          credentialIntegrityKey,
 		Keys:                  keys,
 		VaultCosignerPub:      vaultCosignerKey.PubKey(),
@@ -324,7 +340,7 @@ func provisionEnrollmentInvite(ledger *policy.Ledger, cfg Config, hasVaults bool
 		return fmt.Errorf("enrollment ledger required")
 	}
 	if cfg.EnrollmentTokenFile == "" {
-		if hasVaults {
+		if hasVaults || cfg.OpenEnrollment {
 			return nil
 		}
 		return fmt.Errorf("fresh authorizer requires an enrollment token file")
@@ -401,6 +417,20 @@ func deriveCredentialIntegrityKey(vaultCosignerKey *btcec.PrivateKey) ([]byte, e
 // LoadVaultCosignerKey reads exactly one strict secp256k1 scalar from a bounded
 // hex file. btcec.PrivKeyFromBytes is called only after rejecting zero and
 // every value greater than or equal to the curve order.
+func unlinkCosignerKeyAfterLoad(path, mode string) error {
+	switch strings.TrimSpace(mode) {
+	case "":
+		return nil
+	case "after-load":
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove plaintext VaultCosigner key: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("VAULT_COSIGNER_KEY_UNLINK must be after-load or empty")
+	}
+}
+
 func LoadVaultCosignerKey(path string) (*btcec.PrivateKey, error) {
 	encoded, err := readBoundedSecret(path, "VaultCosigner key", 64, 64)
 	if err != nil {

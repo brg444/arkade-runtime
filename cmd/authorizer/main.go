@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -16,7 +18,12 @@ import (
 )
 
 func main() {
+	inviteOnlyDefault, err := parseInviteOnly(os.Getenv("VAULT_INVITE_ONLY"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	var (
+		inviteOnly          = flag.Bool("invite-only", inviteOnlyDefault, "require operator-issued invitations for new enrollment")
 		addr                = flag.String("addr", envOr("VAULT_AUTHORIZER_ADDR", "127.0.0.1:8788"), "internal authorizer listen address")
 		dbPath              = flag.String("db", os.Getenv("VAULT_DB_PATH"), "absolute authoritative SQLite path")
 		sequence            = flag.String("policy-sequence", os.Getenv("VAULT_POLICY_SEQUENCE_PATH"), "absolute external policy-sequence path")
@@ -24,10 +31,11 @@ func main() {
 		tokenFile           = flag.String("enrollment-token-file", os.Getenv("VAULT_ENROLLMENT_TOKEN_FILE"), "offline-provisioned one-time enrollment token file")
 		origin              = flag.String("client-origin", os.Getenv("VAULT_CLIENT_ORIGIN"), "exact HTTPS signing-client origin")
 		rpID                = flag.String("rp-id", os.Getenv("VAULT_RP_ID"), "exact WebAuthn relying-party ID")
-		network             = flag.String("network", envOr("VAULT_NETWORK", deployment.NetworkMutinynet), "mutinynet or mainnet")
+		network             = flag.String("network", os.Getenv("VAULT_NETWORK"), "mutinynet or mainnet")
 		storageIsolation    = flag.String("storage-isolation", os.Getenv("VAULT_STORAGE_ISOLATION"), "mainnet storage control attestation")
 		edgeRateLimit       = flag.String("edge-rate-limit", os.Getenv("VAULT_EDGE_RATE_LIMIT"), "mainnet edge rate-limit attestation")
 		mainnetAcknowledged = flag.String("mainnet-ack", os.Getenv("VAULT_MAINNET_ACK"), "mainnet fresh-state acknowledgement")
+		cosignerKeyUnlink   = flag.String("cosigner-key-unlink", os.Getenv("VAULT_COSIGNER_KEY_UNLINK"), "after-load deletes the plaintext VaultCosigner key file once it is in process memory")
 	)
 	flag.Parse()
 
@@ -37,9 +45,12 @@ func main() {
 		PolicySequencePath:   *sequence,
 		VaultCosignerKeyFile: *keyFile,
 		EnrollmentTokenFile:  *tokenFile,
+		OpenEnrollment:       !*inviteOnly,
 		StorageIsolation:     *storageIsolation,
 		EdgeRateLimit:        *edgeRateLimit,
 		MainnetAcknowledged:  *mainnetAcknowledged,
+		CosignerKeyUnlink:    *cosignerKeyUnlink,
+		ArkadeCosignerOrigin: os.Getenv("VAULT_ARKADE_COSIGNER_ORIGIN"),
 	}
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 40*time.Second)
 	runtime, err := authorizer.Open(startupCtx, cfg)
@@ -85,4 +96,16 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// An absent setting retains invite-only admission; invalid values fail startup.
+func parseInviteOnly(value string) (bool, error) {
+	if value == "" {
+		return true, nil
+	}
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return true, fmt.Errorf("VAULT_INVITE_ONLY must be true or false")
+	}
+	return enabled, nil
 }

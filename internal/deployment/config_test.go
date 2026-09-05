@@ -27,8 +27,12 @@ func TestConfigValidatesPinnedProductNetworks(t *testing.T) {
 		{name: "empty port rejected", config: mutiny("https://vault.example.com:", "vault.example.com"), wantErr: "empty"},
 		{name: "zero padded port rejected", config: mutiny("https://vault.example.com:0443", "vault.example.com"), wantErr: "canonical decimal"},
 		{name: "unicode hostname rejected", config: mutiny("https://v\u00e4ult.example.com", "v\u00e4ult.example.com"), wantErr: "ASCII"},
-		{name: "mainnet", config: Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: NetworkMainnet}},
-		{name: "mainnet needs https", config: Config{ClientOrigin: "http://vault.example.com", RPID: "vault.example.com", Network: NetworkMainnet}, wantErr: "https"},
+		{name: "mainnet", config: Config{ClientOrigin: MainnetWalletOrigin, RPID: MainnetWalletRPID, Network: NetworkMainnet}},
+		{name: "mainnet rc", config: Config{ClientOrigin: MainnetRCOrigin, RPID: MainnetRCRPID, Network: NetworkMainnet}},
+		{name: "mainnet needs https", config: Config{ClientOrigin: "http://app.getvaulted.xyz", RPID: MainnetWalletRPID, Network: NetworkMainnet}, wantErr: "https"},
+		{name: "mainnet rejects example origin", config: Config{ClientOrigin: "https://vault.example.com", RPID: "vault.example.com", Network: NetworkMainnet}, wantErr: "Vaulted wallet host"},
+		{name: "mainnet rejects marketing origin", config: Config{ClientOrigin: "https://getvaulted.xyz", RPID: "getvaulted.xyz", Network: NetworkMainnet}, wantErr: "Vaulted wallet host"},
+		{name: "mainnet rejects guardian origin", config: Config{ClientOrigin: "https://guardian.getvaulted.xyz", RPID: "guardian.getvaulted.xyz", Network: NetworkMainnet}, wantErr: "Vaulted wallet host"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -10,80 +10,100 @@ import (
 	"testing"
 
 	"github.com/brg444/arkade-runtime/internal/deployment"
+	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 const vaultBoardTestOperatorDigest = "2e14a884689aba877ecdf423a61862f01b9627927e65cccf119c2aee48fdf4d9"
 
 func vaultBoardOperatorInfoJSON(digest string) string {
+	return vaultBoardOperatorInfoForNetworkJSON(deployment.NetworkMutinynet, digest)
+}
+
+func vaultBoardOperatorInfoForNetworkJSON(network, digest string) string {
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		panic(err)
+	}
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		panic(err)
+	}
 	return fmt.Sprintf(
-		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"forfeitPubkey":%q,"unilateralExitDelay":"2048","boardingExitDelay":"604672","dust":"330","digest":%q,"fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
-		deployment.NetworkMutinynet, deployment.MutinynetCheckpointTapscriptHex,
-		deployment.MutinynetOperatorSignerPubHex, deployment.MutinynetCheckpointForfeitPubHex, digest,
+		`{"network":%q,"checkpointTapscript":%q,"signerPubkey":%q,"forfeitPubkey":%q,"unilateralExitDelay":"%d","boardingExitDelay":"%d","dust":"330","digest":%q,"fees":{"intentFee":{"offchainInput":"","offchainOutput":"","onchainInput":"","onchainOutput":""}}}`,
+		id.OperatorGetInfoNetwork, id.CheckpointTapscriptHex, id.OperatorSignerPubHex, id.CheckpointForfeitPubHex, pins.ArkdMinExitDelay, pins.BoardExitDelay, digest,
 	)
 }
 
 func TestVaultBoardOperatorUsesOnlyPinnedStockPublicRoutes(t *testing.T) {
-	step := 0
-	doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
-		step++
-		if req.URL.Scheme != "https" || req.URL.Host != "mutinynet.arkade.sh" {
-			t.Fatalf("unexpected Operator origin: %s", req.URL)
-		}
-		if step == 1 {
-			if req.Method != http.MethodGet || req.URL.Path != "/v1/info" {
-				t.Fatalf("unexpected dial request: %s %s", req.Method, req.URL.Path)
+	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			id, err := deployment.IdentityFor(network)
+			if err != nil {
+				t.Fatal(err)
 			}
-			return jsonResponse(http.StatusOK, vaultBoardOperatorInfoJSON(vaultBoardTestOperatorDigest)), nil
-		}
-		if req.Method != http.MethodPost || req.Header.Get("X-Digest") != vaultBoardTestOperatorDigest ||
-			req.Header.Get("Content-Type") != "application/json" {
-			t.Fatalf("unexpected Operator request: %s %#v", req.Method, req.Header)
-		}
-		raw, err := io.ReadAll(req.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var body map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &body); err != nil {
-			t.Fatal(err)
-		}
-		switch step {
-		case 2:
-			if req.URL.Path != "/v1/batch/registerIntent" || len(body) != 1 || body["intent"] == nil {
-				t.Fatalf("register request: %s %s", req.URL.Path, raw)
+			step := 0
+			doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+				step++
+				if req.URL.Scheme != "https" || req.URL.Scheme+"://"+req.URL.Host != id.OperatorOrigin {
+					t.Fatalf("unexpected Operator origin: %s", req.URL)
+				}
+				if step == 1 {
+					if req.Method != http.MethodGet || req.URL.Path != "/v1/info" {
+						t.Fatalf("unexpected dial request: %s %s", req.Method, req.URL.Path)
+					}
+					return jsonResponse(http.StatusOK, vaultBoardOperatorInfoForNetworkJSON(network, vaultBoardTestOperatorDigest)), nil
+				}
+				if req.Method != http.MethodPost || req.Header.Get("X-Digest") != vaultBoardTestOperatorDigest ||
+					req.Header.Get("Content-Type") != "application/json" {
+					t.Fatalf("unexpected Operator request: %s %#v", req.Method, req.Header)
+				}
+				raw, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var body map[string]json.RawMessage
+				if err := json.Unmarshal(raw, &body); err != nil {
+					t.Fatal(err)
+				}
+				switch step {
+				case 2:
+					if req.URL.Path != "/v1/batch/registerIntent" || len(body) != 1 || body["intent"] == nil {
+						t.Fatalf("register request: %s %s", req.URL.Path, raw)
+					}
+					return jsonResponse(http.StatusOK, `{"intentId":"intent-123"}`), nil
+				case 3:
+					if req.URL.Path != "/v1/batch/deleteIntent" || len(body) != 1 || body["intent"] == nil {
+						t.Fatalf("delete request: %s %s", req.URL.Path, raw)
+					}
+					return jsonResponse(http.StatusOK, `{}`), nil
+				case 4:
+					if req.URL.Path != "/v1/batch/submitForfeitTxs" || string(body["signedForfeitTxs"]) != "[]" || string(body["signedCommitmentTx"]) != `"commitment"` {
+						t.Fatalf("final request: %s %s", req.URL.Path, raw)
+					}
+					return jsonResponse(http.StatusOK, `{}`), nil
+				default:
+					t.Fatalf("unexpected request %d", step)
+					return nil, nil
+				}
+			})
+			operator, err := dialVaultBoardOperatorWithClient(context.Background(), id.OperatorOrigin, network, doer)
+			if err != nil {
+				t.Fatal(err)
 			}
-			return jsonResponse(http.StatusOK, `{"intentId":"intent-123"}`), nil
-		case 3:
-			if req.URL.Path != "/v1/batch/deleteIntent" || len(body) != 1 || body["intent"] == nil {
-				t.Fatalf("delete request: %s %s", req.URL.Path, raw)
+			intentID, err := operator.registerIntent(context.Background(), "proof", "message")
+			if err != nil || intentID != "intent-123" {
+				t.Fatalf("register = %q, %v", intentID, err)
 			}
-			return jsonResponse(http.StatusOK, `{}`), nil
-		case 4:
-			if req.URL.Path != "/v1/batch/submitForfeitTxs" || string(body["signedForfeitTxs"]) != "[]" || string(body["signedCommitmentTx"]) != `"commitment"` {
-				t.Fatalf("final request: %s %s", req.URL.Path, raw)
+			if err := operator.deleteIntent(context.Background(), "delete-proof", "delete-message"); err != nil {
+				t.Fatal(err)
 			}
-			return jsonResponse(http.StatusOK, `{}`), nil
-		default:
-			t.Fatalf("unexpected request %d", step)
-			return nil, nil
-		}
-	})
-	operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	intentID, err := operator.registerIntent(context.Background(), "proof", "message")
-	if err != nil || intentID != "intent-123" {
-		t.Fatalf("register = %q, %v", intentID, err)
-	}
-	if err := operator.deleteIntent(context.Background(), "delete-proof", "delete-message"); err != nil {
-		t.Fatal(err)
-	}
-	if err := operator.submitCommitment(context.Background(), "commitment"); err != nil {
-		t.Fatal(err)
-	}
-	if step != 4 {
-		t.Fatalf("request count = %d", step)
+			if err := operator.submitCommitment(context.Background(), "commitment"); err != nil {
+				t.Fatal(err)
+			}
+			if step != 4 {
+				t.Fatalf("request count = %d", step)
+			}
+		})
 	}
 }
 
@@ -161,6 +181,33 @@ func TestVaultBoardOperatorClassifiesOnlyStockPreAcceptanceRejections(t *testing
 			_, err = operator.registerIntent(context.Background(), "proof", "message")
 			if err == nil || isDefiniteVaultBoardRegisterRejection(err) != test.definite {
 				t.Fatalf("error = %v, definite=%v", err, isDefiniteVaultBoardRegisterRejection(err))
+			}
+		})
+	}
+}
+
+func TestVaultBoardOperatorRejectsCrossNetworkOriginBeforeDispatch(t *testing.T) {
+	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			id, _ := deployment.IdentityFor(network)
+			calls := 0
+			doer := rpcDoerFunc(func(*http.Request) (*http.Response, error) {
+				calls++
+				return jsonResponse(http.StatusOK, vaultBoardOperatorInfoForNetworkJSON(network, vaultBoardTestOperatorDigest)), nil
+			})
+			operator, err := dialVaultBoardOperatorWithClient(context.Background(), id.OperatorOrigin, network, doer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stock := operator.(*stockVaultBoardOperator)
+			if network == deployment.NetworkMainnet {
+				stock.origin = deployment.MutinynetArkIndexerOrigin
+			} else {
+				stock.origin = deployment.MainnetArkIndexerOrigin
+			}
+			_, err = stock.registerIntent(context.Background(), "proof", "message")
+			if !isDefiniteVaultBoardRegisterRejection(err) || calls != 1 {
+				t.Fatalf("cross-network dispatch: calls=%d err=%v", calls, err)
 			}
 		})
 	}

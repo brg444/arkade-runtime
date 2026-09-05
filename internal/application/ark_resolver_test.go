@@ -26,6 +26,20 @@ func TestMutinynetArkIndexerOriginPin(t *testing.T) {
 	}
 }
 
+func TestMainnetCheckpointKeyMatchesXOnlyForfeit(t *testing.T) {
+	checkpoint, err := hex.DecodeString(deployment.MainnetCheckpointTapscriptHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := hex.DecodeString(deployment.MainnetOperatorSignerPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateArkResolverPolicy(deployment.NetworkMainnet, checkpoint, signer); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDialArkResolverPinsMutinynet(t *testing.T) {
 	height, hash, err := (deployment.Config{Network: deployment.NetworkMutinynet}).BitcoinCheckpoint()
 	if err != nil || height != 1 || hash != deployment.MutinynetCheckpoint1 {

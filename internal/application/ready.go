@@ -36,7 +36,9 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	}
 	cfg := s.runtimeConfig()
 	st.Network = cfg.Network
-	st.ArkadeOrigin = s.ArkadeCosignerOrigin
+	// Keep the nonempty legacy field for deployed clients without publishing
+	// the transport locator. Actual signer readiness is checked below.
+	st.ArkadeOrigin = "configured"
 	st.ArkadeVersion = s.ArkadeCosignerVersion
 	if err := cfg.Validate(); err != nil {
 		st.Error = "deployment not ready"
@@ -65,7 +67,7 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "arkade signer not pinned"
 		return st
 	}
-	if err := validateReleaseContractPack(s.contractPackJSON); err != nil {
+	if err := validateReleaseContractPackFor(cfg.Network, s.contractPackJSON); err != nil {
 		st.Error = "contract pack mismatch"
 		return st
 	}
@@ -78,7 +80,12 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		return st
 	}
 	runtime, err := s.requireVaultBoardRuntime()
-	if err != nil || runtime.batchExpiry != deployment.MutinynetVtxoTreeExpirySeconds {
+	if err != nil {
+		st.Error = "vault-board-v1 runtime unavailable"
+		return st
+	}
+	id, err := deployment.IdentityFor(cfg.Network)
+	if err != nil || runtime.batchExpiry != id.VtxoTreeExpirySeconds {
 		st.Error = "vault-board-v1 runtime unavailable"
 		return st
 	}

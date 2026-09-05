@@ -1,0 +1,13 @@
+# Copy to /etc/vaulted-guardian/cloudflared.yml after creating a dedicated
+# Cloudflare Tunnel for guardian.getvaulted.xyz. Do not reuse a Mutinynet tunnel.
+#
+# Replace TUNNEL_UUID. The credentials JSON is a secret: store it only on this
+# VM at the path below, mode 0400, owner cloudflared. Never commit it.
+
+tunnel: TUNNEL_UUID
+credentials-file: /etc/vaulted-guardian/cloudflared-credentials.json
+
+ingress:
+  - hostname: guardian.getvaulted.xyz
+    service: http://127.0.0.1:8788
+  - service: http_status:404

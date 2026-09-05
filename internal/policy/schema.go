@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 const schemaVersion = 1
@@ -184,6 +186,17 @@ CREATE INDEX vault_board_operation_vault ON vault_board_operation(vault_id, crea
 // OpenLedger opens the sole fresh Arkade Vault schema. It never upgrades or
 // reinterprets an older database.
 func OpenLedger(path string, clock Clock) (*Ledger, error) {
+	return OpenLedgerForNetwork(path, clock, program.NetworkMutinynet)
+}
+
+// OpenLedgerForNetwork creates or validates the exact boarding schema for the
+// selected deployment. It never rewrites an existing schema or accepts the
+// other network's boarding delay.
+func OpenLedgerForNetwork(path string, clock Clock, network string) (*Ledger, error) {
+	boardSchema, err := vaultBoardSchemaForNetwork(network)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("database path required")
 	}
@@ -201,14 +214,14 @@ func OpenLedger(path string, clock Clock) (*Ledger, error) {
 			return nil, err
 		}
 	}
-	if err := initializeOrValidateSchema(db); err != nil {
+	if err := initializeOrValidateSchema(db, boardSchema); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Ledger{db: db, clock: clock}, nil
+	return &Ledger{db: db, clock: clock, network: network}, nil
 }
 
-func initializeOrValidateSchema(db *sql.DB) error {
+func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 	tables, err := applicationTables(db)
 	if err != nil {
 		return err
@@ -219,7 +232,7 @@ func initializeOrValidateSchema(db *sql.DB) error {
 			return err
 		}
 		defer tx.Rollback()
-		if _, err := tx.Exec(createMultiTenantSchema + createVtxoSchema + createVaultBoardSchema); err != nil {
+		if _, err := tx.Exec(createMultiTenantSchema + createVtxoSchema + boardSchema); err != nil {
 			return fmt.Errorf("create vault schema: %w", err)
 		}
 		if _, err := tx.Exec(`INSERT INTO schema_meta (version) VALUES (?)`, schemaVersion); err != nil {
@@ -248,7 +261,7 @@ func initializeOrValidateSchema(db *sql.DB) error {
 	if err := validateMultiTenantSchemaOn(db); err != nil {
 		return err
 	}
-	if err := validateBoardingTables(db); err != nil {
+	if err := validateBoardingTables(db, boardSchema); err != nil {
 		return err
 	}
 	if err := requireForeignKeysEnabled(db); err != nil {
@@ -257,7 +270,7 @@ func initializeOrValidateSchema(db *sql.DB) error {
 	return requireForeignKeyCheckClean(db)
 }
 
-func validateBoardingTables(db *sql.DB) error {
+func validateBoardingTables(db *sql.DB, boardSchema string) error {
 	for _, table := range boardingTables {
 		wantStruct := expectedBoardingTables[table]
 		cols, err := readTableXInfo(db, table)
@@ -285,7 +298,7 @@ func validateBoardingTables(db *sql.DB) error {
 		if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&createSQL); err != nil {
 			return fmt.Errorf("vault-board-v1 table %s: %w", table, err)
 		}
-		want := extractChecksByTable(createVaultBoardSchema)[table]
+		want := extractChecksByTable(boardSchema)[table]
 		if err := sameCheckSet(table, extractNormalizedChecks(createSQL), want); err != nil {
 			return err
 		}
@@ -347,4 +360,15 @@ func validateVaultBoardObjects(db *sql.DB) error {
 		return fmt.Errorf("database is not the current vault baseline: objects %v", got)
 	}
 	return nil
+}
+
+func vaultBoardSchemaForNetwork(network string) (string, error) {
+	switch network {
+	case program.NetworkMutinynet:
+		return createVaultBoardSchema, nil
+	case program.NetworkMainnet:
+		return strings.Replace(createVaultBoardSchema, "exit_delay = 604672", fmt.Sprintf("exit_delay = %d", program.MainnetVaultBoardV1ExitDelay), 1), nil
+	default:
+		return "", fmt.Errorf("unsupported ledger network %q", network)
+	}
 }

@@ -114,7 +114,7 @@ func BuildFamily(in FamilyInput) (*Family, error) {
 	if err := program.ValidateProtectionTierRecovery(in.ProtectionTier, in.Recovery != nil); err != nil {
 		return nil, fmt.Errorf("protection tier: %w", err)
 	}
-	if err := program.ValidateSpendingPolicy(in.SpendingPolicy); err != nil {
+	if err := program.ValidateSpendingPolicyFor(in.Network, in.SpendingPolicy); err != nil {
 		return nil, fmt.Errorf("spending policy: %w", err)
 	}
 	fam := &Family{

@@ -122,6 +122,29 @@ func TestLoadVaultCosignerKeyRejectsNormalizedAndOutOfRangeScalars(t *testing.T)
 	}
 }
 
+func TestUnlinkCosignerKeyAfterLoadRemovesPlaintext(t *testing.T) {
+	valid, err := btcec.NewPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "vault-cosigner-key")
+	if err := os.WriteFile(path, []byte(hex.EncodeToString(valid.Serialize())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlinkCosignerKeyAfterLoad(path, "after-load"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("plaintext key remained: %v", err)
+	}
+}
+
+func TestUnlinkCosignerKeyRejectsUnknownMode(t *testing.T) {
+	if err := unlinkCosignerKeyAfterLoad("unused", "tmpfs"); err == nil || !strings.Contains(err.Error(), "after-load") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestCredentialIntegrityKeyUsesDomainSeparatedHKDF(t *testing.T) {
 	first, err := btcec.NewPrivateKey()
 	if err != nil {

@@ -28,6 +28,7 @@ import (
 )
 
 type stubArkResolver struct {
+	network      string
 	vtxos        []ports.ResolvedVtxo
 	feePolicy    ports.IntentFeePolicy
 	feeErr       error
@@ -67,7 +68,12 @@ func (s stubArkResolver) SubmittedVtxoState(_ context.Context, _ []byte, reserve
 
 func (s stubArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), s.checkpoint...) }
 func (s stubArkResolver) OperatorSignerPub() []byte   { return append([]byte(nil), s.signer...) }
-func (s stubArkResolver) Network() string             { return program.NetworkMutinynet }
+func (s stubArkResolver) Network() string {
+	if s.network != "" {
+		return s.network
+	}
+	return program.NetworkMutinynet
+}
 
 func vtxoTestEnv(t *testing.T) (*env, *stubArkResolver, *btcec.PrivateKey) {
 	t.Helper()
@@ -149,6 +155,53 @@ func TestDecodeVtxoDestAcceptsXOnlyOperatorWithOddY(t *testing.T) {
 	resolver.signer = operator.PubKey().SerializeCompressed()
 	if _, _, err := e.svc.decodeVtxoDest(mustArkadeDest(t, operator)); err != nil {
 		t.Fatalf("x-only Operator identity rejected: %v", err)
+	}
+}
+
+func TestDefaultVtxoDestinationGuardUsesOperatorNetworkDelay(t *testing.T) {
+	for _, test := range []struct {
+		network string
+		delay   uint32
+	}{
+		{deployment.NetworkMainnet, 605184},
+		{deployment.NetworkMutinynet, 2048},
+	} {
+		t.Run(test.network, func(t *testing.T) {
+			e, _, operator := vtxoTestEnv(t)
+			e.svc.Deployment.Network = test.network
+			snap := enrolledSnapshot{PhoneBIP340: e.hot.PubKey()}
+			if err := e.svc.refuseDefaultVtxoChange(snap, defaultVtxoPkScript(e.hot.PubKey(), operator.PubKey(), test.delay)); err == nil {
+				t.Fatal("accepted this phone's ordinary wallet destination")
+			}
+			other, _ := btcec.NewPrivateKey()
+			if err := e.svc.refuseDefaultVtxoChange(snap, defaultVtxoPkScript(other.PubKey(), operator.PubKey(), test.delay)); err != nil {
+				t.Fatalf("refused a different recipient: %v", err)
+			}
+		})
+	}
+}
+
+func TestDecodeVtxoDestPinsHRPToTheReleaseNetwork(t *testing.T) {
+	e, resolver, _ := vtxoTestEnv(t)
+	operator := mustOddYPrivateKey(t)
+	resolver.signer = operator.PubKey().SerializeCompressed()
+	mainnetAddr, err := (&arklib.Address{
+		Version: 0, HRP: arklib.Bitcoin.Addr,
+		Signer: operator.PubKey(), VtxoTapKey: operator.PubKey(),
+	}).EncodeV0()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.svc.decodeVtxoDest(mainnetAddr); err == nil {
+		t.Fatal("mutinynet env accepted a mainnet ark address")
+	}
+
+	e.svc.Deployment.Network = deployment.NetworkMainnet
+	if _, _, err := e.svc.decodeVtxoDest(mainnetAddr); err != nil {
+		t.Fatalf("mainnet env rejected ark HRP: %v", err)
+	}
+	if _, _, err := e.svc.decodeVtxoDest(mustArkadeDest(t, operator)); err == nil {
+		t.Fatal("mainnet env accepted a mutinynet tark address")
 	}
 }
 

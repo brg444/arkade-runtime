@@ -70,6 +70,16 @@ func proposedDescriptor(t *testing.T, svc *Service, vaultID string, req Register
 }
 
 func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
+	for _, open := range []bool{false, true} {
+		name := "invite-only"
+		if open {
+			name = "open-then-invite-only"
+		}
+		t.Run(name, func(t *testing.T) { testEnrollmentAdmissionCompletion(t, open) })
+	}
+}
+
+func testEnrollmentAdmissionCompletion(t *testing.T, open bool) {
 	led, err := policy.OpenLedger(filepath.Join(t.TempDir(), "enroll.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -105,11 +115,35 @@ func TestInviteStartFinishCASAndVaultScopedStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if _, err := svc.IssueEnrollmentSession(); err == nil {
+		t.Fatal("default mode issued a public session")
+	}
+	if open {
+		svc.OpenEnrollment = true
+		mode, _ := svc.publicEnrollmentMode()
+		if mode != "open" {
+			t.Fatal("open mode not advertised")
+		}
+		session, err := svc.IssueEnrollmentSession()
+		if err != nil {
+			t.Fatal(err)
+		}
+		token = session.Token
+	}
 	view, err := svc.InviteStatus(token)
 	if err != nil || !view.CanEnroll || view.VaultID != nil {
 		t.Fatalf("unused invite: %+v %v", view, err)
 	}
 
+	// A session issued before admission closes remains valid for its ceremony.
+	svc.OpenEnrollment = false
+	if _, err := svc.IssueEnrollmentSession(); err == nil {
+		t.Fatal("closed admission issued a session")
+	}
+	mode, _ := svc.publicEnrollmentMode()
+	if mode != "token" {
+		t.Fatal("invite-only mode not advertised")
+	}
 	first, err := svc.StartEnrollment(token, defaultEnrollStartRequest(t))
 	if err != nil {
 		t.Fatal(err)
@@ -743,7 +777,7 @@ func attestedFinish(t *testing.T, svc *Service, start *EnrollStartResponse, pass
 		t.Fatal(err)
 	}
 	compressed := webauthn.CompressedP256(pass)
-	auth, err := webauthn.AttestedAuthenticatorData(fixture.RPID, credID, compressed)
+	auth, err := webauthn.AttestedAuthenticatorData(svc.runtimeConfig().RPID, credID, compressed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +793,7 @@ func attestedFinish(t *testing.T, svc *Service, start *EnrollStartResponse, pass
 	return EnrollFinishRequest{
 		Handle:            start.Handle,
 		UserHandle:        start.UserID,
-		ClientDataJSON:    hex.EncodeToString([]byte(`{"type":"webauthn.create","challenge":"` + webauthn.EncodeChallenge(challenge) + `","origin":"` + fixture.Origin + `","crossOrigin":false}`)),
+		ClientDataJSON:    hex.EncodeToString([]byte(`{"type":"webauthn.create","challenge":"` + webauthn.EncodeChallenge(challenge) + `","origin":"` + svc.runtimeConfig().ClientOrigin + `","crossOrigin":false}`)),
 		AuthenticatorData: hex.EncodeToString(auth),
 		AttestationObject: hex.EncodeToString(obj),
 		RegisterRequest:   extra,

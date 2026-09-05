@@ -172,3 +172,11 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		t.Fatalf("mutated resolver readiness = %+v", got)
 	}
 }
+
+func TestReadinessDoesNotPublishSignerEndpoint(t *testing.T) {
+	svc := New(Deps{ArkadeCosignerOrigin: "https://private-signer.example.com"})
+	got := svc.Ready(context.Background())
+	if got.ArkadeOrigin != "configured" {
+		t.Fatal("readiness disclosed a transport locator")
+	}
+}

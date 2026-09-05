@@ -48,7 +48,7 @@ func TestMainnetPublicEmulatorRejectsSavingsTransitionCovenantMutations(t *testi
 		t.Skip("set ARKADE_LIVE_MAINNET_EMULATOR=1 to exercise the public mainnet Emulator")
 	}
 	runPublicEmulatorTransitionCovenantVector(t, publicEmulatorVector{
-		origin:        "https://mainnet-signer.invalid",
+		origin:        os.Getenv("VAULT_ARKADE_COSIGNER_ORIGIN"),
 		version:       "v0.0.7",
 		pubHex:        "0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e",
 		network:       program.NetworkMainnet,
@@ -70,7 +70,7 @@ func runPublicEmulatorTransitionCovenantVector(t *testing.T, vector publicEmulat
 		t.Fatal(err)
 	}
 	if identity.Origin != vector.origin || identity.Version != vector.version {
-		t.Fatalf("unexpected public Emulator identity: %+v", identity)
+		t.Fatal("unexpected signing service identity")
 	}
 
 	valid, err := clonePacket(base)
