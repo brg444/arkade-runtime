@@ -12,7 +12,6 @@ import (
 	candidate "github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
@@ -33,7 +32,7 @@ func TestConnectorFamilyCore(t *testing.T) {
 	c := startCore(t, "-datacarriersize=100000")
 	for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
 		in := familyInput(t, "mainnet", tier)
-		fam, err := candidate.BuildFamily(in)
+		fam, err := candidate.BuildFamily(in, candidate.Taproot)
 		fam = must(t, fam, err)
 		t.Run(tier+"_complete_withdrawal", func(t *testing.T) {
 			f, _ := protocolFixture(t)
@@ -91,84 +90,106 @@ func TestConnectorFamilyCore(t *testing.T) {
 
 func TestConnectorFamilyVectors(t *testing.T) {
 	var vectors []map[string]any
-	for _, network := range []string{"mainnet", "mutinynet"} {
-		for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
-			in := familyInput(t, network, tier)
-			fam, err := candidate.BuildFamily(in)
-			fam = must(t, fam, err)
-			original, err := savings.BuildFamily(in)
-			original = must(t, original, err)
-			if bytes.Equal(original.Savings.PkScript, fam.Recovery.Savings.PkScript) {
-				t.Fatal("new contract reused old Savings")
-			}
-			in.TemplateVersion = candidate.Template
-			base, err := savings.BuildFamily(in)
-			base = must(t, base, err)
-			pending, quarantine := map[string]string{}, map[string]string{}
-			for role, tree := range base.Pending {
-				if !bytes.Equal(tree.PkScript, fam.Recovery.Pending[role].PkScript) || !bytes.Equal(base.Quarantine[role].PkScript, fam.Recovery.Quarantine[role].PkScript) {
-					t.Fatal("recovery construction changed")
+	for _, style := range []string{"p2tr", "p2wpkh", "electrum"} {
+		kind := candidate.Kind(style)
+		if style == "electrum" {
+			kind = candidate.NativeSegwit
+		}
+		for _, network := range []string{"mainnet", "mutinynet"} {
+			for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
+				in := familyInput(t, network, tier)
+				var hardware *btcec.PrivateKey
+				var softwareOrigin candidate.KeyOrigin
+				if kind == candidate.NativeSegwit {
+					hardware, softwareOrigin = softwareKey(t, network, kind)
+					if style == "electrum" {
+						hardware, softwareOrigin = electrumKey(t)
+					}
+					in.Hardware = hardware.PubKey()
 				}
-				pending[role] = hex.EncodeToString(tree.PkScript)
-				quarantine[role] = hex.EncodeToString(base.Quarantine[role].PkScript)
-			}
-			coin := uint32(0x80000000)
-			if network == "mutinynet" {
-				coin++
-			}
-			origin := candidate.KeyOrigin{InternalKey: schnorr.SerializePubKey(in.Hardware), Fingerprint: 0x12345678, Path: []uint32{0x80000056, coin, 0x80000000, 0, 0}}
-			digest, err := candidate.EnrollmentDigest(in, origin)
-			digest = must(t, digest, err)
-			bad := origin
-			bad.Path = append([]uint32(nil), origin.Path...)
-			bad.Path[1] ^= 1
-			if _, err := candidate.EnrollmentDigest(in, bad); err == nil {
-				t.Fatal("cross-network origin accepted")
-			}
-			bad = origin
-			bad.Fingerprint++
-			other, err := candidate.EnrollmentDigest(in, bad)
-			if err != nil || other == digest {
-				t.Fatal("fingerprint not bound")
-			}
-			f, _ := protocolFixture(t)
-			f.savingsScript = fam.Recovery.Savings.PkScript
-			f.leaf = txscript.NewBaseTapLeaf(fam.Leaf)
-			f.control = fam.Control
-			f.policy = fam.Program
-			hash := arkade.ArkadeScriptHash(fam.Program)
-			f.authorities = []*btcec.PrivateKey{f.phone, arkade.ComputeArkadeScriptPrivateKey(f.guardian, hash), arkade.ComputeArkadeScriptPrivateKey(f.emulator, hash)}
-			f.setParent()
-			var payments []map[string]any
-			for _, full := range []bool{false, true} {
-				req := protocolRequest(f, fam.Rules)
-				req.Origin = origin
-				req.DestinationScript = taproot(t, key(70))
-				if full {
-					req.AmountSats = 8760
+				fam, err := candidate.BuildFamily(in, kind)
+				fam = must(t, fam, err)
+				original, err := savings.BuildFamily(in)
+				original = must(t, original, err)
+				if bytes.Equal(original.Savings.PkScript, fam.Recovery.Savings.PkScript) {
+					t.Fatal("new contract reused old Savings")
 				}
-				d, err := candidate.Prepare(req)
-				d = must(t, d, err)
-				p, err := d.PSBT()
-				p = must(t, p, err)
-				f.tx = p.UnsignedTx.Copy()
-				f.signSavings(t, f.authorities...)
-				h, err := d.ForHardware(f.tx.TxIn[0].Witness)
-				h = must(t, h, err)
-				response := hardwareResponse(t, f, h)
-				final, err := h.Accept(response)
-				final = must(t, final, err)
-				var buf bytes.Buffer
-				if err := response.Serialize(&buf); err != nil {
-					t.Fatal(err)
+				in.TemplateVersion = candidate.Template
+				base, err := savings.BuildFamily(in)
+				base = must(t, base, err)
+				pending, quarantine := map[string]string{}, map[string]string{}
+				for role, tree := range base.Pending {
+					if !bytes.Equal(tree.PkScript, fam.Recovery.Pending[role].PkScript) || !bytes.Equal(base.Quarantine[role].PkScript, fam.Recovery.Quarantine[role].PkScript) {
+						t.Fatal("recovery construction changed")
+					}
+					pending[role] = hex.EncodeToString(tree.PkScript)
+					quarantine[role] = hex.EncodeToString(base.Quarantine[role].PkScript)
 				}
-				witness := []string{}
-				for _, w := range f.tx.TxIn[0].Witness {
-					witness = append(witness, hex.EncodeToString(w))
+				coin := uint32(0x80000000)
+				if network == "mutinynet" {
+					coin++
 				}
-				payments = append(payments, map[string]any{"full": full, "amount": req.AmountSats, "fee": req.FeeSats, "parent": txHex(t, f.parent), "parentTxid": f.parent.TxHash().String(), "recipientScript": hex.EncodeToString(req.DestinationScript), "unsigned": txHex(t, p.UnsignedTx), "savingsWitness": witness, "responsePSBT": hex.EncodeToString(buf.Bytes()), "finalTx": txHex(t, final), "txid": final.TxHash().String()})
+				origin := candidate.KeyOrigin{Type: candidate.Taproot, PublicKey: in.Hardware.SerializeCompressed(), Fingerprint: 0x12345678, Path: []uint32{0x80000056, coin, 0x80000000, 0, 0}}
+				if kind == candidate.NativeSegwit {
+					origin = softwareOrigin
+				}
+				digest, err := candidate.EnrollmentDigest(in, origin)
+				digest = must(t, digest, err)
+				bad := origin
+				bad.Path = append([]uint32(nil), origin.Path...)
+				bad.Path[1] ^= 1
+				if _, err := candidate.EnrollmentDigest(in, bad); err == nil && style != "electrum" {
+					t.Fatal("cross-network origin accepted")
+				}
+				bad = origin
+				bad.Fingerprint++
+				other, err := candidate.EnrollmentDigest(in, bad)
+				if err != nil || other == digest {
+					t.Fatal("fingerprint not bound")
+				}
+				f, _ := protocolFixture(t)
+				if hardware != nil {
+					f.hardware = hardware
+				}
+				f.connector = fam.Rules.ConnectorScript
+				f.savingsScript = fam.Recovery.Savings.PkScript
+				f.leaf = txscript.NewBaseTapLeaf(fam.Leaf)
+				f.control = fam.Control
+				f.policy = fam.Program
+				hash := arkade.ArkadeScriptHash(fam.Program)
+				f.authorities = []*btcec.PrivateKey{f.phone, arkade.ComputeArkadeScriptPrivateKey(f.guardian, hash), arkade.ComputeArkadeScriptPrivateKey(f.emulator, hash)}
+				f.setParent()
+				var payments []map[string]any
+				for _, full := range []bool{false, true} {
+					req := protocolRequest(f, fam.Rules)
+					req.Origin = origin
+					req.DestinationScript = taproot(t, key(70))
+					if full {
+						req.AmountSats = 8760
+					}
+					d, err := candidate.Prepare(req)
+					d = must(t, d, err)
+					p, err := d.PSBT()
+					p = must(t, p, err)
+					f.tx = p.UnsignedTx.Copy()
+					f.signSavings(t, f.authorities...)
+					h, err := d.ForHardware(f.tx.TxIn[0].Witness)
+					h = must(t, h, err)
+					response := hardwareResponse(t, f, h)
+					final, err := h.Accept(response)
+					final = must(t, final, err)
+					var buf bytes.Buffer
+					if err := response.Serialize(&buf); err != nil {
+						t.Fatal(err)
+					}
+					witness := []string{}
+					for _, w := range f.tx.TxIn[0].Witness {
+						witness = append(witness, hex.EncodeToString(w))
+					}
+					payments = append(payments, map[string]any{"full": full, "amount": req.AmountSats, "fee": req.FeeSats, "parent": txHex(t, f.parent), "parentTxid": f.parent.TxHash().String(), "recipientScript": hex.EncodeToString(req.DestinationScript), "unsigned": txHex(t, p.UnsignedTx), "savingsWitness": witness, "responsePSBT": hex.EncodeToString(buf.Bytes()), "finalTx": txHex(t, final), "txid": final.TxHash().String()})
+				}
+				vectors = append(vectors, map[string]any{"payments": payments, "connectorType": string(kind), "originType": style, "originFingerprint": origin.Fingerprint, "originPath": origin.Path, "network": network, "tier": tier, "phone": hex.EncodeToString(in.Phone.SerializeCompressed()), "hardware": hex.EncodeToString(in.Hardware.SerializeCompressed()), "guardian": hex.EncodeToString(in.VaultCosignerBase.SerializeCompressed()), "emulator": hex.EncodeToString(in.ArkadeCosignerBase.SerializeCompressed()), "recovery": hex.EncodeToString(key(5).PubKey().SerializeCompressed()), "phoneDirect": hex.EncodeToString(in.PhoneDirectP256), "program": hex.EncodeToString(fam.Program), "script": hex.EncodeToString(fam.Recovery.Savings.PkScript), "address": fam.Recovery.Savings.Address, "leaf": hex.EncodeToString(fam.Leaf), "control": hex.EncodeToString(fam.Control), "reserve": hex.EncodeToString(fam.Rules.ConnectorScript), "witnessBytes": fam.Rules.WitnessBytes, "pending": pending, "quarantine": quarantine, "enrollmentDigest": digest})
 			}
-			vectors = append(vectors, map[string]any{"payments": payments, "network": network, "tier": tier, "phone": hex.EncodeToString(in.Phone.SerializeCompressed()), "hardware": hex.EncodeToString(in.Hardware.SerializeCompressed()), "guardian": hex.EncodeToString(in.VaultCosignerBase.SerializeCompressed()), "emulator": hex.EncodeToString(in.ArkadeCosignerBase.SerializeCompressed()), "recovery": hex.EncodeToString(key(5).PubKey().SerializeCompressed()), "phoneDirect": hex.EncodeToString(in.PhoneDirectP256), "program": hex.EncodeToString(fam.Program), "script": hex.EncodeToString(fam.Recovery.Savings.PkScript), "address": fam.Recovery.Savings.Address, "leaf": hex.EncodeToString(fam.Leaf), "control": hex.EncodeToString(fam.Control), "reserve": hex.EncodeToString(fam.Rules.ConnectorScript), "witnessBytes": fam.Rules.WitnessBytes, "pending": pending, "quarantine": quarantine, "enrollmentDigest": digest})
 		}
 	}
 	raw, err := json.MarshalIndent(vectors, "", "  ")
@@ -196,7 +217,7 @@ func TestConnectorFamilyWithdrawals(t *testing.T) {
 	for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
 		t.Run(tier, func(t *testing.T) {
 			in := familyInput(t, "mainnet", tier)
-			fam, err := candidate.BuildFamily(in)
+			fam, err := candidate.BuildFamily(in, candidate.Taproot)
 			fam = must(t, fam, err)
 			for _, full := range []bool{false, true} {
 				f, r := protocolFixture(t)

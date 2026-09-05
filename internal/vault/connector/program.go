@@ -28,7 +28,7 @@ const (
 )
 
 // Rules are reconstructed from an independently pinned enrollment, never from
-// the signer response. WitnessBytes includes marker/flag and both witnesses.
+// the signer response. WitnessBytes bounds marker/flag and both witnesses from below.
 // This stage supports one Savings input and optional non-dust Savings change.
 type Rules struct {
 	ConnectorScript                                     []byte
@@ -44,8 +44,8 @@ func validP2TR(script []byte) bool {
 }
 
 func (r Rules) validate() error {
-	if !validP2TR(r.ConnectorScript) {
-		return fmt.Errorf("connector Taproot script required")
+	if !validP2TR(r.ConnectorScript) && !txscript.IsPayToWitnessPubKeyHash(r.ConnectorScript) {
+		return fmt.Errorf("connector native SegWit or Taproot script required")
 	}
 	if r.WitnessBytes < 1 || r.WitnessBytes > 10000 {
 		return fmt.Errorf("invalid committed witness size")
@@ -115,7 +115,11 @@ func assemble(r Rules, prefix []byte) ([]byte, error) {
 		equal(arkade.OP_INSPECTINPUTSEQUENCE, savings.TransitionSequence)
 	}
 	checkScript := func(op byte, index int64, script []byte) {
-		b.AddInt64(index).AddOp(op).AddInt64(1).AddOp(txscript.OP_EQUALVERIFY).
+		version := int64(0)
+		if script[0] == txscript.OP_1 {
+			version = 1
+		}
+		b.AddInt64(index).AddOp(op).AddInt64(version).AddOp(txscript.OP_EQUALVERIFY).
 			AddData(script[2:]).AddOp(txscript.OP_EQUALVERIFY)
 	}
 	checkScript(arkade.OP_INSPECTINPUTSCRIPTPUBKEY, ConnectorInput, r.ConnectorScript)

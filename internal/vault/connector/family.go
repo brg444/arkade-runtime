@@ -25,7 +25,7 @@ type Family struct {
 	Normal                 savings.TweakPair
 }
 
-func BuildFamily(in savings.FamilyInput) (*Family, error) {
+func BuildFamily(in savings.FamilyInput, kind Kind) (*Family, error) {
 	if !in.ServerFreeClawback {
 		return nil, fmt.Errorf("connector family requires server-free clawback")
 	}
@@ -48,7 +48,7 @@ func BuildFamily(in savings.FamilyInput) (*Family, error) {
 	default:
 		return nil, fmt.Errorf("unsupported connector network")
 	}
-	reserve, err := txscript.PayToTaprootScript(txscript.ComputeTaprootKeyNoScript(in.Hardware))
+	reserve, err := kind.Script(in.Hardware)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func BuildFamily(in savings.FamilyInput) (*Family, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.WitnessBytes = WitnessBytes(normal, control)
+	r.WitnessBytes = WitnessBytes(normal, control, kind)
 	policy, err := BuildProgram(r)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func BuildFamily(in savings.FamilyInput) (*Family, error) {
 	if err != nil {
 		return nil, err
 	}
-	if WitnessBytes(normal, control) != r.WitnessBytes {
+	if WitnessBytes(normal, control, kind) != r.WitnessBytes {
 		return nil, fmt.Errorf("connector witness shape changed")
 	}
 	addr, err := btcutil.NewAddressTaproot(script[2:], net)

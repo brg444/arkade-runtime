@@ -3,6 +3,7 @@ package connector
 import (
 	"bytes"
 	"fmt"
+
 	"math/bits"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -15,10 +16,11 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-// KeyOrigin is display/signing metadata. The tweaked internal key must match
-// the enrolled connector script; a device must independently derive the key.
+// KeyOrigin is display/signing metadata. The public key must reproduce the
+// enrolled connector script; a signer must independently derive the key.
 type KeyOrigin struct {
-	InternalKey []byte
+	Type        Kind
+	PublicKey   []byte // Compressed SEC key; parity matters for native SegWit.
 	Fingerprint uint32 // Human-readable fingerprint interpreted as big-endian hex.
 	Path        []uint32
 }
@@ -53,11 +55,16 @@ func clonePacket(p *psbt.Packet) (*psbt.Packet, error) {
 	return psbt.NewFromRawBytes(&buf, false)
 }
 
-// WitnessBytes is exact for the candidate 3-of-3 leaf, three DEFAULT signatures,
-// a key-path connector signature, and the transaction's witness marker/flag.
-func WitnessBytes(leaf, control []byte) int64 {
+// WitnessBytes is a lower bound so variable ECDSA lengths and explicit Taproot
+// ALL signatures never weaken the fee-rate ceiling. The shortest DER signature
+// plus ALL byte is nine bytes; a compressed public key is 33 bytes.
+func WitnessBytes(leaf, control []byte, kind Kind) int64 {
+	connector := 66
+	if kind == NativeSegwit {
+		connector = 45
+	}
 	return int64(2 + 1 + 3*65 + wire.VarIntSerializeSize(uint64(len(leaf))) + len(leaf) +
-		wire.VarIntSerializeSize(uint64(len(control))) + len(control) + 1 + 65)
+		wire.VarIntSerializeSize(uint64(len(control))) + len(control) + connector)
 }
 
 func Prepare(req Request) (*Draft, error) {
@@ -91,21 +98,22 @@ func Prepare(req Request) (*Draft, error) {
 	if err := txscript.VerifyTaprootLeafCommitment(control, req.SavingsScript[2:], d.leaf); err != nil {
 		return nil, err
 	}
-	if WitnessBytes(d.leaf, d.control) != d.rules.WitnessBytes {
+	kind, err := req.Origin.Kind()
+	if err != nil {
+		return nil, err
+	}
+	if WitnessBytes(d.leaf, d.control, kind) != d.rules.WitnessBytes {
 		return nil, fmt.Errorf("committed witness size mismatch")
 	}
-	key, err := schnorr.ParsePubKey(req.Origin.InternalKey)
-	if err != nil {
-		return nil, fmt.Errorf("connector internal key: %w", err)
+	key, err := btcec.ParsePubKey(req.Origin.PublicKey)
+	if err != nil || len(req.Origin.PublicKey) != 33 {
+		return nil, fmt.Errorf("compressed connector key required")
 	}
-	if !bytes.Equal(schnorr.SerializePubKey(txscript.ComputeTaprootKeyNoScript(key)), c.PkScript[2:]) {
+	connectorScript, err := kind.Script(key)
+	if err != nil || !bytes.Equal(connectorScript, c.PkScript) {
 		return nil, fmt.Errorf("connector origin key mismatch")
 	}
 	path := req.Origin.Path
-	if len(path) != 5 || path[0] != 0x80000056 || (path[1] != 0x80000000 && path[1] != 0x80000001) ||
-		path[2] < 0x80000000 || path[3] > 1 || path[4] >= 0x80000000 {
-		return nil, fmt.Errorf("BIP86 origin path required")
-	}
 	// Check bounds before subtraction so hostile amounts cannot wrap.
 	if s.Value <= 0 || s.Value > 21_000_000*100_000_000 || req.AmountSats < 294 || req.AmountSats > s.Value ||
 		req.FeeSats < 0 || req.FeeSats > d.rules.AbsoluteFeeCapSats {
@@ -183,11 +191,19 @@ func Prepare(req Request) (*Draft, error) {
 	}
 	d.packet.Inputs[0].TaprootLeafScript = []*psbt.TaprootTapLeafScript{{ControlBlock: bytes.Clone(d.control), Script: bytes.Clone(d.leaf), LeafVersion: txscript.BaseLeafVersion}}
 	d.packet.Inputs[0].TaprootInternalKey = schnorr.SerializePubKey(control.InternalKey)
-	d.packet.Inputs[1].TaprootInternalKey = bytes.Clone(req.Origin.InternalKey)
-	origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: bytes.Clone(req.Origin.InternalKey), MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
-	d.packet.Inputs[1].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
-	d.packet.Outputs[ConnectorOutput].TaprootInternalKey = bytes.Clone(req.Origin.InternalKey)
-	d.packet.Outputs[ConnectorOutput].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
+	if kind == Taproot {
+		internal := schnorr.SerializePubKey(key)
+		d.packet.Inputs[1].TaprootInternalKey = internal
+		origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: internal, MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
+		d.packet.Inputs[1].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
+		d.packet.Outputs[ConnectorOutput].TaprootInternalKey = internal
+		d.packet.Outputs[ConnectorOutput].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
+	} else {
+		origin := &psbt.Bip32Derivation{PubKey: bytes.Clone(req.Origin.PublicKey), MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
+		d.packet.Inputs[1].SighashType = txscript.SigHashAll
+		d.packet.Inputs[1].Bip32Derivation = []*psbt.Bip32Derivation{origin}
+		d.packet.Outputs[ConnectorOutput].Bip32Derivation = []*psbt.Bip32Derivation{origin}
+	}
 	return d, nil
 }
 
@@ -228,6 +244,9 @@ func (d *Draft) ForHardware(witness wire.TxWitness) (*HardwareRequest, error) {
 	p.Inputs[0].TaprootLeafScript = nil
 	p.Inputs[0].TaprootInternalKey = nil
 	p.Inputs[0].FinalScriptWitness = bytes.Clone(buf.Bytes())
+	// Explicitly encode the empty native-SegWit scriptSig. Electrum requires
+	// both final fields to recognize a foreign witness input as complete.
+	p.Inputs[0].FinalScriptSig = []byte{}
 	w := make(wire.TxWitness, len(witness))
 	for i := range witness {
 		w[i] = bytes.Clone(witness[i])
@@ -267,8 +286,8 @@ func (h *HardwareRequest) Accept(response *psbt.Packet) (*wire.MsgTx, error) {
 	}
 	for i, input := range response.Inputs {
 		actual := h.packet.Inputs[i].WitnessUtxo
-		if input.SighashType != txscript.SigHashDefault {
-			return nil, fmt.Errorf("non-DEFAULT sighash")
+		if input.SighashType != txscript.SigHashDefault && (i != 1 || input.SighashType != txscript.SigHashAll) {
+			return nil, fmt.Errorf("signature must commit all outputs")
 		}
 		if input.WitnessUtxo != nil && (input.WitnessUtxo.Value != actual.Value || !bytes.Equal(input.WitnessUtxo.PkScript, actual.PkScript)) {
 			return nil, fmt.Errorf("hardware changed prevout")
@@ -281,29 +300,100 @@ func (h *HardwareRequest) Accept(response *psbt.Packet) (*wire.MsgTx, error) {
 	if len(in.FinalScriptSig) != 0 || len(in.TaprootScriptSpendSig) != 0 {
 		return nil, fmt.Errorf("unexpected connector signing path")
 	}
-	sig := in.TaprootKeySpendSig
+	var witness wire.TxWitness
 	if len(in.FinalScriptWitness) != 0 {
-		// A single 64-byte signature has exactly this canonical wire encoding.
-		w := in.FinalScriptWitness
-		if len(w) != 66 || w[0] != 1 || w[1] != 64 {
-			return nil, fmt.Errorf("connector requires DEFAULT key-path witness without annex")
+		reader := bytes.NewReader(in.FinalScriptWitness)
+		count, err := wire.ReadVarInt(reader, 0)
+		if err != nil || count < 1 || count > 2 {
+			return nil, fmt.Errorf("unexpected connector witness")
 		}
-		if len(sig) != 0 && !bytes.Equal(sig, w[2:]) {
-			return nil, fmt.Errorf("conflicting hardware signatures")
+		for range count {
+			item, err := wire.ReadVarBytes(reader, 0, 73, "connector witness")
+			if err != nil {
+				return nil, err
+			}
+			witness = append(witness, item)
 		}
-		sig = w[2:]
+		if reader.Len() != 0 {
+			return nil, fmt.Errorf("trailing connector witness data")
+		}
 	}
-	if len(sig) != 64 {
-		return nil, fmt.Errorf("connector requires DEFAULT key-path signature")
+	if validP2TR(h.draft.rules.ConnectorScript) {
+		if len(in.PartialSigs) != 0 {
+			return nil, fmt.Errorf("unexpected ECDSA signature")
+		}
+		sig := in.TaprootKeySpendSig
+		if witness != nil {
+			if len(witness) != 1 {
+				return nil, fmt.Errorf("Taproot key-path witness required")
+			}
+			if len(sig) != 0 && !bytes.Equal(sig, witness[0]) {
+				return nil, fmt.Errorf("conflicting signatures")
+			}
+			sig = witness[0]
+		}
+		if len(sig) != 64 && (len(sig) != 65 || sig[64] != byte(txscript.SigHashAll)) {
+			return nil, fmt.Errorf("Taproot DEFAULT or ALL signature required")
+		}
+		if in.SighashType == txscript.SigHashAll && len(sig) != 65 {
+			return nil, fmt.Errorf("signature sighash mismatch")
+		}
+		witness = wire.TxWitness{bytes.Clone(sig)}
+	} else {
+		if len(in.TaprootKeySpendSig) != 0 || len(in.PartialSigs) > 1 {
+			return nil, fmt.Errorf("unexpected connector signature")
+		}
+		if len(in.PartialSigs) == 1 {
+			partial := in.PartialSigs[0]
+			if witness != nil && (len(witness) != 2 || !bytes.Equal(witness[0], partial.Signature) || !bytes.Equal(witness[1], partial.PubKey)) {
+				return nil, fmt.Errorf("conflicting signatures")
+			}
+			witness = wire.TxWitness{bytes.Clone(partial.Signature), bytes.Clone(partial.PubKey)}
+		}
+		if len(witness) != 2 || len(witness[0]) < 9 || len(witness[0]) > 73 || witness[0][len(witness[0])-1] != byte(txscript.SigHashAll) || len(witness[1]) != 33 {
+			return nil, fmt.Errorf("native SegWit ALL signature required")
+		}
 	}
 	tx := h.packet.UnsignedTx.Copy()
 	tx.TxIn[0].Witness = make(wire.TxWitness, len(h.savingsWitness))
 	for i, item := range h.savingsWitness {
 		tx.TxIn[0].Witness[i] = bytes.Clone(item)
 	}
-	tx.TxIn[1].Witness = wire.TxWitness{bytes.Clone(sig)}
+	tx.TxIn[1].Witness = witness
 	if err := verifyInput(tx, h.draft.parents, 1); err != nil {
 		return nil, fmt.Errorf("hardware signature: %w", err)
 	}
 	return tx, nil
+}
+
+// AcceptTransaction supports wallets that return final transaction hex. The
+// unsigned transaction must match exactly; only the connector witness is used.
+func (h *HardwareRequest) AcceptTransaction(raw []byte) (*wire.MsgTx, error) {
+	if len(raw) > 1_000_000 {
+		return nil, fmt.Errorf("signer response too large")
+	}
+	reader := bytes.NewReader(raw)
+	tx := wire.NewMsgTx(2)
+	if err := tx.Deserialize(reader); err != nil {
+		return nil, err
+	}
+	if reader.Len() != 0 || len(tx.TxIn) != 2 {
+		return nil, fmt.Errorf("invalid signer transaction")
+	}
+	var buf bytes.Buffer
+	if err := psbt.WriteTxWitness(&buf, tx.TxIn[1].Witness); err != nil {
+		return nil, err
+	}
+	for _, in := range tx.TxIn {
+		if len(in.SignatureScript) != 0 {
+			return nil, fmt.Errorf("unexpected scriptSig")
+		}
+		in.Witness = nil
+	}
+	p, err := psbt.NewFromUnsignedTx(tx)
+	if err != nil {
+		return nil, err
+	}
+	p.Inputs[1].FinalScriptWitness = buf.Bytes()
+	return h.Accept(p)
 }

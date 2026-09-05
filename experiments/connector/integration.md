@@ -96,7 +96,7 @@ still requires that hardware key to authorize its later consumption.
    verifier's responsibility; parent contents establish only the prevout data.
 2. Build the entire transaction, including the Emulator packet, and retain an
    immutable snapshot. The PSBT includes full parents, witness UTXOs, the
-   Savings leaf/proof, and BIP86 origin metadata for the connector and return.
+   Savings leaf/proof, and BIP32 origin metadata for the connector and return.
 3. The phone and both cosigners sign the exact Savings input with DEFAULT
    sighash. Each service must validate its pinned program and authenticated
    semantic operation before using a signing key. The tests execute the packet
@@ -105,13 +105,12 @@ still requires that hardware key to authorize its later consumption.
    the hardware PSBT. This supplies a verifiable external input to devices that
    require one. It does not establish support on any particular device.
 5. The hardware reviews the full transaction and signs its connector input with
-   DEFAULT sighash. Its approval must display the chosen payment address
+   DEFAULT or ALL sighash for Taproot, or ALL for native SegWit. Its approval must display the chosen payment address
    accurately enough for the user to compare with the intended recipient.
    Amount, every additional output, and total cost review remain device
    qualification gates.
 6. Import only the verified hardware signature into the retained transaction.
-   Reject transaction mutations, conflicting prevout claims, non-DEFAULT
-   signatures, script-path connector witnesses, and annexes. Retain the locally
+   Reject transaction mutations, conflicting prevout claims, signatures that omit any output or allow additional inputs, script-path connector witnesses, and annexes. Retain the locally
    verified Savings witness regardless of returned foreign-input metadata.
 7. Persist the exact signed transaction before broadcast, then reconcile its
    confirmation and successor outpoints through the existing wallet lifecycle.
@@ -157,10 +156,10 @@ The integration suite verifies the complete packet for both program-bound
 cosigner roles, exact fee boundaries, pinned parents and leaf proofs, immutable
 handoff, both partial and finalized hardware PSBT responses, and signature and
 transaction mutations. All signing keys are disposable fixture keys. The origin
-metadata uses illustrative derivations; actual hardware derivation and review
-remain untested.
+metadata includes real BIP84 derivations from a public disposable seed. Physical
+device review remains untested.
 
-Bitcoin Core 28.1 rejects the fixture's 267-byte packet output under its default
+Bitcoin Core 28.1 rejects the Taproot fixture's 267-byte packet output under its default
 83-byte data-output policy. With only `-datacarriersize=100000` changed, the suite
 accepts and mines two successive complete connector transfers, verifies the
 reserve remains 1,000 sats, and rejects stale transactions. That explicit test
@@ -172,13 +171,13 @@ Reproduce with the pinned Go dependencies and an isolated Core binary:
 
 ```sh
 CONNECTOR_BITCOIND=/absolute/path/to/bitcoind \
-  go test ./experiments/connector -run '^TestConnector' -count=1 -v
+  go test ./experiments/connector -run '^Test(Connector|Software)'  -count=1 -v
 ```
 
 The remaining release work is:
 
-- qualify one hardware device with the complete packet, foreign Savings input,
-  and all outputs, without disabling its safety checks;
+- qualify a released software wallet through its actual import, full destination
+  review, signing, and export screens; physical hardware is an additional target;
 - qualify the public Emulator's multi-input request, packet, fee policy, and
   exact signature response using disposable funds;
 - connect the implemented family and enrollment commitment to the versioned
@@ -204,8 +203,9 @@ The runtime and wallet now reconstruct identical Standard and Advanced families
 on mainnet and Mutinynet. Shared vectors cover the program, normal leaf and
 proof, addresses, reserve script, recovery scripts, and enrollment digest.
 `arkade-vault/connector-enrollment-v1` commits the complete reconstructed
-contract, immutable Spending policy, and the hardware fingerprint and BIP86
-origin path. Network-mismatched origins fail validation.
+contract, immutable Spending policy, and the hardware fingerprint and complete BIP32
+origin path. Network-mismatched BIP84/BIP86 origins fail validation. Native Electrum origins
+are also supported, with the complete path committed by enrollment.
 
 The wallet transaction builder verifies that digest against its caller-supplied
 local enrollment pin, checks independently supplied parent contents, builds the
@@ -218,3 +218,38 @@ These functions are ready for coordinator integration; the existing enrollment
 and payment screens still select the old contract. Pending-operation storage,
 service authentication, named signing routes, and release advertisement remain
 the next implementation stage. No connector Contract Pack is published yet.
+
+## Software wallet qualification
+
+The connector supports BIP84 native SegWit and BIP86 Taproot inputs. Enrollment
+commits the compressed public key, origin, and connector script through the
+contract digest. Native SegWit preserves public-key parity and requires ECDSA
+SIGHASH_ALL. Taproot permits DEFAULT or ALL. Signatures that omit outputs or
+permit added inputs are rejected, as are modified transactions and unrelated
+connector keys. PSBT and completed transaction imports use the same retained
+Savings witness and independently verified parents.
+
+Fee-rate accounting commits a lower witness-size bound. Native SegWit uses the
+minimum possible DER signature length, making the ceiling conservative for
+ordinary signatures. Taproot ALL adds one byte compared with DEFAULT and also
+preserves that ceiling. The connector reserve remains 1,000 sats.
+
+`TestSoftwareWalletCore` uses Bitcoin Core 28.1's descriptor wallet and
+`walletprocesspsbt` to sign both connector types beside a finalized Savings
+input. Partial and complete withdrawals pass mempool validation and are mined
+on an isolated, peerless regtest node with the explicit data-output setting
+above. These tests use actual wallet signing, in addition to fixture-key tests.
+
+BlueWallet 8.0.1's imported-PSBT flow attempts to finalize an already-finalized
+Taproot input and fails. It also signs before opening its transaction export
+screen. BlueWallet-specific changes are outside the current scope; released
+Electrum and Sparrow are the software wallet qualification targets. The
+connector remains disabled in the existing RC enrollment and payment flows.
+
+Unmodified Electrum 4.8.1 now passes eight wallet-signing cases covering native
+Electrum seeds and BIP84 imports, both protection tiers, and partial and full
+withdrawals. The export explicitly includes an empty final scriptSig alongside
+the Savings witness so Electrum recognizes the input as complete. Returned PSBT
+and raw transactions pass the wallet's independent signature verification.
+These tests check the destination strings used by Electrum's transaction UI;
+the desktop screen and manual import/export flow still need qualification.

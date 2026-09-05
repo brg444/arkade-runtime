@@ -246,6 +246,14 @@ func (f *fixture) signSavings(t *testing.T, keys ...*btcec.PrivateKey) {
 }
 
 func (f *fixture) signConnector(t *testing.T, k *btcec.PrivateKey, hashType txscript.SigHashType) {
+	if txscript.IsPayToWitnessPubKeyHash(f.connector) {
+		subscript := append([]byte{0x76, 0xa9, 0x14}, f.connector[2:]...)
+		subscript = append(subscript, 0x88, 0xac)
+		witness, err := txscript.WitnessSignature(f.tx, txscript.NewTxSigHashes(f.tx, f.prevouts()), 1, 1000, subscript, hashType, k, true)
+		f.tx.TxIn[1].Witness = must(t, witness, err)
+		return
+	}
+
 	t.Helper()
 	p := f.prevouts()
 	out := p.FetchPrevOutput(f.tx.TxIn[1].PreviousOutPoint)

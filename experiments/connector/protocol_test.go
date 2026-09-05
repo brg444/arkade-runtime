@@ -10,7 +10,6 @@ import (
 	candidate "github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -24,7 +23,7 @@ func protocolFixtureWithRules(t *testing.T, configure func(*candidate.Rules)) (*
 	t.Helper()
 	f := newFixture(t)
 	r := candidate.Rules{ConnectorScript: f.connector,
-		WitnessBytes: candidate.WitnessBytes(f.leaf.Script, f.control), AbsoluteFeeCapSats: 5000, FeerateCapSatPerV: 10}
+		WitnessBytes: candidate.WitnessBytes(f.leaf.Script, f.control, candidate.Taproot), AbsoluteFeeCapSats: 5000, FeerateCapSatPerV: 10}
 	if configure != nil {
 		configure(&r)
 	}
@@ -49,7 +48,7 @@ func TestConnectorPreparationRejectsUnpinnedData(t *testing.T) {
 		{"duplicate_input", func(r *candidate.Request) { r.Connector = r.Savings }},
 		{"wrong_savings", func(r *candidate.Request) { r.SavingsScript = r.DestinationScript }},
 		{"wrong_connector", func(r *candidate.Request) { r.Connector.Index = 2 }},
-		{"wrong_origin", func(r *candidate.Request) { r.Origin.InternalKey = schnorr.SerializePubKey(key(40).PubKey()) }},
+		{"wrong_origin", func(r *candidate.Request) { r.Origin.PublicKey = key(40).PubKey().SerializeCompressed() }},
 		{"origin_path", func(r *candidate.Request) { r.Origin.Path[0] = 0x80000054 }},
 		{"leaf", func(r *candidate.Request) { r.Leaf[1] ^= 1 }},
 		{"control", func(r *candidate.Request) { r.Control[1] ^= 1 }},
@@ -239,7 +238,7 @@ func protocolRequest(f *fixture, r candidate.Rules) candidate.Request {
 	return candidate.Request{Rules: r, Parents: candidate.Parents(f.prevouts()), Savings: f.tx.TxIn[0].PreviousOutPoint, Connector: f.tx.TxIn[1].PreviousOutPoint,
 		DestinationScript: f.destination, SavingsScript: f.savingsScript, Leaf: f.leaf.Script, Control: f.control,
 		Phone: f.phone.PubKey(), GuardianBase: f.guardian.PubKey(), EmulatorBase: f.emulator.PubKey(),
-		Origin:     candidate.KeyOrigin{InternalKey: schnorr.SerializePubKey(f.hardware.PubKey()), Fingerprint: 0x12345678, Path: []uint32{0x80000056, 0x80000000, 0x80000000, 0, 0}},
+		Origin:     candidate.KeyOrigin{Type: candidate.Taproot, PublicKey: f.hardware.PubKey().SerializeCompressed(), Fingerprint: 0x12345678, Path: []uint32{0x80000056, 0x80000000, 0x80000000, 0, 0}},
 		AmountSats: 8000, FeeSats: 1000}
 }
 
@@ -256,10 +255,18 @@ func prepareProtocol(t *testing.T, f *fixture, r candidate.Rules) (*candidate.Dr
 
 func hardwareResponse(t *testing.T, f *fixture, h *candidate.HardwareRequest) *psbt.Packet {
 	t.Helper()
-	f.signConnector(t, f.hardware, txscript.SigHashDefault)
+	hashType := txscript.SigHashDefault
+	if txscript.IsPayToWitnessPubKeyHash(f.connector) {
+		hashType = txscript.SigHashAll
+	}
+	f.signConnector(t, f.hardware, hashType)
 	p, err := h.PSBT()
 	p = must(t, p, err)
-	p.Inputs[1].TaprootKeySpendSig = bytes.Clone(f.tx.TxIn[1].Witness[0])
+	if hashType == txscript.SigHashAll {
+		p.Inputs[1].PartialSigs = []*psbt.PartialSig{{PubKey: f.hardware.PubKey().SerializeCompressed(), Signature: bytes.Clone(f.tx.TxIn[1].Witness[0])}}
+	} else {
+		p.Inputs[1].TaprootKeySpendSig = bytes.Clone(f.tx.TxIn[1].Witness[0])
+	}
 	return p
 }
 

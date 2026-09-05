@@ -11,7 +11,6 @@ import (
 
 	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
-	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
 const EnrollmentSchema = "arkade-vault/connector-enrollment-v1"
@@ -19,11 +18,15 @@ const EnrollmentSchema = "arkade-vault/connector-enrollment-v1"
 // EnrollmentDigest commits the complete rebuilt contract and hardware origin.
 // The existing enrollment wire format does not accept this schema yet.
 func EnrollmentDigest(in savings.FamilyInput, origin KeyOrigin) (string, error) {
-	f, err := BuildFamily(in)
+	kind, err := origin.Kind()
 	if err != nil {
 		return "", err
 	}
-	if !bytes.Equal(origin.InternalKey, schnorr.SerializePubKey(in.Hardware)) {
+	f, err := BuildFamily(in, kind)
+	if err != nil {
+		return "", err
+	}
+	if !bytes.Equal(origin.PublicKey, in.Hardware.SerializeCompressed()) {
 		return "", fmt.Errorf("hardware origin mismatch")
 	}
 	coin := uint32(0x80000000)
@@ -31,7 +34,7 @@ func EnrollmentDigest(in savings.FamilyInput, origin KeyOrigin) (string, error) 
 		coin++
 	}
 	p := origin.Path
-	if len(p) != 5 || p[0] != 0x80000056 || p[1] != coin || p[2] < 0x80000000 || p[3] > 1 || p[4] >= 0x80000000 {
+	if p[0] == kind.Purpose() && p[1] != coin {
 		return "", fmt.Errorf("hardware origin network or path mismatch")
 	}
 	path := make([]string, len(p))
