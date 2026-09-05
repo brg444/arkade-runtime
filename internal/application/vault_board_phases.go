@@ -297,7 +297,7 @@ func (s *Service) submitVaultBoardCommitment(ctx context.Context, req vaultBoard
 	if err != nil {
 		return "", err
 	}
-	verified, verifyErr := verifyVaultBoardFinal(req.Batch, operation, snapshot.Register, ctxState.boardTree, vaultBoardFinalExpiry(runtime.batchExpiry))
+	verified, verifyErr := verifyVaultBoardFinal(req.Batch, operation, snapshot.Register, ctxState.boardTree, vaultBoardFinalExpiry(runtime.batchExpiry), s.runtimeConfig().Network)
 	releaseVerification()
 	err = verifyErr
 	if err != nil {

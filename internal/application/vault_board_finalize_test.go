@@ -34,7 +34,21 @@ func newVaultBoardFinalFixture(t *testing.T) vaultBoardFinalFixture {
 
 func newVaultBoardFinalFixtureFromProof(t *testing.T, proof vaultBoardProofFixture) vaultBoardFinalFixture {
 	t.Helper()
-	forfeitBytes, err := hex.DecodeString(deployment.MutinynetCheckpointForfeitPubHex)
+	return newVaultBoardFinalFixtureForNetwork(t, proof, deployment.NetworkMutinynet)
+}
+
+func newVaultBoardFinalFixtureForNetwork(t *testing.T, proof vaultBoardProofFixture, network string) vaultBoardFinalFixture {
+	t.Helper()
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newVaultBoardFinalFixtureForPolicy(t, proof, id.CheckpointForfeitPubHex, id.VtxoTreeExpirySeconds, false)
+}
+
+func newVaultBoardFinalFixtureForPolicy(t *testing.T, proof vaultBoardProofFixture, forfeitHex string, batchExpiry uint32, extraReceiver bool) vaultBoardFinalFixture {
+	t.Helper()
+	forfeitBytes, err := hex.DecodeString(forfeitHex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,11 +57,19 @@ func newVaultBoardFinalFixtureFromProof(t *testing.T, proof vaultBoardProofFixtu
 		t.Fatal(err)
 	}
 	treeSigner, _ := btcec.NewPrivateKey()
-	expiry := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: 604_672}
+	expiry := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: batchExpiry}
 	leaves := []arktree.Leaf{{
 		Outputs:             []arktree.LeafOutput{{Amount: uint64(proof.receiver.Value), Script: hex.EncodeToString(proof.operation.ReceiverScript)}},
 		CosignersPublicKeys: []string{hex.EncodeToString(treeSigner.PubKey().SerializeCompressed())},
 	}}
+
+	if extraReceiver {
+		otherSigner, _ := btcec.NewPrivateKey()
+		leaves = append(leaves, arktree.Leaf{
+			Outputs:             []arktree.LeafOutput{{Amount: 500, Script: hex.EncodeToString(append([]byte{0x51, 0x20}, bytes.Repeat([]byte{0x65}, 32)...))}},
+			CosignersPublicKeys: []string{hex.EncodeToString(otherSigner.PubKey().SerializeCompressed())},
+		})
+	}
 
 	sweep := &arkscript.CSVMultisigClosure{
 		MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{forfeit}},
@@ -131,7 +153,7 @@ func TestVerifyVaultBoardFinalBindsCommitmentTreeAndReceiver(t *testing.T) {
 	fixture := newVaultBoardFinalFixture(t)
 	verified, err := verifyVaultBoardFinal(
 		fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree,
-		fixture.expiry,
+		fixture.expiry, deployment.NetworkMutinynet,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +169,7 @@ func TestVerifyVaultBoardFinalBindsCommitmentTreeAndReceiver(t *testing.T) {
 	}
 	again, err := verifyVaultBoardFinal(
 		reordered, fixture.proof.operation, fixture.register, fixture.proof.tree,
-		fixture.expiry,
+		fixture.expiry, deployment.NetworkMutinynet,
 	)
 	if err != nil || !bytes.Equal(again.RequestDigest, verified.RequestDigest) {
 		t.Fatalf("tree order changed canonical digest: %x %v", again.RequestDigest, err)
@@ -178,7 +200,7 @@ func TestVerifyVaultBoardFinalRejectsUnpinnedOrMutatedEvidence(t *testing.T) {
 			test.mutate(&evidence, &register)
 			_, err := verifyVaultBoardFinal(
 				evidence, fixture.proof.operation, register, fixture.proof.tree,
-				fixture.expiry,
+				fixture.expiry, deployment.NetworkMutinynet,
 			)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("mutation accepted: %v", err)
@@ -194,7 +216,7 @@ func TestVerifyVaultBoardFinalRejectsUnpinnedOrMutatedEvidence(t *testing.T) {
 	fixture.evidence.SignedCommitmentPSBT, _ = packet.B64Encode()
 	if _, err := verifyVaultBoardFinal(
 		fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree,
-		fixture.expiry,
+		fixture.expiry, deployment.NetworkMutinynet,
 	); err == nil || !strings.Contains(err.Error(), "signature") {
 		t.Fatalf("missing signature accepted: %v", err)
 	}
@@ -251,7 +273,7 @@ func TestVerifyVaultBoardFinalRejectsCommitmentMutation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := verifyVaultBoardFinal(
 				test.evidence(t), fixture.proof.operation, fixture.register, fixture.proof.tree,
-				fixture.expiry,
+				fixture.expiry, deployment.NetworkMutinynet,
 			)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("commitment mutation accepted: %v", err)
@@ -285,5 +307,57 @@ func TestCanonicalVaultBoardTreeRejectsDeclaredTxidDrift(t *testing.T) {
 	fixture.evidence.VtxoTree[0].Txid = strings.Repeat("00", 32)
 	if _, err := canonicalVaultBoardTree(fixture.evidence.VtxoTree); err == nil || !strings.Contains(err.Error(), "txid") {
 		t.Fatalf("declared tree txid drift accepted: %v", err)
+	}
+}
+
+func TestVerifyVaultBoardFinalUsesDeploymentForfeitKey(t *testing.T) {
+	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			fixture := newVaultBoardFinalFixtureForNetwork(t, newVaultBoardProofFixture(t), network)
+			if _, err := verifyVaultBoardFinal(fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree, fixture.expiry, network); err != nil {
+				t.Fatal(err)
+			}
+			for _, other := range []string{"", "unknown", deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+				if other == network {
+					continue
+				}
+				if _, err := verifyVaultBoardFinal(fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree, fixture.expiry, other); err == nil {
+					t.Fatalf("accepted deployment %q for %q tree", other, network)
+				}
+			}
+		})
+	}
+}
+
+func TestVerifyVaultBoardFinalRejectsOtherNetworkForfeitAtPinnedExpiry(t *testing.T) {
+	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			id, _ := deployment.IdentityFor(network)
+			other := deployment.NetworkMainnet
+			if network == other {
+				other = deployment.NetworkMutinynet
+			}
+			otherID, _ := deployment.IdentityFor(other)
+			fixture := newVaultBoardFinalFixtureForPolicy(t, newVaultBoardProofFixture(t), otherID.CheckpointForfeitPubHex, id.VtxoTreeExpirySeconds, false)
+			_, err := verifyVaultBoardFinal(fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree, fixture.expiry, network)
+			if err == nil || !strings.Contains(err.Error(), "VTXO tree policy") {
+				t.Fatalf("wrong forfeit key: %v", err)
+			}
+		})
+	}
+}
+
+func TestVerifyVaultBoardFinalWithOtherBatchParticipants(t *testing.T) {
+	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			id, _ := deployment.IdentityFor(network)
+			fixture := newVaultBoardFinalFixtureForPolicy(t, newVaultBoardProofFixture(t), id.CheckpointForfeitPubHex, id.VtxoTreeExpirySeconds, true)
+			if len(fixture.evidence.VtxoTree) < 3 {
+				t.Fatal("fixture must include child nodes")
+			}
+			if _, err := verifyVaultBoardFinal(fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree, fixture.expiry, network); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

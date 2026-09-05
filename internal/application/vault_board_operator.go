@@ -24,9 +24,10 @@ type vaultBoardOperator interface {
 }
 
 type stockVaultBoardOperator struct {
-	origin string
-	digest string
-	hc     httpDoer
+	origin  string
+	network string
+	digest  string
+	hc      httpDoer
 }
 
 // vaultBoardOperatorRejection is limited to HTTP statuses that stock arkd
@@ -41,9 +42,20 @@ func (e vaultBoardOperatorRejection) Error() string {
 }
 
 func isDefiniteVaultBoardRegisterRejection(err error) bool {
-	_, ok := err.(vaultBoardOperatorRejection)
-	return ok
+	switch err.(type) {
+	case vaultBoardOperatorRejection, vaultBoardOperatorNotSent:
+		return true
+	default:
+		return false
+	}
 }
+
+// vaultBoardOperatorNotSent is created only before invoking the HTTP client.
+// Transport failures after Do remain ambiguous, even if no response arrives.
+type vaultBoardOperatorNotSent struct{ err error }
+
+func (e vaultBoardOperatorNotSent) Error() string { return e.err.Error() }
+func (e vaultBoardOperatorNotSent) Unwrap() error { return e.err }
 
 func dialVaultBoardOperator(ctx context.Context, network string) (vaultBoardOperator, error) {
 	id, err := deployment.IdentityFor(network)
@@ -76,7 +88,7 @@ func dialVaultBoardOperatorWithClient(ctx context.Context, rawOrigin, network st
 	if err := requireTxid(info.Digest); err != nil {
 		return nil, fmt.Errorf("vault-board-v1 Operator digest required")
 	}
-	return &stockVaultBoardOperator{origin: origin, digest: info.Digest, hc: hc}, nil
+	return &stockVaultBoardOperator{origin: origin, network: network, digest: info.Digest, hc: hc}, nil
 }
 
 func (o *stockVaultBoardOperator) registerIntent(ctx context.Context, proof, message string) (string, error) {
@@ -121,17 +133,21 @@ func (o *stockVaultBoardOperator) submitCommitment(ctx context.Context, signedCo
 }
 
 func (o *stockVaultBoardOperator) post(ctx context.Context, path string, payload, response any) error {
-	if o == nil || o.hc == nil || o.origin != deployment.MutinynetArkIndexerOrigin || requireTxid(o.digest) != nil {
-		return fmt.Errorf("vault-board-v1 Operator is not release-pinned")
+	if o == nil || o.hc == nil {
+		return vaultBoardOperatorNotSent{fmt.Errorf("vault-board-v1 Operator is not release-pinned")}
+	}
+	id, err := deployment.IdentityFor(o.network)
+	if err != nil || o.origin != id.OperatorOrigin || requireTxid(o.digest) != nil {
+		return vaultBoardOperatorNotSent{fmt.Errorf("vault-board-v1 Operator is not release-pinned")}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return vaultBoardOperatorNotSent{err}
 	}
 	defer zeroServiceBytes(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.origin+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return vaultBoardOperatorNotSent{err}
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")

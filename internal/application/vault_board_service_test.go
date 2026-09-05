@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
+	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/ports"
 	"github.com/brg444/arkade-runtime/internal/program"
@@ -80,8 +81,9 @@ func (o *vaultBoardTestOperator) submitCommitment(context.Context, string) error
 
 type vaultBoardTestResolver struct {
 	stubArkResolver
-	exact *ports.ResolvedVtxo
-	err   error
+	network string
+	exact   *ports.ResolvedVtxo
+	err     error
 }
 
 func (r *vaultBoardTestResolver) exactVtxo(context.Context, string, uint32, []byte) (*ports.ResolvedVtxo, error) {
@@ -92,6 +94,13 @@ func (r *vaultBoardTestResolver) exactVtxo(context.Context, string, uint32, []by
 	out.Script = bytes.Clone(r.exact.Script)
 	out.CommitmentTxids = append([]string(nil), r.exact.CommitmentTxids...)
 	return &out, r.err
+}
+
+func (r *vaultBoardTestResolver) Network() string {
+	if r.network == "" {
+		return program.NetworkMutinynet
+	}
+	return r.network
 }
 
 type vaultBoardServiceFixture struct {
@@ -112,15 +121,29 @@ type vaultBoardServiceFixture struct {
 
 func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	t.Helper()
+	return newVaultBoardServiceFixtureForNetwork(t, program.NetworkMutinynet)
+}
+
+func newVaultBoardServiceFixtureForNetwork(t *testing.T, network string) vaultBoardServiceFixture {
+	t.Helper()
+	id, err := deployment.IdentityFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Unix(1_800_000_000, 0).UTC()
 	clock := &now
 	dbPath := filepath.Join(t.TempDir(), "board-service.sqlite")
-	ledger, err := policy.OpenLedger(dbPath, func() time.Time { return *clock })
+	ledger, err := policy.OpenLedgerForNetwork(dbPath, func() time.Time { return *clock }, network)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = ledger.Close() })
 	svc := enrollService(t, ledger)
+	svc.Deployment.Network = network
+	if network == program.NetworkMainnet {
+		svc.Deployment.ClientOrigin = deployment.MainnetRCOrigin
+		svc.Deployment.RPID = deployment.MainnetRCRPID
+	}
 	master, _ := btcec.NewPrivateKey()
 	emulator, _ := btcec.NewPrivateKey()
 	operatorKey, _ := btcec.NewPrivateKey()
@@ -135,7 +158,7 @@ func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	svc.VaultCosignerPub = master.PubKey()
 	svc.Stores.VaultBoard = ledger
 	svc.EnrollmentNow = func() time.Time { return *clock }
-	resolver := &vaultBoardTestResolver{stubArkResolver: stubArkResolver{
+	resolver := &vaultBoardTestResolver{network: network, stubArkResolver: stubArkResolver{
 		feePolicy: ports.IntentFeePolicy{OnchainInput: "1000.0"},
 		signer:    operatorKey.PubKey().SerializeCompressed(),
 	}}
@@ -148,7 +171,18 @@ func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	if err := ledger.PutInvite(hash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
-	start, err := svc.StartEnrollment(token, defaultEnrollStartRequest(t))
+	enrollment := defaultEnrollStartRequest(t)
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrollment.SpendingPolicy.AbsoluteFeeCapSats = pins.AbsoluteFeeCeiling
+	enrollment.SpendingPolicy.FeerateCapSatPerV = pins.FeerateCeilingSatPerV
+	enrollment.SpendingPolicyDigest, err = program.SpendingPolicyDigestHexFor(network, enrollment.SpendingPolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := svc.StartEnrollment(token, enrollment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +222,7 @@ func newVaultBoardServiceFixture(t *testing.T) vaultBoardServiceFixture {
 	op := &vaultBoardTestOperator{}
 	svc.vaultBoardRuntime = &vaultBoardRuntime{
 		chain: chain, operatorDial: func(context.Context) (vaultBoardOperator, error) { return op, nil },
-		batchExpiry: 604_672,
+		batchExpiry: id.VtxoTreeExpirySeconds,
 	}
 	treeSession, _ := btcec.NewPrivateKey()
 	proof := vaultBoardProofFixture{
@@ -380,6 +414,7 @@ func TestVaultBoardServiceDistinguishesRejectedAndAmbiguousRegister(t *testing.T
 		err  error
 		want vaultBoardRegisterResult
 	}{
+		{name: "not sent", err: vaultBoardOperatorNotSent{fmt.Errorf("local failure before HTTP")}, want: vaultBoardDefinitelyNotSubmitted},
 		{name: "definite rejection", err: vaultBoardOperatorRejection{status: 412}, want: vaultBoardDefinitelyNotSubmitted},
 		{name: "response loss", err: fmt.Errorf("connection reset"), want: vaultBoardRegisterAmbiguous},
 	} {
@@ -850,5 +885,46 @@ func TestVaultBoardDeleteFailureBeforeDispatchLeavesNoDeadAuthorization(t *testi
 	})
 	if err != nil || result != vaultBoardReleased {
 		t.Fatalf("retry release = %q, %v", result, err)
+	}
+}
+
+func TestVaultBoardServiceRegistersAndFinalizesOnEachNetwork(t *testing.T) {
+	for _, network := range []string{program.NetworkMainnet, program.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			fixture := newVaultBoardServiceFixtureForNetwork(t, network)
+			id, _ := deployment.IdentityFor(network)
+			registers, finals := 0, 0
+			fixture.svc.vaultBoardRuntime.operatorDial = func(ctx context.Context) (vaultBoardOperator, error) {
+				return dialVaultBoardOperatorWithClient(ctx, id.OperatorOrigin, network, rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+					if req.URL.Scheme+"://"+req.URL.Host != id.OperatorOrigin {
+						t.Fatalf("wrong origin: %s", req.URL)
+					}
+					switch req.URL.Path {
+					case "/v1/info":
+						return jsonResponse(200, vaultBoardOperatorInfoForNetworkJSON(network, vaultBoardTestOperatorDigest)), nil
+					case "/v1/batch/registerIntent":
+						registers++
+						return jsonResponse(200, `{"intentId":"accepted-mainnet-regression"}`), nil
+					case "/v1/batch/submitForfeitTxs":
+						finals++
+						return jsonResponse(200, `{}`), nil
+					default:
+						t.Fatalf("unexpected request: %s", req.URL)
+						return nil, nil
+					}
+				}))
+			}
+			prepared := fixture.prepare(t)
+			if got := fixture.register(t, prepared); got.Status != vaultBoardRegistered || registers != 1 {
+				t.Fatalf("register=%+v calls=%d", got, registers)
+			}
+			final := newVaultBoardFinalFixtureForNetwork(t, fixture.proof, network)
+			got, err := fixture.svc.submitVaultBoardCommitment(context.Background(), vaultBoardFinalPhaseRequest{
+				Handle: prepared.Handle, PSBT: final.evidence.SignedCommitmentPSBT, Batch: final.evidence, InputIndexes: []int{0},
+			})
+			if err != nil || got != vaultBoardCommitmentSubmitted || finals != 1 {
+				t.Fatalf("final=%s err=%v calls=%d", got, err, finals)
+			}
+		})
 	}
 }

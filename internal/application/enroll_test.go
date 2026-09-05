@@ -743,7 +743,7 @@ func attestedFinish(t *testing.T, svc *Service, start *EnrollStartResponse, pass
 		t.Fatal(err)
 	}
 	compressed := webauthn.CompressedP256(pass)
-	auth, err := webauthn.AttestedAuthenticatorData(fixture.RPID, credID, compressed)
+	auth, err := webauthn.AttestedAuthenticatorData(svc.runtimeConfig().RPID, credID, compressed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +759,7 @@ func attestedFinish(t *testing.T, svc *Service, start *EnrollStartResponse, pass
 	return EnrollFinishRequest{
 		Handle:            start.Handle,
 		UserHandle:        start.UserID,
-		ClientDataJSON:    hex.EncodeToString([]byte(`{"type":"webauthn.create","challenge":"` + webauthn.EncodeChallenge(challenge) + `","origin":"` + fixture.Origin + `","crossOrigin":false}`)),
+		ClientDataJSON:    hex.EncodeToString([]byte(`{"type":"webauthn.create","challenge":"` + webauthn.EncodeChallenge(challenge) + `","origin":"` + svc.runtimeConfig().ClientOrigin + `","crossOrigin":false}`)),
 		AuthenticatorData: hex.EncodeToString(auth),
 		AttestationObject: hex.EncodeToString(obj),
 		RegisterRequest:   extra,

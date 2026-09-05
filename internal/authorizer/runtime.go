@@ -155,7 +155,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	if err != nil {
 		return nil, err
 	}
-	ledger, err := policy.OpenLedger(cfg.DatabasePath, nil)
+	ledger, err := policy.OpenLedgerForNetwork(cfg.DatabasePath, nil, cfg.Deployment.Network)
 	if err != nil {
 		return nil, fmt.Errorf("authoritative ledger: %w", err)
 	}

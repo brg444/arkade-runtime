@@ -30,13 +30,22 @@ func openVaultBoardTestLedger(t testing.TB, now time.Time) *Ledger {
 
 func createVaultBoardTestEnrollment(t testing.TB, ledger *Ledger, vaultID string, tag byte) VaultBoardEnrollment {
 	t.Helper()
+	return createVaultBoardTestEnrollmentForNetwork(t, ledger, vaultID, tag, program.NetworkMutinynet)
+}
+
+func createVaultBoardTestEnrollmentForNetwork(t testing.TB, ledger *Ledger, vaultID string, tag byte, network string) VaultBoardEnrollment {
+	t.Helper()
+	pins, err := program.PinsFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := ledger.NowUTC()
 	tokenHash := bytes.Repeat([]byte{tag}, sha256.Size)
 	if err := ledger.PutInvite(tokenHash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 	input := policyTestVaultInput(t, vaultID, tag, tokenHash)
-	input.Record.Network = program.NetworkMutinynet
+	input.Record.Network = network
 	if err := SealVaultRecord(&input.Record, testIntegrityKey()); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +54,7 @@ func createVaultBoardTestEnrollment(t testing.TB, ledger *Ledger, vaultID string
 	board := VaultBoardEnrollment{
 		VaultID: vaultID, Program: program.VaultBoardV1,
 		BoardingPub: compressed, CosignerPub: append([]byte(nil), compressed...), OperatorPub: append([]byte(nil), compressed...),
-		ExitDelay: program.VaultBoardV1ExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
+		ExitDelay: pins.BoardExitDelay, ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
 		PkScript: append([]byte{0x51, 0x20}, bytes.Repeat([]byte{tag}, 32)...), Address: "tb1p-board-test",
 	}
 	if err := SealVaultBoardEnrollment(&board, testIntegrityKey()); err != nil {
@@ -571,5 +580,55 @@ func TestOpenLedgerRejectsVaultBoardForeignKeyDrift(t *testing.T) {
 	if reopened, err := OpenLedger(path, nil); err == nil {
 		_ = reopened.Close()
 		t.Fatal("v2 schema without enrollment foreign key was accepted")
+	}
+}
+
+func TestVaultBoardSchemaIsPinnedPerDeployment(t *testing.T) {
+	for _, network := range []string{program.NetworkMainnet, program.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "ledger.sqlite")
+			ledger, err := OpenLedgerForNetwork(path, nil, network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ledger.SetIntegrityKey(testIntegrityKey()); err != nil {
+				t.Fatal(err)
+			}
+			board := createVaultBoardTestEnrollmentForNetwork(t, ledger, "vault-network", 0x21, network)
+			got, err := ledger.GetVaultBoardEnrollment(board.VaultID)
+			if err != nil || got.ExitDelay != board.ExitDelay {
+				t.Fatalf("boarding enrollment: %v %v", got, err)
+			}
+			other := program.NetworkMainnet
+			if network == other {
+				other = program.NetworkMutinynet
+			}
+			otherPins, _ := program.PinsFor(other)
+			if _, err := ledger.db.Exec("UPDATE vault_board_enrollment SET exit_delay = ? WHERE vault_id = ?", otherPins.BoardExitDelay, board.VaultID); err == nil {
+				t.Fatal("schema accepted other network's delay")
+			}
+			if err := ledger.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if reopened, err := OpenLedgerForNetwork(path, nil, other); err == nil {
+				reopened.Close()
+				t.Fatal("opened other network's ledger")
+			}
+			reopened, err := OpenLedgerForNetwork(path, nil, network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			if err := reopened.SetIntegrityKey(testIntegrityKey()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reopened.GetVaultBoardEnrollment(board.VaultID); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if ledger, err := OpenLedgerForNetwork(filepath.Join(t.TempDir(), "invalid.sqlite"), nil, ""); err == nil {
+		ledger.Close()
+		t.Fatal("accepted empty network")
 	}
 }
