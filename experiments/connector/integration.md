@@ -34,18 +34,17 @@ signatures bind every input and output, preventing later substitution. This
 retains the accepted honest-independent-cosigner trust requirement and the
 chosen signing order.
 
-Implementation work must remove the enrolled payment-destination commitment
-from the candidate program and accept the recipient as a per-transfer value.
+The program accepts the recipient as a per-transfer value without an enrolled
+payment-destination commitment.
 Tests must accept a newly constructed, fully approved payment to an unrelated
 address while rejecting changes to that address or amount after signatures
 have been obtained. Connector substitution, missing hardware approval, reserve
 loss, invalid change, and fee violations remain rejection cases. Complete
 withdrawal omits the Savings change output and leaves no residual balance.
 
-This decision supersedes the earlier Spending-only target. The implemented
-fixture described below still pins the boarding destination; qualification of
-the revised policy remains pending. Changing the committed program requires
-new program keys and a separately versioned contract before funded enrollment.
+This decision supersedes the earlier Spending-only target. The implementation
+uses new program keys and a separately versioned contract. Funded enrollment
+remains disabled while service and device qualification continues.
 
 ## Implemented transaction boundary
 
@@ -54,8 +53,8 @@ program, and an immutable PSBT handoff. Production imports are prohibited by
 `architecture_test.go`. No profile, enrollment, signing endpoint, Contract Pack,
 wallet flow, or funded Savings tree selects this candidate.
 
-The candidate name is `savings-connector-candidate-v0`. It is an experimental
-program identity, not a released contract version. Both program-derived
+The candidate program is `savings-connector-v1`, with template
+`phone-connector-recovery-savings-v1`. These identifiers remain unreleased. Both program-derived
 cosigner keys commit the identical program; the normal tapscript requires the
 phone and those two keys. The builder checks the exact leaf and its Merkle
 proof against the independently pinned Savings script.
@@ -64,11 +63,11 @@ proof against the independently pinned Savings script.
 | --- | --- | ---: |
 | Input 0 | Savings | 10,000 sats |
 | Input 1 | Enrolled BIP86 connector | 1,000 sats |
-| Output 0 | Registered Spending boarding script | 8,000 sats |
-| Output 1 | Same Savings script | 760 sats |
-| Output 2 | Same connector script | 1,000 sats |
-| Output 3 | Existing P2A fee anchor | 240 sats |
-| Output 4 | Canonical Emulator packet | 0 sats |
+| Output 0 | User-selected Bitcoin recipient | 8,000 sats |
+| Output 1 | Same connector script | 1,000 sats |
+| Output 2 | Existing P2A fee anchor | 240 sats |
+| Output 3 | Canonical Emulator packet | 0 sats |
+| Output 4, optional | Same Savings script | 760 sats |
 | Miner fee | Input total minus output total | 1,000 sats |
 
 Savings pays both the miner fee and the anchor. In this example its debit is
@@ -77,9 +76,10 @@ must include the anchor in the total cost. The program caps the miner fee and
 feerate separately, commits the anchor's amount, and uses the exact final
 witness size when checking feerate.
 
-The first integration stage has exactly two inputs and five outputs and requires
-at least 330 sats of Savings change. Multiple Savings inputs and complete
-withdrawals need a separately tested output/count rule before wallet release.
+The current stage has exactly two inputs and four or five outputs. Complete
+withdrawal of the selected Savings input omits its change output. Partial
+withdrawal returns at least 330 sats of Savings change. Multiple Savings inputs
+remain additional integration work.
 Both input sequences signal replacement, while version 2 and locktime 0 are
 fixed. A replacement requires fresh signatures over the complete transaction.
 
@@ -146,9 +146,10 @@ hardware input has a valid signature.
 Hardware replacement changes the committed Savings policy. The phone cannot
 replace that identity in place. Existing vaults retain their current contracts;
 migration requires an intentionally authorized spend into a separately enrolled
-new contract. The full recovery family must be reconstructed and qualified for
-the new Savings output before funding it. The candidate fixture's single normal
-leaf is not a complete recoverable vault.
+new contract. The new Standard and Advanced recovery families are reconstructed in both
+repositories. Core tests fund their pending outputs directly to verify each
+claim delay; full authenticated recovery initiation and clawback remain release
+qualification work.
 
 ## Qualification and remaining work
 
@@ -159,7 +160,7 @@ transaction mutations. All signing keys are disposable fixture keys. The origin
 metadata uses illustrative derivations; actual hardware derivation and review
 remain untested.
 
-Bitcoin Core 28.1 rejects the fixture's 301-byte packet output under its default
+Bitcoin Core 28.1 rejects the fixture's 267-byte packet output under its default
 83-byte data-output policy. With only `-datacarriersize=100000` changed, the suite
 accepts and mines two successive complete connector transfers, verifies the
 reserve remains 1,000 sats, and rejects stale transactions. That explicit test
@@ -176,15 +177,12 @@ CONNECTOR_BITCOIND=/absolute/path/to/bitcoind \
 
 The remaining release work is:
 
-- implement the accepted arbitrary-recipient policy above, with positive tests
-  for external payments and complete withdrawals, and rejection of mutations
-  after approval;
 - qualify one hardware device with the complete packet, foreign Savings input,
   and all outputs, without disabling its safety checks;
 - qualify the public Emulator's multi-input request, packet, fee policy, and
   exact signature response using disposable funds;
-- define the complete new Savings/recovery family, versioned descriptor,
-  matching wallet vectors, Recovery Kit, and explicit enrollment migration;
+- connect the implemented family and enrollment commitment to the versioned
+  descriptor, Recovery Kit, enrollment service, and explicit migration flow;
 - implement the named authenticated runtime operation and wallet coordinator,
   including durable reconciliation, multiple deposits, complete withdrawal,
   conflicting reserve spends, and replacement;
@@ -199,3 +197,24 @@ Validation on 2026-09-05: `make check` passed module verification, build, vet,
 and the full repository suite with Core enabled. The complete connector suite
 also passed with `-race` and Core enabled. Pinned golangci-lint v2.13.1 reported
 zero issues; documentation style and whitespace checks passed.
+
+## RC implementation status
+
+The runtime and wallet now reconstruct identical Standard and Advanced families
+on mainnet and Mutinynet. Shared vectors cover the program, normal leaf and
+proof, addresses, reserve script, recovery scripts, and enrollment digest.
+`arkade-vault/connector-enrollment-v1` commits the complete reconstructed
+contract, immutable Spending policy, and the hardware fingerprint and BIP86
+origin path. Network-mismatched origins fail validation.
+
+The wallet transaction builder verifies that digest against its caller-supplied
+local enrollment pin, checks independently supplied parent contents, builds the
+packet and reserve return, verifies Savings signatures, and imports only the
+hardware signature into its retained transaction. Go-generated signed PSBTs
+produce byte-identical final transactions in the wallet, including full
+withdrawal and explicit fingerprint byte order.
+
+These functions are ready for coordinator integration; the existing enrollment
+and payment screens still select the old contract. Pending-operation storage,
+service authentication, named signing routes, and release advertisement remain
+the next implementation stage. No connector Contract Pack is published yet.

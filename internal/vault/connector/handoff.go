@@ -3,6 +3,7 @@ package connector
 import (
 	"bytes"
 	"fmt"
+	"math/bits"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/arkade-os/emulator/pkg/arkade"
@@ -18,7 +19,7 @@ import (
 // the enrolled connector script; a device must independently derive the key.
 type KeyOrigin struct {
 	InternalKey []byte
-	Fingerprint uint32
+	Fingerprint uint32 // Human-readable fingerprint interpreted as big-endian hex.
 	Path        []uint32
 }
 
@@ -29,6 +30,7 @@ type Request struct {
 	Parents                           Parents
 	Savings, Connector                wire.OutPoint
 	SavingsScript, Leaf, Control      []byte
+	DestinationScript                 []byte
 	Phone, GuardianBase, EmulatorBase *btcec.PublicKey
 	Origin                            KeyOrigin
 	AmountSats, FeeSats               int64
@@ -67,7 +69,6 @@ func Prepare(req Request) (*Draft, error) {
 	}
 	d := &Draft{rules: req.Rules, parents: Parents{}, leaf: bytes.Clone(req.Leaf), control: bytes.Clone(req.Control)}
 	d.rules.ConnectorScript = bytes.Clone(req.Rules.ConnectorScript)
-	d.rules.DestinationScript = bytes.Clone(req.Rules.DestinationScript)
 	for _, op := range []wire.OutPoint{req.Savings, req.Connector} {
 		if req.Parents.FetchPrevOutput(op) == nil {
 			return nil, fmt.Errorf("verified parent required")
@@ -106,13 +107,13 @@ func Prepare(req Request) (*Draft, error) {
 		return nil, fmt.Errorf("BIP86 origin path required")
 	}
 	// Check bounds before subtraction so hostile amounts cannot wrap.
-	if s.Value <= 0 || s.Value > 21_000_000*100_000_000 || req.AmountSats < 330 || req.AmountSats > s.Value ||
+	if s.Value <= 0 || s.Value > 21_000_000*100_000_000 || req.AmountSats < 294 || req.AmountSats > s.Value ||
 		req.FeeSats < 0 || req.FeeSats > d.rules.AbsoluteFeeCapSats {
 		return nil, fmt.Errorf("invalid Savings amount or fee")
 	}
 	change := s.Value - req.AmountSats - req.FeeSats - savings.P2AValueSats
-	if change < 330 {
-		return nil, fmt.Errorf("candidate requires non-dust Savings change")
+	if change < 0 || (change > 0 && change < 330) {
+		return nil, fmt.Errorf("Savings change must be absent or non-dust")
 	}
 	policy, err := BuildProgram(d.rules)
 	if err != nil {
@@ -157,11 +158,13 @@ func Prepare(req Request) (*Draft, error) {
 		in.Sequence = savings.TransitionSequence
 		tx.AddTxIn(in)
 	}
-	tx.AddTxOut(wire.NewTxOut(req.AmountSats, bytes.Clone(d.rules.DestinationScript)))
-	tx.AddTxOut(wire.NewTxOut(change, bytes.Clone(s.PkScript)))
+	tx.AddTxOut(wire.NewTxOut(req.AmountSats, bytes.Clone(req.DestinationScript)))
 	tx.AddTxOut(wire.NewTxOut(ReserveSats, bytes.Clone(c.PkScript)))
 	tx.AddTxOut(wire.NewTxOut(savings.P2AValueSats, []byte{0x51, 0x02, 0x4e, 0x73}))
 	tx.AddTxOut(wire.NewTxOut(0, packetOutput))
+	if change > 0 {
+		tx.AddTxOut(wire.NewTxOut(change, bytes.Clone(s.PkScript)))
+	}
 	if err := Validate(d.rules, tx, d.parents); err != nil {
 		return nil, err
 	}
@@ -181,7 +184,7 @@ func Prepare(req Request) (*Draft, error) {
 	d.packet.Inputs[0].TaprootLeafScript = []*psbt.TaprootTapLeafScript{{ControlBlock: bytes.Clone(d.control), Script: bytes.Clone(d.leaf), LeafVersion: txscript.BaseLeafVersion}}
 	d.packet.Inputs[0].TaprootInternalKey = schnorr.SerializePubKey(control.InternalKey)
 	d.packet.Inputs[1].TaprootInternalKey = bytes.Clone(req.Origin.InternalKey)
-	origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: bytes.Clone(req.Origin.InternalKey), MasterKeyFingerprint: req.Origin.Fingerprint, Bip32Path: append([]uint32(nil), path...)}
+	origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: bytes.Clone(req.Origin.InternalKey), MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
 	d.packet.Inputs[1].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
 	d.packet.Outputs[ConnectorOutput].TaprootInternalKey = bytes.Clone(req.Origin.InternalKey)
 	d.packet.Outputs[ConnectorOutput].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
@@ -249,7 +252,7 @@ func verifyInput(tx *wire.MsgTx, parents Parents, index int) error {
 // Both signatures and the transaction remain reusable for exact retransmission;
 // confirmation/unspentness must be reconciled before choosing another outpoint.
 func (h *HardwareRequest) Accept(response *psbt.Packet) (*wire.MsgTx, error) {
-	if response == nil || response.UnsignedTx == nil || len(response.Inputs) != 2 || len(response.Outputs) != 5 {
+	if response == nil || response.UnsignedTx == nil || len(response.Inputs) != 2 || len(response.Outputs) != len(h.packet.Outputs) {
 		return nil, fmt.Errorf("hardware response shape")
 	}
 	var want, got bytes.Buffer

@@ -23,7 +23,7 @@ func protocolFixture(t *testing.T) (*fixture, candidate.Rules) {
 func protocolFixtureWithRules(t *testing.T, configure func(*candidate.Rules)) (*fixture, candidate.Rules) {
 	t.Helper()
 	f := newFixture(t)
-	r := candidate.Rules{ConnectorScript: f.connector, DestinationScript: f.destination,
+	r := candidate.Rules{ConnectorScript: f.connector,
 		WitnessBytes: candidate.WitnessBytes(f.leaf.Script, f.control), AbsoluteFeeCapSats: 5000, FeerateCapSatPerV: 10}
 	if configure != nil {
 		configure(&r)
@@ -47,7 +47,7 @@ func TestConnectorPreparationRejectsUnpinnedData(t *testing.T) {
 	}{
 		{"unknown_parent", func(r *candidate.Request) { r.Savings.Hash[0] ^= 1 }},
 		{"duplicate_input", func(r *candidate.Request) { r.Connector = r.Savings }},
-		{"wrong_savings", func(r *candidate.Request) { r.SavingsScript = r.Rules.DestinationScript }},
+		{"wrong_savings", func(r *candidate.Request) { r.SavingsScript = r.DestinationScript }},
 		{"wrong_connector", func(r *candidate.Request) { r.Connector.Index = 2 }},
 		{"wrong_origin", func(r *candidate.Request) { r.Origin.InternalKey = schnorr.SerializePubKey(key(40).PubKey()) }},
 		{"origin_path", func(r *candidate.Request) { r.Origin.Path[0] = 0x80000054 }},
@@ -111,7 +111,7 @@ func TestConnectorForeignInputAndSnapshot(t *testing.T) {
 	h = must(t, h, err)
 	response := hardwareResponse(t, f, h)
 	// Change caller-owned data after preparation. None may affect the snapshot.
-	req.Rules.DestinationScript[2] ^= 1
+	req.DestinationScript[2] ^= 1
 	req.Parents[req.Savings].TxOut[0].Value++
 	req.Leaf[0] ^= 1
 	req.Control[0] ^= 1
@@ -157,11 +157,11 @@ func TestConnectorFeeLimits(t *testing.T) {
 			if mode == "feerate" {
 				limit = (int64(p.UnsignedTx.SerializeSizeStripped()*4) + r.WitnessBytes + 3) / 4 * r.FeerateCapSatPerV
 			}
-			p.UnsignedTx.TxOut[1].Value = 100000 - 8000 - 240 - limit
+			p.UnsignedTx.TxOut[4].Value = 100000 - 8000 - 240 - limit
 			if err := executePacket(p, f, f.emulator.PubKey()); err != nil {
 				t.Fatal("rejected fee at boundary", err)
 			}
-			p.UnsignedTx.TxOut[1].Value--
+			p.UnsignedTx.TxOut[4].Value--
 			if err := candidate.Validate(r, p.UnsignedTx, candidate.Parents(f.prevouts())); err == nil {
 				t.Fatal("accepted fee over limit")
 			}
@@ -190,7 +190,7 @@ func TestConnectorProtocolCore(t *testing.T) {
 			if len(result) != 1 || result[0].Allowed || result[0].RejectReason != "scriptpubkey" {
 				t.Fatalf("expected data-output policy rejection: %+v", result)
 			}
-			t.Logf("packet %d bytes exceeds Core pre-30 default data limit; signatures verified separately", len(final.TxOut[4].PkScript))
+			t.Logf("packet %d bytes exceeds Core pre-30 default data limit; signatures verified separately", len(final.TxOut[3].PkScript))
 		} else {
 			c.accepted(t, final, true)
 			c.mine(t, final)
@@ -222,22 +222,22 @@ func TestConnectorProtocolCore(t *testing.T) {
 			successor := rpc[*struct {
 				Value         float64
 				Confirmations int
-			}](t, c, "gettxout", final.TxHash().String(), 2)
+			}](t, c, "gettxout", final.TxHash().String(), 1)
 			if successor == nil || successor.Confirmations != 1 || successor.Value != 0.00001000 {
 				t.Fatal("connector successor missing or value changed")
 			}
 			c.accepted(t, final, false)
 			f.parent = final.Copy()
 			f.resetSpend()
-			f.tx.TxIn[0].PreviousOutPoint.Index = 1
-			f.tx.TxIn[1].PreviousOutPoint.Index = 2
+			f.tx.TxIn[0].PreviousOutPoint.Index = 4
+			f.tx.TxIn[1].PreviousOutPoint.Index = 1
 		}
 	})
 }
 
 func protocolRequest(f *fixture, r candidate.Rules) candidate.Request {
 	return candidate.Request{Rules: r, Parents: candidate.Parents(f.prevouts()), Savings: f.tx.TxIn[0].PreviousOutPoint, Connector: f.tx.TxIn[1].PreviousOutPoint,
-		SavingsScript: f.savingsScript, Leaf: f.leaf.Script, Control: f.control,
+		DestinationScript: f.destination, SavingsScript: f.savingsScript, Leaf: f.leaf.Script, Control: f.control,
 		Phone: f.phone.PubKey(), GuardianBase: f.guardian.PubKey(), EmulatorBase: f.emulator.PubKey(),
 		Origin:     candidate.KeyOrigin{InternalKey: schnorr.SerializePubKey(f.hardware.PubKey()), Fingerprint: 0x12345678, Path: []uint32{0x80000056, 0x80000000, 0x80000000, 0, 0}},
 		AmountSats: 8000, FeeSats: 1000}
@@ -305,13 +305,13 @@ func TestConnectorProtocolHandoff(t *testing.T) {
 	if int64(final.SerializeSize()-final.SerializeSizeStripped()) != r.WitnessBytes {
 		t.Fatal("fee weight differs from final witness size")
 	}
-	if final.TxOut[1].Value != 760 || final.TxOut[2].Value != 1000 || final.TxOut[3].Value != 240 {
+	if final.TxOut[4].Value != 760 || final.TxOut[1].Value != 1000 || final.TxOut[2].Value != 240 {
 		t.Fatal("reserve or Savings accounting")
 	}
 	if len(response.Inputs[0].FinalScriptWitness) == 0 || len(response.Inputs[0].TaprootLeafScript) != 0 {
 		t.Fatal("foreign input not finalized")
 	}
-	if len(response.Inputs[1].TaprootBip32Derivation) != 1 || len(response.Outputs[2].TaprootBip32Derivation) != 1 {
+	if len(response.Inputs[1].TaprootBip32Derivation) != 1 || len(response.Outputs[1].TaprootBip32Derivation) != 1 {
 		t.Fatal("connector origin metadata missing")
 	}
 	// A finalized PSBT response is accepted without requiring redundant metadata.
@@ -338,8 +338,8 @@ func TestConnectorProtocolRejectsMutations(t *testing.T) {
 	}{
 		{"destination", func(p *psbt.Packet) { p.UnsignedTx.TxOut[0].PkScript[4] ^= 1 }},
 		{"amount", func(p *psbt.Packet) { p.UnsignedTx.TxOut[0].Value-- }},
-		{"reserve", func(p *psbt.Packet) { p.UnsignedTx.TxOut[2].Value-- }},
-		{"packet", func(p *psbt.Packet) { p.UnsignedTx.TxOut[4].PkScript[5] ^= 1 }},
+		{"reserve", func(p *psbt.Packet) { p.UnsignedTx.TxOut[1].Value-- }},
+		{"packet", func(p *psbt.Packet) { p.UnsignedTx.TxOut[3].PkScript[5] ^= 1 }},
 		{"prevout_amount", func(p *psbt.Packet) { p.Inputs[0].WitnessUtxo.Value++ }},
 		{"parent", func(p *psbt.Packet) { p.Inputs[1].NonWitnessUtxo.TxOut[1].Value++ }},
 		{"metadata_sighash", func(p *psbt.Packet) { p.Inputs[1].SighashType = txscript.SigHashAll }},
@@ -375,14 +375,14 @@ func TestConnectorProgramChecksBeforeHardware(t *testing.T) {
 		mutate func(*wire.MsgTx)
 	}{
 		{"substitute_connector", func(tx *wire.MsgTx) { tx.TxIn[1].PreviousOutPoint.Index = 2 }},
-		{"savings_change", func(tx *wire.MsgTx) { tx.TxOut[1].PkScript = tx.TxOut[0].PkScript }},
-		{"steal_reserve", func(tx *wire.MsgTx) { tx.TxOut[2].PkScript = tx.TxOut[0].PkScript }},
-		{"reduce_reserve", func(tx *wire.MsgTx) { tx.TxOut[2].Value-- }},
-		{"anchor_value", func(tx *wire.MsgTx) { tx.TxOut[3].Value-- }},
-		{"anchor_script", func(tx *wire.MsgTx) { tx.TxOut[3].PkScript[3] ^= 1 }},
-		{"funded_packet", func(tx *wire.MsgTx) { tx.TxOut[4].Value++ }},
-		{"packet_content", func(tx *wire.MsgTx) { tx.TxOut[4].PkScript[20] ^= 1 }},
-		{"missing_change", func(tx *wire.MsgTx) { tx.TxOut[1].Value = 0 }},
+		{"savings_change", func(tx *wire.MsgTx) { tx.TxOut[4].PkScript = tx.TxOut[0].PkScript }},
+		{"steal_reserve", func(tx *wire.MsgTx) { tx.TxOut[1].PkScript = tx.TxOut[0].PkScript }},
+		{"reduce_reserve", func(tx *wire.MsgTx) { tx.TxOut[1].Value-- }},
+		{"anchor_value", func(tx *wire.MsgTx) { tx.TxOut[2].Value-- }},
+		{"anchor_script", func(tx *wire.MsgTx) { tx.TxOut[2].PkScript[3] ^= 1 }},
+		{"funded_packet", func(tx *wire.MsgTx) { tx.TxOut[3].Value++ }},
+		{"packet_content", func(tx *wire.MsgTx) { tx.TxOut[3].PkScript[20] ^= 1 }},
+		{"missing_change", func(tx *wire.MsgTx) { tx.TxOut[4].Value = 0 }},
 		{"negative_fee", func(tx *wire.MsgTx) { tx.TxOut[0].Value += 1001 }},
 		{"sequence", func(tx *wire.MsgTx) { tx.TxIn[0].Sequence-- }},
 		{"locktime", func(tx *wire.MsgTx) { tx.LockTime = 1 }},

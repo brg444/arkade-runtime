@@ -322,6 +322,11 @@ func existingFixtureFor(t *testing.T, selected, network string) *fixture {
 func pendingFixture(t *testing.T, role string) (*fixture, uint32) {
 	t.Helper()
 	f := existingFixture(t, "admin")
+	return pendingFamilyFixture(t, f, role, "connector-fixture", savings.Template)
+}
+
+func pendingFamilyFixture(t *testing.T, f *fixture, role, vaultID, template string) (*fixture, uint32) {
+	t.Helper()
 	keys := map[string]*btcec.PrivateKey{"phone": f.phone, "hardware": f.hardware, "recovery": key(5)}
 	delay := map[string]uint32{"phone": program.PhoneRecoveryCSVBlocks, "hardware": program.HardwareRecoveryCSVBlocks, "recovery": program.RecoveryCSVBlocks}[role]
 	claim := &arkscript.CSVMultisigClosure{MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{keys[role].PubKey()}},
@@ -330,7 +335,11 @@ func pendingFixture(t *testing.T, role string) (*fixture, uint32) {
 	scripts := [][]byte{must(t, s, err)}
 	pair := f.family.PendingTweaks[savings.FamilyKey(role)]
 	var remaining []*btcec.PublicKey
-	for _, guardian := range []string{"phone", "hardware", "recovery"} {
+	roles := []string{"phone", "hardware"}
+	if _, ok := f.family.Pending["savings-recovery"]; ok {
+		roles = append(roles, "recovery")
+	}
+	for _, guardian := range roles {
 		if guardian == role {
 			continue
 		}
@@ -341,7 +350,7 @@ func pendingFixture(t *testing.T, role string) (*fixture, uint32) {
 	}
 	free, err := savings.Checksig(remaining...)
 	scripts = append(scripts, must(t, free, err), []byte{txscript.OP_RETURN})
-	internal, err := savings.ContextInternalKey("connector-fixture", "savings", role)
+	internal, err := savings.ContextInternalKeyTemplate(vaultID, "savings", role, template)
 	f.setTree(t, must(t, internal, err), scripts, 0)
 	if !bytes.Equal(f.savingsScript, f.family.Pending[savings.FamilyKey(role)].PkScript) {
 		t.Fatal("pending fixture differs from production")

@@ -16,22 +16,22 @@ import (
 )
 
 const (
-	Name                      = "savings-connector-candidate-v0"
+	Name                      = "savings-connector-v1"
 	ReserveSats         int64 = 1000
 	SavingsInput              = 0
 	ConnectorInput            = 1
 	DestinationOutput         = 0
-	SavingsChangeOutput       = 1
-	ConnectorOutput           = 2
-	AnchorOutput              = 3
-	PacketOutput              = 4
+	SavingsChangeOutput       = 4
+	ConnectorOutput           = 1
+	AnchorOutput              = 2
+	PacketOutput              = 3
 )
 
 // Rules are reconstructed from an independently pinned enrollment, never from
 // the signer response. WitnessBytes includes marker/flag and both witnesses.
-// This stage supports one Savings input and requires non-dust Savings change.
+// This stage supports one Savings input and optional non-dust Savings change.
 type Rules struct {
-	ConnectorScript, DestinationScript                  []byte
+	ConnectorScript                                     []byte
 	WitnessBytes, AbsoluteFeeCapSats, FeerateCapSatPerV int64
 }
 
@@ -44,8 +44,8 @@ func validP2TR(script []byte) bool {
 }
 
 func (r Rules) validate() error {
-	if !validP2TR(r.ConnectorScript) || !validP2TR(r.DestinationScript) || bytes.Equal(r.ConnectorScript, r.DestinationScript) {
-		return fmt.Errorf("distinct connector and boarding Taproot scripts required")
+	if !validP2TR(r.ConnectorScript) {
+		return fmt.Errorf("connector Taproot script required")
 	}
 	if r.WitnessBytes < 1 || r.WitnessBytes > 10000 {
 		return fmt.Errorf("invalid committed witness size")
@@ -57,7 +57,7 @@ func (r Rules) validate() error {
 	return nil
 }
 
-// BuildProgram commits the connector identity, reserve, boarding destination,
+// BuildProgram commits the connector identity, reserve,
 // protected change, packet envelope, and both fee limits in both cosigner keys.
 // Bitcoin enforces the resulting signatures, not these introspection opcodes.
 func BuildProgram(r Rules) ([]byte, error) {
@@ -108,7 +108,8 @@ func assemble(r Rules, prefix []byte) ([]byte, error) {
 	equal(arkade.OP_INSPECTVERSION, 2)
 	equal(arkade.OP_INSPECTLOCKTIME, 0)
 	equal(arkade.OP_INSPECTNUMINPUTS, 2)
-	equal(arkade.OP_INSPECTNUMOUTPUTS, 5)
+	b.AddOp(arkade.OP_INSPECTNUMOUTPUTS).AddOp(txscript.OP_DUP).AddInt64(4).AddOp(txscript.OP_EQUAL).
+		AddOp(txscript.OP_SWAP).AddInt64(5).AddOp(txscript.OP_EQUAL).AddOp(txscript.OP_BOOLOR).AddOp(txscript.OP_VERIFY)
 	for i := int64(0); i < 2; i++ {
 		b.AddInt64(i)
 		equal(arkade.OP_INSPECTINPUTSEQUENCE, savings.TransitionSequence)
@@ -118,12 +119,14 @@ func assemble(r Rules, prefix []byte) ([]byte, error) {
 			AddData(script[2:]).AddOp(txscript.OP_EQUALVERIFY)
 	}
 	checkScript(arkade.OP_INSPECTINPUTSCRIPTPUBKEY, ConnectorInput, r.ConnectorScript)
-	checkScript(arkade.OP_INSPECTOUTPUTSCRIPTPUBKEY, DestinationOutput, r.DestinationScript)
 	checkScript(arkade.OP_INSPECTOUTPUTSCRIPTPUBKEY, ConnectorOutput, r.ConnectorScript)
 	checkScript(arkade.OP_INSPECTOUTPUTSCRIPTPUBKEY, AnchorOutput, []byte{0x51, 0x02, 0x4e, 0x73})
+	b.AddOp(arkade.OP_INSPECTNUMOUTPUTS).AddInt64(5).AddOp(txscript.OP_EQUAL).AddOp(txscript.OP_IF)
 	b.AddInt64(SavingsInput).AddOp(arkade.OP_INSPECTINPUTSCRIPTPUBKEY).AddOp(txscript.OP_TOALTSTACK).
 		AddInt64(SavingsChangeOutput).AddOp(arkade.OP_INSPECTOUTPUTSCRIPTPUBKEY).AddOp(txscript.OP_FROMALTSTACK).
-		AddOp(txscript.OP_EQUALVERIFY).AddOp(txscript.OP_EQUALVERIFY)
+		AddOp(txscript.OP_EQUALVERIFY).AddOp(txscript.OP_EQUALVERIFY).
+		AddInt64(SavingsChangeOutput).AddOp(arkade.OP_INSPECTOUTPUTVALUE).AddInt64(program.DustSats).
+		AddOp(txscript.OP_GREATERTHANOREQUAL).AddOp(txscript.OP_VERIFY).AddOp(txscript.OP_ENDIF)
 	b.AddInt64(ConnectorInput)
 	equal(arkade.OP_INSPECTINPUTVALUE, ReserveSats)
 	b.AddInt64(ConnectorOutput)
@@ -132,19 +135,19 @@ func assemble(r Rules, prefix []byte) ([]byte, error) {
 	equal(arkade.OP_INSPECTOUTPUTVALUE, savings.P2AValueSats)
 	b.AddInt64(PacketOutput)
 	equal(arkade.OP_INSPECTOUTPUTVALUE, 0)
-	for _, i := range []int64{DestinationOutput, SavingsChangeOutput} {
-		b.AddInt64(i).AddOp(arkade.OP_INSPECTOUTPUTVALUE).AddInt64(program.DustSats).
-			AddOp(txscript.OP_GREATERTHANOREQUAL).AddOp(txscript.OP_VERIFY)
-	}
+	b.AddInt64(DestinationOutput).AddOp(arkade.OP_INSPECTOUTPUTVALUE).AddInt64(294).
+		AddOp(txscript.OP_GREATERTHANOREQUAL).AddOp(txscript.OP_VERIFY)
 	b.AddInt64(int64(arkade.PacketType)).AddOp(arkade.OP_INSPECTPACKET).AddOp(txscript.OP_VERIFY).
 		AddData(prefix).AddOp(txscript.OP_SWAP).AddOp(arkade.OP_CAT).AddOp(txscript.OP_SHA256).
 		AddInt64(PacketOutput).AddOp(arkade.OP_INSPECTOUTPUTSCRIPTPUBKEY).AddInt64(-1).
 		AddOp(txscript.OP_EQUALVERIFY).AddOp(txscript.OP_EQUALVERIFY)
 	// The reserve cancels out. Savings funds the miner fee and 240-sat anchor.
 	b.AddInt64(SavingsInput).AddOp(arkade.OP_INSPECTINPUTVALUE)
-	for _, i := range []int64{DestinationOutput, SavingsChangeOutput, AnchorOutput} {
+	for _, i := range []int64{DestinationOutput, AnchorOutput} {
 		b.AddInt64(i).AddOp(arkade.OP_INSPECTOUTPUTVALUE).AddOp(txscript.OP_SUB)
 	}
+	b.AddOp(arkade.OP_INSPECTNUMOUTPUTS).AddInt64(5).AddOp(txscript.OP_EQUAL).AddOp(txscript.OP_IF).
+		AddInt64(SavingsChangeOutput).AddOp(arkade.OP_INSPECTOUTPUTVALUE).AddOp(txscript.OP_SUB).AddOp(txscript.OP_ENDIF)
 	b.AddOp(txscript.OP_DUP).AddInt64(0).AddOp(txscript.OP_GREATERTHANOREQUAL).AddOp(txscript.OP_VERIFY).
 		AddOp(txscript.OP_DUP).AddInt64(r.AbsoluteFeeCapSats).AddOp(txscript.OP_LESSTHANOREQUAL).AddOp(txscript.OP_VERIFY).
 		AddOp(arkade.OP_TXWEIGHT).AddInt64(r.WitnessBytes).AddOp(txscript.OP_ADD).
@@ -178,7 +181,7 @@ func (p Parents) FetchVtxoPrevOutPkScript(op wire.OutPoint) []byte {
 }
 
 func Validate(r Rules, tx *wire.MsgTx, parents Parents) error {
-	if tx == nil || len(tx.TxIn) != 2 || len(tx.TxOut) != 5 {
+	if tx == nil || len(tx.TxIn) != 2 || (len(tx.TxOut) != 4 && len(tx.TxOut) != 5) {
 		return fmt.Errorf("connector transaction shape")
 	}
 	if tx.TxIn[0] == nil || tx.TxIn[1] == nil || tx.TxIn[0].PreviousOutPoint == tx.TxIn[1].PreviousOutPoint {
@@ -201,6 +204,10 @@ func Validate(r Rules, tx *wire.MsgTx, parents Parents) error {
 		}
 		total -= out.Value
 	}
+	dust, err := RecipientDust(tx.TxOut[DestinationOutput].PkScript)
+	if err != nil || tx.TxOut[DestinationOutput].Value < dust {
+		return fmt.Errorf("invalid or dust recipient")
+	}
 	script, err := BuildProgram(r)
 	if err != nil {
 		return err
@@ -213,7 +220,7 @@ func Validate(r Rules, tx *wire.MsgTx, parents Parents) error {
 		return fmt.Errorf("unexpected connector packet")
 	}
 	s := parents.FetchPrevOutput(tx.TxIn[SavingsInput].PreviousOutPoint).PkScript
-	if !validP2TR(s) || bytes.Equal(s, r.ConnectorScript) || bytes.Equal(s, r.DestinationScript) {
+	if !validP2TR(s) || bytes.Equal(s, r.ConnectorScript) {
 		return fmt.Errorf("distinct Savings script required")
 	}
 	engine, err := arkade.NewEngine(script, tx, SavingsInput, nil, txscript.NewTxSigHashes(tx, parents), parents.FetchPrevOutput(tx.TxIn[0].PreviousOutPoint).Value, parents)
@@ -221,4 +228,22 @@ func Validate(r Rules, tx *wire.MsgTx, parents Parents) error {
 		return err
 	}
 	return engine.Execute()
+}
+
+// RecipientDust permits the ordinary address formats supported by Bitcoin
+// wallets. The program's 294-sat floor is the smallest standard threshold;
+// semantic validation applies the exact script-specific threshold here.
+func RecipientDust(script []byte) (int64, error) {
+	switch txscript.GetScriptClass(script) {
+	case txscript.PubKeyHashTy:
+		return 546, nil
+	case txscript.ScriptHashTy:
+		return 540, nil
+	case txscript.WitnessV0PubKeyHashTy:
+		return 294, nil
+	case txscript.WitnessV0ScriptHashTy, txscript.WitnessV1TaprootTy:
+		return 330, nil
+	default:
+		return 0, fmt.Errorf("unsupported Bitcoin payment script")
+	}
 }
