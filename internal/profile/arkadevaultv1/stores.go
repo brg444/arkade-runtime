@@ -15,6 +15,7 @@ type IdentityStore interface {
 	RequireIntegrityKey([]byte) error
 	SchemaVersion() (int, error)
 	GetInvite([]byte) (*policy.Invite, error)
+	IssueEnrollmentSession([]byte, time.Time) (time.Time, error)
 	ReservePendingEnrollment(policy.PendingEnrollment) (*policy.PendingEnrollment, error)
 	GetPendingByHandle(string) (*policy.PendingEnrollment, error)
 	CreateVault(policy.CreateVaultInput) error

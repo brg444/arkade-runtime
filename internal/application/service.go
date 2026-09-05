@@ -31,8 +31,9 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
-	Stores     arkadevaultv1.Stores
-	Deployment deployment.Config
+	Stores         arkadevaultv1.Stores
+	Deployment     deployment.Config
+	OpenEnrollment bool // admission only; existing sessions retain their expiry
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
 	// scalar with a domain-separated KDF.
@@ -75,6 +76,7 @@ type Service struct {
 type Deps struct {
 	Stores                arkadevaultv1.Stores
 	Deployment            deployment.Config
+	OpenEnrollment        bool
 	IntegrityKey          []byte
 	Keys                  KeyCapabilities
 	VaultCosignerPub      *btcec.PublicKey
@@ -90,6 +92,7 @@ func New(d Deps) *Service {
 	s := &Service{
 		Stores:                 d.Stores,
 		Deployment:             d.Deployment,
+		OpenEnrollment:         d.OpenEnrollment,
 		CredentialIntegrityKey: d.IntegrityKey,
 		VaultCosignerPub:       d.VaultCosignerPub,
 		ArkadeCosignerPub:      d.ArkadeCosignerPub,

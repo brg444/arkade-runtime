@@ -173,6 +173,7 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/health":                        {http.MethodGet: {}},
 	"/ready":                         {http.MethodGet: {}},
 	"/v1/status":                     {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/enroll/session":             {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/invite":                     {http.MethodGet: {}, http.MethodOptions: {}},
 	"/v1/enroll/start":               {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/enroll/propose":             {http.MethodPost: {}, http.MethodOptions: {}},

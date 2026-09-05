@@ -4,6 +4,7 @@
     "/ready": ["GET"],
     "/v1/status": ["GET", "OPTIONS"],
     "/v1/invite": ["GET", "OPTIONS"],
+    "/v1/enroll/session": ["OPTIONS", "POST"],
     "/v1/enroll/start": ["OPTIONS", "POST"],
     "/v1/enroll/propose": ["OPTIONS", "POST"],
     "/v1/enroll/finish": ["OPTIONS", "POST"],
@@ -55,6 +56,7 @@
       "vtxoBoardingExitDelayUnit:string"
     ],
     "InviteView": ["canEnroll:boolean", "vaultId:string|null"],
+    "EnrollmentSession": ["token:string", "expiresAt:string"],
     "EnrollStartRequest": ["protectionTier:string", "spendingPolicy:object", "spendingPolicyDigest:string"],
     "EnrollStartResponse": [
       "handle:string", "vaultId:string", "challenge:string", "rpId:string", "rpName:string",
