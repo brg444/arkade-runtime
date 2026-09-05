@@ -44,8 +44,9 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/authorizer":  true,
 	}
 	nonProductionPackages := map[string]bool{
-		modulePath:              true,
-		modulePath + "/fixture": true,
+		modulePath:                            true,
+		modulePath + "/fixture":               true,
+		modulePath + "/experiments/connector": true,
 	}
 
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
@@ -54,12 +55,17 @@ func TestInternalImportBoundaries(t *testing.T) {
 		var pkg struct {
 			ImportPath string
 			Imports    []string
+			GoFiles    []string
+			CgoFiles   []string
 		}
 		if err := decoder.Decode(&pkg); err != nil {
 			t.Fatalf("decode go list: %v", err)
 		}
 		if !strings.HasPrefix(pkg.ImportPath, modulePath) {
 			continue
+		}
+		if pkg.ImportPath == modulePath+"/experiments/connector" && len(pkg.GoFiles)+len(pkg.CgoFiles) != 0 {
+			t.Error("connector experiment must contain test files only")
 		}
 		want, tracked := allowed[pkg.ImportPath]
 		if !tracked && !compositionRoots[pkg.ImportPath] && !nonProductionPackages[pkg.ImportPath] {
