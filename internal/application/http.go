@@ -170,6 +170,11 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 }
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
+	"/v1/light/renew/prepare":        {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/register":       {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/final":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/status":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/release":        {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/light/enroll/start":         {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/light/enroll/propose":       {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/light/enroll/finish":        {http.MethodPost: {}, http.MethodOptions: {}},
@@ -230,6 +235,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	})
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachLightEnrollmentRoutes(mux, svc, origin)
+	attachLightRenewalRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
 	attachVaultBoardRoutes(mux, svc, origin)

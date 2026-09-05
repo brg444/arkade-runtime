@@ -14,12 +14,12 @@ const ProfileID = light.Profile
 
 func Definition() arkaderuntime.ProfileDefinition {
 	var routes []arkaderuntime.Route
-	for _, path := range []string{"/v1/light/enroll/start", "/v1/light/enroll/propose", "/v1/light/enroll/finish"} {
+	for _, path := range []string{"/v1/light/enroll/start", "/v1/light/enroll/propose", "/v1/light/enroll/finish", "/v1/light/renew/prepare", "/v1/light/renew/register", "/v1/light/renew/final", "/v1/light/renew/status", "/v1/light/renew/release"} {
 		routes = append(routes, arkaderuntime.Route{Method: http.MethodPost, Path: path}, arkaderuntime.Route{Method: http.MethodOptions, Path: path})
 	}
 	return arkaderuntime.ProfileDefinition{ID: ProfileID, Modules: []arkaderuntime.ModuleDefinition{{
 		ID: ProfileID, Programs: []string{light.Program}, Policies: []string{light.PolicySchema},
-		Stores:    []string{"light-identity-store", "light-allowance-store", "light-vtxo-operation-store"},
-		KeyScopes: []string{"light-vtxo-transaction-authorization", "light-vtxo-checkpoint-authorization"},
+		Stores:    []string{"light-identity-store", "light-allowance-store", "light-vtxo-operation-store", "light-renewal-store"},
+		KeyScopes: []string{"light-vtxo-transaction-authorization", "light-vtxo-checkpoint-authorization", "light-renewal-authorization"},
 	}}, Routes: routes}
 }

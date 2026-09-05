@@ -83,6 +83,10 @@ func (s *Service) publishStoredLightEnrollment(c *policy.Credential) error {
 }
 
 func (s *Service) buildLightPolicyTree(d light.Descriptor) (*vtxoPolicyTree, error) {
+	return buildLightPolicyTree(d, s.operatorSignerPub(), s.vtxoAddrHRP())
+}
+
+func buildLightPolicyTree(d light.Descriptor, operatorPub []byte, hrp string) (*vtxoPolicyTree, error) {
 	if err := light.ValidateDescriptor(d); err != nil {
 		return nil, err
 	}
@@ -94,7 +98,7 @@ func (s *Service) buildLightPolicyTree(d light.Descriptor) (*vtxoPolicyTree, err
 	if err != nil {
 		return nil, err
 	}
-	operator, err := btcec.ParsePubKey(s.operatorSignerPub())
+	operator, err := btcec.ParsePubKey(operatorPub)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +110,7 @@ func (s *Service) buildLightPolicyTree(d light.Descriptor) (*vtxoPolicyTree, err
 	if err != nil {
 		return nil, err
 	}
-	address := &arklib.Address{Version: 0, HRP: s.vtxoAddrHRP(), Signer: operator, VtxoTapKey: tap}
+	address := &arklib.Address{Version: 0, HRP: hrp, Signer: operator, VtxoTapKey: tap}
 	encodedAddress, err := address.EncodeV0()
 	if err != nil {
 		return nil, err

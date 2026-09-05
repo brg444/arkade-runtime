@@ -69,6 +69,7 @@ type Service struct {
 	SessionNow                 func() time.Time
 	afterLoadPending           func()
 	vaultBoardRuntime          *vaultBoardRuntime
+	lightRenewalOperatorDial   func(context.Context) (lightRenewalOperator, error)
 	resolverReadyMu            sync.Mutex
 	resolverReadyAt            time.Time
 	resolverReadyErr           error

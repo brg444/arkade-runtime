@@ -41,7 +41,7 @@ func newLightEnrollmentFixture(t *testing.T, open bool) lightEnrolledFixture {
 	svc := enrollService(t, ledger)
 	svc.LightEnabled = true
 	svc.OpenEnrollment = open
-	svc.ArkResolver = stubArkResolver{signer: mustDecode(t, "02301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a")}
+	svc.ArkResolver = stubArkResolver{signer: mustDecode(t, "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a")}
 	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x73}, 32))
 	if open {
 		session, e := svc.IssueEnrollmentSession()
