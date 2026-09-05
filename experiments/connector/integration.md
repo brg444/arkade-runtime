@@ -11,6 +11,42 @@ strict hardware-enforcement gate in the original staged proposal; the reproduced
 bypass remains a required test. Existing recovery-initiation dependence is
 documented in [the feasibility report](README.md).
 
+## Accepted destination policy, 2026-09-05
+
+The collaborative connector path permits a hardware-approved Savings withdrawal
+to any user-chosen Bitcoin payment address. The enrolled program requires the
+hardware connector input and return of its full reserve to the enrolled script.
+It does not restrict the payment recipient to the registered Spending boarding
+address. Savings-to-Spending remains one use of this path.
+
+The user chooses the payment amount within the available Savings balance and
+the transaction's dust and fee constraints. Spending per-payment and rolling
+limits apply only to their existing Spending operations. Existing Spending and
+recovery contracts retain their separate rules.
+Savings change, when present, returns to the enrolled Savings script; the
+reserve return and required protocol outputs remain constrained.
+
+Both cosigners validate the connector and transaction rules before signing the
+Savings input. The hardware reviews the complete transaction, including every
+payment output, change, and total cost, then supplies the final connector
+signature. The user verifies the intended recipient on the device. DEFAULT
+signatures bind every input and output, preventing later substitution. This
+retains the accepted honest-independent-cosigner trust requirement and the
+chosen signing order.
+
+Implementation work must remove the enrolled payment-destination commitment
+from the candidate program and accept the recipient as a per-transfer value.
+Tests must accept a newly constructed, fully approved payment to an unrelated
+address while rejecting changes to that address or amount after signatures
+have been obtained. Connector substitution, missing hardware approval, reserve
+loss, invalid change, and fee violations remain rejection cases. Complete
+withdrawal omits the Savings change output and leaves no residual balance.
+
+This decision supersedes the earlier Spending-only target. The implemented
+fixture described below still pins the boarding destination; qualification of
+the revised policy remains pending. Changing the committed program requires
+new program keys and a separately versioned contract before funded enrollment.
+
 ## Implemented transaction boundary
 
 `internal/vault/connector` contains a transaction builder, the named candidate
@@ -69,9 +105,10 @@ still requires that hardware key to authorize its later consumption.
    the hardware PSBT. This supplies a verifiable external input to devices that
    require one. It does not establish support on any particular device.
 5. The hardware reviews the full transaction and signs its connector input with
-   DEFAULT sighash. Its approval must display the registered boarding address
-   accurately enough for the user to compare with an independently verified
-   address. Amount and total cost review remain device qualification gates.
+   DEFAULT sighash. Its approval must display the chosen payment address
+   accurately enough for the user to compare with the intended recipient.
+   Amount, every additional output, and total cost review remain device
+   qualification gates.
 6. Import only the verified hardware signature into the retained transaction.
    Reject transaction mutations, conflicting prevout claims, non-DEFAULT
    signatures, script-path connector witnesses, and annexes. Retain the locally
@@ -139,6 +176,9 @@ CONNECTOR_BITCOIND=/absolute/path/to/bitcoind \
 
 The remaining release work is:
 
+- implement the accepted arbitrary-recipient policy above, with positive tests
+  for external payments and complete withdrawals, and rejection of mutations
+  after approval;
 - qualify one hardware device with the complete packet, foreign Savings input,
   and all outputs, without disabling its safety checks;
 - qualify the public Emulator's multi-input request, packet, fee policy, and
