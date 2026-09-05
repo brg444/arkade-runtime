@@ -30,6 +30,7 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/webauthn":      {},
 		modulePath + "/internal/vault":         {},
 		modulePath + "/internal/vault/savings": {modulePath + "/internal/program": true},
+		modulePath + "/internal/vault/light":   {modulePath + "/internal/program": true},
 		modulePath + "/internal/policy":        {modulePath + "/internal/program": true},
 		modulePath + "/internal/iface/http":    {modulePath + "/internal/application": true},
 		modulePath + "/internal/profile/arkadevaultv1": {
