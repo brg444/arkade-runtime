@@ -5,6 +5,9 @@
     "/v1/status": ["GET", "OPTIONS"],
     "/v1/invite": ["GET", "OPTIONS"],
     "/v1/enroll/session": ["OPTIONS", "POST"],
+    "/v1/light/enroll/finish": ["OPTIONS", "POST"],
+    "/v1/light/enroll/propose": ["OPTIONS", "POST"],
+    "/v1/light/enroll/start": ["OPTIONS", "POST"],
     "/v1/enroll/start": ["OPTIONS", "POST"],
     "/v1/enroll/propose": ["OPTIONS", "POST"],
     "/v1/enroll/finish": ["OPTIONS", "POST"],
@@ -27,32 +30,42 @@
     "/v1/vtxo/board/final": ["OPTIONS", "POST"]
   },
   "shapes": {
+    "ProposedLightEnrollment": [
+      "descriptor:object", "descriptorHash:string"
+    ],
+    "LightEnrollStartRequest": [
+      "spendingPolicy:object", "spendingPolicyDigest:string"
+    ],
+    "LightEnrollFinishRequest": [
+      "handle:string", "vaultId:string", "userHandle:string", "clientDataJSON:string",
+      "authenticatorData:string", "attestationObject:string,omitempty", "credentialId:string",
+      "webauthnP256:string", "phoneDirectP256:string", "ownerPub:string", "descriptorHash:string",
+      "spendingPolicy:object", "spendingPolicyDigest:string"
+    ],
     "ReadyStatus": [
       "ok:boolean", "schema:integer", "network:string", "enrollTemplate:string",
       "arkadeOrigin:string", "arkadeVersion:string", "error:string,omitempty"
     ],
     "PublicStatus": [
-      "network:string", "clientOrigin:string", "rpId:string", "templateVersion:string",
-      "policyVersion:string", "enrollmentMode:string", "enrollmentExpiresAt:string,omitempty",
-      "spendingPolicyCapabilities:object"
+      "supportedSetups:array<string>", "network:string", "clientOrigin:string", "rpId:string",
+      "templateVersion:string", "policyVersion:string", "enrollmentMode:string",
+      "enrollmentExpiresAt:string,omitempty", "spendingPolicyCapabilities:object"
     ],
     "Status": [
-      "enrolled:boolean", "network:string", "clientOrigin:string", "rpId:string",
-      "vaultId:string", "templateVersion:string", "policyVersion:string",
-	  "protectionTier:string",
-      "externalOwnerWalletPub:string,omitempty", "recoveryKeyPub:string,omitempty",
-      "vaultCosignerBasePub:string,omitempty", "arkadeCosignerBasePub:string,omitempty",
-      "arkadeCosignerOrigin:string", "arkadeCosignerVersion:string", "savingsAddress:string",
-      "savingsScript:string,omitempty", "passkeyLoginAvailable:boolean", "enrollmentMode:string",
-      "enrollmentExpiresAt:string,omitempty", "periodAllowance:integer", "periodSpent:integer",
-      "periodRemaining:integer", "txCap:integer", "absoluteFeeCap:integer",
+      "lightDescriptor:object|null,omitempty", "lightDescriptorHash:string,omitempty", "enrolled:boolean",
+      "network:string", "clientOrigin:string", "rpId:string", "vaultId:string", "templateVersion:string",
+      "policyVersion:string", "protectionTier:string", "externalOwnerWalletPub:string,omitempty",
+      "recoveryKeyPub:string,omitempty", "vaultCosignerBasePub:string,omitempty",
+      "arkadeCosignerBasePub:string,omitempty", "arkadeCosignerOrigin:string", "arkadeCosignerVersion:string",
+      "savingsAddress:string", "savingsScript:string,omitempty", "passkeyLoginAvailable:boolean",
+      "enrollmentMode:string", "enrollmentExpiresAt:string,omitempty", "periodAllowance:integer",
+      "periodSpent:integer", "periodRemaining:integer", "txCap:integer", "absoluteFeeCap:integer",
       "feerateCapSatVb:integer", "spendingPolicy:object", "spendingPolicyDigest:string",
-      "phoneBip340Pub:string,omitempty",
-      "phoneDirectP256:string,omitempty", "warnings:array<string>,omitempty",
-      "vtxoVaultCosignerPub:string", "vtxoExitDelay:integer", "vtxoExitDelayUnit:string",
-      "spendingArkAddress:string", "spendingArkScript:string", "vtxoDelegatePub:string",
-      "vtxoBoardingActive:boolean", "vtxoBoardingProgram:string", "vtxoBoardingAddress:string",
-      "vtxoBoardingScript:string", "vtxoBoardingExitDelay:integer",
+      "phoneBip340Pub:string,omitempty", "phoneDirectP256:string,omitempty",
+      "warnings:array<string>,omitempty", "vtxoVaultCosignerPub:string", "vtxoExitDelay:integer",
+      "vtxoExitDelayUnit:string", "spendingArkAddress:string", "spendingArkScript:string",
+      "vtxoDelegatePub:string", "vtxoBoardingActive:boolean", "vtxoBoardingProgram:string",
+      "vtxoBoardingAddress:string", "vtxoBoardingScript:string", "vtxoBoardingExitDelay:integer",
       "vtxoBoardingExitDelayUnit:string"
     ],
     "InviteView": ["canEnroll:boolean", "vaultId:string|null"],

@@ -8,6 +8,7 @@ import (
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/txscript"
@@ -310,6 +311,7 @@ func (p *pinnedPublicEmulatorOperation) authorizeSavingsRecoveryStage(
 }
 
 type vtxoKeyContext struct {
+	lightProfile  bool
 	vaultID       string
 	network       string
 	operatorPub   []byte
@@ -445,7 +447,11 @@ func deriveVtxoKey(master *btcec.PrivateKey, req vtxoKeyContext) (*btcec.Private
 	if master == nil || validateVtxoKeyContext(req, false) != nil {
 		return nil, fmt.Errorf("vault-policy-v1 key context required")
 	}
-	return policy.DeriveVtxoVaultCosignerScalar(master, req.vaultID, program.VaultPolicyV1, req.network, req.operatorPub)
+	namedProgram := program.VaultPolicyV1
+	if req.lightProfile {
+		namedProgram = light.Program
+	}
+	return policy.DeriveVtxoVaultCosignerScalar(master, req.vaultID, namedProgram, req.network, req.operatorPub)
 }
 
 func validateVtxoKeyContext(req vtxoKeyContext, requireExpected bool) error {

@@ -1,11 +1,13 @@
-# Light contract candidate
+# Light contract and integration candidate
 
-This package constructs the candidate `vault-light-policy-v1` contract for the future `vaulted-light-v1` profile. Production enrollment and signing routes remain on the current profile; this package has no service, store, key derivation, or signing capability.
+This package constructs `vault-light-policy-v1` for the compiled `vaulted-light-v1` profile. Light enrollment and shared Spending authorization are implemented in the application layer; `VAULT_LIGHT_ENABLED` defaults to `false` while renewal and funded lifecycle qualification remain incomplete.
 
-The cooperative leaf requires the owner, independent Vault policy cosigner, and stock Arkade Operator. The second leaf gives the same owner a delayed Bitcoin exit. Mainnet and Mutinynet use their current frozen Operator and delay pins. Light's eventual enrollment must bind its independently derived cosigner to the immutable policy; the script itself cannot enforce a rolling allowance.
+The cooperative leaf requires the owner, independent Vault policy cosigner, and stock Arkade Operator. The second leaf gives the same owner a delayed Bitcoin exit. Both networks use their frozen Operator and delay pins. Enrollment binds the independently derived cosigner and immutable policy; Bitcoin Script does not enforce a rolling allowance.
 
-The owner exit runs outside cooperative payment limits. Its Bitcoin script-engine tests cover the correct owner, early claims, timelock units, transaction version, and the relative-locktime disable flag. A complete funded exit also requires the verified transaction chain, lifecycle state, confirmation timing, available fees, and owner-key restoration.
+The owner exit runs outside cooperative payment limits. Script-engine tests cover the correct owner, early claims, timelock units, transaction version, and relative-locktime disable flag. A funded exit additionally requires current transaction paths, confirmation timing, Bitcoin fees, and owner-key restoration.
 
-`testdata/contracts.json` is shared byte-for-byte with the wallet's Light tests. The SDK and Go independently reconstruct both scripts, output keys, and descriptor hashes. Existing program, profile, Contract Pack, policy-ledger, and route behavior remain unchanged.
+`testdata/contracts.json` remains shared byte-for-byte with the wallet. Both implementations reconstruct scripts, output keys, and descriptor hashes independently. Light identities use their own MAC-bound template and policy schema with empty hardware/Savings fields; existing Standard and Advanced records remain unchanged. Light derives its cosigner using its own named-program domain and reuses the authenticated allowance and operation ledger.
 
-Before activation, implement separate Light enrollment identity and scoped key derivation, authenticated policy persistence and authorization, backup and restoration, SDK lifecycle integration, and fresh funded qualification. Keep the existing Standard and Advanced validation intact.
+The shared admission policy remains authoritative. With `VAULT_INVITE_ONLY=false`, Light uses the normal short-lived admission session. The separate Light rollout flag controls new starts, preserves existing wallets when disabled, and does not alter invitation policy. HTTP compatibility tests record the three new enrollment routes and added status fields; the existing Contract Pack, ledger schema, and cryptographic vectors are unchanged.
+
+Activation requires a bounded renewal authorization with durable fees, input conflicts, replay, and ambiguous-outcome handling, followed by funded Mutinynet payment and recovery drills. Funded lifecycle readiness remains unverified despite the passing contract, enrollment, signing, browser, and race tests.

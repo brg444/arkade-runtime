@@ -38,6 +38,9 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 	}
 
 	types := map[string]reflect.Type{
+		"LightEnrollStartRequest":  reflect.TypeOf(LightEnrollStartRequest{}),
+		"LightEnrollFinishRequest": reflect.TypeOf(LightEnrollFinishRequest{}),
+		"ProposedLightEnrollment":  reflect.TypeOf(ProposedLightEnrollment{}),
 		"ReadyStatus":              reflect.TypeOf(ReadyStatus{}),
 		"PublicStatus":             reflect.TypeOf(PublicStatus{}),
 		"Status":                   reflect.TypeOf(Status{}),
