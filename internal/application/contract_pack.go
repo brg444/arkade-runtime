@@ -9,10 +9,6 @@ import (
 	"github.com/brg444/arkade-runtime/internal/program"
 )
 
-func liveContractPackJSON() ([]byte, error) {
-	return liveContractPackJSONFor(program.NetworkMutinynet)
-}
-
 func liveContractPackJSONFor(network string) ([]byte, error) {
 	raw, err := contractpack.JSONFor(network)
 	if err != nil {
@@ -22,10 +18,6 @@ func liveContractPackJSONFor(network string) ([]byte, error) {
 		return nil, err
 	}
 	return raw, nil
-}
-
-func validateReleaseContractPack(raw []byte) error {
-	return validateReleaseContractPackFor(program.NetworkMutinynet, raw)
 }
 
 func validateReleaseContractPackFor(network string, raw []byte) error {

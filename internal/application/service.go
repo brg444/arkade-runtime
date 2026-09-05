@@ -98,7 +98,7 @@ func New(d Deps) *Service {
 		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
 	}
-	if raw, err := liveContractPackJSON(); err == nil {
+	if raw, err := liveContractPackJSONFor(d.Deployment.Network); err == nil {
 		s.contractPackJSON = raw
 	}
 	return s

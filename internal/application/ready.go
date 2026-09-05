@@ -65,7 +65,7 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "arkade signer not pinned"
 		return st
 	}
-	if err := validateReleaseContractPack(s.contractPackJSON); err != nil {
+	if err := validateReleaseContractPackFor(cfg.Network, s.contractPackJSON); err != nil {
 		st.Error = "contract pack mismatch"
 		return st
 	}
