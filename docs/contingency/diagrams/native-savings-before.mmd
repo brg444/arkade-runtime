@@ -1,0 +1,6 @@
+flowchart LR
+  U[Phone and hardware] -->|normal signatures| S[Onchain Savings]
+  P[Claimant] --> G[Guardian and program cosigner]
+  G -->|constrained initiation| S
+  S --> Q[Pending recovery]
+  Q -->|CSV and claimant key| B[Bitcoin destination]

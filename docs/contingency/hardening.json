@@ -1,0 +1,448 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "vaulted_operator_contingency_20260905",
+  "sourceEvidence": {
+    "kind": "source_collection",
+    "label": "Vaulted contracts, native admission, connector experiments, and Light recovery",
+    "collectionSha256": "d6580b5df69b98178722fde15fd6c9a6c7f017968e28cc26fb221734bce6bc0c",
+    "artifactCount": 13,
+    "sourceDrift": "none"
+  },
+  "sourceArtifacts": [
+    {
+      "evidenceId": "savings",
+      "label": "Existing Savings authority",
+      "repository": "brg444/arkade-runtime",
+      "revision": "a70823a28b596195e033c4c25e48d8d82e22a72d",
+      "path": "internal/vault/savings/family.go",
+      "sha256": "3e5f0494812727dd50be859d95a91123dd363227fb240dba0267bd3b3eec6a86"
+    },
+    {
+      "evidenceId": "savings",
+      "label": "Existing Savings authority",
+      "repository": "brg444/arkade-runtime",
+      "revision": "a70823a28b596195e033c4c25e48d8d82e22a72d",
+      "path": "internal/vault/savings/trees.go",
+      "sha256": "61b496eec169059e74ea6dfeada9777855c49ee464e5434c0c5fd5794418356f"
+    },
+    {
+      "evidenceId": "savings",
+      "label": "Existing Savings authority",
+      "repository": "brg444/arkade-runtime",
+      "revision": "a70823a28b596195e033c4c25e48d8d82e22a72d",
+      "path": "internal/program/pins.go",
+      "sha256": "7d2d55ec09c007cf8e42f2ced6e2af98b42bd419f0bb6ad9799913dc9980bfea"
+    },
+    {
+      "evidenceId": "savings",
+      "label": "Existing Savings authority",
+      "repository": "brg444/arkade-runtime",
+      "revision": "a70823a28b596195e033c4c25e48d8d82e22a72d",
+      "path": "internal/program/program.go",
+      "sha256": "4a5e66106ffc0aa96f1e3751df3e45e9d2ef689ff467d015df30385d0ba61123"
+    },
+    {
+      "evidenceId": "admission",
+      "label": "Native input admission",
+      "repository": "arkade-os/emulator",
+      "revision": "4feb9eaa81b49f8d321407e92dba107ec9ba5158",
+      "path": "internal/application/onchain.go",
+      "sha256": "5288a575c392cf93f30c99bfc4ffd70527e4c2de0cd7412eab47daeccc44cd6a"
+    },
+    {
+      "evidenceId": "admission",
+      "label": "Native input admission",
+      "repository": "arkade-os/emulator",
+      "revision": "4feb9eaa81b49f8d321407e92dba107ec9ba5158",
+      "path": "internal/application/tx.go",
+      "sha256": "cd2163c9aa6a4fb51176199a09c9e45c333df602e2d48657ef9a742bd3d7877f"
+    },
+    {
+      "evidenceId": "admission",
+      "label": "Native input admission",
+      "repository": "arkade-os/emulator",
+      "revision": "4feb9eaa81b49f8d321407e92dba107ec9ba5158",
+      "path": "internal/application/prevout.go",
+      "sha256": "548443a33fac133a97045bb52c42b5b0bc189562db7093e0a9219a12def03119"
+    },
+    {
+      "evidenceId": "admission",
+      "label": "Backing VTXO admission",
+      "repository": "arkade-os/arkd",
+      "revision": "f863e484719344edbe4a8d10cf5fe994b123f2c0",
+      "path": "internal/core/application/service.go",
+      "sha256": "530d53ab00abadae3e0e95319da5a5520e625a6cf88623501816a846ddbee72b"
+    },
+    {
+      "evidenceId": "admission",
+      "label": "Backing VTXO admission",
+      "repository": "arkade-os/arkd",
+      "revision": "f863e484719344edbe4a8d10cf5fe994b123f2c0",
+      "path": "pkg/ark-lib/offchain/tx.go",
+      "sha256": "156acb3dc47fe1ad798dc00e8decfa64bce7ec5d88cd65ad58fd5b93d53aa272"
+    },
+    {
+      "evidenceId": "connector",
+      "label": "Hardware omission counterexamples",
+      "repository": "brg444/arkade-runtime",
+      "revision": "9630b75dbe52ead1f99a4d634d82118ca8864b6c",
+      "path": "experiments/connector/README.md",
+      "sha256": "401eab12240afae7ae28772907d55d0c2a197c777f5d9cb8eaa40c7ec198ee9f"
+    },
+    {
+      "evidenceId": "connector",
+      "label": "Hardware omission counterexamples",
+      "repository": "brg444/arkade-runtime",
+      "revision": "9630b75dbe52ead1f99a4d634d82118ca8864b6c",
+      "path": "experiments/connector/connector_test.go",
+      "sha256": "4ab4fc3ac0706061d039466cc59481f54b7d6d8ebb8f55712a7b754a4b0fdcfb"
+    },
+    {
+      "evidenceId": "light",
+      "label": "Native recovery archive",
+      "repository": "brg444/vaulted-bitcoin-wallet",
+      "revision": "ab6c0e2e32101d21e1830166c482b02b68dcd96e",
+      "path": "src/lib/vault/light/recovery.ts",
+      "sha256": "2398646865ece61a061b30ef1f45935f792d42c373d6252254d27ab5651f53e1"
+    },
+    {
+      "evidenceId": "light",
+      "label": "Native recovery archive",
+      "repository": "brg444/vaulted-bitcoin-wallet",
+      "revision": "ab6c0e2e32101d21e1830166c482b02b68dcd96e",
+      "path": "src/lib/vault/light/recoveryArchive.ts",
+      "sha256": "93789b45b647777917c4379dbd01c80cfc3b3dec2bf34c1611afc453425caaa0"
+    }
+  ],
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "Prepare native Savings and complete timelocked recovery as an isolated feasibility candidate; no replacement contract is implemented."
+  },
+  "constraints": {
+    "profile": "balanced",
+    "changeHorizons": [
+      "incremental",
+      "foundational"
+    ],
+    "nonNegotiables": [
+      "No funded migration or deployment in preparation.",
+      "Explicit hardware and recovery authority for every spendable route.",
+      "No fresh online signature needed for the selected outage recovery.",
+      "Keep signing-service endpoints private."
+    ],
+    "assumptions": [
+      "Candidate mainnet admission and device behavior are unverified.",
+      "No measured latency or storage budget supplied.",
+      "Source drift is none for inventoried immutable objects; live deployment alignment must be rechecked."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "native-savings",
+      "title": "Native Savings with committed timelocked recovery",
+      "summary": "Separate cooperative admission from the complete recoverable Bitcoin graph.",
+      "diagnosis": "The L1 connector depends on a signing flow distinct from native admission; a delayed leaf alone does not prove lifecycle recovery.",
+      "evidence": [
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "savings",
+          "claim": "Existing Savings separates direct user-key transfer from program-cosigned initiation.",
+          "path": "internal/vault/savings/family.go"
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "admission",
+          "claim": "Inspected native submission validates checkpoints and backing VTXOs.",
+          "path": "internal/application/onchain.go"
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "connector",
+          "claim": "Inspected tests contain hardware-omission counterexamples using online signing keys.",
+          "path": "experiments/connector/README.md"
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "light",
+          "claim": "Inspected Light source retains ancestry and executes a Bitcoin-only owner exit.",
+          "path": "src/lib/vault/light/recovery.ts"
+        }
+      ],
+      "desiredInvariants": [
+        "Supported native cooperative input flow.",
+        "Explicit complete-tree hardware authority.",
+        "Saved graph supports recovery after every supported lifecycle transition.",
+        "Distinct contract generations and authenticated state."
+      ],
+      "proposalPath": "proposals/native-savings.md",
+      "options": [
+        {
+          "optionId": "retain-existing",
+          "title": "Retain existing Savings",
+          "kind": "baseline",
+          "summary": "Retain current Savings while qualifying affected capabilities.",
+          "diagramPaths": {
+            "before": "diagrams/native-savings-before.mmd",
+            "after": "diagrams/native-savings-retain-existing-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "savings",
+              "effect": "unaffected",
+              "tacticalFixRequired": true,
+              "rationale": "Preserve the existing contract and qualify its affected capabilities."
+            },
+            {
+              "evidenceId": "admission",
+              "effect": "unaffected",
+              "tacticalFixRequired": true,
+              "rationale": "Preserve the existing contract and qualify its affected capabilities."
+            },
+            {
+              "evidenceId": "connector",
+              "effect": "unaffected",
+              "tacticalFixRequired": true,
+              "rationale": "Preserve the existing contract and qualify its affected capabilities."
+            },
+            {
+              "evidenceId": "light",
+              "effect": "unaffected",
+              "tacticalFixRequired": true,
+              "rationale": "Preserve the existing contract and qualify its affected capabilities."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Existing normal authority and recovery trust remain.",
+              "validationPlan": "Enumerate existing descriptor leaves and replay the recovery-initiation counterexample."
+            },
+            {
+              "dimension": "performance",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "No transaction implementation changes.",
+              "validationPlan": "Retain current normal-transfer measurements as baseline."
+            },
+            {
+              "dimension": "memory",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "No new runtime storage or processes.",
+              "validationPlan": "Verify production tree unchanged."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Normal user-key path remains; service admission may block initiation.",
+              "validationPlan": "Qualify each existing capability against the selected deployment."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "Admission incidents require capability-specific handling.",
+              "validationPlan": "Rehearse partial service failure without movement of funds."
+            },
+            {
+              "dimension": "migration",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "No new funded script.",
+              "validationPlan": "Verify old descriptors and records remain supported."
+            },
+            {
+              "dimension": "developer_complexity",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Existing implementation remains.",
+              "validationPlan": "Verify no new signer abstraction."
+            },
+            {
+              "dimension": "reversibility",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Existing baseline can remain deployed.",
+              "validationPlan": "Compare release artifacts and current main before changes."
+            }
+          ],
+          "residualRisks": [
+            "Service-dependent initiation remains.",
+            "Existing recovery initiation relies on program cosigners."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": [
+              "internal/vault/savings",
+              "internal/application",
+              "wallet/src/lib/vault"
+            ],
+            "workPackages": [
+              "Retain existing funded recovery and qualify capabilities."
+            ],
+            "acceptanceCriteria": [
+              "Existing contract stays available according to its descriptor."
+            ],
+            "migrationNotes": [
+              "Funded scripts cannot be replaced by configuration."
+            ],
+            "rollback": "Retain generation-specific recovery support; separate compatible binary rollback from funded output migration."
+          }
+        },
+        {
+          "optionId": "native-savings",
+          "title": "Native Savings with committed recovery",
+          "kind": "foundational",
+          "summary": "Research supported native cooperation and a committed timelocked user-key recovery graph.",
+          "diagramPaths": {
+            "before": "diagrams/native-savings-before.mmd",
+            "after": "diagrams/native-savings-native-savings-after.mmd"
+          },
+          "evidenceCoverage": [
+            {
+              "evidenceId": "savings",
+              "effect": "unknown",
+              "tacticalFixRequired": true,
+              "rationale": "Replacement tree and key-loss authority are unresolved."
+            },
+            {
+              "evidenceId": "admission",
+              "effect": "addresses",
+              "tacticalFixRequired": true,
+              "rationale": "Proposed native flow still needs exact admission qualification."
+            },
+            {
+              "evidenceId": "connector",
+              "effect": "unknown",
+              "tacticalFixRequired": true,
+              "rationale": "Including Operator authority does not prove hardware enforcement."
+            },
+            {
+              "evidenceId": "light",
+              "effect": "mitigates",
+              "tacticalFixRequired": true,
+              "rationale": "Reuse reduces implementation uncertainty; separate contract qualification remains required."
+            }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "unknown",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Native admission and hardware enforcement require independent proof; outage exit is proposed.",
+              "validationPlan": "Test all leaves with user-key subsets and every online key compromised."
+            },
+            {
+              "dimension": "performance",
+              "direction": "unknown",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Native coordination and archive writes change completion latency.",
+              "validationPlan": "Measure device signing and end-to-end payment latency on identical workloads."
+            },
+            {
+              "dimension": "memory",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Retained signed ancestry grows with lifecycle depth.",
+              "validationPlan": "Measure retained bytes and peak memory after repeated spending and renewal."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "Cooperation needs services; complete saved fallback should remove their recovery dependency.",
+              "validationPlan": "Stop services after each transition and confirm Bitcoin recovery."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "Expiry, backup freshness, fees, and interrupted dispatch need explicit ownership.",
+              "validationPlan": "Run crash, expiry, stale-archive, and insufficient-fee drills."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "New scripts require new outputs; both generations retain recovery support.",
+              "validationPlan": "Test mixed-generation restore, stop-enrollment, and drain."
+            },
+            {
+              "dimension": "developer_complexity",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "Reuse Light lifecycle components while retaining named contract boundaries.",
+              "validationPlan": "Review exact merged source and forbid generic signing endpoints."
+            },
+            {
+              "dimension": "reversibility",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Preparation is reversible; funded contract reversal requires an authorized transaction.",
+              "validationPlan": "Rehearse data-compatible binary rollback separately from funds migration."
+            }
+          ],
+          "residualRisks": [
+            "Hardware enforcement is unproven.",
+            "Full recovery graph and key-loss paths are unproven.",
+            "Expiry, fee availability, and backup freshness remain lifecycle obligations."
+          ],
+          "implementationReadiness": {
+            "affectedComponents": [
+              "internal/vault/savings",
+              "internal/application",
+              "wallet/src/lib/vault"
+            ],
+            "workPackages": [
+              "Admission and hardware transaction",
+              "Complete authorization matrix",
+              "Timelocked graph",
+              "Recovery archive and lifecycle",
+              "Integration and qualification"
+            ],
+            "acceptanceCriteria": [
+              "Admitted transaction and selected hardware trust model.",
+              "Complete Bitcoin recovery after spending and renewal with online services unavailable.",
+              "Separate key-loss and cancellation qualification."
+            ],
+            "migrationNotes": [
+              "Funded scripts cannot be replaced by configuration."
+            ],
+            "rollback": "Retain generation-specific recovery support; separate compatible binary rollback from funded output migration."
+          }
+        }
+      ],
+      "recommendedOptionId": "native-savings",
+      "recommendation": "Prepare native Savings while retaining the deployed baseline until admission, hardware, and full recovery pass."
+    }
+  ],
+  "openQuestions": [
+    "Supported hardware signing construction",
+    "Normal and recovery user-key thresholds",
+    "Exact delays, confirmation anchors, and fee provisions",
+    "Recovery data availability during unattended renewal"
+  ]
+}

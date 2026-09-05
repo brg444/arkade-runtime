@@ -1,0 +1,8 @@
+flowchart LR
+  U[Phone and hardware] -->|approval construction to prove| G[Guardian and program cosigner]
+  G --> O[Operator native admission]
+  O --> S[Native Savings]
+  S -->|retain signed ancestry| A[User recovery archive]
+  A -->|broadcast committed ancestors| Q[Confirmed recovery output]
+  U -->|selected user-key threshold after CSV| Q
+  Q --> B[Bitcoin destination]
