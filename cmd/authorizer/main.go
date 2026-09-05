@@ -24,7 +24,7 @@ func main() {
 		tokenFile           = flag.String("enrollment-token-file", os.Getenv("VAULT_ENROLLMENT_TOKEN_FILE"), "offline-provisioned one-time enrollment token file")
 		origin              = flag.String("client-origin", os.Getenv("VAULT_CLIENT_ORIGIN"), "exact HTTPS signing-client origin")
 		rpID                = flag.String("rp-id", os.Getenv("VAULT_RP_ID"), "exact WebAuthn relying-party ID")
-		network             = flag.String("network", envOr("VAULT_NETWORK", deployment.NetworkMutinynet), "mutinynet or mainnet")
+		network             = flag.String("network", os.Getenv("VAULT_NETWORK"), "mutinynet or mainnet")
 		storageIsolation    = flag.String("storage-isolation", os.Getenv("VAULT_STORAGE_ISOLATION"), "mainnet storage control attestation")
 		edgeRateLimit       = flag.String("edge-rate-limit", os.Getenv("VAULT_EDGE_RATE_LIMIT"), "mainnet edge rate-limit attestation")
 		mainnetAcknowledged = flag.String("mainnet-ack", os.Getenv("VAULT_MAINNET_ACK"), "mainnet fresh-state acknowledgement")

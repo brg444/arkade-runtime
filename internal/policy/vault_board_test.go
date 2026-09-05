@@ -507,6 +507,42 @@ func TestVaultBoardRefusesCooperativeAuthorizationAtMaturity(t *testing.T) {
 	}
 }
 
+func TestVaultBoardCooperativeWindowUsesLedgerNetwork(t *testing.T) {
+	for _, test := range []struct {
+		network string
+		delay   int64
+	}{
+		{program.NetworkMainnet, 7_776_256},
+		{program.NetworkMutinynet, 604_672},
+	} {
+		t.Run(test.network, func(t *testing.T) {
+			now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+			ledger, err := OpenLedgerForNetwork(filepath.Join(t.TempDir(), "board.sqlite"), func() time.Time { return now }, test.network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ledger.Close() })
+			if err := ledger.SetIntegrityKey(testIntegrityKey()); err != nil {
+				t.Fatal(err)
+			}
+			createVaultBoardTestEnrollmentForNetwork(t, ledger, "vault-window", 0x24, test.network)
+			op := vaultBoardTestOperation(t, ledger, "vault-window", 0x34)
+			op.SequenceAnchorMTP = now.Unix() - test.delay + 1
+			_, register, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x46), vaultBoardTestChainState(ledger))
+			if err != nil {
+				t.Fatalf("before the %s recovery boundary: %v", test.network, err)
+			}
+			// Cover all three ledger write boundaries before maturity.
+			submitVaultBoardRegister(t, ledger, *register)
+			releaseVaultBoardAttempt(t, ledger, *register, 0x47)
+			now = now.Add(time.Second)
+			if _, _, _, err := ledger.BeginVaultBoardAttempt(context.Background(), op, vaultBoardRegisterRequest(ledger, 0x48), vaultBoardTestChainState(ledger)); err == nil || !strings.Contains(err.Error(), "matured") {
+				t.Fatalf("accepted a cooperative attempt at the %s recovery boundary: %v", test.network, err)
+			}
+		})
+	}
+}
+
 func TestVaultBoardMaturityUsesAuthoritativeMTPNotFundingHeaderTime(t *testing.T) {
 	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 	ledger := openVaultBoardTestLedger(t, now)

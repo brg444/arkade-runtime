@@ -22,6 +22,7 @@ type Clock func() time.Time
 // Ledger is the authenticated SQLite policy store.
 type Ledger struct {
 	db           *sql.DB
+	network      string
 	clock        Clock
 	mu           sync.Mutex
 	integrityKey []byte

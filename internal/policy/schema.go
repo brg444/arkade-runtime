@@ -218,7 +218,7 @@ func OpenLedgerForNetwork(path string, clock Clock, network string) (*Ledger, er
 		_ = db.Close()
 		return nil, err
 	}
-	return &Ledger{db: db, clock: clock}, nil
+	return &Ledger{db: db, clock: clock, network: network}, nil
 }
 
 func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {

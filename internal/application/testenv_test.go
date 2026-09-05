@@ -42,6 +42,19 @@ var testCredentialIntegrityKey = bytes.Repeat([]byte{0x5a}, 32)
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	return newEnvForNetwork(t, deployment.NetworkMutinynet)
+}
+
+func newEnvForNetwork(t *testing.T, network string) *env {
+	t.Helper()
+	identity, err := deployment.IdentityFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin, rpID := fixture.Origin, fixture.RPID
+	if network == deployment.NetworkMainnet {
+		origin, rpID = deployment.MainnetRCOrigin, deployment.MainnetRCRPID
+	}
 	hot, _ := btcec.NewPrivateKey()
 	externalOwner, _ := btcec.NewPrivateKey()
 	master, _ := btcec.NewPrivateKey()
@@ -56,7 +69,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	dbPath := filepath.Join(t.TempDir(), "policy.sqlite")
-	ledger, err := policy.OpenLedger(dbPath, nil)
+	ledger, err := policy.OpenLedgerForNetwork(dbPath, nil, network)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,14 +79,14 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	operatorSigner, err := hex.DecodeString(deployment.MutinynetOperatorSignerPubHex)
+	operatorSigner, err := hex.DecodeString(identity.OperatorSignerPubHex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolver := stubArkResolver{signer: operatorSigner}
+	resolver := stubArkResolver{signer: operatorSigner, network: network}
 	service := New(Deps{
 		Stores: stores, Deployment: deployment.Config{
-			ClientOrigin: fixture.Origin, RPID: fixture.RPID, Network: deployment.NetworkMutinynet,
+			ClientOrigin: origin, RPID: rpID, Network: network,
 		}, IntegrityKey: integrityKey,
 		Keys: testKeys(t, master, LocalSigner{Priv: operator}), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
@@ -98,8 +111,11 @@ func newEnv(t *testing.T) *env {
 		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
 		ProtectionTier:           program.ProtectionTierStandard,
 	}
-	request.SpendingPolicy = program.DefaultSpendingPolicy()
-	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHex(request.SpendingPolicy)
+	request.SpendingPolicy, err = program.DefaultSpendingPolicyFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHexFor(network, request.SpendingPolicy)
 	if err != nil {
 		t.Fatal(err)
 	}

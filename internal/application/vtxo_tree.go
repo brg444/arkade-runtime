@@ -148,11 +148,11 @@ func vtxoNetworkParams(name string) (*chaincfg.Params, error) {
 	}
 }
 
-func defaultVtxoPkScript(user, arkd *btcec.PublicKey) []byte {
+func defaultVtxoPkScript(user, arkd *btcec.PublicKey, exitDelay uint32) []byte {
 	if user == nil || arkd == nil {
 		return nil
 	}
-	exit := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: program.VaultPolicyV1ExitDelay}
+	exit := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: exitDelay}
 	def := arkscript.NewDefaultVtxoScript(user, arkd, exit)
 	tap, _, err := def.TapTree()
 	if err != nil {
@@ -270,7 +270,11 @@ func (s *Service) refuseDefaultVtxoChange(snap enrolledSnapshot, dest []byte) er
 	if err != nil {
 		return nil
 	}
-	if bytes.Equal(dest, defaultVtxoPkScript(snap.PhoneBIP340, arkd)) {
+	pins, err := program.PinsFor(s.runtimeConfig().Network)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(dest, defaultVtxoPkScript(snap.PhoneBIP340, arkd, pins.ArkdMinExitDelay)) {
 		return fmt.Errorf("DefaultVtxo change refused")
 	}
 	return nil

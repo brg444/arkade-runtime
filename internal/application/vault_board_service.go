@@ -299,10 +299,10 @@ func (s *Service) requireVaultBoardFee(ctx context.Context, rec *policy.VaultRec
 	if err != nil || want > math.MaxInt64 || int64(want) != value-receiver {
 		return 0, fmt.Errorf("vault-board-v1 exact Operator fee required")
 	}
-	capSats := int64(program.AbsoluteFeeCeiling)
-	if rec != nil {
-		capSats = rec.AbsoluteFeeCapSats
+	if rec == nil {
+		return 0, fmt.Errorf("vault spending policy required")
 	}
+	capSats := rec.AbsoluteFeeCapSats
 	if capSats < 0 || int64(want) > capSats {
 		return 0, fmt.Errorf("vault-board-v1 fee exceeds vault ceiling")
 	}
