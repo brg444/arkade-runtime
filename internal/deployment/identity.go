@@ -23,10 +23,10 @@ const (
 	MainnetArkIndexerOrigin = "https://arkade.computer"
 	MainnetEsploraOrigin    = "https://mempool.space/api"
 
-	// MainnetVtxoTreeExpirySeconds matches the frozen boarding delay. The
-	// Mutinynet release independently pinned Batch Output expiry to the same
-	// value as boarding exit; mainnet follows that contract.
-	MainnetVtxoTreeExpirySeconds = uint32(7776256)
+	// MainnetVtxoTreeExpirySeconds pins Batch Output expiry independently of
+	// the boarding recovery delay. The public mainnet Operator emitted 2592256
+	// in BatchStarted be8cd65e-6466-44d6-8691-6ea9360fa23c on 2026-09-05.
+	MainnetVtxoTreeExpirySeconds = uint32(2592256)
 
 	MainnetOperatorSignerPubHex    = "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c"
 	MainnetCheckpointForfeitPubHex = "03b43a8363118c084a04d4f6a50ebfa58e81957f8cceceb2aee0ab64c9fd2d9977"

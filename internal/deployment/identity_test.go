@@ -19,7 +19,7 @@ func TestIdentityForMainnetPinsLiveOperator(t *testing.T) {
 	if id.OperatorGetInfoNetwork != "bitcoin" || id.OperatorOrigin != MainnetArkIndexerOrigin {
 		t.Fatalf("%+v", id)
 	}
-	if id.CheckpointDelaySeconds != 605184 || id.VtxoTreeExpirySeconds != 7776256 {
+	if id.CheckpointDelaySeconds != 605184 || id.VtxoTreeExpirySeconds != 2592256 {
 		t.Fatalf("%+v", id)
 	}
 	if id.EmulatorPubHex != MainnetArkadeCosignerPubHex || id.OperatorSignerPubHex != MainnetOperatorSignerPubHex {

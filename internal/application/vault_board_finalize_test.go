@@ -329,6 +329,35 @@ func TestVerifyVaultBoardFinalUsesDeploymentForfeitKey(t *testing.T) {
 	}
 }
 
+func TestVerifyVaultBoardFinalMainnetObservedBatchExpiry(t *testing.T) {
+	// Observed on https://arkade.computer/v1/batch/events on 2026-09-05,
+	// batch be8cd65e-6466-44d6-8691-6ea9360fa23c. Keep the fixture independent
+	// of the deployment pin: the boarding recovery delay is a different policy.
+	const observedExpiry uint32 = 2592256
+	id, err := deployment.IdentityFor(deployment.NetworkMainnet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, shared := range []bool{false, true} {
+		fixture := newVaultBoardFinalFixtureForPolicy(t, newVaultBoardProofFixture(t), id.CheckpointForfeitPubHex, observedExpiry, shared)
+		expected := vaultBoardFinalExpiry(id.VtxoTreeExpirySeconds)
+		if _, err := verifyVaultBoardFinal(fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree, expected, deployment.NetworkMainnet); err != nil {
+			t.Fatalf("observed mainnet expiry, shared=%t: %v", shared, err)
+		}
+		fixture.evidence.BatchExpiry = 7776256
+		if _, err := verifyVaultBoardFinal(fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree, expected, deployment.NetworkMainnet); err == nil || !strings.Contains(err.Error(), "expiry got=7776256 want=2592256") {
+			t.Fatalf("boarding recovery delay accepted as batch expiry: %v", err)
+		}
+		// Matching metadata cannot disguise a Batch Output built with another
+		// sweep delay, even when there are no child nodes for ark-lib to check.
+		wrongTree := newVaultBoardFinalFixtureForPolicy(t, newVaultBoardProofFixture(t), id.CheckpointForfeitPubHex, 7776256, shared)
+		wrongTree.evidence.BatchExpiry = observedExpiry
+		if _, err := verifyVaultBoardFinal(wrongTree.evidence, wrongTree.proof.operation, wrongTree.register, wrongTree.proof.tree, expected, deployment.NetworkMainnet); err == nil || !strings.Contains(err.Error(), "VTXO tree policy") {
+			t.Fatalf("mislabeled sweep delay accepted, shared=%t: %v", shared, err)
+		}
+	}
+}
+
 func TestVerifyVaultBoardFinalRejectsOtherNetworkForfeitAtPinnedExpiry(t *testing.T) {
 	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
 		t.Run(network, func(t *testing.T) {

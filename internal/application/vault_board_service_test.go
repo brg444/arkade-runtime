@@ -918,7 +918,13 @@ func TestVaultBoardServiceRegistersAndFinalizesOnEachNetwork(t *testing.T) {
 			if got := fixture.register(t, prepared); got.Status != vaultBoardRegistered || registers != 1 {
 				t.Fatalf("register=%+v calls=%d", got, registers)
 			}
-			final := newVaultBoardFinalFixtureForNetwork(t, fixture.proof, network)
+			// Observed deployment values, deliberately independent of the pins
+			// under test. Boarding recovery delays do not define batch expiry.
+			observedExpiry := uint32(604672)
+			if network == program.NetworkMainnet {
+				observedExpiry = 2592256
+			}
+			final := newVaultBoardFinalFixtureForPolicy(t, fixture.proof, id.CheckpointForfeitPubHex, observedExpiry, false)
 			got, err := fixture.svc.submitVaultBoardCommitment(context.Background(), vaultBoardFinalPhaseRequest{
 				Handle: prepared.Handle, PSBT: final.evidence.SignedCommitmentPSBT, Batch: final.evidence, InputIndexes: []int{0},
 			})

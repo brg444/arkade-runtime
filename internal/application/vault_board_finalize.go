@@ -70,9 +70,11 @@ func verifyVaultBoardFinal(
 ) (verifiedVaultBoardFinal, error) {
 	if evidence.BatchID == "" || len(evidence.BatchID) > maxVaultBoardBatchIDBytes ||
 		len(evidence.InputIndexes) != 1 || evidence.InputIndexes[0] < 0 ||
-		expectedExpiry.Type != arklib.LocktimeTypeSecond || expectedExpiry.Value == 0 ||
-		evidence.BatchExpiry != expectedExpiry.Value {
+		expectedExpiry.Type != arklib.LocktimeTypeSecond || expectedExpiry.Value == 0 {
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final batch policy")
+	}
+	if evidence.BatchExpiry != expectedExpiry.Value {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 final batch policy: expiry got=%d want=%d", evidence.BatchExpiry, expectedExpiry.Value)
 	}
 	if len(evidence.Recipients) != 1 || evidence.Recipients[0].HasAssets ||
 		evidence.Recipients[0].AmountSats <= 0 ||
