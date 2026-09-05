@@ -42,6 +42,7 @@ type Config struct {
 	VaultCosignerKeyFile string
 	EnrollmentTokenFile  string
 	EnrollmentWindow     time.Duration
+	OpenEnrollment       bool // false preserves invite-only admission
 	StorageIsolation     string
 	EdgeRateLimit        string
 	MainnetAcknowledged  string
@@ -248,6 +249,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	deps := application.Deps{
 		Stores:                stores,
 		Deployment:            cfg.Deployment,
+		OpenEnrollment:        cfg.OpenEnrollment,
 		IntegrityKey:          credentialIntegrityKey,
 		Keys:                  keys,
 		VaultCosignerPub:      vaultCosignerKey.PubKey(),
@@ -338,7 +340,7 @@ func provisionEnrollmentInvite(ledger *policy.Ledger, cfg Config, hasVaults bool
 		return fmt.Errorf("enrollment ledger required")
 	}
 	if cfg.EnrollmentTokenFile == "" {
-		if hasVaults {
+		if hasVaults || cfg.OpenEnrollment {
 			return nil
 		}
 		return fmt.Errorf("fresh authorizer requires an enrollment token file")

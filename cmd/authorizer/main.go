@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -16,7 +18,12 @@ import (
 )
 
 func main() {
+	inviteOnlyDefault, err := parseInviteOnly(os.Getenv("VAULT_INVITE_ONLY"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	var (
+		inviteOnly          = flag.Bool("invite-only", inviteOnlyDefault, "require operator-issued invitations for new enrollment")
 		addr                = flag.String("addr", envOr("VAULT_AUTHORIZER_ADDR", "127.0.0.1:8788"), "internal authorizer listen address")
 		dbPath              = flag.String("db", os.Getenv("VAULT_DB_PATH"), "absolute authoritative SQLite path")
 		sequence            = flag.String("policy-sequence", os.Getenv("VAULT_POLICY_SEQUENCE_PATH"), "absolute external policy-sequence path")
@@ -38,6 +45,7 @@ func main() {
 		PolicySequencePath:   *sequence,
 		VaultCosignerKeyFile: *keyFile,
 		EnrollmentTokenFile:  *tokenFile,
+		OpenEnrollment:       !*inviteOnly,
 		StorageIsolation:     *storageIsolation,
 		EdgeRateLimit:        *edgeRateLimit,
 		MainnetAcknowledged:  *mainnetAcknowledged,
@@ -88,4 +96,16 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// An absent setting retains invite-only admission; invalid values fail startup.
+func parseInviteOnly(value string) (bool, error) {
+	if value == "" {
+		return true, nil
+	}
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return true, fmt.Errorf("VAULT_INVITE_ONLY must be true or false")
+	}
+	return enabled, nil
 }

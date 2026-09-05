@@ -17,7 +17,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 			name: "identity", typ: reflect.TypeOf((*arkadevaultv1.IdentityStore)(nil)).Elem(),
 			want: []string{
 				"AdvanceSignCount", "CreateVault", "GetInvite", "GetPendingByHandle",
-				"GetVaultEnvelope", "ListVaultIDs", "LoadVerifiedVault", "ReplaceVaultEnvelope",
+				"GetVaultEnvelope", "IssueEnrollmentSession", "ListVaultIDs", "LoadVerifiedVault", "ReplaceVaultEnvelope",
 				"RequireIntegrityKey", "ReservePendingEnrollment", "SchemaVersion",
 				"StoreVaultEnvelopeIfAbsent",
 			},

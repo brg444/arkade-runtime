@@ -40,6 +40,15 @@ func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			VtxoBoardingDescriptorHash string                     `json:"vtxoBoardingDescriptorHash"`
 		}{Status: status, VtxoBoardingDescriptor: desc.Boarding, VtxoBoardingDescriptorHash: hash}, descErr)
 	})
+	mux.HandleFunc("POST /v1/enroll/session", func(w http.ResponseWriter, r *http.Request) {
+		var request struct{}
+		if err := decodeMutation(r, &request, origin); err != nil {
+			writeMutationError(w, err)
+			return
+		}
+		response, err := svc.IssueEnrollmentSession()
+		writeJSON(w, response, err)
+	})
 	mux.HandleFunc("GET /v1/invite", func(w http.ResponseWriter, r *http.Request) {
 		view, err := svc.InviteStatus(r.Header.Get(EnrollmentTokenHeader))
 		writeJSON(w, view, err)

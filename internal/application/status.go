@@ -119,10 +119,12 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 	return st, nil
 }
 
-// publicEnrollmentMode is the unauthenticated setup state. Invite-gated
-// multi-tenant does not inherit the singleton 30-minute first-claim window;
-// each invite has its own expires_at.
+// publicEnrollmentMode advertises admission policy only. Switching admission
+// never changes existing vault descriptors or the expiry of issued sessions.
 func (s *Service) publicEnrollmentMode() (mode, expires string) {
+	if s.OpenEnrollment {
+		return "open", ""
+	}
 	return "token", ""
 }
 

@@ -42,6 +42,7 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"PublicStatus":             reflect.TypeOf(PublicStatus{}),
 		"Status":                   reflect.TypeOf(Status{}),
 		"InviteView":               reflect.TypeOf(InviteView{}),
+		"EnrollmentSession":        reflect.TypeOf(EnrollmentSession{}),
 		"EnrollStartRequest":       reflect.TypeOf(EnrollStartRequest{}),
 		"EnrollStartResponse":      reflect.TypeOf(EnrollStartResponse{}),
 		"EnrollFinishRequest":      reflect.TypeOf(EnrollFinishRequest{}),

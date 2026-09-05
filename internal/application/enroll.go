@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -386,4 +387,35 @@ func bytesEqualConst(a, b []byte) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare(a, b) == 1
+}
+
+// EnrollmentSession removes manual admission without removing one-vault,
+// expiring enrollment authorization. No token is logged or persisted in plaintext.
+type EnrollmentSession struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func (s *Service) IssueEnrollmentSession() (*EnrollmentSession, error) {
+	if !s.OpenEnrollment {
+		return nil, fmt.Errorf("invite required")
+	}
+	if err := s.requireLedgerIntegrity(); err != nil {
+		return nil, err
+	}
+	raw, err := randomBytes(32)
+	if err != nil {
+		return nil, err
+	}
+	defer zeroServiceBytes(raw)
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	hash, err := HashEnrollmentToken(token)
+	if err != nil {
+		return nil, err
+	}
+	expires, err := s.Stores.Identity.IssueEnrollmentSession(hash, s.currentEnrollmentTime().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return &EnrollmentSession{Token: token, ExpiresAt: expires.Format(time.RFC3339)}, nil
 }
