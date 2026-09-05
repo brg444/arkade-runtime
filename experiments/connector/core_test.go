@@ -70,7 +70,7 @@ func rpc[T any](t *testing.T, c *core, method string, args ...any) T {
 	return result
 }
 
-func startCore(t *testing.T) *core {
+func startCore(t *testing.T, extraArgs ...string) *core {
 	t.Helper()
 	binary := os.Getenv("CONNECTOR_BITCOIND")
 	if binary == "" {
@@ -92,6 +92,10 @@ func startCore(t *testing.T) *core {
 	cmd := exec.Command(binary, "-regtest", "-server", "-networkactive=0", "-listen=0", "-connect=0", "-dnsseed=0", "-discover=0", "-listenonion=0",
 		"-datadir="+dir, "-rpcbind=127.0.0.1", "-rpcallowip=127.0.0.1", fmt.Sprintf("-rpcport=%d", port),
 		"-rpcuser=connector-regtest", "-rpcpassword=disposable-local-test", "-fallbackfee=0.00002000")
+	cmd.Args = append(cmd.Args, extraArgs...)
+	if len(extraArgs) != 0 {
+		t.Logf("explicit regtest policy options: %v", extraArgs)
+	}
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {
 		_ = log.Close()

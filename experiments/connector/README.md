@@ -1,6 +1,7 @@
 # Hardware connector feasibility
 
-Status: experimental tests only. The connector candidate fails the requirement
+Status: isolated integration candidate, with the honest-independent-cosigner
+trust model accepted by the owner on 2026-09-05. The connector still fails the requirement
 that hardware approval remain mandatory after compromise of the phone and all
 online signing authorities. Production enrollment, signing routes, Contract
 Packs, and funded vaults are unchanged.
@@ -75,9 +76,11 @@ hardware signing compatibility problem as well.
 
 ## Prototype transaction and checks
 
-The test program is named `savings-connector-experiment-v0`. All implementation
-lives in `_test.go` files, which are excluded from application binaries. The
-repository architecture check also rejects production Go files in this package.
+The first test program is named `savings-connector-experiment-v0`. That prototype
+lives in `_test.go` files. The next integration stage lives in
+`internal/vault/connector`; an architecture check forbids production code from
+importing it. Its complete transaction and remaining gates are described in
+[the integration design](integration.md).
 
 | Component | Sats |
 | --- | ---: |
@@ -107,7 +110,7 @@ cannot override those facts. Core supplies confirmed funding and unspentness
 validation in the integration tests; a previous transaction alone proves neither
 confirmation nor current availability.
 
-The prototype invokes the pinned script engine directly. Its transaction omits
+The first prototype invokes the pinned script engine directly. Its transaction omits
 the Emulator packet and P2A output required by existing production transitions.
 It tests the connector condition and the tweaked-key trust boundary, and does
 not claim to implement the public Emulator signing protocol. A production
@@ -192,8 +195,8 @@ They leave the strict hardware-enforcement gate failed.
 ## Feasibility decision
 
 The candidate fails the strict hardware-enforcement gate and remains outside
-production. Proceeding with an honest-independent-cosigner requirement would be
-a separate trust decision, with the ordinary-transfer availability cost disclosed.
+production. The owner accepted proceeding with an honest-independent-cosigner
+requirement and the ordinary-transfer availability cost on 2026-09-05.
 The existing recovery dependence belongs in that decision; comparing only the
 admin leaves would overstate the current contract's protection.
 
