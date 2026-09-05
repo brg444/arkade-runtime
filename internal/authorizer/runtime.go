@@ -46,6 +46,7 @@ type Config struct {
 	EdgeRateLimit        string
 	MainnetAcknowledged  string
 	CosignerKeyUnlink    string
+	ArkadeCosignerOrigin string
 }
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
@@ -129,6 +130,14 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		if cfg.MainnetAcknowledged != "fresh-state-v1" {
 			return nil, fmt.Errorf("mainnet requires explicit fresh-state deployment acknowledgement")
 		}
+	}
+	if cfg.Deployment.Network == deployment.NetworkMainnet {
+		identity.EmulatorOrigin, err = application.CanonicalHTTPSOrigin(cfg.ArkadeCosignerOrigin)
+		if err != nil {
+			return nil, fmt.Errorf("mainnet signing endpoint configuration: %w", err)
+		}
+	} else if cfg.ArkadeCosignerOrigin != "" {
+		return nil, fmt.Errorf("signing endpoint configuration is mainnet-only")
 	}
 	if dialArkade == nil {
 		return nil, fmt.Errorf("public arkade emulator dialer required")

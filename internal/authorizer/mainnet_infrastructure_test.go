@@ -31,4 +31,14 @@ func TestMainnetInfrastructureDeclarationsFailClosed(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fresh-state") {
 		t.Fatalf("missing fresh-state acknowledgement: %v", err)
 	}
+	cfg.MainnetAcknowledged = "fresh-state-v1"
+	_, err = openWithArkadeDialers(context.Background(), cfg, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "endpoint configuration") {
+		t.Fatalf("missing private signing endpoint: %v", err)
+	}
+	cfg.ArkadeCosignerOrigin = "https://user:password@private-signer.example.com"
+	_, err = openWithArkadeDialers(context.Background(), cfg, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "endpoint configuration") || strings.Contains(err.Error(), "private-signer") {
+		t.Fatalf("invalid endpoint must fail without disclosing its value")
+	}
 }

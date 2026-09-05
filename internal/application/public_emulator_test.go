@@ -208,3 +208,22 @@ func jsonResponse(code int, body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 }
+
+func TestSignerErrorsDoNotDiscloseEndpointOrUpstreamContent(t *testing.T) {
+	privateURL := "https://private-signer.example.com/v1/sign"
+	for _, responder := range []rpcDoerFunc{
+		func(*http.Request) (*http.Response, error) { return nil, fmt.Errorf("Post %s: failed", privateURL) },
+		func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusBadGateway, privateURL), nil
+		},
+		func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, `{"`+privateURL+`":true}`), nil
+		},
+	} {
+		client := &publicEmulatorClient{origin: "https://private-signer.example.com", hc: responder}
+		_, err := client.signPinnedOnchain(context.Background(), "cHNidA==")
+		if err == nil || strings.Contains(err.Error(), "private-signer") || strings.Contains(err.Error(), "/v1/") {
+			t.Fatal("signer failure must not disclose a URL or upstream body")
+		}
+	}
+}

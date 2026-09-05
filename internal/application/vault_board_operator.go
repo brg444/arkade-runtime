@@ -70,7 +70,7 @@ func dialVaultBoardOperatorWithClient(ctx context.Context, rawOrigin, network st
 	if err != nil {
 		return nil, err
 	}
-	origin, err := canonicalHTTPSOrigin(rawOrigin)
+	origin, err := CanonicalHTTPSOrigin(rawOrigin)
 	if err != nil || origin != id.OperatorOrigin {
 		return nil, fmt.Errorf("vault-board-v1 Operator origin must be the release pin")
 	}

@@ -36,7 +36,9 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	}
 	cfg := s.runtimeConfig()
 	st.Network = cfg.Network
-	st.ArkadeOrigin = s.ArkadeCosignerOrigin
+	// Keep the nonempty legacy field for deployed clients without publishing
+	// the transport locator. Actual signer readiness is checked below.
+	st.ArkadeOrigin = "configured"
 	st.ArkadeVersion = s.ArkadeCosignerVersion
 	if err := cfg.Validate(); err != nil {
 		st.Error = "deployment not ready"

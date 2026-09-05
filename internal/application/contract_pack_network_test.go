@@ -45,7 +45,7 @@ func TestConstructedServiceUsesItsNetworkContractPack(t *testing.T) {
 				Deployment: deployment.Config{Network: network, ClientOrigin: deployment.MainnetRCOrigin, RPID: deployment.MainnetRCRPID},
 				Stores:     testStores(t, ledger), IntegrityKey: integrity,
 				Keys: testKeys(t, master, LocalSigner{Priv: master}), VaultCosignerPub: master.PubKey(),
-				ArkadeCosignerPub: emulator, ArkadeCosignerOrigin: id.EmulatorOrigin, ArkadeCosignerVersion: id.EmulatorVersion,
+				ArkadeCosignerPub: emulator, ArkadeCosignerOrigin: "https://signer.example.com", ArkadeCosignerVersion: id.EmulatorVersion,
 				ArkResolver: readyArkResolver{network: network, checkpoint: mustDecode(t, id.CheckpointTapscriptHex), signer: mustDecode(t, id.OperatorSignerPubHex)},
 			})
 			svc.vaultBoardRuntime = &vaultBoardRuntime{

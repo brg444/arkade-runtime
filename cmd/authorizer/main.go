@@ -42,6 +42,7 @@ func main() {
 		EdgeRateLimit:        *edgeRateLimit,
 		MainnetAcknowledged:  *mainnetAcknowledged,
 		CosignerKeyUnlink:    *cosignerKeyUnlink,
+		ArkadeCosignerOrigin: os.Getenv("VAULT_ARKADE_COSIGNER_ORIGIN"),
 	}
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 40*time.Second)
 	runtime, err := authorizer.Open(startupCtx, cfg)

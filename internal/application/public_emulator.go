@@ -70,7 +70,7 @@ func dialPublicEmulator(
 	if err != nil {
 		return nil, PublicEmulatorIdentity{}, err
 	}
-	origin, err := canonicalHTTPSOrigin(rawOrigin)
+	origin, err := CanonicalHTTPSOrigin(rawOrigin)
 	if err != nil {
 		return nil, PublicEmulatorIdentity{}, err
 	}
@@ -83,7 +83,7 @@ func dialPublicEmulator(
 		return nil, PublicEmulatorIdentity{}, fmt.Errorf("public arkade emulator info: %w", err)
 	}
 	if _, ok := versions[info.Version]; !ok {
-		return nil, PublicEmulatorIdentity{}, fmt.Errorf("public arkade emulator version %q is not allowlisted", info.Version)
+		return nil, PublicEmulatorIdentity{}, fmt.Errorf("signing service version is not allowlisted")
 	}
 	current, err := parseStrictCompressedPub(info.SignerPubkey)
 	if err != nil {
@@ -130,7 +130,8 @@ func canonicalVersionAllowlist(values []string) (map[string]struct{}, error) {
 	return out, nil
 }
 
-func canonicalHTTPSOrigin(raw string) (string, error) {
+// CanonicalHTTPSOrigin validates a private transport locator without contacting it.
+func CanonicalHTTPSOrigin(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return "", fmt.Errorf("public arkade emulator requires a canonical https origin")
@@ -243,7 +244,7 @@ func (c *publicEmulatorClient) call(
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.origin+path, body)
 	if err != nil {
-		return err
+		return fmt.Errorf("signing service request could not be created")
 	}
 	req.Header.Set("Accept", "application/json")
 	if requestBody != nil {
@@ -251,15 +252,14 @@ func (c *publicEmulatorClient) call(
 	}
 	res, err := c.hc.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("signing service transport unavailable")
 	}
 	if res == nil || res.Body == nil {
 		return fmt.Errorf("empty public arkade emulator response")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		detail, _ := readBoundedResponse(res.Body, 4096)
-		return fmt.Errorf("public arkade emulator HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(detail)))
+		return fmt.Errorf("signing service HTTP %d", res.StatusCode)
 	}
 	mediaType, _, err := mime.ParseMediaType(res.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -267,12 +267,12 @@ func (c *publicEmulatorClient) call(
 	}
 	raw, err := readBoundedResponse(res.Body, responseLimit)
 	if err != nil {
-		return err
+		return fmt.Errorf("signing service response could not be read within its limit")
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(responseBody); err != nil {
-		return fmt.Errorf("public arkade emulator response: %w", err)
+		return fmt.Errorf("signing service returned invalid JSON")
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err != io.EOF {

@@ -253,8 +253,7 @@ server.
 
 The complete gate and operations posture are recorded in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md) and
-[deploy/ops.md](deploy/ops.md). The confirmed mainnet Emulator discovery
-endpoint is `https://mainnet-signer.invalid/v1/info`, whose advertised signer matches the
+[deploy/ops.md](deploy/ops.md). The mainnet signer endpoint is configured privately and its advertised signer matches the
 official SDK pin. The release uses `arkade.computer` and the official Arkade
 SDK as deployed; it does not require a modified `arkd` or a Vault-specific
 Operator API. Mainnet configuration must pin and qualify the deployed Emulator

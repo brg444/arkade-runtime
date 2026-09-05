@@ -512,7 +512,7 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	}
 	wantOrigin, wantVersion := s.arkadeIdentity()
 	if cred.ArkadeCosignerOrigin != wantOrigin {
-		return fmt.Errorf("stored ArkadeCosigner origin %q incompatible with runtime %q", cred.ArkadeCosignerOrigin, wantOrigin)
+		return fmt.Errorf("stored signing identity requires enrollment migration")
 	}
 	if cred.ArkadeCosignerVersion != wantVersion {
 		return fmt.Errorf("stored ArkadeCosigner version %q incompatible with runtime %q", cred.ArkadeCosignerVersion, wantVersion)

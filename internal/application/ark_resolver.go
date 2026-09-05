@@ -73,7 +73,7 @@ func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer
 	if height != id.CheckpointHeight || hash != id.CheckpointHash {
 		return nil, fmt.Errorf("ark indexer checkpoint is %d:%s, want %d:%s", height, hash, id.CheckpointHeight, id.CheckpointHash)
 	}
-	origin, err := canonicalHTTPSOrigin(rawOrigin)
+	origin, err := CanonicalHTTPSOrigin(rawOrigin)
 	if err != nil {
 		return nil, err
 	}

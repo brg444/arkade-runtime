@@ -5,6 +5,9 @@ import "fmt"
 const (
 	NetworkMainnet = "mainnet"
 
+	// MainnetSignerIdentity is public descriptor metadata, never a transport URL.
+	MainnetSignerIdentity = "urn:vaulted:mainnet-signer:v1"
+
 	// BitcoinGenesisHash is the Bitcoin genesis block. Mainnet deployments pin
 	// this as the chain identity instead of a custom-signet checkpoint.
 	BitcoinGenesisHash = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
@@ -16,7 +19,6 @@ const (
 	MainnetRCOrigin     = "https://rc.getvaulted.xyz"
 	MainnetRCRPID       = "rc.getvaulted.xyz"
 
-	MainnetArkadeCosignerOrigin  = "https://mainnet-signer.invalid"
 	MainnetArkadeCosignerPubHex  = "0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e"
 	MainnetArkadeCosignerVersion = "v0.0.7"
 
@@ -79,7 +81,6 @@ func IdentityFor(network string) (Identity, error) {
 			OperatorGetInfoNetwork:  "bitcoin",
 			OperatorOrigin:          MainnetArkIndexerOrigin,
 			EsploraOrigin:           MainnetEsploraOrigin,
-			EmulatorOrigin:          MainnetArkadeCosignerOrigin,
 			EmulatorPubHex:          MainnetArkadeCosignerPubHex,
 			EmulatorVersion:         MainnetArkadeCosignerVersion,
 			OperatorSignerPubHex:    MainnetOperatorSignerPubHex,

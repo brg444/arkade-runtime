@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
@@ -111,6 +112,9 @@ func (s *Service) mintSavingsCredential(vaultID string, parsed parsedRegisterReq
 }
 
 func (s *Service) arkadeIdentity() (string, string) {
+	if s.runtimeConfig().Network == deployment.NetworkMainnet {
+		return deployment.MainnetSignerIdentity, strings.TrimSpace(s.ArkadeCosignerVersion)
+	}
 	return strings.TrimSpace(s.ArkadeCosignerOrigin), strings.TrimSpace(s.ArkadeCosignerVersion)
 }
 

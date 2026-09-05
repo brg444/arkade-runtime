@@ -78,7 +78,7 @@ func dialVaultBoardChain(network string) (vaultBoardChain, error) {
 
 func dialVaultBoardChainWithClient(rawOrigin string, hc httpDoer) (vaultBoardChain, error) {
 	base := strings.TrimSuffix(rawOrigin, "/api")
-	origin, err := canonicalHTTPSOrigin(base)
+	origin, err := CanonicalHTTPSOrigin(base)
 	id, idErr := identityForEsploraOrigin(rawOrigin)
 	if err != nil || idErr != nil || rawOrigin != origin+"/api" || id.EsploraOrigin != rawOrigin {
 		return nil, fmt.Errorf("vault-board-v1 Esplora origin must be the release pin")
