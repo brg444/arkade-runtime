@@ -54,7 +54,7 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	if err != nil {
 		return nil, err
 	}
-	if cred == nil || cred.TemplateVersion != savings.Template {
+	if cred == nil || !knownTemplate(cred.TemplateVersion) {
 		return nil, fmt.Errorf("current vault template required")
 	}
 	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
@@ -200,6 +200,12 @@ func sameUnsignedTransition(stored []byte, current *psbt.Packet) error {
 }
 
 func (s *Service) transitionFamily(cred *policy.Credential) (*savings.Family, error) {
+	// Connector vaults recover through the enrolled connector family, never
+	// through the legacy admin-leaf tree: a template gate alone would bind
+	// recovery to the wrong Savings script.
+	if isConnectorCredential(cred) {
+		return s.connectorRecoveryFamily(cred)
+	}
 	phone, hardware, recovery, vaultBase, arkadeBase, _, err := s.rebuildSavings(cred)
 	if err != nil {
 		return nil, err

@@ -33,7 +33,8 @@ func lightEnrollmentFixture(t *testing.T, open bool) (*Service, string, *EnrollS
 }
 func newLightEnrollmentFixture(t *testing.T, open bool) lightEnrolledFixture {
 	t.Helper()
-	ledger, err := policy.OpenLedger(filepath.Join(t.TempDir(), "light.sqlite"), nil)
+	dbPath := filepath.Join(t.TempDir(), "light.sqlite")
+	ledger, err := policy.OpenLedger(dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func newLightEnrollmentFixture(t *testing.T, open bool) lightEnrolledFixture {
 		t.Fatal(err)
 	}
 	req.DescriptorHash = proposed.DescriptorHash
-	return lightEnrolledFixture{env: &env{svc: svc, ledger: ledger, hot: owner, p256: pass, direct: direct, credID: []byte("light-credential")}, token: token, start: start, request: req}
+	return lightEnrolledFixture{env: &env{svc: svc, ledger: ledger, dbPath: dbPath, hot: owner, p256: pass, direct: direct, credID: []byte("light-credential")}, token: token, start: start, request: req}
 }
 
 func TestLightEnrollmentAdmissionRestartAndReplay(t *testing.T) {

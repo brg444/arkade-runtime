@@ -37,8 +37,13 @@ type verifiedLightRenewalFinal struct {
 }
 
 // Bound graph shape before invoking recursive protocol-library traversal.
+// Stock streams include complete parent transactions but omit other participants'
+// descendants. Keep their references in the canonical transcript while traversing
+// only supplied nodes; every supplied internal node must lead to a supplied leaf.
+// The signing/final verifier then binds the exact owned receiver and validates
+// every transaction, parent output, key and (at finalization) signature on its path.
 func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree, *arktree.TxTree, error) {
-	flat, err := canonicalVaultBoardTree(supplied)
+	flat, err := canonicalVaultBoardTreeNodes(supplied)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -56,10 +61,18 @@ func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree,
 			}
 			total += out.Value
 		}
+		if len(node.Children) > len(p.UnsignedTx.TxOut)-1 {
+			return nil, nil, fmt.Errorf("Light renewal graph child count")
+		}
 		byID[node.Txid] = node
 		for index, child := range node.Children {
 			if int64(index) >= int64(len(p.UnsignedTx.TxOut)) || child == node.Txid {
 				return nil, nil, fmt.Errorf("Light renewal graph edge")
+			}
+			// The protocol library slices this script when checking child keys.
+			// Every connector or VTXO branch output must be a real P2TR output.
+			if !txscript.IsPayToTaproot(p.UnsignedTx.TxOut[index].PkScript) {
+				return nil, nil, fmt.Errorf("Light renewal graph child output script")
 			}
 			parents[child]++
 			if parents[child] > 1 {
@@ -85,8 +98,15 @@ func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree,
 			return nil, nil, fmt.Errorf("Light renewal graph cycle")
 		}
 		seen[id] = true
+		providedChildren := 0
 		for _, child := range byID[id].Children {
-			queue = append(queue, child)
+			if _, present := byID[child]; present {
+				queue = append(queue, child)
+				providedChildren++
+			}
+		}
+		if len(byID[id].Children) > 0 && providedChildren == 0 {
+			return nil, nil, fmt.Errorf("Light renewal graph missing descendant path")
 		}
 	}
 	if len(seen) != len(flat) {
@@ -100,11 +120,24 @@ func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree,
 // with the same enrolled script and exact post-fee balance. Its connector must
 // spend the same commitment, so it cannot execute independently of that batch.
 func verifyLightRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, registration verifiedLightRenewalRegistration) (verifiedLightRenewalFinal, error) {
-	digest, err := plan.digest(d)
+	return verifyLightFinal(e, plan, d, tree, registration, txscript.SigHashDefault)
+}
+
+func verifyLightFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
+	c, err := legacyLightRenewalContract(d, tree)
+	if err != nil {
+		return verifiedLightRenewalFinal{}, err
+	}
+	return verifyRenewalFinal(e, plan, c, registration, ownerSighash)
+}
+func verifyRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, c renewalContract, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
+	tree, d := c.Tree, c.Binding
+
+	digest, err := plan.digestForContract(c)
 	if err != nil || !bytes.Equal(digest, registration.PlanDigest) || len(registration.TreeSession) != 33 {
 		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal registration binding")
 	}
-	if tree == nil || tree.DelegatePub != nil || hex.EncodeToString(tree.PkScript) != d.ScriptPubKey || len(e.BatchID) == 0 || len(e.BatchID) > 256 {
+	if tree == nil || hex.EncodeToString(tree.PkScript) != d.ScriptPubKey || len(e.BatchID) == 0 || len(e.BatchID) > 256 {
 		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal batch identity")
 	}
 	pins, err := deployment.IdentityFor(d.Network)
@@ -206,10 +239,10 @@ func verifyLightRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan,
 		}
 	}
 	owner := mustDecodeRenewalHex(d.OwnerPub)
-	if err := requireExactLeafWithSighash(p.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{owner}, txscript.SigHashDefault); err != nil {
+	if err := requireExactLeafWithSighash(p.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{owner}, ownerSighash); err != nil {
 		return verifiedLightRenewalFinal{}, err
 	}
-	if err := requireVerifiedSignersWithSighash(p, 0, [][]byte{owner}, tree.SpendLeaf, txscript.SigHashDefault); err != nil {
+	if err := requireVerifiedSignersWithSighash(p, 0, [][]byte{owner}, tree.SpendLeaf, ownerSighash); err != nil {
 		return verifiedLightRenewalFinal{}, err
 	}
 	if len(p.Inputs[1].TaprootScriptSpendSig) != 0 || len(p.Inputs[1].TaprootKeySpendSig) != 0 || len(p.Inputs[1].PartialSigs) != 0 || len(p.Inputs[1].FinalScriptWitness) != 0 || len(p.Inputs[1].TaprootLeafScript) != 0 {
@@ -230,7 +263,7 @@ func verifyLightRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan,
 	if err != nil {
 		return verifiedLightRenewalFinal{}, err
 	}
-	sum := sha256.Sum256(append([]byte("vaulted-light/renewal-final/v1:"), raw...))
+	sum := sha256.Sum256(append([]byte(c.domain("renewal-final")), raw...))
 	return verifiedLightRenewalFinal{sum[:], e.OwnerForfeitPSBT, commitment.UnsignedTx.TxID(), receiverTxid, receiverVout}, nil
 }
 

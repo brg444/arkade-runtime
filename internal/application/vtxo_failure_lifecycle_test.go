@@ -188,3 +188,54 @@ func TestSubmittedVtxoNeedsExpectedChangeBeforeFinalizationAndFinalizeRetryIsIde
 		t.Fatalf("lost finalize response was not idempotent: first=%+v second=%+v", first, second)
 	}
 }
+
+func TestDelayedVtxoSettlementStartsConservativeAllowanceWindow(t *testing.T) {
+	for _, state := range []string{policy.VtxoStateSigned, policy.VtxoStateSubmitted} {
+		for _, terminal := range []string{policy.VtxoStateFinalized, policy.VtxoStateUnresolved} {
+			t.Run(state+"/"+terminal, func(t *testing.T) {
+				e, resolver, _ := vtxoTestEnv(t)
+				tree, err := e.svc.buildVtxoPolicyTree(fixture.VaultID, e.svc.snapshot(fixture.VaultID))
+				if err != nil {
+					t.Fatal(err)
+				}
+				id := "delayed-" + state
+				insertExpiredVtxoOperation(t, e, id, 0x93, state, tree.PkScript)
+				before, err := e.ledger.GetVtxoOperation(t.Context(), id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if spent, err := e.ledger.SpentInPeriod(t.Context(), fixture.VaultID, ""); err != nil || spent != 10500 {
+					t.Fatal("live authorization aged out", spent, err)
+				}
+				resolver.spentBy = before.ArkTxid
+				resolver.changeExists = true
+				if terminal == policy.VtxoStateUnresolved {
+					resolver.spentBy = strings.Repeat("cd", 32)
+				}
+				observed := e.svc.vtxoNow().Truncate(time.Second)
+				view, err := e.svc.GetVtxoOperationView(t.Context(), fixture.VaultID, id)
+				if err != nil || view.State != terminal {
+					t.Fatal("terminal evidence not applied", view, err)
+				}
+				after, err := e.ledger.GetVtxoOperation(t.Context(), id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				anchor, err := time.Parse(time.RFC3339, after.CreatedAt)
+				if err != nil || anchor.Before(observed) || after.CreatedAt == before.CreatedAt {
+					t.Fatal("late execution reused aged reservation window", after.CreatedAt, err)
+				}
+				if spent, err := e.ledger.SpentInPeriod(t.Context(), fixture.VaultID, ""); err != nil || spent != 10500 {
+					t.Fatal("late settlement freed allowance immediately", spent, err)
+				}
+				if _, err = e.svc.GetVtxoOperationView(t.Context(), fixture.VaultID, id); err != nil {
+					t.Fatal(err)
+				}
+				replay, err := e.ledger.GetVtxoOperation(t.Context(), id)
+				if err != nil || replay.CreatedAt != after.CreatedAt || !bytes.Equal(replay.IntegrityMAC, after.IntegrityMAC) {
+					t.Fatal("terminal lookup rewrote accounting", err)
+				}
+			})
+		}
+	}
+}

@@ -3,6 +3,7 @@ package application
 import "net/http"
 
 func attachLightRenewalRoutes(mux *http.ServeMux, svc *Service, origin string) {
+	attachLightDelegationRoutes(mux, svc, origin)
 	mux.HandleFunc("POST /v1/light/renew/prepare", func(w http.ResponseWriter, r *http.Request) {
 		var request lightRenewalPrepareRequest
 		if err := decodeMutation(r, &request, origin); err != nil {

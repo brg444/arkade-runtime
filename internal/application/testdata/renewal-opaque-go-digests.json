@@ -1,0 +1,8 @@
+{
+  "vaulted-vtxo/delegate-cancel/v1": "20cc042f5d71edbfcad6ded7829cc49d720382bdcc75a41dd4d7c93b58bb92b1",
+  "vaulted-vtxo/delegate-list/v1": "1b4495ff411115084cb7b76300217dc7f0b35a02259d369b9d340cbdf19361ff",
+  "vaulted-vtxo/delegate-schedule-set/v1": "3f87becc06dd580024ca3731013ae32731bfc9853095f492ae26a25fcd727b94",
+  "vaulted-vtxo/delegate-schedule/v1": "c9ad470c94da665fc1b4b52ff0014621fdad93266419d4ec46ab7e09bb77e215",
+  "vaulted-vtxo/delegate-status/v1": "f0cd604f5a28581e7caa2d127b54c198a4779aed8c57e451f6b4acf7ee2c3885",
+  "vaulted-vtxo/renewal-context/v1": "048934d7c047ccde351fe6a596c37dad6f7f2906db71787563fa3e398fbb4e7e"
+}

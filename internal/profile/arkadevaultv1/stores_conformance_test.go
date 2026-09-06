@@ -34,11 +34,15 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 			name: "recovery operation", typ: reflect.TypeOf((*arkadevaultv1.RecoveryOperationStore)(nil)).Elem(),
 			want: []string{"ApplyRecoveryReplay"},
 		},
+		{name: "Recovery backup", typ: reflect.TypeOf((*arkadevaultv1.RecoveryBackupStore)(nil)).Elem(), want: []string{"GetRecoveryBackup", "PutRecoveryBackup"}},
 		{
 			name: "map", typ: reflect.TypeOf((*arkadevaultv1.MapStore)(nil)).Elem(),
 			want: []string{"GetVaultMap", "PutVaultMap"},
 		},
 		{
+			name: "Light delegation", typ: reflect.TypeOf((*arkadevaultv1.LightDelegationStore)(nil)).Elem(),
+			want: []string{"AdvanceLightDelegation", "ListLightDelegations", "ScheduleLightDelegation", "ScheduleVtxoDelegationSet"},
+		}, {
 			name: "Light renewal", typ: reflect.TypeOf((*arkadevaultv1.LightRenewalStore)(nil)).Elem(),
 			want: []string{"AppendLightRenewalEvent", "GetLightRenewal", "ReserveLightRenewal"},
 		},
@@ -48,6 +52,13 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 				"AppendVaultBoardAuthorizationAndDispatch", "AppendVaultBoardDispatch",
 				"AppendVaultBoardSubmission", "BeginVaultBoardAttempt", "CreateVaultWithBoard",
 				"GetCurrentVaultBoardAttempt", "GetVaultBoardEnrollment",
+			},
+		},
+		{
+			name: "connector", typ: reflect.TypeOf((*arkadevaultv1.ConnectorStore)(nil)).Elem(),
+			want: []string{
+				"ApplyConnectorReplay", "GetConnectorEnrollment", "GetConnectorOperation",
+				"ListConnectorConflicts", "ResolveConnectorOperation", "StoreConnectorStage",
 			},
 		},
 	}
@@ -64,9 +75,9 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 	}
 }
 
-func TestStoresBundleContainsExactlySevenNarrowPorts(t *testing.T) {
+func TestStoresBundleContainsExactlyTenNarrowPorts(t *testing.T) {
 	typ := reflect.TypeOf(arkadevaultv1.Stores{})
-	want := []string{"Identity", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal"}
+	want := []string{"Identity", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "LightDelegation", "Connector", "RecoveryBackup"}
 	got := make([]string, typ.NumField())
 	for i := range got {
 		got[i] = typ.Field(i).Name

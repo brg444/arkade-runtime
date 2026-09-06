@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
@@ -125,10 +126,11 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		t.Fatalf("incomplete boarding runtime readiness = %+v", got)
 	}
 	svc.vaultBoardRuntime = installedRuntime
+	chain := installedRuntime.chain.(*vaultBoardTestChain)
 	if got := svc.Ready(context.Background()); !got.Ok || got.Error != "" {
 		t.Fatalf("pinned resolver readiness = %+v", got)
 	}
-	if got := svc.Ready(context.Background()); !got.Ok || feeCalls != 1 {
+	if got := svc.Ready(context.Background()); !got.Ok || feeCalls != 1 || chain.checkpointCalls != 1 {
 		t.Fatalf("cached resolver readiness = %+v, probes=%d", got, feeCalls)
 	}
 	svc.resetResolverReadinessCache()
@@ -143,13 +145,13 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 		}()
 	}
 	probes.Wait()
-	if feeCalls != 2 {
+	if feeCalls != 2 || chain.checkpointCalls != 2 {
 		t.Fatalf("readiness burst made %d upstream probes, want 2 total", feeCalls)
 	}
 	svc.resetResolverReadinessCache()
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got := svc.Ready(cancelled); !got.Ok || feeCalls != 3 {
+	if got := svc.Ready(cancelled); !got.Ok || feeCalls != 3 || chain.checkpointCalls != 3 {
 		t.Fatalf("caller cancellation poisoned shared readiness = %+v, probes=%d", got, feeCalls)
 	}
 	svc.ArkResolver = readyArkResolver{
@@ -162,6 +164,23 @@ func TestReadyRequiresReleasePinnedResolverPolicy(t *testing.T) {
 	}
 	if got := svc.Ready(context.Background()); got.Ok || feeCalls != 4 {
 		t.Fatalf("failed readiness was not cached = %+v, probes=%d", got, feeCalls)
+	}
+	svc.ArkResolver = readyArkResolver{
+		network: deployment.NetworkMutinynet, checkpoint: checkpoint, signer: signer,
+		feeCalls: &feeCalls,
+	}
+	chain.checkpointErr = errors.New("wrong Bitcoin checkpoint")
+	svc.resetResolverReadinessCache()
+	if got := svc.Ready(context.Background()); got.Ok || got.Error != "Arkade resolver unavailable" {
+		t.Fatalf("wrong-chain readiness accepted: %+v", got)
+	}
+	chain.checkpointErr = nil
+	if got := svc.Ready(context.Background()); got.Ok || chain.checkpointCalls != 4 {
+		t.Fatal("failed chain probe was not cached")
+	}
+	svc.resolverReadyAt = time.Now().Add(-resolverReadyTTL)
+	if got := svc.Ready(context.Background()); !got.Ok || chain.checkpointCalls != 5 {
+		t.Fatalf("correct chain did not recover after cache expiry: %+v", got)
 	}
 	attackerCheckpoint := append([]byte(nil), checkpoint...)
 	attackerCheckpoint[len(attackerCheckpoint)-1] ^= 1

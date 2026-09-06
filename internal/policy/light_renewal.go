@@ -257,6 +257,9 @@ func (l *Ledger) ReserveLightRenewal(ctx context.Context, r LightRenewalOperatio
 		if err := l.rejectConcurrentVtxoOperationLocked(ctx, tx, r.VaultID, ""); err != nil {
 			return err
 		}
+		if err := l.rejectDispatchedDelegation(ctx, tx, r.VaultID); err != nil {
+			return err
+		}
 		used, err := l.spentInWindow(ctx, tx, r.VaultID)
 		if err != nil {
 			return err

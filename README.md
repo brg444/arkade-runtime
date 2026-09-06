@@ -176,6 +176,24 @@ without breaking fresh-device recovery and lost-response recovery.
 | `POST /v1/light/renew/final` | Verify signed replacement paths and submit the owner-authorized forfeit. |
 | `POST /v1/light/renew/status` | Reconcile the replacement output and confirmed Bitcoin commitment. |
 | `POST /v1/light/renew/release` | Cancel an unsent renewal or fence an expired registration after checking the old output. |
+| `POST /v1/light/delegate/info` | Read enrolled native delegate capabilities when enabled. |
+| `POST /v1/light/delegate/schedule` | Persist bounded owner authorization for one Light renewal. |
+| `POST /v1/light/delegate/status` | Read operation state and verified replacement recovery paths. |
+| `POST /v1/light/delegate/list` | Discover this vault’s scheduled operations with owner authorization. |
+| `POST /v1/light/delegate/cancel` | Cancel an armed renewal before dispatch claims its input. |
+| `POST /v1/vtxo/delegate/info` | Read native renewal capabilities for the enrolled Spending program. |
+| `POST /v1/vtxo/delegate/schedule` | Atomically authorize 1–50 exact Spending renewal plans. |
+| `POST /v1/vtxo/delegate/status` | Read a Spending renewal and its verified recovery paths. |
+| `POST /v1/vtxo/delegate/list` | Discover Spending renewals with owner authorization. |
+| `POST /v1/vtxo/delegate/cancel` | Cancel an armed Spending renewal before dispatch. |
+| `POST /v1/recovery-archive/challenge` | Issue a discoverable Savings archive passkey challenge. |
+| `POST /v1/recovery-archive/open` | Authenticate a Savings passkey and pin the enrolled descriptor for eight hours. |
+| `POST /v1/recovery-archive/read` | Read the authenticated encrypted archive of recovery data. |
+| `POST /v1/recovery-archive/write` | Save an encrypted archive at the expected revision with its original header. |
+| `POST /v1/light/backup/challenge` | Issue a single-use discoverable passkey challenge. |
+| `POST /v1/light/backup/open` | Authenticate a Light passkey and open an eight-hour backup-only session. |
+| `POST /v1/light/backup/read` | Read the authenticated encrypted recovery snapshot. |
+| `POST /v1/light/backup/write` | Atomically replace an encrypted snapshot at the expected revision. |
 | `POST /v1/light/enroll/start` | Assign a Light identity and freeze its spending policy. |
 | `POST /v1/light/enroll/propose` | Return the Light descriptor for local verification and backup. |
 | `POST /v1/light/enroll/finish` | Verify the passkey ceremony and atomically consume admission. |
@@ -199,6 +217,8 @@ without breaking fresh-device recovery and lost-response recovery.
 | `POST /v1/passkey/install` | Install a passkey credential envelope. |
 | `POST /v1/passkey/recover` | Recover a passkey credential envelope. |
 | `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
+| `POST /v1/connector/withdraw/authorize` | Validate, durably authorize, and cosign one Savings connector withdrawal. |
+| `GET /v1/connector/operation` | Read one connector operation for retry reconciliation. |
 
 The boarding phase routes use release-pinned public Operator and Esplora adapters;
 they accept no runtime origin override. Savings broadcast and ordinary

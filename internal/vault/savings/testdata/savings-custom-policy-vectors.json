@@ -1,0 +1,472 @@
+[
+  {
+    "name": "mainnet/standard/custom",
+    "input": {
+      "network": "mainnet",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 78901,
+        "txRecipientCapSats": 23456,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      }
+    },
+    "descriptor": {
+      "schema": "arkade-vault/savings-v1",
+      "network": "mainnet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "templateVersion": "phone-hww-recovery-savings-v1",
+      "policyVersion": "vault-spending-policy-v1",
+      "protectionTier": "standard",
+      "keys": {
+        "phoneBip340": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+        "hardware": "02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+        "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+      },
+      "tweaks": {
+        "initiate": {
+          "hardware": {
+            "vault": "034e9bd960b1af6226dad9da20c521accb6e27e84fdd4bc833ba2c1336fdcc5cb0",
+            "arkade": "03754af297a3626cbcaec8817291a08f59a43f0696c507299c5e1733b2bdba6034"
+          },
+          "phone": {
+            "vault": "02c98e6ffee63bd3d875225c1b9651533ff8404203af6b041140ed9bd7b4d43b89",
+            "arkade": "02cf52fe1ac420333a41c8d7ff5123c88c97e2dded29382ff0c9427c1ad4fff5ac"
+          }
+        },
+        "pending": {
+          "savings-hardware": {
+            "vault": "02d2bc5c2b0d9ada12428b27b84c0d77fc7d01060b65486af5d8af60cc1c641aa0",
+            "arkade": "026f84c373f2de3303ec5f79fa66a01f53bcdba84738fe6777be1ac71d72d32bc6"
+          },
+          "savings-phone": {
+            "vault": "02e24ab7fe770b32b45e2b66687ba0fb63c9fbe512bf78dbb9444a084b96c12566",
+            "arkade": "03527579fbe607e8e12573c914e77c149cf3533a97dfa73c8932575a495a60a2a2"
+          }
+        }
+      },
+      "arkadeCosigner": {
+        "origin": "https://operator.example",
+        "version": "savings-v1-fixture"
+      },
+      "csv": {
+        "hardware": 6,
+        "phone": 144,
+        "recovery": 288
+      },
+      "policy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "digest": "92e5d98cb3c3d35053b61694fe6d36a1b1e721d2a57bf49bd6956a222d246a54",
+        "recipientDustSats": 330,
+        "recipientCapSats": 23456,
+        "periodAllowanceSats": 78901,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatVb": 25
+      },
+      "p2a": {
+        "script": "51024e73",
+        "valueSats": 240,
+        "outputIndex": 1
+      },
+      "transitionSequence": 4294967293,
+      "savings": {
+        "script": "51202df84200c556004326bf3482cd6027c6e24a8c386f116daf55123b8d4b7de1d6",
+        "address": "bc1p9huyyqx92cqyxf4lxjpv6cp8cm3y4rpcdugkmt64zgac6jmau8tq8a43xv"
+      },
+      "pending": {
+        "savings-hardware": {
+          "script": "512070fb6b7fc6fc40fcdccb78b60f684069ec5a92f53718b407ca489b928674d9d6",
+          "address": "bc1pwrakkl7xl3q0ehxt0zmq76zqd8k94yh4xuvtgp72fzde9pn5m8tqpcu7cf",
+          "delay": 6
+        },
+        "savings-phone": {
+          "script": "512007f8ce4a8043bca5507a62669fba3a6b6718b2a0a2cc8c94ab309419e6041c71",
+          "address": "bc1pqluvuj5qgw7225r6vfnflw36ddn33v4q5txge99txz2pnesyr3cs4dl3s0",
+          "delay": 144
+        }
+      },
+      "quarantine": {
+        "savings-hardware": {
+          "script": "5120252f657ec5600ccedc3840aae12db196681f20f504f89467ce494a4f9aba4b98",
+          "address": "bc1py5hk2lk9vqxvahpcgz4wztd3je5p7g84qnufge7wf99ylx46fwvqf27jvr",
+          "guardians": ["phone"]
+        },
+        "savings-phone": {
+          "script": "5120fb589018610d20345f05a81e809eaeb07054c84720815f238269d551dc49dc31",
+          "address": "bc1pldvfqxrpp5srghc94q0gp84wkpc9fjz8yzq47guzd824rhzfmscsys4xnv",
+          "guardians": ["hardware"]
+        }
+      }
+    },
+    "descriptorHash": "0c51e9d399fc6eef3eeda5f2b5f566b20f7f21959f520a3299a0048ec0f74735"
+  },
+  {
+    "name": "mainnet/advanced/custom",
+    "input": {
+      "network": "mainnet",
+      "protectionTier": "advanced",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 78901,
+        "txRecipientCapSats": 23456,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      }
+    },
+    "descriptor": {
+      "schema": "arkade-vault/savings-v1",
+      "network": "mainnet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "templateVersion": "phone-hww-recovery-savings-v1",
+      "policyVersion": "vault-spending-policy-v1",
+      "protectionTier": "advanced",
+      "keys": {
+        "phoneBip340": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+        "hardware": "02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+        "recovery": "022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+        "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+      },
+      "tweaks": {
+        "initiate": {
+          "hardware": {
+            "vault": "032809f7cc7bb63d402a91bee5e41c05d0246f1c46f85f544021db8d338bfd7b76",
+            "arkade": "020890b2887b1590163e8fa4463e71c11f75b8852da2c69468b32f98190dee4ef4"
+          },
+          "phone": {
+            "vault": "029b2c6da29151ebdca0f17b973ec1748b639dd1ccaa09d16cf9f0d87657463910",
+            "arkade": "02d9e3b294ffd5920e703dce1878119674d17b3ee7bf4d42b5399229fa53196992"
+          },
+          "recovery": {
+            "vault": "03d6fa54bf0736892e6f2842373962f01fb833ca0491f02ddf85f4d5466da49120",
+            "arkade": "02a30928b58887c37246ff337d1b5b36c7c8942df8fe39a81779557e14b463143b"
+          }
+        },
+        "pending": {
+          "savings-hardware": {
+            "vault": "03f8df25ddc956357db1cae8bb7103ef85705ca1ee507b5d91650b3255923a208c",
+            "arkade": "037cf2e273983f42364db6d0dc4aa446bd54b10dfc8b764b33f57997b4db678e10"
+          },
+          "savings-phone": {
+            "vault": "031364b9293d66edcc8db6774459329e602ce91df8d17954005b8102e0dd2dd27e",
+            "arkade": "02de6b37f5c1b7524bc5c85c2000dbfd7b27a844e7925b5296b3b4947ba5c48d58"
+          },
+          "savings-recovery": {
+            "vault": "0286992c41dbc91b374c917eda0ab80561080bd4cf857cb5ce74c3d05a8478c529",
+            "arkade": "03684977993bbf8d1b8d61f2e17236ded0abedb8f954659a99196d6dd788a93cec"
+          }
+        }
+      },
+      "arkadeCosigner": {
+        "origin": "https://operator.example",
+        "version": "savings-v1-fixture"
+      },
+      "csv": {
+        "hardware": 6,
+        "phone": 144,
+        "recovery": 288
+      },
+      "policy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "digest": "92e5d98cb3c3d35053b61694fe6d36a1b1e721d2a57bf49bd6956a222d246a54",
+        "recipientDustSats": 330,
+        "recipientCapSats": 23456,
+        "periodAllowanceSats": 78901,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatVb": 25
+      },
+      "p2a": {
+        "script": "51024e73",
+        "valueSats": 240,
+        "outputIndex": 1
+      },
+      "transitionSequence": 4294967293,
+      "savings": {
+        "script": "5120a12363c41d3d1eb6b59eb570c89f18bf3ae9e056d89b6f8d906eb5cf8d05eda1",
+        "address": "bc1p5y3k83qa850tddv7k4cv38cchuawnczkmzdklrvsd66ulrg9akssrk48zu"
+      },
+      "pending": {
+        "savings-hardware": {
+          "script": "51207a9a7dbd6d08bb9b765b2c114074e7fb261bfb7931d3ca3a1b97f3cc549e126e",
+          "address": "bc1p02d8m0tdpzaekajm9sg5qa88lvnph7mex8fu5wsmjleuc4y7zfhqjc8qae",
+          "delay": 6
+        },
+        "savings-phone": {
+          "script": "512031605e27527d2258b611b859801ba02985ddf1fdf45fb90982014ab6ec2b45e5",
+          "address": "bc1px9s9uf6j05393ds3hpvcqxaq9xzamu0a730mjzvzq99tdmptghjs65psws",
+          "delay": 144
+        },
+        "savings-recovery": {
+          "script": "5120ca4be46acaa27565933b3e35f9fca9d5a88e6edece18953e3cef531a64d38b64",
+          "address": "bc1pef97g6k25f6ktyem8c6lnl9f6k5gumk7ecvf203uaaf35exn3djq90rak5",
+          "delay": 288
+        }
+      },
+      "quarantine": {
+        "savings-hardware": {
+          "script": "51205f1a7385d47772d8e93a1c5cebaefebaa54bc2dcc019685c63864f6670166662",
+          "address": "bc1ptud88pw5waed36f6r3wwhth7h2j5hskucqvkshrrse8kvuqkve3qjzp6nu",
+          "guardians": ["phone", "recovery"]
+        },
+        "savings-phone": {
+          "script": "512075db74f8dbace1a395704fb0450faef6ccb5d2a4ba4b0ea9bc66c323abf37003",
+          "address": "bc1pwhdhf7xm4ns689tsf7cy2raw7mxtt54yhf9sa2duvmpj82lnwqpssqvldn",
+          "guardians": ["hardware", "recovery"]
+        },
+        "savings-recovery": {
+          "script": "5120f19df111fe0116bfc8b754cbe6c78492587c81312e711f81d0410625f2dbe307",
+          "address": "bc1p7xwlzy07qyttlj9h2n97d3uyjfv8eqf39ec3lqwsgyrztukmuvrsvaqreu",
+          "guardians": ["phone", "hardware"]
+        }
+      }
+    },
+    "descriptorHash": "28df55cd209975c1a4f2b92383fabd71f6cc94b108552b5a5d42d210a47d375d"
+  },
+  {
+    "name": "mutinynet/standard/custom",
+    "input": {
+      "network": "mutinynet",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 78901,
+        "txRecipientCapSats": 23456,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      }
+    },
+    "descriptor": {
+      "schema": "arkade-vault/savings-v1",
+      "network": "mutinynet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "templateVersion": "phone-hww-recovery-savings-v1",
+      "policyVersion": "vault-spending-policy-v1",
+      "protectionTier": "standard",
+      "keys": {
+        "phoneBip340": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+        "hardware": "02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+        "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+      },
+      "tweaks": {
+        "initiate": {
+          "hardware": {
+            "vault": "02cadd822ffc23272f790b842b9f7489e47bd47d6657fa56b01570c3fc7c145177",
+            "arkade": "02c1c3faf2d8eb5caac9197635198d646367f09cae4460385b61cedbcb61035230"
+          },
+          "phone": {
+            "vault": "03312ebea227a198c13be3b487cd5d7ae0d4b423253dc111fc1bbdcc7eaad443c1",
+            "arkade": "03fb9ffcaf607cac96591c32eb046080f9dece46e34ae3b2f1f87c4c3c2c217d23"
+          }
+        },
+        "pending": {
+          "savings-hardware": {
+            "vault": "026376be856c2bd7e402957f5c0cd339d6c399922f7fb3b01146b8999c08365bb0",
+            "arkade": "03ccabed6c93faf5667770b0ffe2d21b0cdd1821d6a2b9de12d564636e45827a97"
+          },
+          "savings-phone": {
+            "vault": "03d4b2ccf0d79cbd345e231996d8502a7866da15c179f4928c8bb7718c844a459a",
+            "arkade": "03fda5136450d86ae8066f8a7ead7be256eb9b843ede2901b2541567b91fe74aeb"
+          }
+        }
+      },
+      "arkadeCosigner": {
+        "origin": "https://operator.example",
+        "version": "savings-v1-fixture"
+      },
+      "csv": {
+        "hardware": 6,
+        "phone": 144,
+        "recovery": 288
+      },
+      "policy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "digest": "10e1ce552a01823c7cc3c96ed9a2f1b55cfa49554be2e146771411af6ed5e7fa",
+        "recipientDustSats": 330,
+        "recipientCapSats": 23456,
+        "periodAllowanceSats": 78901,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatVb": 10
+      },
+      "p2a": {
+        "script": "51024e73",
+        "valueSats": 240,
+        "outputIndex": 1
+      },
+      "transitionSequence": 4294967293,
+      "savings": {
+        "script": "51204aef16c64054b2ab50038ad6077ec7cdd7d37281a9ea927e275c4378a2ea4580",
+        "address": "tb1pfth3d3jq2je2k5qr3ttqwlk8ehtaxu5p484fyl38t3ph3gh2gkqqzdzy80"
+      },
+      "pending": {
+        "savings-hardware": {
+          "script": "5120d0b15a6decd045182c00bff3e3b7d56914ed42693f25914bfbcc9bb0e27167e9",
+          "address": "tb1p6zc45m0v6pz3stqqhle78d74dy2w6snf8ujezjlmejdmpcn3vl5stjm4ry",
+          "delay": 6
+        },
+        "savings-phone": {
+          "script": "5120656708fb0346ab9eeb20bc053e592677cfb2a4866bd6e1d2238b85193a394c0a",
+          "address": "tb1pv4ns37crg64ea6eqhsznukfxwl8m9fyxd0twr53r3wz3jw3efs9q8y507v",
+          "delay": 144
+        }
+      },
+      "quarantine": {
+        "savings-hardware": {
+          "script": "5120252f657ec5600ccedc3840aae12db196681f20f504f89467ce494a4f9aba4b98",
+          "address": "tb1py5hk2lk9vqxvahpcgz4wztd3je5p7g84qnufge7wf99ylx46fwvq7zgakv",
+          "guardians": ["phone"]
+        },
+        "savings-phone": {
+          "script": "5120fb589018610d20345f05a81e809eaeb07054c84720815f238269d551dc49dc31",
+          "address": "tb1pldvfqxrpp5srghc94q0gp84wkpc9fjz8yzq47guzd824rhzfmscsncrffr",
+          "guardians": ["hardware"]
+        }
+      }
+    },
+    "descriptorHash": "96577aaedf1361e5cbe8073b1f476de24b93e5f58e1331d2a7c4bf9cbd7e9aa4"
+  },
+  {
+    "name": "mutinynet/advanced/custom",
+    "input": {
+      "network": "mutinynet",
+      "protectionTier": "advanced",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 78901,
+        "txRecipientCapSats": 23456,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      }
+    },
+    "descriptor": {
+      "schema": "arkade-vault/savings-v1",
+      "network": "mutinynet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "templateVersion": "phone-hww-recovery-savings-v1",
+      "policyVersion": "vault-spending-policy-v1",
+      "protectionTier": "advanced",
+      "keys": {
+        "phoneBip340": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+        "hardware": "02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+        "recovery": "022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+        "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+      },
+      "tweaks": {
+        "initiate": {
+          "hardware": {
+            "vault": "037d514b0be8af1599c2a683ca43b717ee89161f50bf84a7cafe826a5e6e6186c6",
+            "arkade": "0284e755f7b94739c3e3294f683496e39cb9dae6ebcdb86076e9f3faeb1bf07195"
+          },
+          "phone": {
+            "vault": "0228a17ec0b30a82ea48e1f1c68076fd5e8bbb11971731e4d230fed8cbb684fad3",
+            "arkade": "02ca6cbbb691a0489e4359db69a72394c8f68d05a169b67fdd72da557e5886243e"
+          },
+          "recovery": {
+            "vault": "02427a8714252d2080676af85f3bc3df8d8c0ce8bb2edf5d82d83242e08cc28a00",
+            "arkade": "0258a1046e7640d301f755e7048e8ac5b66b9d39298c1fb281c06904cafb4fa18c"
+          }
+        },
+        "pending": {
+          "savings-hardware": {
+            "vault": "02577f6512e5cfad3a1f5fe0efdcf47f210ce675168ff0f93fe79f0892e9a903e4",
+            "arkade": "0286c50f0e2ee9c8572ca155eeba61b10ae2103a5abd3a4757740269c6c80d5d39"
+          },
+          "savings-phone": {
+            "vault": "03c5e2c3d5642d14cfc5e9e9c3bf28670d75ec30a853d95c4bfdcc1c319124f9b7",
+            "arkade": "03858315e802f805ced367622ebce76f2ca03e74e73f8099a95a7cf98ff79958cf"
+          },
+          "savings-recovery": {
+            "vault": "03391229f7de3969e043905880664298e7587ca783abacdb70b7013dcfa77e5ae5",
+            "arkade": "033e454018a20b921c86f9077a3954cfe36f40c2729a930e62e2390efe3838f68e"
+          }
+        }
+      },
+      "arkadeCosigner": {
+        "origin": "https://operator.example",
+        "version": "savings-v1-fixture"
+      },
+      "csv": {
+        "hardware": 6,
+        "phone": 144,
+        "recovery": 288
+      },
+      "policy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "digest": "10e1ce552a01823c7cc3c96ed9a2f1b55cfa49554be2e146771411af6ed5e7fa",
+        "recipientDustSats": 330,
+        "recipientCapSats": 23456,
+        "periodAllowanceSats": 78901,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatVb": 10
+      },
+      "p2a": {
+        "script": "51024e73",
+        "valueSats": 240,
+        "outputIndex": 1
+      },
+      "transitionSequence": 4294967293,
+      "savings": {
+        "script": "512043865e12f3513ee220c4dab246a4898f87ff923d46bc54a60095cc8092d91d6c",
+        "address": "tb1pgwr9uyhn2ylwygxym2eydfyf37rlly3ag679ffsqjhxgpyker4kqkx2m2h"
+      },
+      "pending": {
+        "savings-hardware": {
+          "script": "5120a7f3592ddafaa357d5e0dceafa6110ece27c72e6e7ff975dbef55d72051559b0",
+          "address": "tb1p5le4jtw6l234040qmn405cgsan38cuhxullewhd774whypg4txcqae3jyu",
+          "delay": 6
+        },
+        "savings-phone": {
+          "script": "51200d3a868998e941b5493ab2bb733416dc0acf2bf8ab54be6ea58fc6072d897047",
+          "address": "tb1pp5agdzvca9qm2jf6k2ahxdqkms9v72lc4d2tum493lrqwtvfwprspdhz80",
+          "delay": 144
+        },
+        "savings-recovery": {
+          "script": "5120e51cad3f334378b7089a1e3742cd6bd87448c37545a6f3f3450f085724eabf59",
+          "address": "tb1pu5w260engdutwzy6rcm59nttmp6y3sm4gkn08u69puy9wf82havs0mp65x",
+          "delay": 288
+        }
+      },
+      "quarantine": {
+        "savings-hardware": {
+          "script": "51205f1a7385d47772d8e93a1c5cebaefebaa54bc2dcc019685c63864f6670166662",
+          "address": "tb1ptud88pw5waed36f6r3wwhth7h2j5hskucqvkshrrse8kvuqkve3q92h4fn",
+          "guardians": ["phone", "recovery"]
+        },
+        "savings-phone": {
+          "script": "512075db74f8dbace1a395704fb0450faef6ccb5d2a4ba4b0ea9bc66c323abf37003",
+          "address": "tb1pwhdhf7xm4ns689tsf7cy2raw7mxtt54yhf9sa2duvmpj82lnwqps8g6shu",
+          "guardians": ["hardware", "recovery"]
+        },
+        "savings-recovery": {
+          "script": "5120f19df111fe0116bfc8b754cbe6c78492587c81312e711f81d0410625f2dbe307",
+          "address": "tb1p7xwlzy07qyttlj9h2n97d3uyjfv8eqf39ec3lqwsgyrztukmuvrsm4kvrn",
+          "guardians": ["phone", "hardware"]
+        }
+      }
+    },
+    "descriptorHash": "3b505178555759f76d5e41fd38fda1214d25e7aa6c73defbe7c84694adc7b265"
+  }
+]

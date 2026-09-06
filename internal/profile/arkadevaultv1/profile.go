@@ -14,8 +14,9 @@ const (
 	ProfileID = "arkade-vault-v1"
 	ModuleID  = "arkade-vault-v1"
 
-	SavingsRecoveryProgram = "savings-recovery-v1"
-	SpendingPolicy         = "vault-spending-policy-v1"
+	SavingsRecoveryProgram  = "savings-recovery-v1"
+	SavingsConnectorProgram = "savings-connector-v1"
+	SpendingPolicy          = "vault-spending-policy-v1"
 )
 
 // Definition returns a fresh compile-time profile definition. Policy values,
@@ -27,6 +28,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 			ID: ModuleID,
 			Programs: []string{
 				SavingsRecoveryProgram,
+				SavingsConnectorProgram,
 				program.VaultBoardV1,
 				program.VaultPolicyV1,
 			},
@@ -38,12 +40,17 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"recovery-operation-store",
 				"map-store",
 				"vault-board-store",
+				"connector-store",
+				"recovery-archive-store",
+				"vtxo-delegation-store",
 			},
 			KeyScopes: []string{
 				"enrollment-derivation",
 				"savings-recovery-authorization",
+				"savings-connector-authorization",
 				"vtxo-transaction-authorization",
 				"vtxo-checkpoint-authorization",
+				"vtxo-delegation-authorization",
 				"vault-board-authorization",
 				"public-emulator-operation",
 			},
@@ -54,6 +61,25 @@ func Definition() arkaderuntime.ProfileDefinition {
 
 func routes() []arkaderuntime.Route {
 	return []arkaderuntime.Route{
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/info"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/info"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/schedule"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/schedule"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/status"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/status"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/list"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/list"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/cancel"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/cancel"},
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/challenge"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/challenge"},
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/open"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/open"},
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/read"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/read"},
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/write"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/write"},
+
 		{Method: http.MethodGet, Path: "/v1/status"},
 		{Method: http.MethodOptions, Path: "/v1/status"},
 		{Method: http.MethodGet, Path: "/v1/invite"},
@@ -101,5 +127,9 @@ func routes() []arkaderuntime.Route {
 		{Method: http.MethodOptions, Path: "/v1/vtxo/board/release"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/board/final"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/board/final"},
+		{Method: http.MethodPost, Path: "/v1/connector/withdraw/authorize"},
+		{Method: http.MethodOptions, Path: "/v1/connector/withdraw/authorize"},
+		{Method: http.MethodGet, Path: "/v1/connector/operation"},
+		{Method: http.MethodOptions, Path: "/v1/connector/operation"},
 	}
 }

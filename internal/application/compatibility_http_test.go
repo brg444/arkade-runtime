@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
@@ -38,6 +39,26 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 	}
 
 	types := map[string]reflect.Type{
+		"SpendingRenewalBinding":          reflect.TypeOf(spendingRenewalBinding{}),
+		"SpendingDelegationInput":         reflect.TypeOf(spendingDelegationInput{}),
+		"SpendingDelegationSetRequest":    reflect.TypeOf(spendingDelegationSetRequest{}),
+		"SpendingDelegationAuthorization": reflect.TypeOf(spendingDelegationAuthorization{}),
+		"SpendingDelegationReadRequest":   reflect.TypeOf(spendingDelegationReadRequest{}),
+		"SpendingDelegationSetResponse":   reflect.TypeOf(spendingDelegationSetResponse{}),
+
+		"LightDelegationRequest":     reflect.TypeOf(lightDelegationRequest{}),
+		"LightDelegateIntent":        reflect.TypeOf(lightDelegateIntent{}),
+		"LightDelegationReadRequest": reflect.TypeOf(lightDelegationReadRequest{}),
+		"LightDelegationListRequest": reflect.TypeOf(lightDelegationListRequest{}),
+		"LightDelegationRecovery":    reflect.TypeOf(lightDelegationRecovery{}),
+		"LightDelegationWireNode":    reflect.TypeOf(lightDelegationWireNode{}),
+
+		"RecoveryArchiveOpenResponse":  reflect.TypeOf(RecoveryArchiveOpenResponse{}),
+		"RecoveryArchiveBinding":       reflect.TypeOf(RecoveryArchiveBinding{}),
+		"LightBackupOpenRequest":       reflect.TypeOf(LightBackupOpenRequest{}),
+		"LightBackupRequest":           reflect.TypeOf(LightBackupRequest{}),
+		"LightBackupOpenResponse":      reflect.TypeOf(LightBackupOpenResponse{}),
+		"LightBackup":                  reflect.TypeOf(policy.RecoveryBackup{}),
 		"LightRenewalPlan":             reflect.TypeOf(lightRenewalPlan{}),
 		"LightRenewalPrepareRequest":   reflect.TypeOf(lightRenewalPrepareRequest{}),
 		"LightRenewalPrepared":         reflect.TypeOf(lightRenewalPrepared{}),
@@ -62,6 +83,9 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"TransitionResponse":           reflect.TypeOf(TransitionResponse{}),
 		"PasskeyChallengeRequest":      reflect.TypeOf(PasskeyChallengeRequest{}),
 		"PasskeyChallengeResponse":     reflect.TypeOf(PasskeyChallengeResponse{}),
+		"ConnectorWithdrawRequest":     reflect.TypeOf(ConnectorWithdrawRequest{}),
+		"ConnectorWithdrawResponse":    reflect.TypeOf(ConnectorWithdrawResponse{}),
+		"ConnectorOperationView":       reflect.TypeOf(ConnectorOperationView{}),
 		"RecoveryBindingRouteRequest": reflect.TypeOf(struct {
 			VaultID string `json:"vaultId"`
 			RecoveryBindingRequest

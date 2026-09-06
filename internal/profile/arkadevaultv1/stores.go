@@ -52,6 +52,18 @@ type RecoveryOperationStore interface {
 	ApplyRecoveryReplay(policy.RecoverySession) (policy.ReplayAction, *policy.RecoverySession, error)
 }
 
+// ConnectorStore is the authenticated enrollment origin and replay-safe
+// Savings connector withdrawal store. It exposes neither allowance mutation
+// nor generic storage.
+type ConnectorStore interface {
+	GetConnectorEnrollment(string) (*policy.ConnectorEnrollment, error)
+	ApplyConnectorReplay(policy.ConnectorOperation) (policy.ConnectorReplayAction, *policy.ConnectorOperation, error)
+	GetConnectorOperation(string) (*policy.ConnectorOperation, error)
+	ListConnectorConflicts(string, string, uint32, string, uint32) ([]*policy.ConnectorOperation, error)
+	StoreConnectorStage(string, string, string) (*policy.ConnectorOperation, error)
+	ResolveConnectorOperation(string, policy.ConnectorChainEvidence) (*policy.ConnectorOperation, error)
+}
+
 // MapStore persists only the typed Recovery Kit map document.
 type MapStore interface {
 	GetVaultMap(string) (*policy.VaultMap, error)
@@ -77,6 +89,19 @@ type LightRenewalStore interface {
 	AppendLightRenewalEvent(context.Context, policy.LightRenewalEvent, []byte, uint32) (policy.LightRenewalEvent, bool, error)
 }
 
+type LightDelegationStore interface {
+	ListLightDelegations(context.Context) ([]policy.LightDelegationSnapshot, error)
+	ScheduleLightDelegation(context.Context, policy.LightDelegation) (*policy.LightDelegationSnapshot, error)
+	ScheduleVtxoDelegationSet(context.Context, []policy.LightDelegation, []byte, uint32) ([]policy.LightDelegationSnapshot, error)
+	AdvanceLightDelegation(context.Context, policy.LightDelegationEvent, int64) (*policy.LightDelegationSnapshot, error)
+}
+
+// RecoveryBackupStore stores client-encrypted recovery snapshots independently of spending authority.
+type RecoveryBackupStore interface {
+	GetRecoveryBackup(string) (*policy.RecoveryBackup, error)
+	PutRecoveryBackup(string, uint64, string) (*policy.RecoveryBackup, error)
+}
+
 // Stores is the complete persistence capability set compiled into the
 // arkade-vault-v1 profile.
 type Stores struct {
@@ -87,6 +112,9 @@ type Stores struct {
 	Maps               MapStore
 	VaultBoard         VaultBoardStore
 	LightRenewal       LightRenewalStore
+	LightDelegation    LightDelegationStore
+	Connector          ConnectorStore
+	RecoveryBackup     RecoveryBackupStore
 }
 
 func (s Stores) Validate() error {
@@ -101,10 +129,14 @@ func (s Stores) Validate() error {
 		return fmt.Errorf("arkade-vault-v1 recovery operation store required")
 	case s.Maps == nil:
 		return fmt.Errorf("arkade-vault-v1 map store required")
+	case s.RecoveryBackup == nil:
+		return fmt.Errorf("Recovery backup store required")
 	case s.LightRenewal == nil:
 		return fmt.Errorf("Light renewal store required")
 	case s.VaultBoard == nil:
 		return fmt.Errorf("arkade-vault-v1 Vault Board store required")
+	case s.Connector == nil:
+		return fmt.Errorf("arkade-vault-v1 connector store required")
 	default:
 		return nil
 	}
@@ -125,5 +157,8 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		Maps:               ledger,
 		VaultBoard:         ledger,
 		LightRenewal:       ledger,
+		LightDelegation:    ledger,
+		Connector:          ledger,
+		RecoveryBackup:     ledger,
 	}, nil
 }

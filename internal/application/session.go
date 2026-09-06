@@ -3,13 +3,12 @@ package application
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/brg444/arkade-runtime/internal/apperr"
@@ -21,26 +20,28 @@ import (
 )
 
 const (
-	passkeyPurposeRecover        = "recover"
-	passkeyPurposeInstall        = "install-envelope"
-	passkeyPurposeTransition     = "transition"
-	passkeyPurposeMapWrite       = "map-write"
-	passkeyChallengeTTL          = 2 * time.Minute
-	maxPasskeyChallengesPerVault = 16
-	recoveryBindingDomain        = "arkade-vault/recovery-binding/v4"
-	passkeyProofDomain           = "arkade-2fa-vault/passkey-proof/v1"
+	passkeyPurposeRecover           = "recover"
+	passkeyPurposeInstall           = "install-envelope"
+	passkeyPurposeTransition        = "transition"
+	passkeyPurposeMapWrite          = "map-write"
+	passkeyPurposeConnectorWithdraw = "connector-withdraw"
+	passkeyChallengeTTL             = 2 * time.Minute
+	recoveryBindingDomain           = "arkade-vault/recovery-binding/v4"
+	passkeyProofDomain              = "arkade-2fa-vault/passkey-proof/v1"
 )
 
 type passkeyChallenge struct {
-	VaultID   string
-	Purpose   string
-	Challenge []byte
-	ExpiresAt time.Time
+	VaultID       string
+	Purpose       string
+	CandidateTxid string
+	Challenge     []byte
+	ExpiresAt     time.Time
 }
 
 type PasskeyChallengeRequest struct {
-	Purpose string `json:"purpose"`
-	VaultID string `json:"vaultId,omitempty"`
+	Purpose       string `json:"purpose"`
+	VaultID       string `json:"vaultId,omitempty"`
+	CandidateTxid string `json:"candidateTxid,omitempty"`
 }
 
 type PasskeyChallengeResponse struct {
@@ -108,44 +109,50 @@ type RecoverCredentialEnvelopeResponse struct {
 // phone-key envelope. The original device signs its exact JSON encoding;
 // a fresh device verifies those signatures before treating status as trusted.
 type recoveryBinding struct {
-	Version                   uint32 `json:"version"`
-	CredentialID              string `json:"credentialId"`
-	WebAuthnP256              string `json:"webauthnP256"`
-	PhoneDirectP256           string `json:"phoneDirectP256"`
-	PhoneBIP340Pub            string `json:"phoneBip340Pub"`
-	ExternalOwnerWalletPub    string `json:"externalOwnerWalletPub"`
-	VaultCosignerBasePub      string `json:"vaultCosignerBasePub"`
-	ArkadeCosignerBasePub     string `json:"arkadeCosignerBasePub"`
-	ArkadeCosignerOrigin      string `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion     string `json:"arkadeCosignerVersion"`
-	ClientOrigin              string `json:"clientOrigin"`
-	RPID                      string `json:"rpId"`
-	Network                   string `json:"network"`
-	VaultID                   string `json:"vaultId"`
-	TemplateVersion           string `json:"templateVersion"`
-	PolicyVersion             string `json:"policyVersion"`
-	ProtectionTier            string `json:"protectionTier"`
-	SavingsAddress            string `json:"savingsAddress"`
-	SavingsScript             string `json:"savingsScript"`
-	VtxoVaultCosignerPub      string `json:"vtxoVaultCosignerPub"`
-	VtxoExitDelay             uint32 `json:"vtxoExitDelay"`
-	VtxoExitDelayUnit         string `json:"vtxoExitDelayUnit"`
-	SpendingArkAddress        string `json:"spendingArkAddress"`
-	SpendingArkScript         string `json:"spendingArkScript"`
-	VtxoDelegatePub           string `json:"vtxoDelegatePub"`
-	VtxoBoardingActive        bool   `json:"vtxoBoardingActive"`
-	VtxoBoardingProgram       string `json:"vtxoBoardingProgram"`
-	VtxoBoardingAddress       string `json:"vtxoBoardingAddress"`
-	VtxoBoardingScript        string `json:"vtxoBoardingScript"`
-	VtxoBoardingExitDelay     uint32 `json:"vtxoBoardingExitDelay"`
-	VtxoBoardingExitDelayUnit string `json:"vtxoBoardingExitDelayUnit"`
-	RecipientDustSats         int64  `json:"recipientDustSats"`
-	TxRecipientCapSats        int64  `json:"txRecipientCapSats"`
-	PeriodAllowanceSats       int64  `json:"periodAllowanceSats"`
-	AbsoluteFeeCapSats        int64  `json:"absoluteFeeCapSats"`
-	FeerateCapSatPerV         int64  `json:"feerateCapSatVb"`
-	EnvelopeNonce             string `json:"envelopeNonce"`
-	EnvelopeCiphertext        string `json:"envelopeCiphertext"`
+	Version                   uint32  `json:"version"`
+	CredentialID              string  `json:"credentialId"`
+	WebAuthnP256              string  `json:"webauthnP256"`
+	PhoneDirectP256           string  `json:"phoneDirectP256"`
+	PhoneBIP340Pub            string  `json:"phoneBip340Pub"`
+	ExternalOwnerWalletPub    string  `json:"externalOwnerWalletPub"`
+	VaultCosignerBasePub      string  `json:"vaultCosignerBasePub"`
+	ArkadeCosignerBasePub     string  `json:"arkadeCosignerBasePub"`
+	ArkadeCosignerOrigin      string  `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion     string  `json:"arkadeCosignerVersion"`
+	ClientOrigin              string  `json:"clientOrigin"`
+	RPID                      string  `json:"rpId"`
+	Network                   string  `json:"network"`
+	VaultID                   string  `json:"vaultId"`
+	TemplateVersion           string  `json:"templateVersion"`
+	PolicyVersion             string  `json:"policyVersion"`
+	ProtectionTier            string  `json:"protectionTier"`
+	SavingsAddress            string  `json:"savingsAddress"`
+	SavingsScript             string  `json:"savingsScript"`
+	VtxoVaultCosignerPub      string  `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay             uint32  `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit         string  `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress        string  `json:"spendingArkAddress"`
+	SpendingArkScript         string  `json:"spendingArkScript"`
+	VtxoDelegatePub           string  `json:"vtxoDelegatePub"`
+	VtxoBoardingActive        bool    `json:"vtxoBoardingActive"`
+	VtxoBoardingProgram       string  `json:"vtxoBoardingProgram"`
+	VtxoBoardingAddress       string  `json:"vtxoBoardingAddress"`
+	VtxoBoardingScript        string  `json:"vtxoBoardingScript"`
+	VtxoBoardingExitDelay     uint32  `json:"vtxoBoardingExitDelay"`
+	VtxoBoardingExitDelayUnit string  `json:"vtxoBoardingExitDelayUnit"`
+	RecipientDustSats         int64   `json:"recipientDustSats"`
+	TxRecipientCapSats        int64   `json:"txRecipientCapSats"`
+	PeriodAllowanceSats       int64   `json:"periodAllowanceSats"`
+	AbsoluteFeeCapSats        int64   `json:"absoluteFeeCapSats"`
+	FeerateCapSatPerV         int64   `json:"feerateCapSatVb"`
+	EnvelopeNonce             string  `json:"envelopeNonce"`
+	EnvelopeCiphertext        string  `json:"envelopeCiphertext"`
+	ConnectorType             string  `json:"connectorType,omitempty"`
+	ConnectorPub              string  `json:"connectorPub,omitempty"`
+	ConnectorFingerprint      *uint32 `json:"connectorFingerprint,omitempty"`
+	ConnectorPath             string  `json:"connectorPath,omitempty"`
+	ConnectorEnrollmentDigest string  `json:"connectorEnrollmentDigest,omitempty"`
+	ConnectorDescriptorHash   string  `json:"connectorDescriptorHash,omitempty"`
 }
 
 func (s *Service) sessionNow() time.Time {
@@ -153,10 +160,6 @@ func (s *Service) sessionNow() time.Time {
 		return s.SessionNow()
 	}
 	return time.Now()
-}
-
-func passkeyChallengeKey(vaultID, challengeID string) string {
-	return vaultID + "\x00" + challengeID
 }
 
 func (s *Service) routePasskeyVaultID(vaultID string) (string, error) {
@@ -191,68 +194,109 @@ func (s *Service) IssuePasskeyChallengeFor(ctx context.Context, vaultID, purpose
 			return nil, fmt.Errorf("passkey sign-in has not been enabled on the original device")
 		}
 	}
-	idRaw := make([]byte, 16)
-	challenge := make([]byte, 32)
-	if _, err := rand.Read(idRaw); err != nil {
-		return nil, fmt.Errorf("passkey challenge id: %w", err)
-	}
-	if _, err := rand.Read(challenge); err != nil {
-		return nil, fmt.Errorf("passkey challenge: %w", err)
-	}
-	id := base64.RawURLEncoding.EncodeToString(idRaw)
-	now := s.sessionNow()
-	s.sessionMu.Lock()
-	defer s.sessionMu.Unlock()
-	if s.sessionChallenges == nil {
-		s.sessionChallenges = make(map[string]passkeyChallenge)
-	}
-	pendingForVault := 0
-	for key, pending := range s.sessionChallenges {
-		if !now.Before(pending.ExpiresAt) {
-			delete(s.sessionChallenges, key)
-			continue
-		}
-		if pending.VaultID == vaultID {
-			pendingForVault++
-		}
-	}
-	if pendingForVault >= maxPasskeyChallengesPerVault {
-		return nil, ErrVerificationBusy
-	}
-	s.sessionChallenges[passkeyChallengeKey(vaultID, id)] = passkeyChallenge{
-		VaultID: vaultID, Purpose: purpose, Challenge: append([]byte(nil), challenge...), ExpiresAt: now.Add(passkeyChallengeTTL),
-	}
-	return &PasskeyChallengeResponse{
-		ChallengeID: id, Challenge: hex.EncodeToString(challenge),
-		AllowCredentialID: hex.EncodeToString(cred.ID),
-		ExpiresInSeconds:  int64(passkeyChallengeTTL / time.Second),
-	}, nil
+	return s.issuePasskeyChallenge(vaultID, purpose, "", cred.ID)
 }
 
-func (s *Service) consumePasskeyChallenge(vaultID, id, purpose string) ([]byte, error) {
-	if len(id) != 22 {
-		return nil, fmt.Errorf("passkey authentication failed")
+// IssueConnectorWithdrawChallenge issues a candidate-bound passkey challenge
+// for one connector withdrawal. The candidate txid is stored with the
+// challenge; authorization later requires the submitted candidate to hash to
+// exactly this txid. One ceremony returns the phone-unlock PRF and
+// authenticates the exact connector action.
+func (s *Service) IssueConnectorWithdrawChallenge(ctx context.Context, vaultID, candidateTxid string) (*PasskeyChallengeResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(id)
-	if err != nil || len(raw) != 16 || base64.RawURLEncoding.EncodeToString(raw) != id {
-		return nil, fmt.Errorf("passkey authentication failed")
+	candidateTxid = strings.ToLower(strings.TrimSpace(candidateTxid))
+	if len(candidateTxid) != 64 || !isConnectorHex(candidateTxid) {
+		return nil, fmt.Errorf("candidate transaction required")
 	}
-	s.sessionMu.Lock()
-	defer s.sessionMu.Unlock()
-	key := passkeyChallengeKey(vaultID, id)
-	pending, ok := s.sessionChallenges[key]
-	if !ok {
-		return nil, fmt.Errorf("passkey authentication failed")
+	vaultID, err := s.routePasskeyVaultID(vaultID)
+	if err != nil {
+		return nil, err
 	}
-	if !s.sessionNow().Before(pending.ExpiresAt) {
-		delete(s.sessionChallenges, key)
-		return nil, fmt.Errorf("passkey authentication failed")
+	cred, err := s.loadVerifiedCredentialFor(vaultID)
+	if err != nil {
+		return nil, err
 	}
-	if pending.VaultID != vaultID || pending.Purpose != purpose {
-		return nil, fmt.Errorf("passkey authentication failed")
+	if cred == nil {
+		return nil, fmt.Errorf("not enrolled")
 	}
-	delete(s.sessionChallenges, key)
-	return append([]byte(nil), pending.Challenge...), nil
+	if !isConnectorCredential(cred) {
+		return nil, fmt.Errorf("connector vault required")
+	}
+	return s.issuePasskeyChallenge(vaultID, passkeyPurposeConnectorWithdraw, candidateTxid, cred.ID)
+}
+
+func isConnectorHex(s string) bool {
+	for _, c := range []byte(s) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// authenticateConnectorWithdrawSession verifies the passkey ceremony for one
+// connector withdrawal and requires the challenge's bound candidate txid to
+// equal the submitted candidate. A challenge issued for another candidate,
+// vault, or purpose never authorizes.
+func (s *Service) authenticateConnectorWithdrawSession(ctx context.Context, vaultID string, req SessionAssertionRequest, candidateTxid string) (*policy.Credential, error) {
+	candidateTxid = strings.ToLower(strings.TrimSpace(candidateTxid))
+	release, err := s.acquireVerification(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	vaultID, err = s.routePasskeyVaultID(vaultID)
+	if err != nil {
+		return nil, err
+	}
+	record, err := s.readPasskeyChallenge(vaultID, req.ChallengeID, passkeyPurposeConnectorWithdraw)
+	if err != nil {
+		return nil, failPasskeyAuth("challenge", err)
+	}
+	if record.CandidateTxid == "" || record.CandidateTxid != candidateTxid {
+		return nil, failPasskeyAuth("candidate", fmt.Errorf("passkey challenge is not bound to this candidate"))
+	}
+	cred, err := s.loadVerifiedCredentialFor(vaultID)
+	if err != nil || cred == nil {
+		if err == nil {
+			err = fmt.Errorf("not enrolled")
+		}
+		return nil, failPasskeyAuth("credential", err)
+	}
+	assertion, err := decodeBoundedSessionAssertion(req)
+	if err != nil {
+		return nil, failPasskeyAuth("assertion", err)
+	}
+	if !bytes.Equal(assertion.CredentialID, cred.ID) {
+		return nil, apperr.New(apperr.CodeRejected, "this passkey does not belong to this vault")
+	}
+	if err := rejectPRF(assertion.ClientDataJSON); err != nil {
+		return nil, failPasskeyAuth("prf", err)
+	}
+	verified, err := webauthn.Validate(assertion, webauthn.Expected{
+		CredentialID: cred.ID, WebAuthnP256: cred.WebAuthnP256, Challenge: record.Challenge,
+		Origin: cred.Origin, RPID: cred.RPID,
+	})
+	if err != nil {
+		return nil, failPasskeyAuth("webauthn", err)
+	}
+	directProof, err := decodeFixedHex(req.DirectProof, 64, "direct proof")
+	if err != nil {
+		return nil, failPasskeyAuth("proof", err)
+	}
+	proofDigest := passkeySessionProofDigest(passkeyPurposeConnectorWithdraw, record.Challenge, cred.ID)
+	if err := verifyDirectAuth(cred.PhoneDirectP256, proofDigest, directProof); err != nil {
+		return nil, failPasskeyAuth("proof", err)
+	}
+	if _, err := s.consumePasskeyChallenge(vaultID, req.ChallengeID, passkeyPurposeConnectorWithdraw); err != nil {
+		return nil, failPasskeyAuth("challenge", err)
+	}
+	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
+		return nil, failPasskeyAuth("sign-count", err)
+	}
+	return cred, nil
 }
 
 func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vaultID string, req SessionAssertionRequest) (*policy.Credential, error) {
@@ -265,10 +309,11 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 	if err != nil {
 		return nil, err
 	}
-	challenge, err := s.consumePasskeyChallenge(vaultID, req.ChallengeID, purpose)
+	record, err := s.readPasskeyChallenge(vaultID, req.ChallengeID, purpose)
 	if err != nil {
 		return nil, failPasskeyAuth("challenge", err)
 	}
+	challenge := record.Challenge
 	cred, err := s.loadVerifiedCredentialFor(vaultID)
 	if err != nil || cred == nil {
 		if err == nil {
@@ -293,9 +338,6 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 	if err != nil {
 		return nil, failPasskeyAuth("webauthn", err)
 	}
-	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
-		return nil, failPasskeyAuth("sign-count", err)
-	}
 	directProof, err := decodeFixedHex(req.DirectProof, 64, "direct proof")
 	if err != nil {
 		return nil, failPasskeyAuth("proof", err)
@@ -303,6 +345,12 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 	proofDigest := passkeySessionProofDigest(purpose, challenge, cred.ID)
 	if err := verifyDirectAuth(cred.PhoneDirectP256, proofDigest, directProof); err != nil {
 		return nil, failPasskeyAuth("proof", err)
+	}
+	if _, err := s.consumePasskeyChallenge(vaultID, req.ChallengeID, purpose); err != nil {
+		return nil, failPasskeyAuth("challenge", err)
+	}
+	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
+		return nil, failPasskeyAuth("sign-count", err)
 	}
 	return cred, nil
 }
@@ -466,6 +514,19 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		FeerateCapSatPerV:         cred.FeerateCapSatPerV,
 		EnvelopeNonce:             hex.EncodeToString(nonce), EnvelopeCiphertext: hex.EncodeToString(ciphertext),
 	}
+	if isConnectorCredential(cred) {
+		identity, err := s.connectorEnrollmentStatus(cred, snap)
+		if err != nil {
+			return "", err
+		}
+		binding.Version = 5
+		binding.ConnectorType = identity.ConnectorType
+		binding.ConnectorPub = identity.ConnectorPub
+		binding.ConnectorFingerprint = &identity.ConnectorFingerprint
+		binding.ConnectorPath = connectorOriginPathString(identity.ConnectorPath)
+		binding.ConnectorEnrollmentDigest = identity.EnrollmentDigest
+		binding.ConnectorDescriptorHash = identity.DescriptorHash
+	}
 	raw, err := json.Marshal(binding)
 	if err != nil {
 		return "", err
@@ -474,7 +535,14 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 }
 
 func recoveryBindingDigest(binding string) []byte {
-	return recoveryBindingDigestForDomain(recoveryBindingDomain, binding)
+	var header struct {
+		Version uint32 `json:"version"`
+	}
+	domain := recoveryBindingDomain
+	if json.Unmarshal([]byte(binding), &header) == nil && header.Version == 5 {
+		domain = "arkade-vault/recovery-binding/v5"
+	}
+	return recoveryBindingDigestForDomain(domain, binding)
 }
 
 func recoveryBindingDigestForDomain(domain, binding string) []byte {

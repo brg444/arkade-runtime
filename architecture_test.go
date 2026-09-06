@@ -34,6 +34,7 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/policy":                 {modulePath + "/internal/program": true},
 		modulePath + "/internal/iface/http":             {modulePath + "/internal/application": true},
 		modulePath + "/internal/profile/vaultedlightv1": {modulePath + "/internal/runtime": true, modulePath + "/internal/vault/light": true},
+		modulePath + "/internal/vault/connector":        {modulePath + "/internal/program": true, modulePath + "/internal/vault/savings": true},
 		modulePath + "/internal/profile/arkadevaultv1": {
 			modulePath + "/internal/policy":  true,
 			modulePath + "/internal/program": true,
@@ -45,9 +46,16 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/application": true,
 		modulePath + "/internal/authorizer":  true,
 	}
+	// Only internal/application imports the connector implementation, for its
+	// named enrollment and withdrawal workflows. Profile declarations and
+	// release capabilities preserve this implementation import boundary.
+	connectorImporters := map[string]bool{
+		modulePath + "/internal/application": true,
+	}
 	nonProductionPackages := map[string]bool{
-		modulePath:              true,
-		modulePath + "/fixture": true,
+		modulePath:                            true,
+		modulePath + "/fixture":               true,
+		modulePath + "/experiments/connector": true,
 	}
 
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
@@ -56,12 +64,17 @@ func TestInternalImportBoundaries(t *testing.T) {
 		var pkg struct {
 			ImportPath string
 			Imports    []string
+			GoFiles    []string
+			CgoFiles   []string
 		}
 		if err := decoder.Decode(&pkg); err != nil {
 			t.Fatalf("decode go list: %v", err)
 		}
 		if !strings.HasPrefix(pkg.ImportPath, modulePath) {
 			continue
+		}
+		if pkg.ImportPath == modulePath+"/experiments/connector" && len(pkg.GoFiles)+len(pkg.CgoFiles) != 0 {
+			t.Error("connector experiment must contain test files only")
 		}
 		want, tracked := allowed[pkg.ImportPath]
 		if !tracked && !compositionRoots[pkg.ImportPath] && !nonProductionPackages[pkg.ImportPath] {
@@ -71,6 +84,9 @@ func TestInternalImportBoundaries(t *testing.T) {
 		seen[pkg.ImportPath] = true
 		var unexpected []string
 		for _, imported := range pkg.Imports {
+			if imported == modulePath+"/internal/vault/connector" && !connectorImporters[pkg.ImportPath] {
+				t.Errorf("unreleased connector must not be imported by production code: %s", pkg.ImportPath)
+			}
 			if imported == modulePath+"/fixture" && !nonProductionPackages[pkg.ImportPath] {
 				unexpected = append(unexpected, imported)
 				continue

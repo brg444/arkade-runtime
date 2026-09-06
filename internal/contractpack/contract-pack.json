@@ -21,6 +21,25 @@
       "serverFreeClawback": true,
       "internalTag": "arkade-vault/savings-v1/internal"
     },
+    "savings-connector-v1": {
+      "status": "rc",
+      "enrollable": true,
+      "schema": "arkade-vault/connector-enrollment-v1",
+      "template": "phone-connector-recovery-savings-v1",
+      "enrollmentSchema": "arkade-vault/enrollment-with-connector-v1",
+      "inputOrder": ["savings", "signer-reserve"],
+      "signerInputs": ["p2wpkh", "p2tr"],
+      "reserveSats": 1000,
+      "reserveReturnedInFull": true,
+      "anchorSats": 240,
+      "feeSource": "savings",
+      "spendingAllowanceDebit": false,
+      "outputOrder": ["recipient", "signer-reserve", "anchor", "emulator-packet", "optional-savings-change"],
+      "signingOrder": ["phone", "guardian", "emulator", "external-signer"],
+      "externalSighash": { "p2wpkh": ["ALL"], "p2tr": ["ALL", "DEFAULT"] },
+      "recovery": "savings-recovery-v1",
+      "trust": "The online cosigners enforce the enrolled signer input. Phone and both online signing keys together can bypass that policy."
+    },
     "vault-policy-v1": {
       "status": "listed",
       "module": "vtxo",
@@ -104,8 +123,9 @@
     "vaultCredential": "arkade-vault/vault-credential/v1",
     "recoverySession": "arkade-2fa-vault/recovery-session/v2",
     "recoveryBinding": "arkade-vault/recovery-binding/v4",
+    "connectorRecoveryBinding": "arkade-vault/recovery-binding/v5",
     "passkeyProof": "arkade-2fa-vault/passkey-proof/v1",
     "vtxoReserve": "arkade-vault/vtxo-reserve/v1"
   },
-  "formats": { "recoveryKit": 3, "mapBackup": 3 }
+  "formats": { "recoveryKit": 3, "mapBackup": 3, "connectorEnrollmentKit": 1 }
 }

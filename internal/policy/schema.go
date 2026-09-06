@@ -10,8 +10,14 @@ import (
 	"github.com/brg444/arkade-runtime/internal/program"
 )
 
-const schemaVersion = 2
+const schemaVersion = 5
+const connectorSchemaVersion = 3
+const recoveryBackupSchemaVersion = 4
 const legacySchemaVersion = 1
+
+// lightSchemaVersion is the last version without the connector stores.
+// Databases at this version migrate forward; only schemaVersion opens clean.
+const lightSchemaVersion = 2
 
 var boardingTables = []string{
 	"vault_board_authorization",
@@ -184,15 +190,15 @@ CREATE INDEX vault_board_authorization_phase ON vault_board_authorization(phase,
 CREATE INDEX vault_board_operation_vault ON vault_board_operation(vault_id, created_at);
 `
 
-// OpenLedger opens the sole fresh Arkade Vault schema. It never upgrades or
-// reinterprets an older database.
+// OpenLedger opens the current schema, applying only the explicit additive
+// migrations from structurally verified prior baselines.
 func OpenLedger(path string, clock Clock) (*Ledger, error) {
 	return OpenLedgerForNetwork(path, clock, program.NetworkMutinynet)
 }
 
 // OpenLedgerForNetwork creates or validates the exact boarding schema for the
-// selected deployment. It never rewrites an existing schema or accepts the
-// other network's boarding delay.
+// selected deployment. Migrations preserve existing objects and never accept
+// the other network's boarding delay.
 func OpenLedgerForNetwork(path string, clock Clock, network string) (*Ledger, error) {
 	boardSchema, err := vaultBoardSchemaForNetwork(network)
 	if err != nil {
@@ -330,6 +336,18 @@ func matchVaultBoardIndexes(table string, got, want []idxSpec) error {
 }
 
 func validateVaultSchemaObjects(db *sql.DB, renewal bool) error {
+	return validateVaultSchemaObjectsInner(db, renewal, false, false)
+}
+
+func validateVaultSchemaObjectsV3(db *sql.DB) error {
+	return validateVaultSchemaObjectsInner(db, true, true, false)
+}
+
+func validateVaultSchemaObjectsV4(db *sql.DB) error {
+	return validateVaultSchemaObjectsInner(db, true, true, true)
+}
+
+func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector, backup bool, delegation ...bool) error {
 	want := append([]string(nil), coreTables...)
 	for i, table := range want {
 		want[i] = "table:" + table
@@ -343,6 +361,17 @@ func validateVaultSchemaObjects(db *sql.DB, renewal bool) error {
 	)
 	if renewal {
 		want = append(want, "table:light_renewal_operation", "table:light_renewal_event")
+	}
+	if backup {
+		want = append(want, "table:recovery_backup")
+	}
+	if len(delegation) > 0 && delegation[0] {
+		want = append(want, "table:light_delegation_operation", "table:light_delegation_event")
+	}
+	if connector {
+		want = append(want,
+			"table:connector_enrollment", "table:connector_operation",
+		)
 	}
 	rows, err := db.Query(`SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','index','trigger','view') AND (type != 'index' OR sql IS NOT NULL) ORDER BY type, name`)
 	if err != nil {

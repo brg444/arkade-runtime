@@ -27,7 +27,7 @@ type Mount struct {
 	Shutdown  func() error
 }
 
-// Host owns one selected compiled profile for a process lifetime.
+// Host owns the selected compiled profiles for a process lifetime.
 type Host struct {
 	profile  Profile
 	profiles []Profile
