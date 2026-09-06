@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Delegation stores owner-presigned authorization separately from input ownership.
@@ -68,9 +69,25 @@ func (s *LightDelegationSnapshot) State() string {
 	}
 	return state
 }
+
+// ValidDelegationVaultID preserves the enrolled identity as opaque UTF-8 for
+// vault-policy-v1. Public enrollment currently assigns 16-byte hex IDs; older
+// authenticated enrollments can use other exact strings. Light and its legacy
+// journal retain their original 32-byte canonical hexadecimal ID contract.
+func ValidDelegationVaultID(programID, vaultID string) bool {
+	switch programID {
+	case delegationSetVaultProgram:
+		return vaultID != "" && utf8.ValidString(vaultID) && strings.TrimSpace(vaultID) == vaultID
+	case "", delegationSetLightProgram:
+		return canonicalRenewalHex(vaultID, 32)
+	default:
+		return false
+	}
+}
+
 func validateDelegation(o LightDelegation) error {
 	created, err := time.Parse(time.RFC3339, o.CreatedAt)
-	if err != nil || !canonicalRenewalHex(o.OperationID, 16) || !canonicalRenewalHex(o.VaultID, 32) || !canonicalRenewalHex(o.InputTxid, 32) || !canonicalRenewalHex(o.PlanDigest, 32) || o.FeeSats < 0 || o.FeeSats > 20000 || o.ValidAt < created.Unix() || o.ValidAt > created.Add(30*24*time.Hour).Unix() || o.ExpiresAt <= o.ValidAt || o.ExpiresAt > o.ValidAt+86400 || len(o.Plan) == 0 || len(o.Plan) > 65536 || !json.Valid([]byte(o.Plan)) {
+	if err != nil || !canonicalRenewalHex(o.OperationID, 16) || !ValidDelegationVaultID(o.Program, o.VaultID) || !canonicalRenewalHex(o.InputTxid, 32) || !canonicalRenewalHex(o.PlanDigest, 32) || o.FeeSats < 0 || o.FeeSats > 20000 || o.ValidAt < created.Unix() || o.ValidAt > created.Add(30*24*time.Hour).Unix() || o.ExpiresAt <= o.ValidAt || o.ExpiresAt > o.ValidAt+86400 || len(o.Plan) == 0 || len(o.Plan) > 65536 || !json.Valid([]byte(o.Plan)) {
 		return fmt.Errorf("invalid Light delegation")
 	}
 	if err := validateDelegationSetFields(o); err != nil {

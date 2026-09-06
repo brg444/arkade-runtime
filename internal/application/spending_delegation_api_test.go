@@ -2,6 +2,7 @@ package application
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -29,7 +30,6 @@ import (
 func spendingDelegationFixture(t *testing.T, network, tier string, connected bool) (*env, renewalContract, spendingDelegationSetRequest) {
 	t.Helper()
 	e := newEnvForNetwork(t, network)
-	id := strings.Repeat("ab", 32)
 	e.credID = []byte{0x22}
 	var recovery *btcec.PrivateKey
 	if tier == "advanced" {
@@ -39,21 +39,34 @@ func spendingDelegationFixture(t *testing.T, network, tier string, connected boo
 	req.CredentialID = hex.EncodeToString(e.credID)
 	req.WebAuthnP256 = hex.EncodeToString(webauthn.CompressedP256(e.p256))
 	req.PhoneDirectP256 = hex.EncodeToString(webauthn.CompressedP256(e.direct))
-	token := bytes.Repeat([]byte{0x55}, 32)
-	putConnectorInvite(t, e.ledger, token)
-	if connected {
-		enrollConnectorVault(t, e.svc, id, token, req)
-	} else {
+	if !connected {
 		req.ConnectorType, req.ConnectorPub = "", ""
 		req.ConnectorFingerprint, req.ConnectorPath = 0, nil
-		preview, err := e.svc.previewVaultBoardEnrollmentDescriptor(id, req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.DescriptorHash = preview.DescriptorHash
-		if err := e.svc.CreateTenantVault(id, token, req); err != nil {
-			t.Fatal(err)
-		}
+	}
+	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x55}, 32))
+	tokenHash, err := HashEnrollmentToken(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putConnectorInvite(t, e.ledger, tokenHash)
+	start, err := e.svc.StartEnrollment(token, EnrollStartRequest{ProtectionTier: tier, SpendingPolicy: req.SpendingPolicy, SpendingPolicyDigest: req.SpendingPolicyDigest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finish := attestedFinish(t, e.svc, start, e.p256, e.credID, RegisterRequest{})
+	finish.RegisterRequest = req
+	preview, err := e.svc.ProposeEnrollment(token, finish)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finish.DescriptorHash = preview.DescriptorHash
+	enrolled, err := e.svc.FinishEnrollment(t.Context(), token, finish)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := enrolled.VaultID
+	if id != start.VaultID || len(id) != 32 {
+		t.Fatal("fixture must use real enrollment-assigned vault ID unchanged")
 	}
 	e.svc.LightDelegationEnabled = true
 	c, err := e.svc.delegationContract(id, false)

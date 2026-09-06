@@ -72,7 +72,11 @@ An exact owner-authenticated retry returns the persisted set, including after it
 deadlines or a later unrelated ceremony. It grants no additional authority and
 does not consume the supplied assertion. Changed membership, order, program,
 context, set ID, or plan cannot extend that receipt. Set and operation IDs are
-16-byte lowercase hex; vault and context identities are 32-byte lowercase hex.
+16-byte lowercase hex, and context hashes are 32-byte lowercase hex. Vault IDs
+retain their exact enrolled opaque UTF-8 value; Standard/Advanced public
+enrollment currently assigns 16-byte hex IDs, while Light requires 32-byte hex.
+Identifiers are never decoded, lowercased, or Unicode-normalized for key
+derivation or signing.
 
 ## Readback and compatibility
 

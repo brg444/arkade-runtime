@@ -538,3 +538,22 @@ func TestDelegationSetTamperFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestDelegationVaultIDPreservesProgramIdentity(t *testing.T) {
+	for _, id := range []string{strings.Repeat("ab", 16), strings.Repeat("cd", 32), "550e8400-e29b-41d4-a716-446655440000", "legacy-tenant", "vault-é", "vault-e\u0301"} {
+		if !ValidDelegationVaultID(delegationSetVaultProgram, id) {
+			t.Fatalf("opaque enrolled Vault ID rejected: %q", id)
+		}
+		if len(id) != 64 && (ValidDelegationVaultID(delegationSetLightProgram, id) || ValidDelegationVaultID("", id)) {
+			t.Fatalf("Light ID contract widened: %q", id)
+		}
+	}
+	for _, id := range []string{"", " ", " vault", "vault ", string([]byte{0xff})} {
+		if ValidDelegationVaultID(delegationSetVaultProgram, id) {
+			t.Fatalf("noncanonical routed ID accepted: %q", id)
+		}
+	}
+	if ValidDelegationVaultID("unknown", strings.Repeat("ab", 32)) {
+		t.Fatal("unknown renewal program accepted")
+	}
+}

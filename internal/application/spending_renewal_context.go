@@ -29,7 +29,7 @@ type spendingRenewalBinding struct {
 }
 
 func (b spendingRenewalBinding) digest() (string, error) {
-	if requireTxid(b.VaultID) != nil {
+	if !policy.ValidDelegationVaultID(b.Program, b.VaultID) {
 		return "", fmt.Errorf("renewal vault identity")
 	}
 	pins, err := deployment.IdentityFor(b.Network)

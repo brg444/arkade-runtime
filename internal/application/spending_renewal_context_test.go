@@ -119,6 +119,9 @@ func TestSpendingRenewalContextUsesEnrolledKeyScope(t *testing.T) {
 					recovery, _ = btcec.NewPrivateKey()
 				}
 				id := strings.Repeat("12", 32)
+				if tier == "advanced" {
+					id = "550e8400-e29b-41d4-a716-446655440000"
+				}
 				token := bytes.Repeat([]byte{0x13}, 32)
 				putConnectorInvite(t, f.led, token)
 				req := connectorEnrollRequestForNetwork(t, network, phone, hardware, boarding, tier, recovery, connector.Taproot, false)
@@ -127,7 +130,7 @@ func TestSpendingRenewalContextUsesEnrolledKeyScope(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if ctx.Binding.Program != program.VaultPolicyV1 || ctx.Binding.ProtectionTier != tier || ctx.KeyScope.lightProfile {
+				if ctx.Binding.Program != program.VaultPolicyV1 || ctx.Binding.ProtectionTier != tier || ctx.KeyScope.lightProfile || ctx.Binding.VaultID != id || ctx.KeyScope.vaultID != id {
 					t.Fatal("Vault authority substituted")
 				}
 				if ctx.Tree.DelegatePub == nil || len(ctx.Tree.RevealedScripts) <= 2 {
