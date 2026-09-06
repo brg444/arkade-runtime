@@ -10,8 +10,12 @@ import (
 	"github.com/brg444/arkade-runtime/internal/program"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 const legacySchemaVersion = 1
+
+// lightSchemaVersion is the last version without the connector stores.
+// Databases at this version migrate forward; only schemaVersion opens clean.
+const lightSchemaVersion = 2
 
 var boardingTables = []string{
 	"vault_board_authorization",
@@ -330,6 +334,14 @@ func matchVaultBoardIndexes(table string, got, want []idxSpec) error {
 }
 
 func validateVaultSchemaObjects(db *sql.DB, renewal bool) error {
+	return validateVaultSchemaObjectsInner(db, renewal, false)
+}
+
+func validateVaultSchemaObjectsV3(db *sql.DB) error {
+	return validateVaultSchemaObjectsInner(db, true, true)
+}
+
+func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector bool) error {
 	want := append([]string(nil), coreTables...)
 	for i, table := range want {
 		want[i] = "table:" + table
@@ -343,6 +355,11 @@ func validateVaultSchemaObjects(db *sql.DB, renewal bool) error {
 	)
 	if renewal {
 		want = append(want, "table:light_renewal_operation", "table:light_renewal_event")
+	}
+	if connector {
+		want = append(want,
+			"table:connector_enrollment", "table:connector_operation",
+		)
 	}
 	rows, err := db.Query(`SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','index','trigger','view') AND (type != 'index' OR sql IS NOT NULL) ORDER BY type, name`)
 	if err != nil {

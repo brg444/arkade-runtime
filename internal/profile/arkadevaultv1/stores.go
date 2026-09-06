@@ -52,6 +52,18 @@ type RecoveryOperationStore interface {
 	ApplyRecoveryReplay(policy.RecoverySession) (policy.ReplayAction, *policy.RecoverySession, error)
 }
 
+// ConnectorStore is the authenticated enrollment origin and replay-safe
+// Savings connector withdrawal store. It exposes neither allowance mutation
+// nor generic storage.
+type ConnectorStore interface {
+	GetConnectorEnrollment(string) (*policy.ConnectorEnrollment, error)
+	ApplyConnectorReplay(policy.ConnectorOperation) (policy.ConnectorReplayAction, *policy.ConnectorOperation, error)
+	GetConnectorOperation(string) (*policy.ConnectorOperation, error)
+	ListConnectorConflicts(string, string, uint32, string, uint32) ([]*policy.ConnectorOperation, error)
+	StoreConnectorStage(string, string, string) (*policy.ConnectorOperation, error)
+	ResolveConnectorOperation(string, policy.ConnectorChainEvidence) (*policy.ConnectorOperation, error)
+}
+
 // MapStore persists only the typed Recovery Kit map document.
 type MapStore interface {
 	GetVaultMap(string) (*policy.VaultMap, error)
@@ -87,6 +99,7 @@ type Stores struct {
 	Maps               MapStore
 	VaultBoard         VaultBoardStore
 	LightRenewal       LightRenewalStore
+	Connector          ConnectorStore
 }
 
 func (s Stores) Validate() error {
@@ -105,6 +118,8 @@ func (s Stores) Validate() error {
 		return fmt.Errorf("Light renewal store required")
 	case s.VaultBoard == nil:
 		return fmt.Errorf("arkade-vault-v1 Vault Board store required")
+	case s.Connector == nil:
+		return fmt.Errorf("arkade-vault-v1 connector store required")
 	default:
 		return nil
 	}
@@ -125,5 +140,6 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		Maps:               ledger,
 		VaultBoard:         ledger,
 		LightRenewal:       ledger,
+		Connector:          ledger,
 	}, nil
 }

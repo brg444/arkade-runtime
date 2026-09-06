@@ -293,6 +293,16 @@ func economicOutflowCount(q queryContext) (uint64, error) {
 	if renewalTables == 2 {
 		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM light_renewal_operation) + (SELECT COUNT(*) FROM light_renewal_event)`
 	}
+	// Connector operations reserve both onchain inputs until chain evidence
+	// resolves them, so each durable operation advances the sequence exactly
+	// like every other economic-outflow reservation.
+	var connectorTables int
+	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('connector_enrollment','connector_operation')`).Scan(&connectorTables); err != nil {
+		return 0, err
+	}
+	if connectorTables == 2 {
+		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM connector_operation)`
+	}
 	if err := q.QueryRowContext(context.Background(), query).Scan(&n); err != nil {
 		return 0, err
 	}
