@@ -170,6 +170,11 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 }
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
+	"/v1/recovery-archive/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/recovery-archive/open":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/recovery-archive/read":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/recovery-archive/write":     {http.MethodPost: {}, http.MethodOptions: {}},
+
 	"/v1/light/backup/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/light/backup/open":      {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/light/backup/read":      {http.MethodPost: {}, http.MethodOptions: {}},
@@ -242,6 +247,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	})
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachLightEnrollmentRoutes(mux, svc, origin)
+	attachRecoveryArchiveRoutes(mux, svc, origin)
 	attachLightRenewalRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
@@ -265,7 +271,7 @@ func decodeMutation(r *http.Request, dst any, expectedOrigin string) error {
 		return &mutationError{http.StatusForbidden, "origin"}
 	}
 	limit := int64(maxJSONBody)
-	if r.URL.Path == "/v1/light/backup/write" {
+	if r.URL.Path == "/v1/light/backup/write" || r.URL.Path == "/v1/recovery-archive/write" {
 		limit = 3_100_000
 	}
 	if r.ContentLength > limit {

@@ -154,6 +154,22 @@
     "/v1/light/backup/write": [
       "OPTIONS",
       "POST"
+    ],
+    "/v1/recovery-archive/challenge": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/recovery-archive/open": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/recovery-archive/read": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/recovery-archive/write": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {
@@ -659,6 +675,22 @@
     "LightBackup": [
       "revision:integer",
       "payload:string"
+    ],
+    "RecoveryArchiveBinding": [
+      "vaultId:string",
+      "network:string",
+      "templateVersion:string",
+      "protectionTier:string",
+      "policyVersion:string",
+      "spendingPolicyDigest:string",
+      "descriptorHash:string"
+    ],
+    "RecoveryArchiveOpenResponse": [
+      "token:string",
+      "vaultId:string",
+      "expiresAt:string",
+      "backup:object|null",
+      "binding:object"
     ]
   }
 }

@@ -31,8 +31,8 @@ func TestConnectorSchemaGolden(t *testing.T) {
 	testSchemaGolden(t, connectorSchemaVersion, "29afa51371899c5f6185431170cd676e1a5ef5ac2beb89e5fdc12d6f5570c245")
 }
 
-func TestLightBackupSchemaGolden(t *testing.T) {
-	testSchemaGolden(t, lightBackupSchemaVersion, "182fce1282c3fdf0b9cb5fcf69dca29a2b306ceb92583fa0380fff953656c02b")
+func TestRecoveryBackupSchemaGolden(t *testing.T) {
+	testSchemaGolden(t, recoveryBackupSchemaVersion, "3de1e3291bdd6a56dd1b7b18f88ea4e3bea27ed737a8ac17e8416f67e8f852ba")
 }
 
 func testSchemaGolden(t *testing.T, version int, want string) {
@@ -58,7 +58,7 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		if err := rows.Scan(&kind, &name, &table, &sqlText); err != nil {
 			t.Fatal(err)
 		}
-		if version < lightBackupSchemaVersion && table == "light_backup" {
+		if version < recoveryBackupSchemaVersion && table == "recovery_backup" {
 			continue
 		}
 		// Freeze each deployed baseline verbatim, excluding only objects

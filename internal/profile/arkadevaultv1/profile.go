@@ -41,6 +41,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"map-store",
 				"vault-board-store",
 				"connector-store",
+				"recovery-archive-store",
 			},
 			KeyScopes: []string{
 				"enrollment-derivation",
@@ -58,6 +59,15 @@ func Definition() arkaderuntime.ProfileDefinition {
 
 func routes() []arkaderuntime.Route {
 	return []arkaderuntime.Route{
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/challenge"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/challenge"},
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/open"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/open"},
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/read"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/read"},
+		{Method: http.MethodPost, Path: "/v1/recovery-archive/write"},
+		{Method: http.MethodOptions, Path: "/v1/recovery-archive/write"},
+
 		{Method: http.MethodGet, Path: "/v1/status"},
 		{Method: http.MethodOptions, Path: "/v1/status"},
 		{Method: http.MethodGet, Path: "/v1/invite"},

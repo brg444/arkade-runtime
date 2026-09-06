@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestLightBackupCASIntegrityAndRestart(t *testing.T) {
+func TestRecoveryBackupCASIntegrityAndRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "backup.sqlite")
 	l, err := OpenLedger(path, nil)
 	if err != nil {
@@ -24,11 +24,11 @@ func TestLightBackupCASIntegrityAndRestart(t *testing.T) {
 	}
 	id := strings.Repeat("ab", 32)
 	createPolicyTestVault(t, l, id, 0x51)
-	first, err := l.PutLightBackup(id, 0, "encrypted-one")
+	first, err := l.PutRecoveryBackup(id, 0, "encrypted-one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	retry, err := l.PutLightBackup(id, 0, "encrypted-one")
+	retry, err := l.PutRecoveryBackup(id, 0, "encrypted-one")
 	if err != nil || retry.Revision != first.Revision {
 		t.Fatal("lost response was not idempotent", err)
 	}
@@ -36,7 +36,7 @@ func TestLightBackupCASIntegrityAndRestart(t *testing.T) {
 	results := make(chan error, 2)
 	for _, payload := range []string{"encrypted-two", "encrypted-three"} {
 		wg.Add(1)
-		go func(p string) { defer wg.Done(); _, err := l.PutLightBackup(id, 1, p); results <- err }(payload)
+		go func(p string) { defer wg.Done(); _, err := l.PutRecoveryBackup(id, 1, p); results <- err }(payload)
 	}
 	wg.Wait()
 	close(results)
@@ -49,7 +49,7 @@ func TestLightBackupCASIntegrityAndRestart(t *testing.T) {
 	if success != 1 {
 		t.Fatal("concurrent writers both won")
 	}
-	if _, err = l.PutLightBackup(id, 2, strings.Repeat("x", MaxLightBackupBytes+1)); err == nil {
+	if _, err = l.PutRecoveryBackup(id, 2, strings.Repeat("x", MaxRecoveryBackupBytes+1)); err == nil {
 		t.Fatal("oversized backup")
 	}
 	if err = l.Close(); err != nil {
@@ -63,22 +63,22 @@ func TestLightBackupCASIntegrityAndRestart(t *testing.T) {
 	if err = l.SetIntegrityKey(key); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := l.GetLightBackup(id)
+	saved, err := l.GetRecoveryBackup(id)
 	if err != nil || saved.Revision != 2 {
 		t.Fatal("backup did not persist", err)
 	}
-	if _, err = l.db.Exec(`UPDATE light_backup SET payload='tampered' WHERE vault_id=?`, id); err != nil {
+	if _, err = l.db.Exec(`UPDATE recovery_backup SET payload='tampered' WHERE vault_id=?`, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = l.GetLightBackup(id); err == nil {
+	if _, err = l.GetRecoveryBackup(id); err == nil {
 		t.Fatal("tampered read")
 	}
-	if _, err = l.PutLightBackup(id, 2, "overwrite"); err == nil {
+	if _, err = l.PutRecoveryBackup(id, 2, "overwrite"); err == nil {
 		t.Fatal("tampered row overwritten")
 	}
 }
 
-func TestLightBackupMigrationPreservesSchemaTwoRecordsAndSequence(t *testing.T) {
+func TestRecoveryBackupMigrationPreservesSchemaTwoRecordsAndSequence(t *testing.T) {
 	db, path := legacyRenewalDatabase(t)
 	if _, err := db.Exec(createLightRenewalSchema); err != nil {
 		t.Fatal(err)
@@ -142,10 +142,10 @@ func TestLightBackupMigrationPreservesSchemaTwoRecordsAndSequence(t *testing.T) 
 	if !bytes.Equal(before, snapshot(migrated.db)) {
 		t.Fatal("migration changed authenticated records")
 	}
-	if version, err := migrated.SchemaVersion(); err != nil || version != lightBackupSchemaVersion {
+	if version, err := migrated.SchemaVersion(); err != nil || version != recoveryBackupSchemaVersion {
 		t.Fatal("schema did not migrate", err)
 	}
-	if _, err := migrated.PutLightBackup(id, 0, "opaque-encrypted-backup"); err != nil {
+	if _, err := migrated.PutRecoveryBackup(id, 0, "opaque-encrypted-backup"); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := economicOutflowCount(migrated.db); err != nil || n != 2 {
@@ -157,7 +157,7 @@ func TestLightBackupMigrationPreservesSchemaTwoRecordsAndSequence(t *testing.T) 
 	}
 }
 
-func TestLightBackupMigrationRejectsSchemaTwoDriftBeforeWriting(t *testing.T) {
+func TestRecoveryBackupMigrationRejectsSchemaTwoDriftBeforeWriting(t *testing.T) {
 	db, path := legacyRenewalDatabase(t)
 	if _, err := db.Exec(createLightRenewalSchema); err != nil {
 		t.Fatal(err)
@@ -184,7 +184,7 @@ func TestLightBackupMigrationRejectsSchemaTwoDriftBeforeWriting(t *testing.T) {
 	if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || version != 2 {
 		t.Fatal("refused migration changed version", err)
 	}
-	if hasTable(db, "light_backup") {
+	if hasTable(db, "recovery_backup") {
 		t.Fatal("refused migration created backup table")
 	}
 }

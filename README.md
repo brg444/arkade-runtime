@@ -176,6 +176,10 @@ without breaking fresh-device recovery and lost-response recovery.
 | `POST /v1/light/renew/final` | Verify signed replacement paths and submit the owner-authorized forfeit. |
 | `POST /v1/light/renew/status` | Reconcile the replacement output and confirmed Bitcoin commitment. |
 | `POST /v1/light/renew/release` | Cancel an unsent renewal or fence an expired registration after checking the old output. |
+| `POST /v1/recovery-archive/challenge` | Issue a discoverable Savings archive passkey challenge. |
+| `POST /v1/recovery-archive/open` | Authenticate a Savings passkey and pin the enrolled descriptor for eight hours. |
+| `POST /v1/recovery-archive/read` | Read the authenticated encrypted archive of recovery data. |
+| `POST /v1/recovery-archive/write` | Save an encrypted archive at the expected revision with its original header. |
 | `POST /v1/light/backup/challenge` | Issue a single-use discoverable passkey challenge. |
 | `POST /v1/light/backup/open` | Authenticate a Light passkey and open an eight-hour backup-only session. |
 | `POST /v1/light/backup/read` | Read the authenticated encrypted recovery snapshot. |

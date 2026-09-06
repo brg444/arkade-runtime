@@ -12,7 +12,7 @@ import (
 
 const schemaVersion = 4
 const connectorSchemaVersion = 3
-const lightBackupSchemaVersion = 4
+const recoveryBackupSchemaVersion = 4
 const legacySchemaVersion = 1
 
 // lightSchemaVersion is the last version without the connector stores.
@@ -363,7 +363,7 @@ func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector, backup bool
 		want = append(want, "table:light_renewal_operation", "table:light_renewal_event")
 	}
 	if backup {
-		want = append(want, "table:light_backup")
+		want = append(want, "table:recovery_backup")
 	}
 	if connector {
 		want = append(want,

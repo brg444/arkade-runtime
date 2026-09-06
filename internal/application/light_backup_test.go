@@ -72,7 +72,7 @@ func TestLightBackupAuthenticationIsolationAndPersistence(t *testing.T) {
 		t.Fatal("unencrypted write")
 	}
 	s.sessionMu.Lock()
-	s.lightBackupSessions = nil
+	s.backupSessions = nil
 	s.sessionMu.Unlock()
 	if _, err = s.ReadLightBackup(LightBackupRequest{Token: opened.Token}); err == nil {
 		t.Fatal("session survives restart")

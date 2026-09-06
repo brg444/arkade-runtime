@@ -88,7 +88,7 @@ func validateV4Baseline(db *sql.DB, boardSchema string) error {
 	if err := validateConnectorBaseline(db, boardSchema, true); err != nil {
 		return err
 	}
-	return validateLightBackupSchema(db)
+	return validateRecoveryBackupSchema(db)
 }
 
 func validateConnectorBaseline(db *sql.DB, boardSchema string, backup bool) error {
@@ -118,7 +118,7 @@ func validateConnectorBaseline(db *sql.DB, boardSchema string, backup bool) erro
 }
 
 // initializeOrValidateSchema migrates legacy (v1) and Light (v2) databases
-// forward through connector (v3) to encrypted Light backup (v4). Each step
+// forward through connector (v3) to shared encrypted recovery backup (v4). Each step
 // validates its source baseline before writing, so a structurally altered
 // source schema is refused before migration.
 // Existing rows, canonical MAC preimages, and the economic sequence remain
@@ -158,10 +158,10 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		if err := validateV3Baseline(db, boardSchema); err != nil {
 			return err
 		}
-		if err := applyLightBackupMigration(db); err != nil {
+		if err := applyRecoveryBackupMigration(db); err != nil {
 			return err
 		}
-		version = lightBackupSchemaVersion
+		version = recoveryBackupSchemaVersion
 	}
 	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)

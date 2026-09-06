@@ -39,10 +39,12 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 	}
 
 	types := map[string]reflect.Type{
+		"RecoveryArchiveOpenResponse":  reflect.TypeOf(RecoveryArchiveOpenResponse{}),
+		"RecoveryArchiveBinding":       reflect.TypeOf(RecoveryArchiveBinding{}),
 		"LightBackupOpenRequest":       reflect.TypeOf(LightBackupOpenRequest{}),
 		"LightBackupRequest":           reflect.TypeOf(LightBackupRequest{}),
 		"LightBackupOpenResponse":      reflect.TypeOf(LightBackupOpenResponse{}),
-		"LightBackup":                  reflect.TypeOf(policy.LightBackup{}),
+		"LightBackup":                  reflect.TypeOf(policy.RecoveryBackup{}),
 		"LightRenewalPlan":             reflect.TypeOf(lightRenewalPlan{}),
 		"LightRenewalPrepareRequest":   reflect.TypeOf(lightRenewalPrepareRequest{}),
 		"LightRenewalPrepared":         reflect.TypeOf(lightRenewalPrepared{}),

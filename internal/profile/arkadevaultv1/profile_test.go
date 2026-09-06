@@ -23,7 +23,7 @@ func TestArkadeVaultV1IsOneComposedProfile(t *testing.T) {
 	if !reflect.DeepEqual(module.Policies, []string{SpendingPolicy}) {
 		t.Fatalf("policies = %v", module.Policies)
 	}
-	if want := []string{"identity-store", "allowance-store", "vtxo-operation-store", "recovery-operation-store", "map-store", "vault-board-store", "connector-store"}; !reflect.DeepEqual(module.Stores, want) {
+	if want := []string{"identity-store", "allowance-store", "vtxo-operation-store", "recovery-operation-store", "map-store", "vault-board-store", "connector-store", "recovery-archive-store"}; !reflect.DeepEqual(module.Stores, want) {
 		t.Fatalf("stores = %v, want %v", module.Stores, want)
 	}
 	if want := []string{

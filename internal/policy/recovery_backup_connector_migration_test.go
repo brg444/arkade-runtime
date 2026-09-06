@@ -50,7 +50,7 @@ func connectorMigrationRows(t *testing.T, db *sql.DB) map[string][]byte {
 	return result
 }
 
-func TestLightBackupMigrationPreservesConnectorV3Authority(t *testing.T) {
+func TestRecoveryBackupMigrationPreservesConnectorV3Authority(t *testing.T) {
 	path, _, priorCount := populatedV2Database(t)
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -144,7 +144,7 @@ func TestLightBackupMigrationPreservesConnectorV3Authority(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer current.Close()
-	if version, err := current.SchemaVersion(); err != nil || version != lightBackupSchemaVersion {
+	if version, err := current.SchemaVersion(); err != nil || version != recoveryBackupSchemaVersion {
 		t.Fatal("migration version", version, err)
 	}
 	if !reflect.DeepEqual(before, connectorMigrationRows(t, current.db)) {
@@ -190,7 +190,7 @@ func TestLightBackupMigrationPreservesConnectorV3Authority(t *testing.T) {
 			t.Fatal("migration released signed input ownership", i)
 		}
 	}
-	if _, err := current.PutLightBackup(strings.Repeat("ab", 32), 0, "encrypted-archive"); err != nil {
+	if _, err := current.PutRecoveryBackup(strings.Repeat("ab", 32), 0, "encrypted-archive"); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := economicOutflowCount(current.db); err != nil || got != count {
@@ -202,7 +202,7 @@ func TestLightBackupMigrationPreservesConnectorV3Authority(t *testing.T) {
 	}
 }
 
-func TestLightBackupMigrationRejectsOtherSchemaThreeLineage(t *testing.T) {
+func TestRecoveryBackupMigrationRejectsOtherSchemaThreeLineage(t *testing.T) {
 	for _, conflictingBackup := range []bool{false, true} {
 		t.Run(fmt.Sprintf("isolated-backup=%t", conflictingBackup), func(t *testing.T) {
 			path, _, _ := populatedV2Database(t)
@@ -212,7 +212,7 @@ func TestLightBackupMigrationRejectsOtherSchemaThreeLineage(t *testing.T) {
 			}
 			if conflictingBackup {
 				// The isolated Light drill used schema 3 for a different layout.
-				if _, err := db.Exec(createLightBackupSchema); err != nil {
+				if _, err := db.Exec(strings.Replace(createRecoveryBackupSchema, "recovery_backup", "light_backup", 1)); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := db.Exec(`UPDATE schema_meta SET version=3`); err != nil {
@@ -249,5 +249,37 @@ func TestLightBackupMigrationRejectsOtherSchemaThreeLineage(t *testing.T) {
 				t.Fatal("refused migration changed connector schema")
 			}
 		})
+	}
+}
+
+// The prior schema-4 was an undeployed integration artifact. Refuse its exact
+// table layout without guessing a lineage or silently converting its row MACs.
+func TestRecoveryBackupRefusesScratchLightOnlyV4(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scratch.sqlite")
+	ledger, err := OpenLedger(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.db.Exec(`ALTER TABLE recovery_backup RENAME TO light_backup`); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if accepted, err := OpenLedger(path, nil); err == nil {
+		accepted.Close()
+		t.Fatal("scratch schema 4 accepted")
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || version != 4 {
+		t.Fatal(version, err)
+	}
+	if !hasTable(db, "light_backup") || hasTable(db, "recovery_backup") {
+		t.Fatal("refusal mutated tables")
 	}
 }

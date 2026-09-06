@@ -58,7 +58,7 @@ unverified. Keep new enrollment restricted until these checks succeed.
 ## Recovery and rollback
 
 Startup migrates valid prior databases through schema 2 (Light renewal),
-schema 3 (Savings connector), and schema 4 (encrypted Light backup). Migration tests preserve
+schema 3 (Savings connector), and schema 4 (shared encrypted recovery backup). Migration tests preserve
 original Savings, credential, recovery-session, and Light MACs and the economic
 sequence. Legacy descriptors and version-4 passkey bindings retain their bytes;
 new connector vaults use the distinct template and version-5 binding.
@@ -66,6 +66,10 @@ Schema 4 preserves every connector origin, candidate, signing stage, and
 resolution record. Backup writes leave the economic sequence unchanged.
 The isolated Light backup drill used a different schema-3 layout; this release
 refuses that layout and requires an explicitly reviewed recovery path for it.
+
+The shared schema-4 release rejects the earlier, undeployed Light-only schema-4
+layout. No production database uses that scratch layout, and table presence
+does not select a migration lineage.
 
 Schema-3 and earlier binaries cannot operate a schema-4 database. After migration, repair or
 roll forward with a compatible binary while retaining all authorization rows

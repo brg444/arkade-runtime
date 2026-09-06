@@ -19,7 +19,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 	}
 	return arkaderuntime.ProfileDefinition{ID: ProfileID, Modules: []arkaderuntime.ModuleDefinition{{
 		ID: ProfileID, Programs: []string{light.Program}, Policies: []string{light.PolicySchema},
-		Stores:    []string{"light-identity-store", "light-allowance-store", "light-vtxo-operation-store", "light-renewal-store", "light-backup-store"},
+		Stores:    []string{"light-identity-store", "light-allowance-store", "light-vtxo-operation-store", "light-renewal-store", "recovery-backup-store"},
 		KeyScopes: []string{"light-vtxo-transaction-authorization", "light-vtxo-checkpoint-authorization", "light-renewal-authorization"},
 	}}, Routes: routes}
 }

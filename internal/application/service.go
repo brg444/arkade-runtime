@@ -73,7 +73,7 @@ type Service struct {
 	connectorChain           connectorChainView
 	sessionMu                sync.Mutex
 	sessionChallenges        map[string]passkeyChallenge
-	lightBackupSessions      map[[32]byte]lightBackupSession
+	backupSessions           map[[32]byte]backupSession
 	SessionNow               func() time.Time
 	afterLoadPending         func()
 	vaultBoardRuntime        *vaultBoardRuntime
