@@ -170,6 +170,26 @@
     "/v1/recovery-archive/write": [
       "OPTIONS",
       "POST"
+    ],
+    "/v1/light/delegate/cancel": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/light/delegate/info": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/light/delegate/list": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/light/delegate/schedule": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/light/delegate/status": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {
@@ -691,6 +711,43 @@
       "expiresAt:string",
       "backup:object|null",
       "binding:object"
+    ],
+    "LightDelegationRequest": [
+      "vaultId:string",
+      "operationId:string",
+      "intent:object",
+      "forfeitTxs:array<string>",
+      "deleteIntent:object",
+      "expiresAt:integer",
+      "ownerSignature:string"
+    ],
+    "LightDelegateIntent": [
+      "proof:string",
+      "message:string"
+    ],
+    "LightDelegationReadRequest": [
+      "vaultId:string",
+      "operationId:string",
+      "expiresAt:integer",
+      "ownerSignature:string"
+    ],
+    "LightDelegationListRequest": [
+      "vaultId:string",
+      "afterOperationId:string",
+      "expiresAt:integer",
+      "ownerSignature:string"
+    ],
+    "LightDelegationRecovery": [
+      "batchId:string",
+      "batchExpiry:integer",
+      "commitmentPsbt:string",
+      "vtxoTree:array<object>",
+      "connectors:array<object>"
+    ],
+    "LightDelegationWireNode": [
+      "txid:string",
+      "tx:string",
+      "children:object"
     ]
   }
 }

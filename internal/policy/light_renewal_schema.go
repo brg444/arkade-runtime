@@ -91,10 +91,13 @@ func validateV4Baseline(db *sql.DB, boardSchema string) error {
 	return validateRecoveryBackupSchema(db)
 }
 
-func validateConnectorBaseline(db *sql.DB, boardSchema string, backup bool) error {
+func validateConnectorBaseline(db *sql.DB, boardSchema string, backup bool, delegation ...bool) error {
 	validateObjects := validateVaultSchemaObjectsV3
 	if backup {
 		validateObjects = validateVaultSchemaObjectsV4
+	}
+	if len(delegation) > 0 && delegation[0] {
+		validateObjects = func(db *sql.DB) error { return validateVaultSchemaObjectsInner(db, true, true, true, true) }
 	}
 	if err := validateObjects(db); err != nil {
 		return err
@@ -163,8 +166,23 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		}
 		version = recoveryBackupSchemaVersion
 	}
+	if version == recoveryBackupSchemaVersion {
+		if err := validateV4Baseline(db, boardSchema); err != nil {
+			return err
+		}
+		if err := applyLightDelegationMigration(db); err != nil {
+			return err
+		}
+		version = 5
+	}
 	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)
 	}
-	return validateV4Baseline(db, boardSchema)
+	if err := validateConnectorBaseline(db, boardSchema, true, true); err != nil {
+		return err
+	}
+	if err := validateRecoveryBackupSchema(db); err != nil {
+		return err
+	}
+	return validateLightDelegationSchema(db)
 }

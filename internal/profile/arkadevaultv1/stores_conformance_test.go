@@ -40,6 +40,9 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 			want: []string{"GetVaultMap", "PutVaultMap"},
 		},
 		{
+			name: "Light delegation", typ: reflect.TypeOf((*arkadevaultv1.LightDelegationStore)(nil)).Elem(),
+			want: []string{"AdvanceLightDelegation", "ListLightDelegations", "ScheduleLightDelegation"},
+		}, {
 			name: "Light renewal", typ: reflect.TypeOf((*arkadevaultv1.LightRenewalStore)(nil)).Elem(),
 			want: []string{"AppendLightRenewalEvent", "GetLightRenewal", "ReserveLightRenewal"},
 		},
@@ -72,9 +75,9 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 	}
 }
 
-func TestStoresBundleContainsExactlyNineNarrowPorts(t *testing.T) {
+func TestStoresBundleContainsExactlyTenNarrowPorts(t *testing.T) {
 	typ := reflect.TypeOf(arkadevaultv1.Stores{})
-	want := []string{"Identity", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "Connector", "RecoveryBackup"}
+	want := []string{"Identity", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "LightDelegation", "Connector", "RecoveryBackup"}
 	got := make([]string, typ.NumField())
 	for i := range got {
 		got[i] = typ.Field(i).Name

@@ -33,10 +33,12 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
-	Stores         arkadevaultv1.Stores
-	Deployment     deployment.Config
-	LightEnabled   bool // admits new Light wallets only; existing wallets remain usable
-	OpenEnrollment bool // admission only; existing sessions retain their expiry
+	Stores                 arkadevaultv1.Stores
+	Deployment             deployment.Config
+	LightDelegationEnabled bool
+	delegationRuntime      *lightDelegationRuntime
+	LightEnabled           bool // admits new Light wallets only; existing wallets remain usable
+	OpenEnrollment         bool // admission only; existing sessions retain their expiry
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
 	// the authoritative ledger. Production derives it from the VaultCosigner
 	// scalar with a domain-separated KDF.
@@ -70,32 +72,34 @@ type Service struct {
 	// connectorChain overrides the release-pinned chain view. Production
 	// leaves it nil so each call dials the pinned indexer; tests inject a
 	// scripted view. It never accepts digests, PSBTs, or caller assertions.
-	connectorChain           connectorChainView
-	sessionMu                sync.Mutex
-	sessionChallenges        map[string]passkeyChallenge
-	backupSessions           map[[32]byte]backupSession
-	SessionNow               func() time.Time
-	afterLoadPending         func()
-	vaultBoardRuntime        *vaultBoardRuntime
-	lightRenewalOperatorDial func(context.Context) (lightRenewalOperator, error)
-	resolverReadyMu          sync.Mutex
-	resolverReadyAt          time.Time
-	resolverReadyErr         error
+	connectorChain              connectorChainView
+	sessionMu                   sync.Mutex
+	sessionChallenges           map[string]passkeyChallenge
+	backupSessions              map[[32]byte]backupSession
+	SessionNow                  func() time.Time
+	afterLoadPending            func()
+	vaultBoardRuntime           *vaultBoardRuntime
+	lightRenewalOperatorDial    func(context.Context) (lightRenewalOperator, error)
+	lightDelegationOperatorDial func(context.Context) (lightDelegationOperator, error)
+	resolverReadyMu             sync.Mutex
+	resolverReadyAt             time.Time
+	resolverReadyErr            error
 }
 
 // Deps is the constructor input. Private keys stay behind scoped capabilities.
 type Deps struct {
-	Stores                arkadevaultv1.Stores
-	Deployment            deployment.Config
-	OpenEnrollment        bool
-	LightEnabled          bool
-	IntegrityKey          []byte
-	Keys                  KeyCapabilities
-	VaultCosignerPub      *btcec.PublicKey
-	ArkadeCosignerPub     *btcec.PublicKey
-	ArkadeCosignerOrigin  string
-	ArkadeCosignerVersion string
-	ArkResolver           ports.ArkResolver
+	Stores                 arkadevaultv1.Stores
+	Deployment             deployment.Config
+	OpenEnrollment         bool
+	LightEnabled           bool
+	LightDelegationEnabled bool
+	IntegrityKey           []byte
+	Keys                   KeyCapabilities
+	VaultCosignerPub       *btcec.PublicKey
+	ArkadeCosignerPub      *btcec.PublicKey
+	ArkadeCosignerOrigin   string
+	ArkadeCosignerVersion  string
+	ArkResolver            ports.ArkResolver
 }
 
 // New builds the application service without receiving raw key material or a
@@ -106,6 +110,7 @@ func New(d Deps) *Service {
 		Deployment:             d.Deployment,
 		OpenEnrollment:         d.OpenEnrollment,
 		LightEnabled:           d.LightEnabled,
+		LightDelegationEnabled: d.LightDelegationEnabled,
 		CredentialIntegrityKey: d.IntegrityKey,
 		VaultCosignerPub:       d.VaultCosignerPub,
 		ArkadeCosignerPub:      d.ArkadeCosignerPub,
@@ -113,6 +118,9 @@ func New(d Deps) *Service {
 		ArkadeCosignerVersion:  d.ArkadeCosignerVersion,
 		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
+	}
+	if key, ok := s.keys.lightDelegation.(*fileBackedVaultKeys); ok {
+		key.bindDelegationJournal(d.Stores.LightDelegation)
 	}
 	if raw, err := liveContractPackJSONFor(d.Deployment.Network); err == nil {
 		s.contractPackJSON = raw
@@ -141,6 +149,7 @@ func (s *Service) WipeSecrets() {
 	if s == nil {
 		return
 	}
+	s.StopLightDelegation()
 	zeroServiceBytes(s.CredentialIntegrityKey)
 	s.CredentialIntegrityKey = nil
 	s.keys.Wipe()

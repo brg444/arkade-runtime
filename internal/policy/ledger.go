@@ -258,7 +258,15 @@ func (l *Ledger) spentInWindow(ctx context.Context, q queryContext, vaultID stri
 	if err != nil {
 		return 0, err
 	}
-	return addOutflow(total, renewal)
+	total, err = addOutflow(total, renewal)
+	if err != nil {
+		return 0, err
+	}
+	delegation, err := l.delegationAllowance(ctx, q, vaultID, key)
+	if err != nil {
+		return 0, err
+	}
+	return addOutflow(total, delegation)
 }
 
 // AttachMonotonic installs the external policy sequence and immediately
@@ -302,6 +310,13 @@ func economicOutflowCount(q queryContext) (uint64, error) {
 	}
 	if connectorTables == 2 {
 		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM connector_operation)`
+	}
+	var delegationTables int
+	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('light_delegation_operation','light_delegation_event')`).Scan(&delegationTables); err != nil {
+		return 0, err
+	}
+	if delegationTables == 2 {
+		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM light_delegation_operation) + (SELECT COUNT(*) FROM light_delegation_event)`
 	}
 	if err := q.QueryRowContext(context.Background(), query).Scan(&n); err != nil {
 		return 0, err

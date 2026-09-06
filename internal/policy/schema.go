@@ -10,7 +10,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/program"
 )
 
-const schemaVersion = 4
+const schemaVersion = 5
 const connectorSchemaVersion = 3
 const recoveryBackupSchemaVersion = 4
 const legacySchemaVersion = 1
@@ -347,7 +347,7 @@ func validateVaultSchemaObjectsV4(db *sql.DB) error {
 	return validateVaultSchemaObjectsInner(db, true, true, true)
 }
 
-func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector, backup bool) error {
+func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector, backup bool, delegation ...bool) error {
 	want := append([]string(nil), coreTables...)
 	for i, table := range want {
 		want[i] = "table:" + table
@@ -364,6 +364,9 @@ func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector, backup bool
 	}
 	if backup {
 		want = append(want, "table:recovery_backup")
+	}
+	if len(delegation) > 0 && delegation[0] {
+		want = append(want, "table:light_delegation_operation", "table:light_delegation_event")
 	}
 	if connector {
 		want = append(want,

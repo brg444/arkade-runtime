@@ -24,6 +24,11 @@ func newLightRenewalFinalFixture(t *testing.T) (lightRenewalProofFixture, verifi
 	f := newLightRenewalProofFixture(t)
 	sessionKey, _ := btcec.NewPrivateKey()
 	operatorSessionKey, _ := btcec.NewPrivateKey()
+	return buildLightRenewalFinalFixture(t, f, sessionKey, operatorSessionKey)
+}
+
+func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey) (lightRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+	t.Helper()
 	f.message, _ = (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ExpireAt: f.plan.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(sessionKey.PubKey().SerializeCompressed())}}).Encode()
 	raw, _ := f.proof(t).B64Encode()
 	registered, err := verifyLightRenewalRegistration(raw, f.message, f.plan, f.descriptor, f.tree)

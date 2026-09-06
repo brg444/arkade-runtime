@@ -75,8 +75,11 @@ separate security-sensitive PR.
 - Key capabilities accept semantic operations, not arbitrary digests or PSBTs.
 - Enrollment, boarding, Spending, and recovery are one immutable named
   profile, not dynamically loaded plugins.
-- The wallet owns transaction coordination through the official Arkade SDK;
-  this server independently verifies and authorizes the named Vault Program.
+- The wallet owns foreground transaction coordination through the official
+  Arkade SDK. The opt-in native Light delegate executes only durable
+  owner-presigned renewal requests through stock Operator batch interfaces;
+  its scoped key capability verifies the persisted signing transcript.
+  See `docs/light-delegated-renewal.md` for cleanup and release gates.
 
 ## Test fixtures
 

@@ -100,6 +100,10 @@ func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree,
 // with the same enrolled script and exact post-fee balance. Its connector must
 // spend the same commitment, so it cannot execute independently of that batch.
 func verifyLightRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, registration verifiedLightRenewalRegistration) (verifiedLightRenewalFinal, error) {
+	return verifyLightFinal(e, plan, d, tree, registration, txscript.SigHashDefault)
+}
+
+func verifyLightFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
 	digest, err := plan.digest(d)
 	if err != nil || !bytes.Equal(digest, registration.PlanDigest) || len(registration.TreeSession) != 33 {
 		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal registration binding")
@@ -206,10 +210,10 @@ func verifyLightRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan,
 		}
 	}
 	owner := mustDecodeRenewalHex(d.OwnerPub)
-	if err := requireExactLeafWithSighash(p.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{owner}, txscript.SigHashDefault); err != nil {
+	if err := requireExactLeafWithSighash(p.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{owner}, ownerSighash); err != nil {
 		return verifiedLightRenewalFinal{}, err
 	}
-	if err := requireVerifiedSignersWithSighash(p, 0, [][]byte{owner}, tree.SpendLeaf, txscript.SigHashDefault); err != nil {
+	if err := requireVerifiedSignersWithSighash(p, 0, [][]byte{owner}, tree.SpendLeaf, ownerSighash); err != nil {
 		return verifiedLightRenewalFinal{}, err
 	}
 	if len(p.Inputs[1].TaprootScriptSpendSig) != 0 || len(p.Inputs[1].TaprootKeySpendSig) != 0 || len(p.Inputs[1].PartialSigs) != 0 || len(p.Inputs[1].FinalScriptWitness) != 0 || len(p.Inputs[1].TaprootLeafScript) != 0 {

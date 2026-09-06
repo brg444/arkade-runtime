@@ -144,7 +144,7 @@ func TestRecoveryBackupMigrationPreservesConnectorV3Authority(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer current.Close()
-	if version, err := current.SchemaVersion(); err != nil || version != recoveryBackupSchemaVersion {
+	if version, err := current.SchemaVersion(); err != nil || version != schemaVersion {
 		t.Fatal("migration version", version, err)
 	}
 	if !reflect.DeepEqual(before, connectorMigrationRows(t, current.db)) {
@@ -276,7 +276,7 @@ func TestRecoveryBackupRefusesScratchLightOnlyV4(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || version != 4 {
+	if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || version != schemaVersion {
 		t.Fatal(version, err)
 	}
 	if !hasTable(db, "light_backup") || hasTable(db, "recovery_backup") {

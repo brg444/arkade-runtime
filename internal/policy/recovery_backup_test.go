@@ -2,7 +2,6 @@ package policy
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -101,9 +100,7 @@ func TestRecoveryBackupMigrationPreservesSchemaTwoRecordsAndSequence(t *testing.
 		t.Fatal(err)
 	}
 	op := LightRenewalOperation{OperationID: strings.Repeat("01", 16), VaultID: id, InputTxid: strings.Repeat("02", 32), FeeSats: 123, PlanDigest: strings.Repeat("03", 32), Plan: `{"renewal":true}`, ExpiresAt: defaultRenewalTestClock().Add(5 * time.Minute).Format(time.RFC3339)}
-	if _, err := old.ReserveLightRenewal(context.Background(), op, 123); err != nil {
-		t.Fatal(err)
-	}
+	insertLegacyLightRenewal(t, old, op)
 	appendRenewal(t, old, op, "register_authorized")
 	snapshot := func(db *sql.DB) []byte {
 		var result []byte
@@ -142,7 +139,7 @@ func TestRecoveryBackupMigrationPreservesSchemaTwoRecordsAndSequence(t *testing.
 	if !bytes.Equal(before, snapshot(migrated.db)) {
 		t.Fatal("migration changed authenticated records")
 	}
-	if version, err := migrated.SchemaVersion(); err != nil || version != recoveryBackupSchemaVersion {
+	if version, err := migrated.SchemaVersion(); err != nil || version != schemaVersion {
 		t.Fatal("schema did not migrate", err)
 	}
 	if _, err := migrated.PutRecoveryBackup(id, 0, "opaque-encrypted-backup"); err != nil {

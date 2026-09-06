@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -71,9 +72,7 @@ func populatedV2Database(t *testing.T) (string, map[string][]byte, uint64) {
 		t.Fatal(err)
 	}
 	op := LightRenewalOperation{OperationID: strings.Repeat("01", 16), VaultID: vault, InputTxid: strings.Repeat("02", 32), FeeSats: 123, PlanDigest: strings.Repeat("03", 32), Plan: `{"renewal":true}`, ExpiresAt: connectorTestClock().Add(5 * time.Minute).Format(time.RFC3339)}
-	if _, err := led.ReserveLightRenewal(t.Context(), op, 10000); err != nil {
-		t.Fatal(err)
-	}
+	insertLegacyLightRenewal(t, led, op)
 	macs := map[string][]byte{}
 	for table, query := range map[string]string{
 		"vault":            `SELECT integrity_mac FROM vault WHERE vault_id='` + vault + `'`,
@@ -454,5 +453,22 @@ func TestConnectorOutflowAdvancesSequence(t *testing.T) {
 	}
 	if after != before+1 {
 		t.Fatalf("sequence count %d -> %d", before, after)
+	}
+}
+
+// Seed historical bytes using the schema-2 encoding rather than invoking the
+// current reservation workflow, which requires the new delegation tables.
+func insertLegacyLightRenewal(t *testing.T, l *Ledger, o LightRenewalOperation) {
+	t.Helper()
+	o.CreatedAt = l.NowUTC().Format(time.RFC3339)
+	if err := validateLightRenewalOperation(o); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(o)
+	if _, err := l.db.Exec(`INSERT INTO light_renewal_operation(operation_id,vault_id,payload,integrity_mac) VALUES(?,?,?,?)`, o.OperationID, o.VaultID, string(payload), renewalMAC(testIntegrityKey(), "vaulted-light/renewal-operation/v1", string(payload))); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.observeEconomicOutflowsLocked(l.db); err != nil {
+		t.Fatal(err)
 	}
 }

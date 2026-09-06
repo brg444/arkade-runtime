@@ -72,6 +72,7 @@ type KeyCapabilities struct {
 	vtxoCheckpoint      vtxoCheckpointAuthorizer
 	vaultBoard          vaultBoardAuthorizer
 	lightRenewal        lightRenewalAuthorizer
+	lightDelegation     lightDelegationAuthorizer
 	publicEmulator      publicEmulatorOperation
 	lifecycle           keyLifecycle
 }
@@ -208,7 +209,7 @@ func NewFileBackedKeyCapabilities(master *btcec.PrivateKey, emulator Signer) (Ke
 	capabilities := KeyCapabilities{
 		enrollment: keys, savingsRecovery: savings, connectorWithdrawal: connector,
 		vtxoTransaction: keys, vtxoCheckpoint: keys,
-		vaultBoard: keys, lightRenewal: keys, publicEmulator: public, lifecycle: keys,
+		vaultBoard: keys, lightRenewal: keys, lightDelegation: keys, publicEmulator: public, lifecycle: keys,
 	}
 	if err := capabilities.Validate(); err != nil {
 		return KeyCapabilities{}, err
@@ -217,8 +218,9 @@ func NewFileBackedKeyCapabilities(master *btcec.PrivateKey, emulator Signer) (Ke
 }
 
 type fileBackedVaultKeys struct {
-	mu     sync.RWMutex
-	master *btcec.PrivateKey
+	mu              sync.RWMutex
+	master          *btcec.PrivateKey
+	delegationStore lightDelegationJournal
 }
 
 func (k *fileBackedVaultKeys) withMaster(fn func(*btcec.PrivateKey) error) error {

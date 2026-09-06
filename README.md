@@ -176,6 +176,11 @@ without breaking fresh-device recovery and lost-response recovery.
 | `POST /v1/light/renew/final` | Verify signed replacement paths and submit the owner-authorized forfeit. |
 | `POST /v1/light/renew/status` | Reconcile the replacement output and confirmed Bitcoin commitment. |
 | `POST /v1/light/renew/release` | Cancel an unsent renewal or fence an expired registration after checking the old output. |
+| `POST /v1/light/delegate/info` | Read enrolled native delegate capabilities when enabled. |
+| `POST /v1/light/delegate/schedule` | Persist bounded owner authorization for one Light renewal. |
+| `POST /v1/light/delegate/status` | Read operation state and verified replacement recovery paths. |
+| `POST /v1/light/delegate/list` | Discover this vault’s scheduled operations with owner authorization. |
+| `POST /v1/light/delegate/cancel` | Cancel an armed renewal before dispatch claims its input. |
 | `POST /v1/recovery-archive/challenge` | Issue a discoverable Savings archive passkey challenge. |
 | `POST /v1/recovery-archive/open` | Authenticate a Savings passkey and pin the enrolled descriptor for eight hours. |
 | `POST /v1/recovery-archive/read` | Read the authenticated encrypted archive of recovery data. |

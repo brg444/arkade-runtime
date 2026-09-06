@@ -35,6 +35,10 @@ func TestRecoveryBackupSchemaGolden(t *testing.T) {
 	testSchemaGolden(t, recoveryBackupSchemaVersion, "3de1e3291bdd6a56dd1b7b18f88ea4e3bea27ed737a8ac17e8416f67e8f852ba")
 }
 
+func TestLightDelegationSchemaGolden(t *testing.T) {
+	testSchemaGolden(t, 5, "ccd7170292a50cbff1db786235a0fc86d24bea1ab9362b4f3e6a01dffef65df5")
+}
+
 func testSchemaGolden(t *testing.T, version int, want string) {
 	ledger, err := OpenLedger(filepath.Join(t.TempDir(), "vault.sqlite"), nil)
 	if err != nil {
@@ -57,6 +61,9 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		var kind, name, table, sqlText string
 		if err := rows.Scan(&kind, &name, &table, &sqlText); err != nil {
 			t.Fatal(err)
+		}
+		if version < 5 && (table == "light_delegation_operation" || table == "light_delegation_event") {
+			continue
 		}
 		if version < recoveryBackupSchemaVersion && table == "recovery_backup" {
 			continue

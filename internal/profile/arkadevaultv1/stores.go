@@ -89,6 +89,12 @@ type LightRenewalStore interface {
 	AppendLightRenewalEvent(context.Context, policy.LightRenewalEvent, []byte, uint32) (policy.LightRenewalEvent, bool, error)
 }
 
+type LightDelegationStore interface {
+	ListLightDelegations(context.Context) ([]policy.LightDelegationSnapshot, error)
+	ScheduleLightDelegation(context.Context, policy.LightDelegation) (*policy.LightDelegationSnapshot, error)
+	AdvanceLightDelegation(context.Context, policy.LightDelegationEvent, int64) (*policy.LightDelegationSnapshot, error)
+}
+
 // RecoveryBackupStore stores client-encrypted recovery snapshots independently of spending authority.
 type RecoveryBackupStore interface {
 	GetRecoveryBackup(string) (*policy.RecoveryBackup, error)
@@ -105,6 +111,7 @@ type Stores struct {
 	Maps               MapStore
 	VaultBoard         VaultBoardStore
 	LightRenewal       LightRenewalStore
+	LightDelegation    LightDelegationStore
 	Connector          ConnectorStore
 	RecoveryBackup     RecoveryBackupStore
 }
@@ -149,6 +156,7 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		Maps:               ledger,
 		VaultBoard:         ledger,
 		LightRenewal:       ledger,
+		LightDelegation:    ledger,
 		Connector:          ledger,
 		RecoveryBackup:     ledger,
 	}, nil
