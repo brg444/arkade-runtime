@@ -44,6 +44,13 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/application": true,
 		modulePath + "/internal/authorizer":  true,
 	}
+	// The connector candidate is unreleased: no endpoint, profile, or release
+	// advertises its contract yet. Only internal/application may import it, for
+	// the scoped Guardian signing helper whose snapshots still validate the
+	// full candidate program. All other production packages stay isolated.
+	connectorImporters := map[string]bool{
+		modulePath + "/internal/application": true,
+	}
 	nonProductionPackages := map[string]bool{
 		modulePath:                            true,
 		modulePath + "/fixture":               true,
@@ -76,7 +83,7 @@ func TestInternalImportBoundaries(t *testing.T) {
 		seen[pkg.ImportPath] = true
 		var unexpected []string
 		for _, imported := range pkg.Imports {
-			if imported == modulePath+"/internal/vault/connector" {
+			if imported == modulePath+"/internal/vault/connector" && !connectorImporters[pkg.ImportPath] {
 				t.Errorf("unreleased connector must not be imported by production code: %s", pkg.ImportPath)
 			}
 			if imported == modulePath+"/fixture" && !nonProductionPackages[pkg.ImportPath] {

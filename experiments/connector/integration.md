@@ -11,26 +11,17 @@ The owner accepted this honest-cosigner tradeoff for the L1 candidate on
 the reproduced bypass stays a required test under its stronger attacker model. Existing recovery-initiation dependence is
 documented in [the feasibility report](README.md).
 
-## Reconciled with the contingency, 2026-09-06
+## Connector-first implementation, 2026-09-06
 
-The [canonical reconciliation](https://github.com/brg444/arkade-runtime/blob/codex/operator-gated-contingency/docs/contingency/connector-reconciliation.md)
-assigns future Savings implementation and timelocked recovery to the native
-contingency. This branch retains the L1 experiments and conventional-wallet
-qualification as reproducible evidence. Its contract is excluded from the native
-implementation; source/API compatibility, actual signer approval, and complete
-recovery still need proof.
+The [accepted implementation sequence](../../docs/connector-first.md) restores
+this onchain candidate as the active Savings work. Implement it against the
+current Guardian stack, independently of the later PR 102 engine replacement
+inside Guardian. Native Savings and the direct multisig proposal are inactive;
+fund migration is deferred.
 
-The earlier deployment blocker applies to this implemented L1 candidate, whose
-normal leaf omits the Operator and expects `/v1/onchain-tx`. It does not establish
-that all Operator-compatible connectors are impossible. The reconciliation
-separates native input admission, engine/key ownership, and hardware enforcement,
-including PR 102 and the later accepted honest-cosigner tradeoff.
-
-Keep these experiments isolated. Reuse their counterexamples and test adapters
-selectively after proving the new transaction shape; the fixed reserve, fee
-layout, old addresses, and signer results cannot qualify the native contract.
-The following sections record the L1 candidate and its remaining integration
-work as historical context. The contingency owns the active release plan.
+The transaction and software-wallet evidence below remains relevant to this
+onchain flow. Service authorization, enrollment, durable wallet integration,
+and release qualification still need implementation and verification.
 
 ## Accepted destination policy, 2026-09-05
 
@@ -70,8 +61,9 @@ remains disabled while service and device qualification continues.
 ## Implemented transaction boundary
 
 `internal/vault/connector` contains a transaction builder, the named candidate
-program, and an immutable PSBT handoff. Production imports are prohibited by
-`architecture_test.go`. No profile, enrollment, signing endpoint, Contract Pack,
+program, and an immutable PSBT handoff. The first integration increment permits
+only the application signing helper to import this package; `architecture_test.go`
+keeps other production imports restricted. No profile, enrollment, signing endpoint, Contract Pack,
 wallet flow, or funded Savings tree selects this candidate.
 
 The candidate program is `savings-connector-v1`, with template
@@ -195,7 +187,7 @@ CONNECTOR_BITCOIND=/absolute/path/to/bitcoind \
   go test ./experiments/connector -run '^Test(Connector|Software)'  -count=1 -v
 ```
 
-The historical L1 candidate still lacks the following release qualifications:
+The L1 candidate still lacks the following release qualifications:
 
 - retain Electrum and Sparrow software-signing and transaction-screen qualification;
   full manual desktop review and physical hardware remain additional targets;
@@ -236,7 +228,7 @@ produce byte-identical final transactions in the wallet, including full
 withdrawal and explicit fingerprint byte order.
 
 These functions provide a tested transaction boundary; coordinator integration
-depends on the contingency feasibility results. Existing enrollment and
+follows the connector-first stages above. Existing enrollment and
 payment screens still select the old contract. Pending-operation storage,
 service authentication, named signing routes, and release advertisement remain
 the next implementation stage. No connector Contract Pack is published yet.
