@@ -8,6 +8,8 @@ The current Savings contract has a phone-plus-hardware normal path and program-c
 
 The [source inventory](context.md) pins the inspected revisions and separates source evidence from other agents' qualification reports. Upstream revisions are research evidence, not declarations of deployed service versions.
 
+[Emulator PR 102 context](upstream-signing-library.md), added 2026-09-06, introduces an embeddable execution/signing engine. It adds a deployment simplification candidate while retaining the native admission, key-authority, and complete-recovery gates.
+
 ## Constraints
 
 Prepare native Savings without changing funded vaults or reusing the old contract identity. Retain a Bitcoin-enforced timelocked recovery path with a complete, locally saved transaction graph. Evaluate the entire script tree under each compromise model, including recovery and key-path authority. Keep private signing-service configuration out of distributable artifacts.

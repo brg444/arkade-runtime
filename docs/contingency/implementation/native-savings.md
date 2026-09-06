@@ -22,6 +22,8 @@ Wallet: native SDK transaction coordination, hardware signing transport, contrac
 
 ### Admission and hardware transaction
 
+First evaluate the [upstream signing-library boundary](../upstream-signing-library.md). Record engine placement and signing-key ownership independently. Prefer qualified upstream execution with existing SDK/application coordination; embedding must preserve the selected cosigner independence and complete finalization/recovery lifecycle.
+
 Use disposable keys and local services with pinned source versions. Construct the smallest supported native Savings transfer with exact checkpoint ancestry. Record the Operator leaf requirements, output rules, program packet, signing order, and final transaction bytes. A successful interpreter run without accepted protocol inputs is insufficient.
 
 Test direct hardware authorization and a native connector only where the actual hardware wallet can sign and display the complete transaction. Require the intended strong sighash mode and independently verified previous outputs. Reject missing or substituted hardware evidence, attacker outputs, duplicate inputs, and weaker sighash modes. Keep the existing conventional-input signer tests as historical evidence.
