@@ -193,45 +193,51 @@ func TestConnectorProtocolCore(t *testing.T) {
 		} else {
 			c.accepted(t, final, true)
 			c.mine(t, final)
+			verifyProtocolReserveSuccessor(t, c)
 		}
 	})
 	t.Run("complete_packet_and_reserve_successor", func(t *testing.T) {
-		// Explicitly exercise the larger data-output policy used by Core 30.
-		// All signature, dust, fee, and script verification remains enabled.
+		// Qualify older nodes only with the explicitly recorded data-output override.
+		// The default-policy subtest also checks succession on Core 30 and newer.
 		c := startCore(t, "-datacarriersize=100000")
-		f, r := protocolFixture(t)
-		f.parent.TxOut[0].Value = 100000
-		f.resetSpend()
-		c.fund(t, f)
-		for round := 0; round < 2; round++ {
-			oldConnector := f.tx.TxIn[1].PreviousOutPoint
-			d, h := prepareProtocol(t, f, r)
-			p, err := d.PSBT()
-			p = must(t, p, err)
-			if err := executePacket(p, f, f.emulator.PubKey()); err != nil {
-				t.Fatal(err)
-			}
-			final, err := h.Accept(hardwareResponse(t, f, h))
-			final = must(t, final, err)
-			c.accepted(t, final, true)
-			c.mine(t, final)
-			if out := rpc[json.RawMessage](t, c, "gettxout", oldConnector.Hash.String(), oldConnector.Index); string(out) != "null" {
-				t.Fatal("old connector remains spendable")
-			}
-			successor := rpc[*struct {
-				Value         float64
-				Confirmations int
-			}](t, c, "gettxout", final.TxHash().String(), 1)
-			if successor == nil || successor.Confirmations != 1 || successor.Value != 0.00001000 {
-				t.Fatal("connector successor missing or value changed")
-			}
-			c.accepted(t, final, false)
-			f.parent = final.Copy()
-			f.resetSpend()
-			f.tx.TxIn[0].PreviousOutPoint.Index = 4
-			f.tx.TxIn[1].PreviousOutPoint.Index = 1
-		}
+		verifyProtocolReserveSuccessor(t, c)
 	})
+}
+
+func verifyProtocolReserveSuccessor(t *testing.T, c *core) {
+	t.Helper()
+	f, r := protocolFixture(t)
+	f.parent.TxOut[0].Value = 100000
+	f.resetSpend()
+	c.fund(t, f)
+	for round := 0; round < 2; round++ {
+		oldConnector := f.tx.TxIn[1].PreviousOutPoint
+		d, h := prepareProtocol(t, f, r)
+		p, err := d.PSBT()
+		p = must(t, p, err)
+		if err := executePacket(p, f, f.emulator.PubKey()); err != nil {
+			t.Fatal(err)
+		}
+		final, err := h.Accept(hardwareResponse(t, f, h))
+		final = must(t, final, err)
+		c.accepted(t, final, true)
+		c.mine(t, final)
+		if out := rpc[json.RawMessage](t, c, "gettxout", oldConnector.Hash.String(), oldConnector.Index); string(out) != "null" {
+			t.Fatal("old connector remains spendable")
+		}
+		successor := rpc[*struct {
+			Value         float64
+			Confirmations int
+		}](t, c, "gettxout", final.TxHash().String(), 1)
+		if successor == nil || successor.Confirmations != 1 || successor.Value != 0.00001000 {
+			t.Fatal("connector successor missing or value changed")
+		}
+		c.accepted(t, final, false)
+		f.parent = final.Copy()
+		f.resetSpend()
+		f.tx.TxIn[0].PreviousOutPoint.Index = 4
+		f.tx.TxIn[1].PreviousOutPoint.Index = 1
+	}
 }
 
 func protocolRequest(f *fixture, r candidate.Rules) candidate.Request {
