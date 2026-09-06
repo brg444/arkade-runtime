@@ -1,5 +1,4 @@
-// Package httpapi is the Mutinynet HTTP surface. It parses and maps errors.
-// It does not own keys or the ledger.
+// Package httpapi forwards HTTP composition to the application package.
 package httpapi
 
 import (

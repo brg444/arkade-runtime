@@ -1,5 +1,4 @@
-// Package connector implements the unreleased Savings connector candidate.
-// It is not registered in a profile or reachable from the authorizer binary.
+// Package connector implements the named Savings connector contract.
 package connector
 
 import (

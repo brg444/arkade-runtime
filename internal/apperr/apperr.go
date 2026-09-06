@@ -2,10 +2,7 @@
 // substring-matches err.Error().
 package apperr
 
-import (
-	"errors"
-	"fmt"
-)
+import "errors"
 
 type Code string
 
@@ -53,13 +50,6 @@ func Of(err error) *Error {
 	return New(CodeRejected, err.Error())
 }
 
-func CodeOf(err error) Code {
-	if e := Of(err); e != nil {
-		return e.Code
-	}
-	return CodeRejected
-}
-
 var (
 	ErrRejected         = New(CodeRejected, "request rejected")
 	ErrNotFound         = New(CodeNotFound, "not found")
@@ -68,10 +58,3 @@ var (
 	ErrNotEnrolled      = New(CodeNotEnrolled, "not enrolled")
 	ErrEnrollmentClosed = New(CodeEnrollmentClosed, "not found")
 )
-
-func Wrap(code Code, msg string, err error) error {
-	if err == nil {
-		return New(code, msg)
-	}
-	return New(code, fmt.Sprintf("%s: %v", msg, err))
-}
