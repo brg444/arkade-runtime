@@ -32,7 +32,9 @@ read and write rebuilds the binding and compares it with the session. The client
 must independently compare it with the verified wallet descriptor before use.
 Tokens expire after eight hours and disappear on process restart. Light and
 Savings share a bounded session map, but tokens cannot cross route families.
-There are at most 256 active sessions and 256 pending challenges per family.
+There are at most 256 active sessions in total and 256 pending challenges per
+family. Either family can exhaust the shared session pool; opening another
+session then requires an existing session to expire.
 
 ## Archive and write contract
 
