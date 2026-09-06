@@ -24,6 +24,89 @@ CREATE TABLE light_renewal_event (
 
 // Migration adds only Light's named lifecycle store. Existing rows, canonical
 // MAC preimages, and the independent economic sequence remain byte-identical.
+func applyLightRenewalMigration(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(createLightRenewalSchema); err != nil {
+		return fmt.Errorf("create Light renewal store: %w", err)
+	}
+	if _, err = tx.Exec(`UPDATE schema_meta SET version=? WHERE version=?`, lightSchemaVersion, legacySchemaVersion); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateV2Baseline(db *sql.DB, boardSchema string) error {
+	if err := validateVaultSchemaObjects(db, true); err != nil {
+		return err
+	}
+	if err := validateMultiTenantSchemaOn(db); err != nil {
+		return err
+	}
+	if err := validateBoardingTables(db, boardSchema); err != nil {
+		return err
+	}
+	if err := validateLightRenewalSchema(db); err != nil {
+		return err
+	}
+	if err := requireForeignKeysEnabled(db); err != nil {
+		return err
+	}
+	return requireForeignKeyCheckClean(db)
+}
+
+func validateLightRenewalSchema(db *sql.DB) error {
+	for _, statement := range strings.Split(strings.TrimSpace(createLightRenewalSchema), ";") {
+		statement = strings.TrimSpace(statement)
+		if statement == "" {
+			continue
+		}
+		fields := strings.Fields(statement)
+		name := fields[2]
+		var actual string
+		if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&actual); err != nil {
+			return err
+		}
+		if normalizeCheck(actual) != normalizeCheck(statement) {
+			return fmt.Errorf("Light renewal table %s changed", name)
+		}
+	}
+	return nil
+}
+
+func validateV3Baseline(db *sql.DB, boardSchema string) error {
+	if err := validateVaultSchemaObjectsV3(db); err != nil {
+		return err
+	}
+	if err := validateMultiTenantSchemaOn(db); err != nil {
+		return err
+	}
+	if err := validateBoardingTables(db, boardSchema); err != nil {
+		return err
+	}
+	if err := validateLightRenewalSchema(db); err != nil {
+		return err
+	}
+	if err := validateConnectorSchema(db); err != nil {
+		return err
+	}
+	if err := requireForeignKeysEnabled(db); err != nil {
+		return err
+	}
+	return requireForeignKeyCheckClean(db)
+}
+
+// initializeOrValidateSchema migrates legacy (v1) and Light (v2) databases
+// forward to the connector (v3) baseline. Every step validates the source
+// baseline BEFORE writing, so a tampered database is refused unchanged.
+// Existing rows, canonical MAC preimages, and the economic sequence remain
+// byte-identical across migrations.
 func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 	tables, err := applicationTables(db)
 	if err != nil {
@@ -41,49 +124,22 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		if err := initializeOrValidateLegacySchema(db, boardSchema); err != nil {
 			return err
 		}
-		tx, err := db.Begin()
-		if err != nil {
+		if err := applyLightRenewalMigration(db); err != nil {
 			return err
 		}
-		defer tx.Rollback()
-		if _, err = tx.Exec(createLightRenewalSchema); err != nil {
-			return fmt.Errorf("create Light renewal store: %w", err)
-		}
-		if _, err = tx.Exec(`UPDATE schema_meta SET version=? WHERE version=?`, schemaVersion, legacySchemaVersion); err != nil {
+		version = lightSchemaVersion
+	}
+	if version == lightSchemaVersion {
+		if err := validateV2Baseline(db, boardSchema); err != nil {
 			return err
 		}
-		if err = tx.Commit(); err != nil {
+		if err := applyConnectorMigration(db, lightSchemaVersion, schemaVersion); err != nil {
 			return err
 		}
-	} else if version != schemaVersion {
+		version = schemaVersion
+	}
+	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)
 	}
-	if err := validateVaultSchemaObjects(db, true); err != nil {
-		return err
-	}
-	if err := validateMultiTenantSchemaOn(db); err != nil {
-		return err
-	}
-	if err := validateBoardingTables(db, boardSchema); err != nil {
-		return err
-	}
-	for _, statement := range strings.Split(strings.TrimSpace(createLightRenewalSchema), ";") {
-		statement = strings.TrimSpace(statement)
-		if statement == "" {
-			continue
-		}
-		fields := strings.Fields(statement)
-		name := fields[2]
-		var actual string
-		if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&actual); err != nil {
-			return err
-		}
-		if normalizeCheck(actual) != normalizeCheck(statement) {
-			return fmt.Errorf("Light renewal table %s changed", name)
-		}
-	}
-	if err := requireForeignKeysEnabled(db); err != nil {
-		return err
-	}
-	return requireForeignKeyCheckClean(db)
+	return validateV3Baseline(db, boardSchema)
 }

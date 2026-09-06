@@ -8,6 +8,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -196,6 +197,8 @@ func applySavingsProgram(in *savings.FamilyInput, template string) {
 	in.ServerFreeClawback = template == savings.Template
 }
 
-func knownTemplate(template string) bool { return template == savings.Template }
+func knownTemplate(template string) bool {
+	return template == savings.Template || template == connector.Template
+}
 
 func publicEnrollTemplate(*Service) string { return savings.Template }

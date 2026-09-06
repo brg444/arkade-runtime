@@ -16,14 +16,22 @@ import (
 // digest catches intentional-looking SQL edits that preserve coarse column
 // types while changing stored bytes, constraints, or object definitions.
 func TestSchemaCompatibilityGolden(t *testing.T) {
-	testSchemaGolden(t, false, "c15fdd355bcf93cc34487f43178f133f95d59c9f501ef4544589eeeb0ed9a553")
+	testSchemaGolden(t, legacySchemaVersion, "c15fdd355bcf93cc34487f43178f133f95d59c9f501ef4544589eeeb0ed9a553")
 }
 
 func TestLightRenewalSchemaGolden(t *testing.T) {
-	testSchemaGolden(t, true, "a577b1311c302be332af46386f2de45c166aef422f3a2cf7186b2954100c6ee8")
+	testSchemaGolden(t, lightSchemaVersion, "a577b1311c302be332af46386f2de45c166aef422f3a2cf7186b2954100c6ee8")
 }
 
-func testSchemaGolden(t *testing.T, renewal bool, want string) {
+func TestConnectorSchemaGolden(t *testing.T) {
+	// Schema 3 adds connector_enrollment and connector_operation (no secondary
+	// indexes: conflict discovery scans and authenticates every row) to the
+	// frozen schema-2 baseline. The earlier goldens prove every
+	// pre-existing object is byte-identical.
+	testSchemaGolden(t, schemaVersion, "29afa51371899c5f6185431170cd676e1a5ef5ac2beb89e5fdc12d6f5570c245")
+}
+
+func testSchemaGolden(t *testing.T, version int, want string) {
 	ledger, err := OpenLedger(filepath.Join(t.TempDir(), "vault.sqlite"), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -31,10 +39,6 @@ func testSchemaGolden(t *testing.T, renewal bool, want string) {
 	defer ledger.Close()
 
 	var canonical bytes.Buffer
-	version := legacySchemaVersion
-	if renewal {
-		version = schemaVersion
-	}
 	fmt.Fprintf(&canonical, "schema_meta=%d\n", version)
 	rows, err := ledger.db.Query(`
 SELECT type, name, tbl_name, IFNULL(sql, '')
@@ -50,8 +54,12 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		if err := rows.Scan(&kind, &name, &table, &sqlText); err != nil {
 			t.Fatal(err)
 		}
-		// The original golden still freezes every legacy object verbatim.
-		if !renewal && (table == "light_renewal_operation" || table == "light_renewal_event") {
+		// Freeze each deployed baseline verbatim, excluding only objects
+		// introduced after that version.
+		if version < lightSchemaVersion && (table == "light_renewal_operation" || table == "light_renewal_event") {
+			continue
+		}
+		if version < schemaVersion && (table == "connector_enrollment" || table == "connector_operation") {
 			continue
 		}
 		fmt.Fprintf(&canonical, "%s\x00%s\x00%s\x00%s\n", kind, name, table, sqlText)

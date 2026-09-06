@@ -21,6 +21,7 @@ import (
 	arkadevaultv1 "github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/brg444/arkade-runtime/internal/vault"
+	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
@@ -64,15 +65,21 @@ type Service struct {
 	feeSelectionSlots          chan struct{}
 	transitionRateMu           sync.Mutex
 	transitionRateHits         map[string][]time.Time
-	sessionMu                  sync.Mutex
-	sessionChallenges          map[string]passkeyChallenge
-	SessionNow                 func() time.Time
-	afterLoadPending           func()
-	vaultBoardRuntime          *vaultBoardRuntime
-	lightRenewalOperatorDial   func(context.Context) (lightRenewalOperator, error)
-	resolverReadyMu            sync.Mutex
-	resolverReadyAt            time.Time
-	resolverReadyErr           error
+	connectorWithdrawRateMu    sync.Mutex
+	connectorWithdrawRateHits  map[string][]time.Time
+	// connectorChain overrides the release-pinned chain view. Production
+	// leaves it nil so each call dials the pinned indexer; tests inject a
+	// scripted view. It never accepts digests, PSBTs, or caller assertions.
+	connectorChain           connectorChainView
+	sessionMu                sync.Mutex
+	sessionChallenges        map[string]passkeyChallenge
+	SessionNow               func() time.Time
+	afterLoadPending         func()
+	vaultBoardRuntime        *vaultBoardRuntime
+	lightRenewalOperatorDial func(context.Context) (lightRenewalOperator, error)
+	resolverReadyMu          sync.Mutex
+	resolverReadyAt          time.Time
+	resolverReadyErr         error
 }
 
 // Deps is the constructor input. Private keys stay behind scoped capabilities.
@@ -204,6 +211,15 @@ type RegisterRequest struct {
 	ProtectionTier       string                 `json:"protectionTier"`
 	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
 	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
+	// Optional Savings connector origin. All-absent means a legacy vault.
+	// When present, ConnectorType must be p2tr or p2wpkh, ConnectorPub is the
+	// full 33-byte compressed origin key in lowercase hex (parity matters for
+	// P2WPKH), and Fingerprint/Path carry the BIP84/BIP86 or Electrum-native
+	// origin. Old clients simply omit these fields.
+	ConnectorType        string   `json:"connectorType,omitempty"`
+	ConnectorPub         string   `json:"connectorPub,omitempty"`
+	ConnectorFingerprint uint32   `json:"connectorFingerprint,omitempty"`
+	ConnectorPath        []uint32 `json:"connectorPath,omitempty"`
 }
 
 type parsedRegisterRequest struct {
@@ -216,6 +232,8 @@ type parsedRegisterRequest struct {
 	vaultID                           string
 	protectionTier                    string
 	spendingPolicy                    program.SpendingPolicy
+	connectorOrigin                   *connector.KeyOrigin
+	connectorPub                      *btcec.PublicKey
 }
 
 func (s *Service) requireLedgerIntegrity() error {
@@ -259,6 +277,13 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	parsed, err = s.applyVaultBoardEnrollmentRequest(parsed, req)
 	if err != nil {
 		return err
+	}
+	parsed, err = applyConnectorEnrollmentRequest(parsed, req, s.runtimeConfig().Network)
+	if err != nil {
+		return err
+	}
+	if parsed.connectorOrigin != nil {
+		return s.createConnectorTenantVault(vaultID, tokenHash, req, parsed, pending, childPub)
 	}
 	proposed, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil {
@@ -486,6 +511,25 @@ func (s *Service) rebuildFromCredential(cred *policy.Credential) (
 ) {
 	if err = s.requireCompatible(cred); err != nil {
 		return nil, nil, nil, nil, nil, nil, err
+	}
+	if isConnectorCredential(cred) {
+		fam, ferr := s.rebuildConnectorFamily(cred)
+		if ferr != nil {
+			return nil, nil, nil, nil, nil, nil, ferr
+		}
+		phone, externalOwner, recovery, vaultBase, arkadeBase, err = parseConnectorCredentialKeys(cred)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, err
+		}
+		sv = &savingsSnapshot{
+			Address:             fam.Recovery.Savings.Address,
+			PkScript:            append([]byte(nil), fam.Recovery.Savings.PkScript...),
+			ExternalOwnerWallet: externalOwner,
+			RecoveryKey:         recovery,
+			VaultCosignerBase:   vaultBase,
+			ArkadeCosignerBase:  arkadeBase,
+		}
+		return phone, externalOwner, recovery, vaultBase, arkadeBase, sv, nil
 	}
 	if cred.TemplateVersion != savings.Template {
 		return nil, nil, nil, nil, nil, nil, fmt.Errorf("unsupported vault template %q", cred.TemplateVersion)

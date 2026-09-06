@@ -199,6 +199,8 @@ without breaking fresh-device recovery and lost-response recovery.
 | `POST /v1/passkey/install` | Install a passkey credential envelope. |
 | `POST /v1/passkey/recover` | Recover a passkey credential envelope. |
 | `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
+| `POST /v1/connector/withdraw/authorize` | Validate, durably authorize, and cosign one Savings connector withdrawal. |
+| `GET /v1/connector/operation` | Read one connector operation for retry reconciliation. |
 
 The boarding phase routes use release-pinned public Operator and Esplora adapters;
 they accept no runtime origin override. Savings broadcast and ordinary
