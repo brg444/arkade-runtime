@@ -72,6 +72,27 @@ Light and schema-2 compatibility. Explicit fetches in these checkouts can
 update FETCH_HEAD without moving origin/main; inspect the actual fetched commit.
 The latest inspected heads are runtime 15a83fb and wallet 5c57b14.
 
+## Implemented increment
+
+The scoped Guardian helper reconstructs the connector program and signing
+authorities from enrolled values, verifies both parents and the Savings
+Taproot commitment, and adds one Guardian signature to the retained candidate.
+Existing single-input signing and recovery checks retain their original scope.
+The helper has no HTTP, profile, or key-capability caller yet.
+
+The wallet store persists and reconstructs the complete candidate under a
+required per-vault Web Lock. Every mutation binds to its transaction identity;
+queued arguments are copied before waiting for the lock. Reload verifies the
+independent enrollment pin, complete candidate PSBT, saved Savings signatures,
+and any final transaction. Cancellation is available only before signatures
+may have issued. A signed operation remains reserved until the future
+reconciliation layer resolves it.
+
+Enrollment and Recovery Kit versioning, authenticated ledger authorization,
+the remote cosigner stage, chain reconciliation, and payment screens remain
+unimplemented integration stages. Local persistence provides wallet consistency;
+authoritative replay protection belongs to the server ledger.
+
 ## Review boundary
 
 Muse Spark leads implementation through OpenCode. Codex owns architecture and
