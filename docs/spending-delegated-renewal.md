@@ -65,8 +65,10 @@ must increase for a new set; authenticators that return zero retain the existing
 zero-counter behavior. A counter already consumed by login, recovery, or a
 payment cannot authorize another set through an equality exception.
 
-The response contains `setId` and the operations in the submitted order. An
-exact owner-authenticated retry returns the persisted set, including after its
+The response contains `setId` and the operations in the submitted order, with
+verified receiver identities but no embedded recovery graphs. Full graphs are
+returned by the dedicated status endpoint, keeping a 50-plan receipt bounded.
+An exact owner-authenticated retry returns the persisted set, including after its
 deadlines or a later unrelated ceremony. It grants no additional authority and
 does not consume the supplied assertion. Changed membership, order, program,
 context, set ID, or plan cannot extend that receipt. Set and operation IDs are

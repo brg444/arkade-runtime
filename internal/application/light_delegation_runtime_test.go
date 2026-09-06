@@ -200,6 +200,11 @@ func TestLightDelegationNativeExecutorSettlesWithCompleteRecovery(t *testing.T) 
 	if err != nil || response.Recovery == nil || len(response.Recovery.VtxoTree) == 0 {
 		t.Fatal(response, err)
 	}
+	receipt, err := f.f.env.svc.scheduleLightDelegation(t.Context(), f.p.Request)
+	if err != nil || receipt.Recovery != nil || receipt.ReceiverTxid != response.ReceiverTxid {
+		t.Fatal("legacy schedule retry must omit graph and retain verified receiver", err)
+	}
+
 	raw, err := json.Marshal(response)
 	if err != nil || strings.Contains(string(raw), `"Txid"`) || strings.Contains(string(raw), `"capsule"`) {
 		t.Fatal("unsafe or wrong recovery wire", err)

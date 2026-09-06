@@ -14,6 +14,7 @@ import (
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/brg444/arkade-runtime/internal/deployment"
+	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/ports"
 	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
@@ -395,5 +396,80 @@ func TestSpendingDelegationSetSizeRejectedBeforeEnrollmentOrVerification(t *test
 		if err == nil || err.Error() != "renewal set size" {
 			t.Fatalf("size %d: %v", count, err)
 		}
+	}
+}
+
+func TestSpendingDelegationFinalizedRetryKeepsRecoveryOnStatusOnly(t *testing.T) {
+	f, _, now := delegationAPI(t)
+	e := f.f.env
+	c, err := e.svc.delegationContract(f.p.Request.VaultID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := f.p.Request
+	set := spendingDelegationSetRequest{Program: c.Binding.Program, DescriptorHash: c.DescriptorHash, VaultID: c.Binding.VaultID, SetID: strings.Repeat("77", 16), Plans: []spendingDelegationInput{{OperationID: request.OperationID, Intent: request.Intent, ForfeitTxs: request.ForfeitTxs, DeleteIntent: request.DeleteIntent, ExpiresAt: request.ExpiresAt}}}
+	sign := func(digest []byte, err error) string {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		sig, err := schnorr.Sign(f.f.owner, digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return hex.EncodeToString(sig.Serialize())
+	}
+	set.Plans[0].OwnerSignature = sign(set.planDigest(set.Plans[0]))
+	set.OwnerSignature = sign(set.digest())
+	spendingDelegationHTTP(t, e, "schedule", set, 200)
+	saved, err := e.svc.getDelegation(t.Context(), set.VaultID, request.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := delegationStoredPlanForContract(saved, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Use a real signed graph and the common final verifier; only the already
+	// tested Operator transport is omitted from this response-size regression.
+	final, err := e.svc.prepareSpendingDelegationFinal(t.Context(), p, c, lightDelegationPreparedTree{Tree: f.tree}, f.final.CommitmentPSBT, f.final.VtxoTree, f.final.Connectors)
+	if err != nil {
+		t.Fatal(err)
+	}
+	*now = time.Unix(p.ValidAt, 0)
+	for _, phase := range []string{"claimed", "register_authorized", "register_dispatched", "register_result", "batch_started", "tree_prepared", "nonces_committed", "tree_signed", "final_authorized"} {
+		payload := `{}`
+		if phase == "final_authorized" {
+			raw, err := json.Marshal(final)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload = string(raw)
+		}
+		if _, err := e.ledger.AdvanceLightDelegation(t.Context(), policy.LightDelegationEvent{OperationID: request.OperationID, Phase: phase, Evidence: payload}, c.Binding.SpendingPolicy.PeriodAllowanceSats); err != nil {
+			t.Fatal(phase, err)
+		}
+	}
+	var receipt spendingDelegationSetResponse
+	if err := json.Unmarshal(spendingDelegationHTTP(t, e, "schedule", set, 200), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.Operations) != 1 || receipt.Operations[0].Recovery != nil || receipt.Operations[0].ReceiverTxid == "" {
+		t.Fatal("schedule retry must retain verified identity without embedding recovery graph")
+	}
+	r := spendingDelegationReadRequest{Program: c.Binding.Program, DescriptorHash: c.DescriptorHash, VaultID: set.VaultID, OperationID: request.OperationID, ExpiresAt: now.Unix() + 120}
+	r.OwnerSignature = sign(spendingDelegationDigest("status", struct {
+		Program        string `json:"program"`
+		DescriptorHash string `json:"descriptorHash"`
+		VaultID        string `json:"vaultId"`
+		OperationID    string `json:"operationId"`
+		ExpiresAt      int64  `json:"expiresAt"`
+	}{r.Program, r.DescriptorHash, r.VaultID, r.OperationID, r.ExpiresAt}))
+	var status lightDelegationResponse
+	if err := json.Unmarshal(spendingDelegationHTTP(t, e, "status", r, 200), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Recovery == nil || len(status.Recovery.VtxoTree) == 0 || status.ReceiverTxid != receipt.Operations[0].ReceiverTxid {
+		t.Fatal("status lost the verified replacement graph")
 	}
 }

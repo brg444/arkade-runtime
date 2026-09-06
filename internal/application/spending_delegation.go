@@ -93,7 +93,7 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 			if err != nil || !sameDelegationBytes(stored.Request, p.Request) {
 				return spendingDelegationSetResponse{}, fmt.Errorf("renewal set plan changed")
 			}
-			response, err := s.delegationResponseForContract(saved, c, true)
+			response, err := s.delegationResponseForContract(saved, c, false)
 			if err != nil {
 				return spendingDelegationSetResponse{}, err
 			}
@@ -145,7 +145,7 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		return out, err
 	}
 	for i := range saved {
-		response, err := s.delegationResponseForContract(&saved[i], c, true)
+		response, err := s.delegationResponseForContract(&saved[i], c, false)
 		if err != nil {
 			return out, err
 		}

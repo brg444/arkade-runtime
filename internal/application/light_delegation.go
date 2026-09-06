@@ -150,7 +150,7 @@ func (s *Service) scheduleLightDelegation(ctx context.Context, r lightDelegation
 		if prior.Operation.PlanDigest != hex.EncodeToString(digest) {
 			return lightDelegationResponse{}, fmt.Errorf("Light delegation request changed")
 		}
-		return s.delegationResponse(prior, d, true)
+		return s.delegationResponse(prior, d, false)
 	}
 	now := s.vtxoNow().Unix()
 	if p.ValidAt < now || p.ValidAt > now+30*86400 {
@@ -174,7 +174,7 @@ func (s *Service) scheduleLightDelegation(ctx context.Context, r lightDelegation
 	if err != nil {
 		return lightDelegationResponse{}, err
 	}
-	return s.delegationResponse(saved, d, true)
+	return s.delegationResponse(saved, d, false)
 }
 func (s *Service) delegationResponse(saved *policy.LightDelegationSnapshot, d light.Descriptor, withRecovery bool) (lightDelegationResponse, error) {
 	c, err := legacyLightRenewalContract(d, nil)
