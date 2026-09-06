@@ -3,9 +3,7 @@ package application
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,7 +26,6 @@ const (
 	passkeyPurposeMapWrite          = "map-write"
 	passkeyPurposeConnectorWithdraw = "connector-withdraw"
 	passkeyChallengeTTL             = 2 * time.Minute
-	maxPasskeyChallengesPerVault    = 16
 	recoveryBindingDomain           = "arkade-vault/recovery-binding/v4"
 	passkeyProofDomain              = "arkade-2fa-vault/passkey-proof/v1"
 )
@@ -165,10 +162,6 @@ func (s *Service) sessionNow() time.Time {
 	return time.Now()
 }
 
-func passkeyChallengeKey(vaultID, challengeID string) string {
-	return vaultID + "\x00" + challengeID
-}
-
 func (s *Service) routePasskeyVaultID(vaultID string) (string, error) {
 	return s.routeVaultID(vaultID)
 }
@@ -201,42 +194,7 @@ func (s *Service) IssuePasskeyChallengeFor(ctx context.Context, vaultID, purpose
 			return nil, fmt.Errorf("passkey sign-in has not been enabled on the original device")
 		}
 	}
-	idRaw := make([]byte, 16)
-	challenge := make([]byte, 32)
-	if _, err := rand.Read(idRaw); err != nil {
-		return nil, fmt.Errorf("passkey challenge id: %w", err)
-	}
-	if _, err := rand.Read(challenge); err != nil {
-		return nil, fmt.Errorf("passkey challenge: %w", err)
-	}
-	id := base64.RawURLEncoding.EncodeToString(idRaw)
-	now := s.sessionNow()
-	s.sessionMu.Lock()
-	defer s.sessionMu.Unlock()
-	if s.sessionChallenges == nil {
-		s.sessionChallenges = make(map[string]passkeyChallenge)
-	}
-	pendingForVault := 0
-	for key, pending := range s.sessionChallenges {
-		if !now.Before(pending.ExpiresAt) {
-			delete(s.sessionChallenges, key)
-			continue
-		}
-		if pending.VaultID == vaultID {
-			pendingForVault++
-		}
-	}
-	if pendingForVault >= maxPasskeyChallengesPerVault {
-		return nil, ErrVerificationBusy
-	}
-	s.sessionChallenges[passkeyChallengeKey(vaultID, id)] = passkeyChallenge{
-		VaultID: vaultID, Purpose: purpose, Challenge: append([]byte(nil), challenge...), ExpiresAt: now.Add(passkeyChallengeTTL),
-	}
-	return &PasskeyChallengeResponse{
-		ChallengeID: id, Challenge: hex.EncodeToString(challenge),
-		AllowCredentialID: hex.EncodeToString(cred.ID),
-		ExpiresInSeconds:  int64(passkeyChallengeTTL / time.Second),
-	}, nil
+	return s.issuePasskeyChallenge(vaultID, purpose, "", cred.ID)
 }
 
 // IssueConnectorWithdrawChallenge issues a candidate-bound passkey challenge
@@ -266,43 +224,7 @@ func (s *Service) IssueConnectorWithdrawChallenge(ctx context.Context, vaultID, 
 	if !isConnectorCredential(cred) {
 		return nil, fmt.Errorf("connector vault required")
 	}
-	idRaw := make([]byte, 16)
-	challenge := make([]byte, 32)
-	if _, err := rand.Read(idRaw); err != nil {
-		return nil, fmt.Errorf("passkey challenge id: %w", err)
-	}
-	if _, err := rand.Read(challenge); err != nil {
-		return nil, fmt.Errorf("passkey challenge: %w", err)
-	}
-	id := base64.RawURLEncoding.EncodeToString(idRaw)
-	now := s.sessionNow()
-	s.sessionMu.Lock()
-	defer s.sessionMu.Unlock()
-	if s.sessionChallenges == nil {
-		s.sessionChallenges = make(map[string]passkeyChallenge)
-	}
-	pendingForVault := 0
-	for key, pending := range s.sessionChallenges {
-		if !now.Before(pending.ExpiresAt) {
-			delete(s.sessionChallenges, key)
-			continue
-		}
-		if pending.VaultID == vaultID {
-			pendingForVault++
-		}
-	}
-	if pendingForVault >= maxPasskeyChallengesPerVault {
-		return nil, ErrVerificationBusy
-	}
-	s.sessionChallenges[passkeyChallengeKey(vaultID, id)] = passkeyChallenge{
-		VaultID: vaultID, Purpose: passkeyPurposeConnectorWithdraw, CandidateTxid: candidateTxid,
-		Challenge: append([]byte(nil), challenge...), ExpiresAt: now.Add(passkeyChallengeTTL),
-	}
-	return &PasskeyChallengeResponse{
-		ChallengeID: id, Challenge: hex.EncodeToString(challenge),
-		AllowCredentialID: hex.EncodeToString(cred.ID),
-		ExpiresInSeconds:  int64(passkeyChallengeTTL / time.Second),
-	}, nil
+	return s.issuePasskeyChallenge(vaultID, passkeyPurposeConnectorWithdraw, candidateTxid, cred.ID)
 }
 
 func isConnectorHex(s string) bool {
@@ -312,43 +234,6 @@ func isConnectorHex(s string) bool {
 		}
 	}
 	return true
-}
-
-func (s *Service) consumePasskeyChallenge(vaultID, id, purpose string) ([]byte, error) {
-	record, err := s.consumePasskeyChallengeRecord(vaultID, id, purpose)
-	if err != nil {
-		return nil, err
-	}
-	return append([]byte(nil), record.Challenge...), nil
-}
-
-func (s *Service) consumePasskeyChallengeRecord(vaultID, id, purpose string) (passkeyChallenge, error) {
-	if len(id) != 22 {
-		return passkeyChallenge{}, fmt.Errorf("passkey authentication failed")
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(id)
-	if err != nil || len(raw) != 16 || base64.RawURLEncoding.EncodeToString(raw) != id {
-		return passkeyChallenge{}, fmt.Errorf("passkey authentication failed")
-	}
-	s.sessionMu.Lock()
-	defer s.sessionMu.Unlock()
-	key := passkeyChallengeKey(vaultID, id)
-	pending, ok := s.sessionChallenges[key]
-	if !ok {
-		return passkeyChallenge{}, fmt.Errorf("passkey authentication failed")
-	}
-	if !s.sessionNow().Before(pending.ExpiresAt) {
-		delete(s.sessionChallenges, key)
-		return passkeyChallenge{}, fmt.Errorf("passkey authentication failed")
-	}
-	if pending.VaultID != vaultID || pending.Purpose != purpose {
-		return passkeyChallenge{}, fmt.Errorf("passkey authentication failed")
-	}
-	delete(s.sessionChallenges, key)
-	return passkeyChallenge{
-		VaultID: pending.VaultID, Purpose: pending.Purpose, CandidateTxid: pending.CandidateTxid,
-		Challenge: append([]byte(nil), pending.Challenge...), ExpiresAt: pending.ExpiresAt,
-	}, nil
 }
 
 // authenticateConnectorWithdrawSession verifies the passkey ceremony for one
@@ -366,7 +251,7 @@ func (s *Service) authenticateConnectorWithdrawSession(ctx context.Context, vaul
 	if err != nil {
 		return nil, err
 	}
-	record, err := s.consumePasskeyChallengeRecord(vaultID, req.ChallengeID, passkeyPurposeConnectorWithdraw)
+	record, err := s.readPasskeyChallenge(vaultID, req.ChallengeID, passkeyPurposeConnectorWithdraw)
 	if err != nil {
 		return nil, failPasskeyAuth("challenge", err)
 	}
@@ -397,9 +282,6 @@ func (s *Service) authenticateConnectorWithdrawSession(ctx context.Context, vaul
 	if err != nil {
 		return nil, failPasskeyAuth("webauthn", err)
 	}
-	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
-		return nil, failPasskeyAuth("sign-count", err)
-	}
 	directProof, err := decodeFixedHex(req.DirectProof, 64, "direct proof")
 	if err != nil {
 		return nil, failPasskeyAuth("proof", err)
@@ -407,6 +289,12 @@ func (s *Service) authenticateConnectorWithdrawSession(ctx context.Context, vaul
 	proofDigest := passkeySessionProofDigest(passkeyPurposeConnectorWithdraw, record.Challenge, cred.ID)
 	if err := verifyDirectAuth(cred.PhoneDirectP256, proofDigest, directProof); err != nil {
 		return nil, failPasskeyAuth("proof", err)
+	}
+	if _, err := s.consumePasskeyChallenge(vaultID, req.ChallengeID, passkeyPurposeConnectorWithdraw); err != nil {
+		return nil, failPasskeyAuth("challenge", err)
+	}
+	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
+		return nil, failPasskeyAuth("sign-count", err)
 	}
 	return cred, nil
 }
@@ -421,10 +309,11 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 	if err != nil {
 		return nil, err
 	}
-	challenge, err := s.consumePasskeyChallenge(vaultID, req.ChallengeID, purpose)
+	record, err := s.readPasskeyChallenge(vaultID, req.ChallengeID, purpose)
 	if err != nil {
 		return nil, failPasskeyAuth("challenge", err)
 	}
+	challenge := record.Challenge
 	cred, err := s.loadVerifiedCredentialFor(vaultID)
 	if err != nil || cred == nil {
 		if err == nil {
@@ -449,9 +338,6 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 	if err != nil {
 		return nil, failPasskeyAuth("webauthn", err)
 	}
-	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
-		return nil, failPasskeyAuth("sign-count", err)
-	}
 	directProof, err := decodeFixedHex(req.DirectProof, 64, "direct proof")
 	if err != nil {
 		return nil, failPasskeyAuth("proof", err)
@@ -459,6 +345,12 @@ func (s *Service) authenticatePasskeySession(ctx context.Context, purpose, vault
 	proofDigest := passkeySessionProofDigest(purpose, challenge, cred.ID)
 	if err := verifyDirectAuth(cred.PhoneDirectP256, proofDigest, directProof); err != nil {
 		return nil, failPasskeyAuth("proof", err)
+	}
+	if _, err := s.consumePasskeyChallenge(vaultID, req.ChallengeID, purpose); err != nil {
+		return nil, failPasskeyAuth("challenge", err)
+	}
+	if err := s.advanceSignCount(vaultID, cred.ID, verified.SignCount); err != nil {
+		return nil, failPasskeyAuth("sign-count", err)
 	}
 	return cred, nil
 }

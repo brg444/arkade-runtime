@@ -261,17 +261,13 @@ func TestRecoveryArchiveHeaderBindingCASAndMalformedWrites(t *testing.T) {
 func TestRecoveryArchiveSessionAndChallengeBudgets(t *testing.T) {
 	e := newEnv(t)
 	s := e.svc
-	for i := 0; i < maxBackupSessions; i++ {
+	for i := 0; i < maxBackupSessions*2; i++ {
 		if _, err := s.IssueRecoveryArchiveChallenge(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.IssueRecoveryArchiveChallenge(); err == nil {
-		t.Fatal("unbounded challenge map")
-	}
-	s.SessionNow = func() time.Time { return time.Now().Add(passkeyChallengeTTL + time.Minute) }
-	if _, err := s.IssueRecoveryArchiveChallenge(); err != nil {
-		t.Fatal("expired challenges not pruned", err)
+	if len(s.consumedPasskeyChallenges) != 0 {
+		t.Fatal("anonymous issuance allocated replay state")
 	}
 	s.SessionNow = nil
 	s.sessionMu.Lock()

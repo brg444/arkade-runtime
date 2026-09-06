@@ -74,7 +74,8 @@ type Service struct {
 	// scripted view. It never accepts digests, PSBTs, or caller assertions.
 	connectorChain              connectorChainView
 	sessionMu                   sync.Mutex
-	sessionChallenges           map[string]passkeyChallenge
+	sessionChallengeKey         []byte
+	consumedPasskeyChallenges   map[[32]byte]consumedPasskeyChallenge
 	backupSessions              map[[32]byte]backupSession
 	SessionNow                  func() time.Time
 	afterLoadPending            func()
@@ -150,6 +151,11 @@ func (s *Service) WipeSecrets() {
 		return
 	}
 	s.StopLightDelegation()
+	s.sessionMu.Lock()
+	zeroServiceBytes(s.sessionChallengeKey)
+	s.sessionChallengeKey = nil
+	s.consumedPasskeyChallenges = nil
+	s.sessionMu.Unlock()
 	zeroServiceBytes(s.CredentialIntegrityKey)
 	s.CredentialIntegrityKey = nil
 	s.keys.Wipe()

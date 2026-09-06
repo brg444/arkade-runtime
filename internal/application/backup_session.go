@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -25,37 +24,10 @@ type backupSession struct {
 	HeaderDigest [32]byte
 }
 
-// Discovery has no tenant lookup or credential enumeration. Each named family
-// has a bounded challenge budget and shares one bounded in-memory session map.
+// Discovery has no tenant lookup or credential enumeration. It uses the same
+// stateless challenge boundary as enrolled sessions; sessions remain bounded.
 func (s *Service) issueBackupChallenge(purpose string) (*PasskeyChallengeResponse, error) {
-	idRaw, err := randomBytes(16)
-	if err != nil {
-		return nil, err
-	}
-	challenge, err := randomBytes(32)
-	if err != nil {
-		return nil, err
-	}
-	id := base64.RawURLEncoding.EncodeToString(idRaw)
-	s.sessionMu.Lock()
-	defer s.sessionMu.Unlock()
-	if s.sessionChallenges == nil {
-		s.sessionChallenges = make(map[string]passkeyChallenge)
-	}
-	now := s.sessionNow()
-	n := 0
-	for k, v := range s.sessionChallenges {
-		if !now.Before(v.ExpiresAt) {
-			delete(s.sessionChallenges, k)
-		} else if v.Purpose == purpose {
-			n++
-		}
-	}
-	if n >= maxBackupSessions {
-		return nil, ErrVerificationBusy
-	}
-	s.sessionChallenges[passkeyChallengeKey("", id)] = passkeyChallenge{Purpose: purpose, Challenge: challenge, ExpiresAt: now.Add(passkeyChallengeTTL)}
-	return &PasskeyChallengeResponse{ChallengeID: id, Challenge: hex.EncodeToString(challenge), ExpiresInSeconds: int64(passkeyChallengeTTL / time.Second)}, nil
+	return s.issuePasskeyChallenge("", purpose, "", nil)
 }
 
 func (s *Service) openBackup(ctx context.Context, req LightBackupOpenRequest, purpose string) (*RecoveryArchiveOpenResponse, error) {
@@ -64,10 +36,11 @@ func (s *Service) openBackup(ctx context.Context, req LightBackupOpenRequest, pu
 		return nil, err
 	}
 	defer release()
-	challenge, err := s.consumePasskeyChallenge("", req.ChallengeID, purpose)
+	record, err := s.readPasskeyChallenge("", req.ChallengeID, purpose)
 	if err != nil {
 		return nil, failPasskeyAuth("backup challenge", nil)
 	}
+	challenge := record.Challenge
 	cred, err := s.loadVerifiedCredentialFor(req.VaultID)
 	if err != nil || !backupCredentialAllowed(cred, purpose) {
 		return nil, failPasskeyAuth("backup credential", nil)
@@ -89,6 +62,9 @@ func (s *Service) openBackup(ctx context.Context, req LightBackupOpenRequest, pu
 	}
 	if err = verifyDirectAuth(cred.PhoneDirectP256, passkeySessionProofDigest(purpose, challenge, cred.ID), proof); err != nil {
 		return nil, failPasskeyAuth("backup proof", nil)
+	}
+	if _, err = s.consumePasskeyChallenge(req.VaultID, req.ChallengeID, purpose); err != nil {
+		return nil, failPasskeyAuth("backup challenge", err)
 	}
 	if err = s.advanceSignCount(req.VaultID, cred.ID, verified.SignCount); err != nil {
 		return nil, err
