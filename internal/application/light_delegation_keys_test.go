@@ -31,7 +31,7 @@ type delegatedFixture struct {
 	now      *time.Time
 }
 
-func newDelegatedFixture(t *testing.T) delegatedFixture {
+func newDelegatedFixture(t *testing.T, otherSessions ...*btcec.PrivateKey) delegatedFixture {
 	t.Helper()
 	f := newLightRenewalProofFixture(t)
 	f.env.svc.LightDelegationEnabled = true
@@ -41,7 +41,7 @@ func newDelegatedFixture(t *testing.T) delegatedFixture {
 		t.Fatal(err)
 	}
 	operator, _ := btcec.NewPrivateKey()
-	f, _, final := buildLightRenewalFinalFixture(t, f, guardian, operator)
+	f, _, final := buildLightRenewalFinalFixture(t, f, guardian, operator, otherSessions...)
 	now := time.Now().UTC().Truncate(time.Second)
 	valid := now.Add(time.Hour).Unix()
 	expires := now.Add(2 * time.Hour).Unix()

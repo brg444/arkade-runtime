@@ -37,8 +37,13 @@ type verifiedLightRenewalFinal struct {
 }
 
 // Bound graph shape before invoking recursive protocol-library traversal.
+// Stock streams include complete parent transactions but omit other participants'
+// descendants. Keep their references in the canonical transcript while traversing
+// only supplied nodes; every supplied internal node must lead to a supplied leaf.
+// The signing/final verifier then binds the exact owned receiver and validates
+// every transaction, parent output, key and (at finalization) signature on its path.
 func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree, *arktree.TxTree, error) {
-	flat, err := canonicalVaultBoardTree(supplied)
+	flat, err := canonicalVaultBoardTreeNodes(supplied)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -56,10 +61,18 @@ func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree,
 			}
 			total += out.Value
 		}
+		if len(node.Children) > len(p.UnsignedTx.TxOut)-1 {
+			return nil, nil, fmt.Errorf("Light renewal graph child count")
+		}
 		byID[node.Txid] = node
 		for index, child := range node.Children {
 			if int64(index) >= int64(len(p.UnsignedTx.TxOut)) || child == node.Txid {
 				return nil, nil, fmt.Errorf("Light renewal graph edge")
+			}
+			// The protocol library slices this script when checking child keys.
+			// Every connector or VTXO branch output must be a real P2TR output.
+			if !txscript.IsPayToTaproot(p.UnsignedTx.TxOut[index].PkScript) {
+				return nil, nil, fmt.Errorf("Light renewal graph child output script")
 			}
 			parents[child]++
 			if parents[child] > 1 {
@@ -85,8 +98,15 @@ func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree,
 			return nil, nil, fmt.Errorf("Light renewal graph cycle")
 		}
 		seen[id] = true
+		providedChildren := 0
 		for _, child := range byID[id].Children {
-			queue = append(queue, child)
+			if _, present := byID[child]; present {
+				queue = append(queue, child)
+				providedChildren++
+			}
+		}
+		if len(byID[id].Children) > 0 && providedChildren == 0 {
+			return nil, nil, fmt.Errorf("Light renewal graph missing descendant path")
 		}
 	}
 	if len(seen) != len(flat) {

@@ -27,7 +27,7 @@ func newLightRenewalFinalFixture(t *testing.T) (lightRenewalProofFixture, verifi
 	return buildLightRenewalFinalFixture(t, f, sessionKey, operatorSessionKey)
 }
 
-func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey) (lightRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey, otherSessions ...*btcec.PrivateKey) (lightRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
 	t.Helper()
 	f.message, _ = (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ExpireAt: f.plan.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(sessionKey.PubKey().SerializeCompressed())}}).Encode()
 	raw, _ := f.proof(t).B64Encode()
@@ -51,6 +51,13 @@ func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, ses
 	}
 	root := txscript.NewBaseTapLeaf(sweepScript).TapHash()
 	leaves := []arktree.Leaf{{Outputs: []arktree.LeafOutput{{Amount: uint64(f.plan.ReceiverSats), Script: hex.EncodeToString(f.tree.PkScript)}}, CosignersPublicKeys: []string{hex.EncodeToString(sessionKey.PubKey().SerializeCompressed()), hex.EncodeToString(operatorSessionKey.PubKey().SerializeCompressed())}}}
+	for _, other := range otherSessions {
+		script, err := txscript.PayToTaprootScript(txscript.ComputeTaprootKeyNoScript(other.PubKey()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaves = append(leaves, arktree.Leaf{Outputs: []arktree.LeafOutput{{Amount: 1111, Script: hex.EncodeToString(script)}}, CosignersPublicKeys: []string{hex.EncodeToString(other.PubKey().SerializeCompressed()), hex.EncodeToString(operatorSessionKey.PubKey().SerializeCompressed())}})
+	}
 	batchScript, batchAmount, err := arktree.BuildBatchOutput(leaves, root[:])
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +81,7 @@ func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, ses
 		t.Fatal(err)
 	}
 	sessions := map[*btcec.PrivateKey]arktree.SignerSession{}
-	for _, key := range []*btcec.PrivateKey{sessionKey, operatorSessionKey} {
+	for _, key := range append([]*btcec.PrivateKey{sessionKey, operatorSessionKey}, otherSessions...) {
 		session := arktree.NewTreeSignerSession(key)
 		if err := session.Init(root[:], batchAmount, vtxos); err != nil {
 			t.Fatal(err)
