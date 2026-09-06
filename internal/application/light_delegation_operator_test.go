@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	arktree "github.com/arkade-os/arkd/pkg/ark-lib/tree"
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"net/http"
 	"net/http/httptest"
@@ -116,3 +117,35 @@ func TestLightDelegationStockBatchPostsUsePublicWire(t *testing.T) {
 type delegationTestDoer func(*http.Request) (*http.Response, error)
 
 func (d delegationTestDoer) Do(r *http.Request) (*http.Response, error) { return d(r) }
+
+func TestLightDelegationStockTreeEventDerivesTransactionID(t *testing.T) {
+	f := newDelegatedFixture(t)
+	for index, flat := range []arktree.FlatTxTree{f.tree.VtxoTree, f.final.Connectors} {
+		node := flat[0]
+		for _, supplied := range []string{"", node.Txid, strings.Repeat("ab", 32)} {
+			raw, err := json.Marshal(map[string]any{"treeTx": map[string]any{"id": f.tree.BatchID, "batchIndex": index, "txid": supplied, "tx": node.Tx, "children": node.Children}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var event lightDelegationEvent
+			err = json.Unmarshal(raw, &event)
+			if supplied != "" && supplied != node.Txid {
+				if err == nil {
+					t.Fatal("contradictory supplied txid accepted")
+				}
+				continue
+			}
+			if err != nil || event.TreeTx.Txid != node.Txid {
+				t.Fatal("stock transaction identity unavailable", err)
+			}
+			phase, err := delegationStreamPhase(event, f.tree.BatchID)
+			if err != nil || phase != fmt.Sprintf("stream_tree_%d_%s", index, node.Txid) {
+				t.Fatal("event cannot be journaled", err)
+			}
+		}
+	}
+	var event lightDelegationEvent
+	if json.Unmarshal([]byte(`{"treeTx":{"id":"batch","tx":"invalid"}}`), &event) == nil {
+		t.Fatal("malformed transaction accepted")
+	}
+}

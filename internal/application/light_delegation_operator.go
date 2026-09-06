@@ -24,6 +24,28 @@ type delegationTreeTx struct {
 	Tx         string            `json:"tx"`
 	Children   map[uint32]string `json:"children"`
 }
+
+// Stock Operator TreeTx events can omit txid. Derive identity from the
+// transaction before journaling, and reject any contradictory supplied ID.
+func (e *delegationTreeTx) UnmarshalJSON(raw []byte) error {
+	type wireEvent delegationTreeTx
+	var decoded wireEvent
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	packet, err := parseCanonicalVaultBoardPSBT(decoded.Tx, maxVaultBoardProofBytes)
+	if err != nil {
+		return fmt.Errorf("Light delegation tree event transaction: %w", err)
+	}
+	txid := packet.UnsignedTx.TxHash().String()
+	if decoded.Txid != "" && decoded.Txid != txid {
+		return fmt.Errorf("Light delegation tree event transaction identity mismatch")
+	}
+	decoded.Txid = txid
+	*e = delegationTreeTx(decoded)
+	return nil
+}
+
 type delegationSigningStarted struct {
 	ID         string   `json:"id"`
 	Cosigners  []string `json:"cosignersPubkeys"`
