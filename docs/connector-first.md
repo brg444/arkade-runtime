@@ -76,7 +76,7 @@ The latest inspected heads are runtime 15a83fb and wallet 5c57b14.
 
 The Guardian now exposes named connector authorization and operation lookup.
 Enrollment binds the conventional key origin, Savings and boarding contracts,
-and version-5 passkey recovery binding. The authenticated schema-3 ledger
+and version-5 passkey recovery binding. The authenticated schema-4 ledger
 retains authorization and exact cosigner stages; confirmed chain evidence
 resolves reservations, while outages and unconfirmed conflicts retain them.
 

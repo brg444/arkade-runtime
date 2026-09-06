@@ -138,6 +138,22 @@
     "/v1/connector/operation": [
       "GET",
       "OPTIONS"
+    ],
+    "/v1/light/backup/challenge": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/light/backup/open": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/light/backup/read": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/light/backup/write": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {
@@ -619,6 +635,30 @@
     "ErrorResponse": [
       "error:string",
       "code:string"
+    ],
+    "LightBackupOpenRequest": [
+      "vaultId:string",
+      "challengeId:string",
+      "credentialId:string",
+      "clientDataJSON:string",
+      "authenticatorData:string",
+      "signature:string",
+      "directProof:string"
+    ],
+    "LightBackupRequest": [
+      "token:string",
+      "revision:integer,omitempty",
+      "payload:string,omitempty"
+    ],
+    "LightBackupOpenResponse": [
+      "token:string",
+      "vaultId:string",
+      "expiresAt:string",
+      "backup:object|null"
+    ],
+    "LightBackup": [
+      "revision:integer",
+      "payload:string"
     ]
   }
 }

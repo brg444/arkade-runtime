@@ -89,6 +89,12 @@ type LightRenewalStore interface {
 	AppendLightRenewalEvent(context.Context, policy.LightRenewalEvent, []byte, uint32) (policy.LightRenewalEvent, bool, error)
 }
 
+// LightBackupStore stores client-encrypted recovery snapshots independently of spending authority.
+type LightBackupStore interface {
+	GetLightBackup(string) (*policy.LightBackup, error)
+	PutLightBackup(string, uint64, string) (*policy.LightBackup, error)
+}
+
 // Stores is the complete persistence capability set compiled into the
 // arkade-vault-v1 profile.
 type Stores struct {
@@ -100,6 +106,7 @@ type Stores struct {
 	VaultBoard         VaultBoardStore
 	LightRenewal       LightRenewalStore
 	Connector          ConnectorStore
+	LightBackup        LightBackupStore
 }
 
 func (s Stores) Validate() error {
@@ -114,6 +121,8 @@ func (s Stores) Validate() error {
 		return fmt.Errorf("arkade-vault-v1 recovery operation store required")
 	case s.Maps == nil:
 		return fmt.Errorf("arkade-vault-v1 map store required")
+	case s.LightBackup == nil:
+		return fmt.Errorf("Light backup store required")
 	case s.LightRenewal == nil:
 		return fmt.Errorf("Light renewal store required")
 	case s.VaultBoard == nil:
@@ -141,5 +150,6 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		VaultBoard:         ledger,
 		LightRenewal:       ledger,
 		Connector:          ledger,
+		LightBackup:        ledger,
 	}, nil
 }

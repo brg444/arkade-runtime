@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
@@ -38,6 +39,10 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 	}
 
 	types := map[string]reflect.Type{
+		"LightBackupOpenRequest":       reflect.TypeOf(LightBackupOpenRequest{}),
+		"LightBackupRequest":           reflect.TypeOf(LightBackupRequest{}),
+		"LightBackupOpenResponse":      reflect.TypeOf(LightBackupOpenResponse{}),
+		"LightBackup":                  reflect.TypeOf(policy.LightBackup{}),
 		"LightRenewalPlan":             reflect.TypeOf(lightRenewalPlan{}),
 		"LightRenewalPrepareRequest":   reflect.TypeOf(lightRenewalPrepareRequest{}),
 		"LightRenewalPrepared":         reflect.TypeOf(lightRenewalPrepared{}),

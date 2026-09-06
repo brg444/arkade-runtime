@@ -170,6 +170,11 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 }
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
+	"/v1/light/backup/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/backup/open":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/backup/read":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/backup/write":     {http.MethodPost: {}, http.MethodOptions: {}},
+
 	"/v1/light/renew/prepare":          {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/light/renew/register":         {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/light/renew/final":            {http.MethodPost: {}, http.MethodOptions: {}},
@@ -259,10 +264,14 @@ func decodeMutation(r *http.Request, dst any, expectedOrigin string) error {
 	if expectedOrigin == "" || r.Header.Get("Origin") != expectedOrigin {
 		return &mutationError{http.StatusForbidden, "origin"}
 	}
-	if r.ContentLength > maxJSONBody {
+	limit := int64(maxJSONBody)
+	if r.URL.Path == "/v1/light/backup/write" {
+		limit = 3_100_000
+	}
+	if r.ContentLength > limit {
 		return &mutationError{http.StatusRequestEntityTooLarge, "request too large"}
 	}
-	r.Body = http.MaxBytesReader(nil, r.Body, maxJSONBody)
+	r.Body = http.MaxBytesReader(nil, r.Body, limit)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {

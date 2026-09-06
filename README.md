@@ -176,6 +176,10 @@ without breaking fresh-device recovery and lost-response recovery.
 | `POST /v1/light/renew/final` | Verify signed replacement paths and submit the owner-authorized forfeit. |
 | `POST /v1/light/renew/status` | Reconcile the replacement output and confirmed Bitcoin commitment. |
 | `POST /v1/light/renew/release` | Cancel an unsent renewal or fence an expired registration after checking the old output. |
+| `POST /v1/light/backup/challenge` | Issue a single-use discoverable passkey challenge. |
+| `POST /v1/light/backup/open` | Authenticate a Light passkey and open an eight-hour backup-only session. |
+| `POST /v1/light/backup/read` | Read the authenticated encrypted recovery snapshot. |
+| `POST /v1/light/backup/write` | Atomically replace an encrypted snapshot at the expected revision. |
 | `POST /v1/light/enroll/start` | Assign a Light identity and freeze its spending policy. |
 | `POST /v1/light/enroll/propose` | Return the Light descriptor for local verification and backup. |
 | `POST /v1/light/enroll/finish` | Verify the passkey ceremony and atomically consume admission. |

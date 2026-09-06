@@ -81,7 +81,22 @@ func validateLightRenewalSchema(db *sql.DB) error {
 }
 
 func validateV3Baseline(db *sql.DB, boardSchema string) error {
-	if err := validateVaultSchemaObjectsV3(db); err != nil {
+	return validateConnectorBaseline(db, boardSchema, false)
+}
+
+func validateV4Baseline(db *sql.DB, boardSchema string) error {
+	if err := validateConnectorBaseline(db, boardSchema, true); err != nil {
+		return err
+	}
+	return validateLightBackupSchema(db)
+}
+
+func validateConnectorBaseline(db *sql.DB, boardSchema string, backup bool) error {
+	validateObjects := validateVaultSchemaObjectsV3
+	if backup {
+		validateObjects = validateVaultSchemaObjectsV4
+	}
+	if err := validateObjects(db); err != nil {
 		return err
 	}
 	if err := validateMultiTenantSchemaOn(db); err != nil {
@@ -103,7 +118,7 @@ func validateV3Baseline(db *sql.DB, boardSchema string) error {
 }
 
 // initializeOrValidateSchema migrates legacy (v1) and Light (v2) databases
-// forward to the connector (v3) baseline. Every step validates the source
+// forward through connector (v3) to encrypted Light backup (v4). Every step validates the source
 // baseline BEFORE writing, so a tampered database is refused unchanged.
 // Existing rows, canonical MAC preimages, and the economic sequence remain
 // byte-identical across migrations.
@@ -133,13 +148,22 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		if err := validateV2Baseline(db, boardSchema); err != nil {
 			return err
 		}
-		if err := applyConnectorMigration(db, lightSchemaVersion, schemaVersion); err != nil {
+		if err := applyConnectorMigration(db, lightSchemaVersion, connectorSchemaVersion); err != nil {
 			return err
 		}
-		version = schemaVersion
+		version = connectorSchemaVersion
+	}
+	if version == connectorSchemaVersion {
+		if err := validateV3Baseline(db, boardSchema); err != nil {
+			return err
+		}
+		if err := applyLightBackupMigration(db); err != nil {
+			return err
+		}
+		version = lightBackupSchemaVersion
 	}
 	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)
 	}
-	return validateV3Baseline(db, boardSchema)
+	return validateV4Baseline(db, boardSchema)
 }

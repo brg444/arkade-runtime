@@ -36,7 +36,7 @@ database rollback is forbidden. Follow [state operations](../deploy/ops.md).
 2. Run `/usr/local/sbin/vaulted-guardian-unlock` from a real SSH terminal. It
    decrypts the existing secrets into tmpfs and starts the service; an
    unattended restart cannot load the already removed key.
-3. Require `/ready` to report `ok: true`, `network: mainnet`, and schema `3`.
+3. Require `/ready` to report `ok: true`, `network: mainnet`, and schema `4`.
    `/v1/status` must advertise `savings-connector-v1` in `connectorCapability`.
    Keep the original enrollment-template field unchanged for legacy clients.
 4. Deploy the paired wallet build to the existing RC deployment with its
@@ -57,12 +57,17 @@ unverified. Keep new enrollment restricted until these checks succeed.
 
 ## Recovery and rollback
 
-Startup migrates a valid schema-2 database to schema 3. Migration tests preserve
+Startup migrates valid prior databases through schema 2 (Light renewal),
+schema 3 (Savings connector), and schema 4 (encrypted Light backup). Migration tests preserve
 original Savings, credential, recovery-session, and Light MACs and the economic
 sequence. Legacy descriptors and version-4 passkey bindings retain their bytes;
 new connector vaults use the distinct template and version-5 binding.
+Schema 4 preserves every connector origin, candidate, signing stage, and
+resolution record. Backup writes leave the economic sequence unchanged.
+The isolated Light backup drill used a different schema-3 layout; this release
+refuses that layout and requires an explicitly reviewed recovery path for it.
 
-The old binary cannot operate a schema-3 database. After migration, repair or
+Schema-3 and earlier binaries cannot operate a schema-4 database. After migration, repair or
 roll forward with a compatible binary while retaining all authorization rows
 and the current sequence. Reverting the wallet UI can leave connector vaults
 unsupported, so restrict enrollment or serve a maintenance page while the

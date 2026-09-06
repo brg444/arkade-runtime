@@ -46,10 +46,9 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/application": true,
 		modulePath + "/internal/authorizer":  true,
 	}
-	// The connector candidate is unreleased: no endpoint, profile, or release
-	// advertises its contract yet. Only internal/application may import it, for
-	// the scoped Guardian signing helper whose snapshots still validate the
-	// full candidate program. All other production packages stay isolated.
+	// Only internal/application imports the connector implementation, for its
+	// named enrollment and withdrawal workflows. Profile declarations and
+	// release capabilities preserve this implementation import boundary.
 	connectorImporters := map[string]bool{
 		modulePath + "/internal/application": true,
 	}

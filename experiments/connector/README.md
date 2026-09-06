@@ -1,10 +1,11 @@
 # Hardware connector feasibility
 
-Status: isolated integration candidate, with the honest-independent-cosigner
-trust model accepted by the owner on 2026-09-05. The connector still fails the requirement
-that hardware approval remain mandatory after compromise of the phone and all
-online signing authorities. Production enrollment, signing routes, Contract
-Packs, and funded vaults are unchanged.
+The connector is integrated into the runtime's named enrollment and withdrawal
+routes and published Contract Packs. Existing funded vaults retain their
+enrolled contracts. Its trust model, accepted by the owner on 2026-09-05,
+requires at least one honest online cosigner; hardware approval can be bypassed
+after compromise of the phone and all online signing authorities. The tests
+below retain that counterexample alongside the supported transaction paths.
 
 The hardware can approve the destinations and amounts of a complete Savings
 transfer by signing a small ordinary Taproot input. That signature prevents
