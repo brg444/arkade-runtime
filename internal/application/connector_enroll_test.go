@@ -738,6 +738,10 @@ func TestConnectorDescriptorReconstruction(t *testing.T) {
 	if !ok {
 		t.Fatalf("descriptor type %T", preview.Descriptor)
 	}
+	wantOrigin, wantVersion := svc.arkadeIdentity()
+	if desc.Connector.ArkadeOrigin != wantOrigin || desc.Connector.ArkadeVersion != wantVersion {
+		t.Fatal("connector preview must carry the identity committed by its boarding hash")
+	}
 	childPub, err := svc.keys.enrollmentPublic(vaultID)
 	if err != nil {
 		t.Fatal(err)

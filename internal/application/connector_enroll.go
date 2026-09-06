@@ -38,6 +38,8 @@ type connectorEnrollmentDescriptor struct {
 	PhoneDirectP256  string `json:"phoneDirectP256"`
 	VaultCosigner    string `json:"vaultCosignerBase"`
 	ArkadeCosigner   string `json:"arkadeCosignerBase"`
+	ArkadeOrigin     string `json:"arkadeOrigin"`
+	ArkadeVersion    string `json:"arkadeVersion"`
 	SpendingPolicy   string `json:"spendingPolicyDigest"`
 	Program          string `json:"program"`
 	SavingsScript    string `json:"savingsScript"`
@@ -434,6 +436,8 @@ func (s *Service) previewConnectorEnrollmentDescriptor(vaultID string, req Regis
 			PhoneDirectP256:  hex.EncodeToString(in.PhoneDirectP256),
 			VaultCosigner:    hex.EncodeToString(in.VaultCosignerBase.SerializeCompressed()),
 			ArkadeCosigner:   hex.EncodeToString(in.ArkadeCosignerBase.SerializeCompressed()),
+			ArkadeOrigin:     originName,
+			ArkadeVersion:    version,
 			SpendingPolicy:   policyDigest,
 			Program:          hex.EncodeToString(fam.Program),
 			SavingsScript:    hex.EncodeToString(fam.Recovery.Savings.PkScript),
