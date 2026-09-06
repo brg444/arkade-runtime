@@ -104,6 +104,12 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 		_ = rt.Close()
 		return nil, fmt.Errorf("authorizer readiness: %w", err)
 	}
+	// Background authorizations must not race the production chain and
+	// readiness checks, including when resuming a persisted operation.
+	if err := rt.service.StartLightDelegation(); err != nil {
+		_ = rt.Close()
+		return nil, err
+	}
 	return rt, nil
 }
 
@@ -299,10 +305,6 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		return nil, err
 	}
 
-	if err := svc.StartLightDelegation(); err != nil {
-		_ = host.Close()
-		return nil, err
-	}
 	closeOnError = false
 	return &Runtime{host: host, service: svc, ledger: ledger}, nil
 }

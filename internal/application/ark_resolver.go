@@ -66,13 +66,6 @@ func dialArkResolver(ctx context.Context, rawOrigin, network string, hc httpDoer
 	if err != nil {
 		return nil, fmt.Errorf("ark indexer network %q is not supported", network)
 	}
-	height, hash, err := (deployment.Config{Network: network}).BitcoinCheckpoint()
-	if err != nil {
-		return nil, err
-	}
-	if height != id.CheckpointHeight || hash != id.CheckpointHash {
-		return nil, fmt.Errorf("ark indexer checkpoint is %d:%s, want %d:%s", height, hash, id.CheckpointHeight, id.CheckpointHash)
-	}
 	origin, err := CanonicalHTTPSOrigin(rawOrigin)
 	if err != nil {
 		return nil, err

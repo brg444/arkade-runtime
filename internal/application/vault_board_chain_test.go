@@ -240,3 +240,59 @@ func TestVaultBoardChainRejectsOriginAndUnconfirmedFunding(t *testing.T) {
 		t.Fatalf("unconfirmed funding accepted: %v", err)
 	}
 }
+
+func TestVaultBoardChainVerifiesLiveNetworkCheckpoint(t *testing.T) {
+	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+		t.Run(network, func(t *testing.T) {
+			id, err := deployment.IdentityFor(network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range []struct {
+				name, body, contentType string
+				status                  int
+				transportErr            bool
+				ok                      bool
+			}{
+				{"matching", id.CheckpointHash, "text/plain", 200, false, true},
+				{"gateway newline", id.CheckpointHash + "\n", "text/html; charset=utf-8", 200, false, true},
+				{"wrong chain", strings.Repeat("f", 64), "text/plain", 200, false, false},
+				{"uppercase", strings.ToUpper(id.CheckpointHash), "text/plain", 200, false, false},
+				{"empty", "", "text/plain", 200, false, false},
+				{"oversized", id.CheckpointHash + strings.Repeat(" ", vaultBoardChainTextLimit), "text/plain", 200, false, false},
+				{"JSON hash", fmt.Sprintf("%q", id.CheckpointHash), "application/json", 200, false, false},
+				{"unavailable", id.CheckpointHash, "text/plain", 503, false, false},
+				{"transport failure", "", "text/plain", 200, true, false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					calls := 0
+					chain, err := dialVaultBoardChainWithClient(id.EsploraOrigin, rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+						calls++
+						if req.Method != http.MethodGet || req.URL.String() != fmt.Sprintf("%s/block-height/%d", id.EsploraOrigin, id.CheckpointHeight) {
+							t.Fatalf("unexpected checkpoint request: %s %s", req.Method, req.URL)
+						}
+						if tc.transportErr {
+							return nil, fmt.Errorf("unreachable")
+						}
+						response := vaultBoardTextResponse(tc.status, tc.body)
+						response.Header.Set("Content-Type", tc.contentType)
+						return response, nil
+					}))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err = chain.verifyCheckpoint(context.Background(), network); (err == nil) != tc.ok || calls != 1 {
+						t.Fatalf("checkpoint result err=%v calls=%d", err, calls)
+					}
+					other := deployment.NetworkMainnet
+					if network == other {
+						other = deployment.NetworkMutinynet
+					}
+					if chain.verifyCheckpoint(context.Background(), other) == nil || calls != 1 {
+						t.Fatal("cross-network chain accepted or queried")
+					}
+				})
+			}
+		})
+	}
+}
