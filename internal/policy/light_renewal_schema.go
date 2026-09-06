@@ -118,8 +118,9 @@ func validateConnectorBaseline(db *sql.DB, boardSchema string, backup bool) erro
 }
 
 // initializeOrValidateSchema migrates legacy (v1) and Light (v2) databases
-// forward through connector (v3) to encrypted Light backup (v4). Every step validates the source
-// baseline BEFORE writing, so a tampered database is refused unchanged.
+// forward through connector (v3) to encrypted Light backup (v4). Each step
+// validates its source baseline before writing, so a structurally altered
+// source schema is refused before migration.
 // Existing rows, canonical MAC preimages, and the economic sequence remain
 // byte-identical across migrations.
 func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
