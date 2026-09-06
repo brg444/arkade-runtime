@@ -1,5 +1,10 @@
 # Native Savings implementation and timelocked recovery
 
+Update 2026-09-06: the [simple onchain Savings proposal](../../design/simple-savings.md) is the next
+design to qualify following the first-principles review. Native implementation
+is paused; this plan remains reference material. Production is unchanged.
+
+
 ## Selected Design And Constraints
 
 Native Savings is selected for contingency investigation, with production activation still gated by the [architecture proposal](../proposals/native-savings.md). Branch preparation does not select a weaker hardware model or approve a funded migration. The first target is a supported cooperative transfer and a service-independent delayed exit with both user keys available. Key-loss recovery has its own gate.

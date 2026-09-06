@@ -1,5 +1,10 @@
 # Connector work and the Savings contingency
 
+Update 2026-09-06: the [simple onchain Savings proposal](../design/simple-savings.md) is the next
+design to qualify following the first-principles review. Native implementation
+is paused; this plan remains reference material. Production is unchanged.
+
+
 Reconciled 2026-09-06. The contingency branch owns the future Savings contract,
 Operator lifecycle, and timelocked recovery. The connector branch supplies
 reusable experiments and signer qualification. Its onchain contract is excluded

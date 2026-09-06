@@ -1,5 +1,10 @@
 # Vaulted Operator-compatible contingency
 
+Update 2026-09-06: the [simple onchain Savings proposal](../design/simple-savings.md) is the next
+design to qualify following the first-principles review. Native implementation
+is paused; this plan remains reference material. Production is unchanged.
+
+
 Status: preparation only, 2026-09-05. The branch contains a design and implementation handoff; production contracts and deployment configuration retain their baseline values.
 
 The [connector reconciliation](connector-reconciliation.md) is the current mapping
