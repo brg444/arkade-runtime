@@ -32,6 +32,25 @@ Authorization always loads the tenant record; a different vault on the same
 service may use different exposure limits without changing the compiled
 `vault-policy-v1` program.
 
+The rolling allowance remains charged while an operation is signed or
+submitted, regardless of its age. Once the Guardian verifies finalization,
+the completed payment counts for another 24 hours from that observation.
+For example, a payment held for two days still consumes allowance for 24 hours
+after its finalization is observed. This conservative rule prevents delayed
+execution from immediately restoring the full allowance.
+
+A conflicting spend enters `unresolved`. Its debit ages out after 24 hours,
+but the vault continues to refuse new cooperative payments. Time alone does
+not release that fence. Recovery requires checking the committed transaction
+paths and the current chain state; the appropriate unilateral recovery path
+depends on which outputs remain controlled by the wallet.
+
+The persisted `CreatedAt` field is the original reservation time during
+signing and becomes the accounting timestamp on terminal reconciliation.
+Terminal retries preserve that timestamp. The stored bundle digest remains
+the original signed reservation commitment; reconstructing it from terminal
+accounting fields is unsupported.
+
 The fee is evaluated from the Operator's four `fees.intentFee` CEL programs.
 It includes every selected offchain input, the destination, and the change
 output when present. P2A is not an intent recipient. The exact program strings
