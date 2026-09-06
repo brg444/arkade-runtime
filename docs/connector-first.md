@@ -72,40 +72,25 @@ Light and schema-2 compatibility. Explicit fetches in these checkouts can
 update FETCH_HEAD without moving origin/main; inspect the actual fetched commit.
 The latest inspected heads are runtime 15a83fb and wallet 5c57b14.
 
-## Implemented increment
+## Integrated candidate
 
-The scoped Guardian helper reconstructs the connector program and signing
-authorities from enrolled values, verifies both parents and the Savings
-Taproot commitment, and adds one Guardian signature to the retained candidate.
-Existing single-input signing and recovery checks retain their original scope.
-The helper has no HTTP, profile, or key-capability caller yet.
+The Guardian now exposes named connector authorization and operation lookup.
+Enrollment binds the conventional key origin, Savings and boarding contracts,
+and version-5 passkey recovery binding. The authenticated schema-3 ledger
+retains authorization and exact cosigner stages; confirmed chain evidence
+resolves reservations, while outages and unconfirmed conflicts retain them.
 
-The wallet store persists and reconstructs the complete candidate under a
-required per-vault Web Lock. Every mutation binds to its transaction identity;
-queued arguments are copied before waiting for the lock. Reload verifies the
-independent enrollment pin, complete candidate PSBT, saved Savings signatures,
-and any final transaction. Cancellation is available only before signatures
-may have issued. A signed operation remains reserved until the future
-reconciliation layer resolves it.
+The wallet coordinates the complete flow from descriptor import through
+passkey approval, finalized Savings export, signer return, and broadcast.
+Pending activity survives reload, and verified raw transactions are saved before
+submission. The independent enrollment pin covers the full Savings and boarding
+commitment. Existing vaults retain their original signing and recovery paths.
 
-Enrollment and Recovery Kit versioning, authenticated ledger authorization,
-the remote cosigner stage, chain reconciliation, and payment screens remain
-unimplemented integration stages. Local persistence provides wallet consistency;
-authoritative replay protection belongs to the server ledger.
-
-## Review boundary
-
-Muse Spark leads implementation through OpenCode. Codex owns architecture and
-independent patch review. The first increment is reviewable signing and
-persistence support, with no automatic enrollment activation, service restart,
-fund movement, or migration. Approval of the design does not establish remote
-service admission or funded qualification.
-
-Keep exact input ownership after a signing request may have run. A signed
-candidate remains pending until independently observed transaction evidence
-resolves it; neither a UI cancellation nor expiry of a local timer releases its
-inputs. Signed-transaction reconciliation and balance presentation must avoid
-double counting or presenting reserved Savings as money already sent.
+See [RC qualification](connector-rc.md) and the
+[deployment runbook](connector-rc-deployment.md) for validation and activation.
+Muse Spark contributed through OpenCode; provider quota exhaustion interrupted
+its remaining work, which Codex completed and reviewed locally. No service
+restart, release activation, or fund migration follows from local qualification.
 
 ## Sources
 

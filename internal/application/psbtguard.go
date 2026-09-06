@@ -367,6 +367,106 @@ func extractVerifiedSignerSig(submitted, response *psbt.Packet, expectedXOnly []
 	return cloneSpendSig(found), nil
 }
 
+// extractVerifiedConnectorCosignerSig returns the single new expected
+// Taproot script-spend signature on input 0 from an Emulator response to a
+// two-input connector candidate. Verification is against the immutable
+// submitted packet: the unsigned transaction must be byte-identical, input 1
+// must carry no new signatures or final fields, and exactly one new DEFAULT
+// signature for the expected key and leaf must verify on input 0.
+func extractVerifiedConnectorCosignerSig(submitted, response *psbt.Packet, expectedXOnly, expectedLeaf []byte) (*psbt.TaprootScriptSpendSig, error) {
+	if submitted == nil || submitted.UnsignedTx == nil || len(submitted.Inputs) != 2 || len(submitted.UnsignedTx.TxIn) != 2 {
+		return nil, fmt.Errorf("exactly two submitted inputs required")
+	}
+	if response == nil || response.UnsignedTx == nil || len(response.Inputs) != 2 || len(response.UnsignedTx.TxIn) != 2 {
+		return nil, fmt.Errorf("malformed signed psbt")
+	}
+	if len(expectedXOnly) != 32 || len(expectedLeaf) == 0 {
+		return nil, fmt.Errorf("expected signer key and leaf required")
+	}
+	var want, got bytes.Buffer
+	if err := submitted.UnsignedTx.Serialize(&want); err != nil {
+		return nil, err
+	}
+	if err := response.UnsignedTx.Serialize(&got); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(want.Bytes(), got.Bytes()) {
+		return nil, fmt.Errorf("signer changed transaction")
+	}
+	if err := requireConnectorInputUnchanged(submitted.Inputs[1], response.Inputs[1]); err != nil {
+		return nil, err
+	}
+	before := submitted.Inputs[0]
+	leaf := txscript.NewBaseTapLeaf(expectedLeaf)
+	leafHash := leaf.TapHash()
+	matched := make([]bool, len(before.TaprootScriptSpendSig))
+	var extras []*psbt.TaprootScriptSpendSig
+	for _, s := range response.Inputs[0].TaprootScriptSpendSig {
+		if i := indexOriginalSig(before.TaprootScriptSpendSig, s); i >= 0 && !matched[i] {
+			matched[i] = true
+			continue
+		}
+		extras = append(extras, s)
+	}
+	var found *psbt.TaprootScriptSpendSig
+	for _, extra := range extras {
+		if extra == nil || len(extra.Signature) != 64 {
+			continue
+		}
+		if !bytes.Equal(extra.XOnlyPubKey, expectedXOnly) {
+			continue
+		}
+		if !bytes.Equal(extra.LeafHash, leafHash[:]) {
+			continue
+		}
+		if extra.SigHash != txscript.SigHashDefault {
+			continue
+		}
+		if err := verifySchnorrOnInputWithSighash(submitted, 0, extra.Signature, expectedXOnly, expectedLeaf, txscript.SigHashDefault); err != nil {
+			continue
+		}
+		if found != nil {
+			return nil, fmt.Errorf("expected exactly one new signer signature, got extra")
+		}
+		found = extra
+	}
+	if found == nil {
+		return nil, fmt.Errorf("expected exactly one new signer signature")
+	}
+	if len(response.Inputs[0].TaprootKeySpendSig) != len(before.TaprootKeySpendSig) ||
+		len(response.Inputs[0].PartialSigs) != len(before.PartialSigs) ||
+		!bytes.Equal(response.Inputs[0].FinalScriptWitness, before.FinalScriptWitness) {
+		return nil, fmt.Errorf("signer changed input 0 fields")
+	}
+	return cloneSpendSig(found), nil
+}
+
+// requireConnectorInputUnchanged rejects any signer mutation of the connector
+// (input 1) input: no new signatures, no final fields, same sighash.
+func requireConnectorInputUnchanged(before, after psbt.PInput) error {
+	if len(after.TaprootScriptSpendSig) != len(before.TaprootScriptSpendSig) {
+		return fmt.Errorf("signer changed connector input")
+	}
+	for i := range after.TaprootScriptSpendSig {
+		a, b := after.TaprootScriptSpendSig[i], before.TaprootScriptSpendSig[i]
+		if (a == nil) != (b == nil) {
+			return fmt.Errorf("signer changed connector input")
+		}
+		if a != nil && (!bytes.Equal(a.XOnlyPubKey, b.XOnlyPubKey) || !bytes.Equal(a.LeafHash, b.LeafHash) ||
+			!bytes.Equal(a.Signature, b.Signature) || a.SigHash != b.SigHash) {
+			return fmt.Errorf("signer changed connector input")
+		}
+	}
+	if !bytes.Equal(after.TaprootKeySpendSig, before.TaprootKeySpendSig) ||
+		len(after.PartialSigs) != len(before.PartialSigs) ||
+		!bytes.Equal(after.FinalScriptWitness, before.FinalScriptWitness) ||
+		!bytes.Equal(after.FinalScriptSig, before.FinalScriptSig) ||
+		after.SighashType != before.SighashType {
+		return fmt.Errorf("signer changed connector input")
+	}
+	return nil
+}
+
 func verifySignerSig(submitted *psbt.Packet, found *psbt.TaprootScriptSpendSig, expectedXOnly []byte, leaf txscript.TapLeaf) error {
 	if err := vault.VerifySchnorrOnSubmittedTx(submitted, found.Signature, expectedXOnly, leaf.Script); err != nil {
 		return fmt.Errorf("signer signature invalid")

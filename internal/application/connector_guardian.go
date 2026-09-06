@@ -37,6 +37,7 @@ type connectorGuardianAuthorization struct {
 	phone, guardianBase, emulatorBase *btcec.PublicKey
 	phoneExpectedXOnly                []byte
 	guardianExpectedXOnly             []byte
+	emulatorExpectedXOnly             []byte
 	spendLeaf                         []byte
 	controlBlock                      []byte
 	connectorScript                   []byte
@@ -102,6 +103,7 @@ func newConnectorGuardianAuthorization(
 		phone: phone, guardianBase: guardianBase, emulatorBase: emulatorBase,
 		phoneExpectedXOnly:    bytes.Clone(tweaked[0]),
 		guardianExpectedXOnly: bytes.Clone(tweaked[1]),
+		emulatorExpectedXOnly: bytes.Clone(tweaked[2]),
 		spendLeaf:             leaf,
 		controlBlock:          bytes.Clone(controlBlock),
 		connectorScript:       bytes.Clone(connectorScript),
@@ -112,6 +114,87 @@ func newConnectorGuardianAuthorization(
 			FeerateCapSatPerV:  rules.FeerateCapSatPerV,
 		},
 	}, nil
+}
+
+// validateConnectorGuardianCandidate runs the pure authorization boundary for
+// one phone-signed connector candidate: it authenticates the enrolled program,
+// both parents, the Savings Merkle proof, the phone signature, and the full
+// candidate shape. It performs no signing and holds no keys, so callers run it
+// before the durable ledger write-ahead. The semantic key capability
+// revalidates the retained candidate when signing.
+func validateConnectorGuardianCandidate(
+	stored string,
+	auth connectorGuardianAuthorization,
+) (connector.Parents, error) {
+	if auth.phone == nil || auth.guardianBase == nil || auth.emulatorBase == nil ||
+		len(auth.guardianExpectedXOnly) != schnorr.PubKeyBytesLen || len(auth.spendLeaf) == 0 || len(auth.controlBlock) == 0 {
+		return nil, fmt.Errorf("connector Guardian authorization required")
+	}
+	submitted, err := parsePSBT(stored)
+	if err != nil {
+		return nil, err
+	}
+	if len(submitted.Inputs) != 2 || len(submitted.UnsignedTx.TxIn) != 2 {
+		return nil, fmt.Errorf("connector transaction requires exactly two inputs")
+	}
+	if n := len(submitted.UnsignedTx.TxOut); n != 4 && n != 5 {
+		return nil, fmt.Errorf("connector transaction shape")
+	}
+	parents, err := requireConnectorPrevouts(submitted)
+	if err != nil {
+		return nil, err
+	}
+	reserve := submitted.Inputs[connector.ConnectorInput].WitnessUtxo
+	if reserve.Value != connector.ReserveSats || !bytes.Equal(reserve.PkScript, auth.connectorScript) {
+		return nil, fmt.Errorf("connector reserve input mismatch")
+	}
+	savingsPrev := submitted.Inputs[connector.SavingsInput].WitnessUtxo
+	if !isConnectorP2TR(savingsPrev.PkScript) {
+		return nil, fmt.Errorf("connector Savings prevout script")
+	}
+	savings := submitted.Inputs[connector.SavingsInput]
+	if len(savings.TaprootLeafScript) != 1 || savings.TaprootLeafScript[0] == nil {
+		return nil, fmt.Errorf("connector Savings leaf required")
+	}
+	entry := savings.TaprootLeafScript[0]
+	if entry.LeafVersion != txscript.BaseLeafVersion {
+		return nil, fmt.Errorf("unexpected connector leaf version")
+	}
+	if !bytes.Equal(entry.Script, auth.spendLeaf) {
+		return nil, fmt.Errorf("connector Savings leaf mismatch")
+	}
+	// The Merkle proof is verified against the actual verified Savings prevout
+	// script, not against caller claims. PSBT leaf metadata alone proves
+	// nothing; a tampered control block, leaf version, or internal key fails
+	// here even when the phone signature over the leaf remains valid.
+	if !bytes.Equal(entry.ControlBlock, auth.controlBlock) {
+		return nil, fmt.Errorf("connector Savings proof mismatch")
+	}
+	control, err := txscript.ParseControlBlock(entry.ControlBlock)
+	if err != nil {
+		return nil, fmt.Errorf("connector Savings proof: %w", err)
+	}
+	if control.LeafVersion != txscript.BaseLeafVersion {
+		return nil, fmt.Errorf("unexpected connector leaf version")
+	}
+	if err := txscript.VerifyTaprootLeafCommitment(control, savingsPrev.PkScript[2:], auth.spendLeaf); err != nil {
+		return nil, fmt.Errorf("connector Savings proof: %w", err)
+	}
+	if savings.SighashType != txscript.SigHashDefault {
+		return nil, fmt.Errorf("connector Savings requires DEFAULT sighash")
+	}
+	if err := requirePresentConnectorSig(submitted, connector.SavingsInput, auth.phoneExpectedXOnly, auth.spendLeaf); err != nil {
+		return nil, fmt.Errorf("connector phone signature: %w", err)
+	}
+	for _, existing := range savings.TaprootScriptSpendSig {
+		if existing != nil && bytes.Equal(existing.XOnlyPubKey, auth.guardianExpectedXOnly) {
+			return nil, fmt.Errorf("connector Guardian signature already present")
+		}
+	}
+	if err := connector.Validate(auth.rules, submitted.UnsignedTx, parents); err != nil {
+		return nil, fmt.Errorf("connector program: %w", err)
+	}
+	return parents, nil
 }
 
 // signConnectorGuardianStage adds exactly one Guardian Taproot script-spend
@@ -130,10 +213,6 @@ func signConnectorGuardianStage(
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if auth.phone == nil || auth.guardianBase == nil || auth.emulatorBase == nil ||
-		len(auth.guardianExpectedXOnly) != schnorr.PubKeyBytesLen || len(auth.spendLeaf) == 0 || len(auth.controlBlock) == 0 {
-		return "", fmt.Errorf("connector Guardian authorization required")
-	}
 	if priv == nil || !bytes.Equal(schnorr.SerializePubKey(priv.PubKey()), auth.guardianExpectedXOnly) {
 		return "", fmt.Errorf("connector Guardian signer key mismatch")
 	}
@@ -141,65 +220,8 @@ func signConnectorGuardianStage(
 	if err != nil {
 		return "", err
 	}
-	if len(submitted.Inputs) != 2 || len(submitted.UnsignedTx.TxIn) != 2 {
-		return "", fmt.Errorf("connector transaction requires exactly two inputs")
-	}
-	if n := len(submitted.UnsignedTx.TxOut); n != 4 && n != 5 {
-		return "", fmt.Errorf("connector transaction shape")
-	}
-	parents, err := requireConnectorPrevouts(submitted)
-	if err != nil {
+	if _, err := validateConnectorGuardianCandidate(stored, auth); err != nil {
 		return "", err
-	}
-	reserve := submitted.Inputs[connector.ConnectorInput].WitnessUtxo
-	if reserve.Value != connector.ReserveSats || !bytes.Equal(reserve.PkScript, auth.connectorScript) {
-		return "", fmt.Errorf("connector reserve input mismatch")
-	}
-	savingsPrev := submitted.Inputs[connector.SavingsInput].WitnessUtxo
-	if !isConnectorP2TR(savingsPrev.PkScript) {
-		return "", fmt.Errorf("connector Savings prevout script")
-	}
-	savings := submitted.Inputs[connector.SavingsInput]
-	if len(savings.TaprootLeafScript) != 1 || savings.TaprootLeafScript[0] == nil {
-		return "", fmt.Errorf("connector Savings leaf required")
-	}
-	entry := savings.TaprootLeafScript[0]
-	if entry.LeafVersion != txscript.BaseLeafVersion {
-		return "", fmt.Errorf("unexpected connector leaf version")
-	}
-	if !bytes.Equal(entry.Script, auth.spendLeaf) {
-		return "", fmt.Errorf("connector Savings leaf mismatch")
-	}
-	// The Merkle proof is verified against the actual verified Savings prevout
-	// script, not against caller claims. PSBT leaf metadata alone proves
-	// nothing; a tampered control block, leaf version, or internal key fails
-	// here even when the phone signature over the leaf remains valid.
-	if !bytes.Equal(entry.ControlBlock, auth.controlBlock) {
-		return "", fmt.Errorf("connector Savings proof mismatch")
-	}
-	control, err := txscript.ParseControlBlock(entry.ControlBlock)
-	if err != nil {
-		return "", fmt.Errorf("connector Savings proof: %w", err)
-	}
-	if control.LeafVersion != txscript.BaseLeafVersion {
-		return "", fmt.Errorf("unexpected connector leaf version")
-	}
-	if err := txscript.VerifyTaprootLeafCommitment(control, savingsPrev.PkScript[2:], auth.spendLeaf); err != nil {
-		return "", fmt.Errorf("connector Savings proof: %w", err)
-	}
-	if savings.SighashType != txscript.SigHashDefault {
-		return "", fmt.Errorf("connector Savings requires DEFAULT sighash")
-	}
-	if err := requirePresentConnectorSig(submitted, connector.SavingsInput, auth.phoneExpectedXOnly, auth.spendLeaf); err != nil {
-		return "", fmt.Errorf("connector phone signature: %w", err)
-	}
-	for _, existing := range savings.TaprootScriptSpendSig {
-		if existing != nil && bytes.Equal(existing.XOnlyPubKey, auth.guardianExpectedXOnly) {
-			return "", fmt.Errorf("connector Guardian signature already present")
-		}
-	}
-	if err := connector.Validate(auth.rules, submitted.UnsignedTx, parents); err != nil {
-		return "", fmt.Errorf("connector program: %w", err)
 	}
 	work, err := clonePacket(submitted)
 	if err != nil {

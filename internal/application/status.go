@@ -18,6 +18,7 @@ import (
 // PublicStatus is the unauthenticated authorizer identity. It is not a
 // tenant descriptor and must not be treated as enrolled.
 type PublicStatus struct {
+	ConnectorCapability        *ConnectorCapability               `json:"connectorCapability,omitempty"`
 	SupportedSetups            []string                           `json:"supportedSetups"`
 	Network                    string                             `json:"network"`
 	ClientOrigin               string                             `json:"clientOrigin"`
@@ -31,50 +32,51 @@ type PublicStatus struct {
 
 // Status is the UI snapshot.
 type Status struct {
-	LightDescriptor           *light.Descriptor      `json:"lightDescriptor,omitempty"`
-	LightDescriptorHash       string                 `json:"lightDescriptorHash,omitempty"`
-	Enrolled                  bool                   `json:"enrolled"`
-	Network                   string                 `json:"network"`
-	ClientOrigin              string                 `json:"clientOrigin"`
-	RPID                      string                 `json:"rpId"`
-	VaultID                   string                 `json:"vaultId"`
-	TemplateVersion           string                 `json:"templateVersion"`
-	PolicyVersion             string                 `json:"policyVersion"`
-	ProtectionTier            string                 `json:"protectionTier"`
-	ExternalOwnerWalletPub    string                 `json:"externalOwnerWalletPub,omitempty"`
-	RecoveryKeyPub            string                 `json:"recoveryKeyPub,omitempty"`
-	VaultCosignerBasePub      string                 `json:"vaultCosignerBasePub,omitempty"`
-	ArkadeCosignerBasePub     string                 `json:"arkadeCosignerBasePub,omitempty"`
-	ArkadeCosignerOrigin      string                 `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion     string                 `json:"arkadeCosignerVersion"`
-	SavingsAddr               string                 `json:"savingsAddress"`
-	SavingsScript             string                 `json:"savingsScript,omitempty"`
-	PasskeyLoginAvailable     bool                   `json:"passkeyLoginAvailable"`
-	EnrollmentMode            string                 `json:"enrollmentMode"`
-	EnrollmentExpiresAt       string                 `json:"enrollmentExpiresAt,omitempty"`
-	PeriodAllowance           int64                  `json:"periodAllowance"`
-	PeriodSpent               int64                  `json:"periodSpent"`
-	PeriodRemaining           int64                  `json:"periodRemaining"`
-	TxCap                     int64                  `json:"txCap"`
-	AbsoluteFeeCap            int64                  `json:"absoluteFeeCap"`
-	FeerateCapSatPerV         int64                  `json:"feerateCapSatVb"`
-	SpendingPolicy            program.SpendingPolicy `json:"spendingPolicy"`
-	SpendingPolicyDigest      string                 `json:"spendingPolicyDigest"`
-	PhoneBIP340Pub            string                 `json:"phoneBip340Pub,omitempty"`
-	PhoneDirectP256           string                 `json:"phoneDirectP256,omitempty"`
-	Warnings                  []string               `json:"warnings,omitempty"`
-	VtxoVaultCosignerPub      string                 `json:"vtxoVaultCosignerPub"`
-	VtxoExitDelay             uint32                 `json:"vtxoExitDelay"`
-	VtxoExitDelayUnit         string                 `json:"vtxoExitDelayUnit"`
-	SpendingArkAddress        string                 `json:"spendingArkAddress"`
-	SpendingArkScript         string                 `json:"spendingArkScript"`
-	VtxoDelegatePub           string                 `json:"vtxoDelegatePub"`
-	VtxoBoardingActive        bool                   `json:"vtxoBoardingActive"`
-	VtxoBoardingProgram       string                 `json:"vtxoBoardingProgram"`
-	VtxoBoardingAddress       string                 `json:"vtxoBoardingAddress"`
-	VtxoBoardingScript        string                 `json:"vtxoBoardingScript"`
-	VtxoBoardingExitDelay     uint32                 `json:"vtxoBoardingExitDelay"`
-	VtxoBoardingExitDelayUnit string                 `json:"vtxoBoardingExitDelayUnit"`
+	ConnectorEnrollment       *ConnectorEnrollmentStatus `json:"connectorEnrollment,omitempty"`
+	LightDescriptor           *light.Descriptor          `json:"lightDescriptor,omitempty"`
+	LightDescriptorHash       string                     `json:"lightDescriptorHash,omitempty"`
+	Enrolled                  bool                       `json:"enrolled"`
+	Network                   string                     `json:"network"`
+	ClientOrigin              string                     `json:"clientOrigin"`
+	RPID                      string                     `json:"rpId"`
+	VaultID                   string                     `json:"vaultId"`
+	TemplateVersion           string                     `json:"templateVersion"`
+	PolicyVersion             string                     `json:"policyVersion"`
+	ProtectionTier            string                     `json:"protectionTier"`
+	ExternalOwnerWalletPub    string                     `json:"externalOwnerWalletPub,omitempty"`
+	RecoveryKeyPub            string                     `json:"recoveryKeyPub,omitempty"`
+	VaultCosignerBasePub      string                     `json:"vaultCosignerBasePub,omitempty"`
+	ArkadeCosignerBasePub     string                     `json:"arkadeCosignerBasePub,omitempty"`
+	ArkadeCosignerOrigin      string                     `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion     string                     `json:"arkadeCosignerVersion"`
+	SavingsAddr               string                     `json:"savingsAddress"`
+	SavingsScript             string                     `json:"savingsScript,omitempty"`
+	PasskeyLoginAvailable     bool                       `json:"passkeyLoginAvailable"`
+	EnrollmentMode            string                     `json:"enrollmentMode"`
+	EnrollmentExpiresAt       string                     `json:"enrollmentExpiresAt,omitempty"`
+	PeriodAllowance           int64                      `json:"periodAllowance"`
+	PeriodSpent               int64                      `json:"periodSpent"`
+	PeriodRemaining           int64                      `json:"periodRemaining"`
+	TxCap                     int64                      `json:"txCap"`
+	AbsoluteFeeCap            int64                      `json:"absoluteFeeCap"`
+	FeerateCapSatPerV         int64                      `json:"feerateCapSatVb"`
+	SpendingPolicy            program.SpendingPolicy     `json:"spendingPolicy"`
+	SpendingPolicyDigest      string                     `json:"spendingPolicyDigest"`
+	PhoneBIP340Pub            string                     `json:"phoneBip340Pub,omitempty"`
+	PhoneDirectP256           string                     `json:"phoneDirectP256,omitempty"`
+	Warnings                  []string                   `json:"warnings,omitempty"`
+	VtxoVaultCosignerPub      string                     `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay             uint32                     `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit         string                     `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress        string                     `json:"spendingArkAddress"`
+	SpendingArkScript         string                     `json:"spendingArkScript"`
+	VtxoDelegatePub           string                     `json:"vtxoDelegatePub"`
+	VtxoBoardingActive        bool                       `json:"vtxoBoardingActive"`
+	VtxoBoardingProgram       string                     `json:"vtxoBoardingProgram"`
+	VtxoBoardingAddress       string                     `json:"vtxoBoardingAddress"`
+	VtxoBoardingScript        string                     `json:"vtxoBoardingScript"`
+	VtxoBoardingExitDelay     uint32                     `json:"vtxoBoardingExitDelay"`
+	VtxoBoardingExitDelayUnit string                     `json:"vtxoBoardingExitDelayUnit"`
 }
 
 func statusWarnings(cred *policy.Credential) []string {
@@ -113,6 +115,7 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 	}
 	st := PublicStatus{
 		SupportedSetups:            []string{"standard", "advanced"},
+		ConnectorCapability:        currentConnectorCapability(),
 		Network:                    cfg.Network,
 		ClientOrigin:               cfg.ClientOrigin,
 		RPID:                       cfg.RPID,
@@ -249,6 +252,12 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	}
 	if len(cred.PhoneDirectP256) > 0 {
 		st.PhoneDirectP256 = hex.EncodeToString(cred.PhoneDirectP256)
+	}
+	if isConnectorCredential(cred) {
+		st.ConnectorEnrollment, err = s.connectorEnrollmentStatus(cred, snap)
+		if err != nil {
+			return Status{}, err
+		}
 	}
 	s.fillVtxoStatus(&st, vaultID, snap)
 	return st, nil

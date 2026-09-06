@@ -14,8 +14,9 @@ const (
 	ProfileID = "arkade-vault-v1"
 	ModuleID  = "arkade-vault-v1"
 
-	SavingsRecoveryProgram = "savings-recovery-v1"
-	SpendingPolicy         = "vault-spending-policy-v1"
+	SavingsRecoveryProgram  = "savings-recovery-v1"
+	SavingsConnectorProgram = "savings-connector-v1"
+	SpendingPolicy          = "vault-spending-policy-v1"
 )
 
 // Definition returns a fresh compile-time profile definition. Policy values,
@@ -27,6 +28,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 			ID: ModuleID,
 			Programs: []string{
 				SavingsRecoveryProgram,
+				SavingsConnectorProgram,
 				program.VaultBoardV1,
 				program.VaultPolicyV1,
 			},
@@ -38,10 +40,12 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"recovery-operation-store",
 				"map-store",
 				"vault-board-store",
+				"connector-store",
 			},
 			KeyScopes: []string{
 				"enrollment-derivation",
 				"savings-recovery-authorization",
+				"savings-connector-authorization",
 				"vtxo-transaction-authorization",
 				"vtxo-checkpoint-authorization",
 				"vault-board-authorization",
@@ -101,5 +105,9 @@ func routes() []arkaderuntime.Route {
 		{Method: http.MethodOptions, Path: "/v1/vtxo/board/release"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/board/final"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/board/final"},
+		{Method: http.MethodPost, Path: "/v1/connector/withdraw/authorize"},
+		{Method: http.MethodOptions, Path: "/v1/connector/withdraw/authorize"},
+		{Method: http.MethodGet, Path: "/v1/connector/operation"},
+		{Method: http.MethodOptions, Path: "/v1/connector/operation"},
 	}
 }
