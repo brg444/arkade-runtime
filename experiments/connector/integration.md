@@ -6,10 +6,31 @@ remain honest for the hardware requirement to hold against a compromised phone.
 Compromise of the phone and both cosigner signing authorities permits a bypass.
 Ordinary transfers require both services to be available.
 
-The owner accepted this tradeoff on 2026-09-05. That decision supersedes the
-strict hardware-enforcement gate in the original staged proposal; the reproduced
-bypass remains a required test. Existing recovery-initiation dependence is
+The owner accepted this honest-cosigner tradeoff for the L1 candidate on
+2026-09-05. The original strict hardware-enforcement result remains failed;
+the reproduced bypass stays a required test under its stronger attacker model. Existing recovery-initiation dependence is
 documented in [the feasibility report](README.md).
+
+## Reconciled with the contingency, 2026-09-06
+
+The [canonical reconciliation](https://github.com/brg444/arkade-runtime/blob/codex/operator-gated-contingency/docs/contingency/connector-reconciliation.md)
+assigns future Savings implementation and timelocked recovery to the native
+contingency. This branch retains the L1 experiments and conventional-wallet
+qualification as reproducible evidence. Its contract is excluded from the native
+implementation; source/API compatibility, actual signer approval, and complete
+recovery still need proof.
+
+The earlier deployment blocker applies to this implemented L1 candidate, whose
+normal leaf omits the Operator and expects `/v1/onchain-tx`. It does not establish
+that all Operator-compatible connectors are impossible. The reconciliation
+separates native input admission, engine/key ownership, and hardware enforcement,
+including PR 102 and the later accepted honest-cosigner tradeoff.
+
+Keep these experiments isolated. Reuse their counterexamples and test adapters
+selectively after proving the new transaction shape; the fixed reserve, fee
+layout, old addresses, and signer results cannot qualify the native contract.
+The following sections record the L1 candidate and its remaining integration
+work as historical context. The contingency owns the active release plan.
 
 ## Accepted destination policy, 2026-09-05
 
@@ -73,7 +94,7 @@ proof against the independently pinned Savings script.
 Savings pays both the miner fee and the anchor. In this example its debit is
 9,240 sats; the hardware reserve stays at 1,000 sats. A future payment review
 must include the anchor in the total cost. The program caps the miner fee and
-feerate separately, commits the anchor's amount, and uses the exact final
+feerate separately, commits the anchor's amount, and uses a conservative lower bound on
 witness size when checking feerate.
 
 The current stage has exactly two inputs and four or five outputs. Complete
@@ -174,10 +195,10 @@ CONNECTOR_BITCOIND=/absolute/path/to/bitcoind \
   go test ./experiments/connector -run '^Test(Connector|Software)'  -count=1 -v
 ```
 
-The remaining release work is:
+The historical L1 candidate still lacks the following release qualifications:
 
-- qualify a released software wallet through its actual import, full destination
-  review, signing, and export screens; physical hardware is an additional target;
+- retain Electrum and Sparrow software-signing and transaction-screen qualification;
+  full manual desktop review and physical hardware remain additional targets;
 - qualify the public Emulator's multi-input request, packet, fee policy, and
   exact signature response using disposable funds;
 - connect the implemented family and enrollment commitment to the versioned
@@ -214,8 +235,9 @@ hardware signature into its retained transaction. Go-generated signed PSBTs
 produce byte-identical final transactions in the wallet, including full
 withdrawal and explicit fingerprint byte order.
 
-These functions are ready for coordinator integration; the existing enrollment
-and payment screens still select the old contract. Pending-operation storage,
+These functions provide a tested transaction boundary; coordinator integration
+depends on the contingency feasibility results. Existing enrollment and
+payment screens still select the old contract. Pending-operation storage,
 service authentication, named signing routes, and release advertisement remain
 the next implementation stage. No connector Contract Pack is published yet.
 
