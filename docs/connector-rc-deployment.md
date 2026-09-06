@@ -36,7 +36,7 @@ database rollback is forbidden. Follow [state operations](../deploy/ops.md).
 2. Run `/usr/local/sbin/vaulted-guardian-unlock` from a real SSH terminal. It
    decrypts the existing secrets into tmpfs and starts the service; an
    unattended restart cannot load the already removed key.
-3. Require `/ready` to report `ok: true`, `network: mainnet`, and schema `4`.
+3. Require `/ready` to report `ok: true`, `network: mainnet`, and schema `5`.
    `/v1/status` must advertise `savings-connector-v1` in `connectorCapability`.
    Keep the original enrollment-template field unchanged for legacy clients.
 4. Deploy the paired wallet build to the existing RC deployment with its
@@ -55,28 +55,38 @@ The last two steps are funded deployment qualification. Local Core, Emulator,
 and software-signer tests leave the live broadcast endpoint's relay policy
 unverified. Keep new enrollment restricted until these checks succeed.
 
+Keep `VAULT_LIGHT_DELEGATION_ENABLED=false` until the funded renewal, cleanup,
+restart, and independent recovery gates in
+[native Light delegated renewal](light-delegated-renewal.md) pass. The schema-5
+migration runs even when this flag is disabled; connector deployment alone
+does not qualify unattended renewal.
+
 ## Recovery and rollback
 
 Startup migrates valid prior databases through schema 2 (Light renewal),
-schema 3 (Savings connector), and schema 4 (shared encrypted recovery backup). Migration tests preserve
+schema 3 (Savings connector), schema 4 (shared encrypted recovery backup), and
+schema 5 (native Light delegated renewal). Migration tests preserve
 original Savings, credential, recovery-session, and Light MACs and the economic
 sequence. Legacy descriptors and version-4 passkey bindings retain their bytes;
 new connector vaults use the distinct template and version-5 binding.
-Schema 4 preserves every connector origin, candidate, signing stage, and
-resolution record. Backup writes leave the economic sequence unchanged.
+Schema 5 preserves every connector origin, candidate, signing stage, and
+resolution record, together with the shared backup state. Backup writes leave
+the economic sequence unchanged; delegated renewal mutations advance it.
 The isolated Light backup drill used a different schema-3 layout; this release
 refuses that layout and requires an explicitly reviewed recovery path for it.
 
-The shared schema-4 release rejects the earlier, undeployed Light-only schema-4
+The migration rejects the earlier, undeployed Light-only schema-4
 layout. No production database uses that scratch layout, and table presence
 does not select a migration lineage.
 
-Schema-3 and earlier binaries cannot operate a schema-4 database. After migration, repair or
+Schema-4 and earlier binaries cannot operate a schema-5 database. After migration, repair or
 roll forward with a compatible binary while retaining all authorization rows
 and the current sequence. Reverting the wallet UI can leave connector vaults
 unsupported, so restrict enrollment or serve a maintenance page while the
 compatible release is restored. Preserve every connector row and pending
-payment, together with the current state required by the compatible binary.
+payment and delegated renewal operation, together with the current state
+required by the compatible binary. Disabling delegated renewal does not remove
+its authorization history or release unresolved input holds.
 
 A schema-2 backup is not a routine rollback once signing may have occurred.
 Any exceptional recovery must reconcile issued signatures, chain outcomes,
