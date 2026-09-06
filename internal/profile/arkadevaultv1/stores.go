@@ -92,6 +92,7 @@ type LightRenewalStore interface {
 type LightDelegationStore interface {
 	ListLightDelegations(context.Context) ([]policy.LightDelegationSnapshot, error)
 	ScheduleLightDelegation(context.Context, policy.LightDelegation) (*policy.LightDelegationSnapshot, error)
+	ScheduleVtxoDelegationSet(context.Context, []policy.LightDelegation, []byte, uint32) ([]policy.LightDelegationSnapshot, error)
 	AdvanceLightDelegation(context.Context, policy.LightDelegationEvent, int64) (*policy.LightDelegationSnapshot, error)
 }
 

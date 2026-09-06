@@ -76,10 +76,12 @@ separate security-sensitive PR.
 - Enrollment, boarding, Spending, and recovery are one immutable named
   profile, not dynamically loaded plugins.
 - The wallet owns foreground transaction coordination through the official
-  Arkade SDK. The opt-in native Light delegate executes only durable
-  owner-presigned renewal requests through stock Operator batch interfaces;
+  Arkade SDK. The opt-in native delegate executes only durable owner-presigned renewal
+  requests for the enrolled Light, Standard, or Advanced Spending program
+  through stock Operator batch interfaces;
   its scoped key capability verifies the persisted signing transcript.
-  See `docs/light-delegated-renewal.md` for cleanup and release gates.
+  See `docs/spending-delegated-renewal.md` and
+  `docs/light-delegated-renewal.md` for authorization, cleanup, and release gates.
 
 ## Test fixtures
 

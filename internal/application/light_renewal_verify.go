@@ -15,8 +15,6 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-const lightRenewalDigestDomain = "vaulted-light/renewal-plan/v1"
-
 // A renewal replaces exactly one live output with the same enrolled script.
 // Amounts and the fee policy are pinned from the indexer before this plan is
 // persisted. This verifier alone grants no signing capability or HTTP route.
@@ -34,7 +32,16 @@ type lightRenewalPlan struct {
 }
 
 func (p lightRenewalPlan) digest(d light.Descriptor) ([]byte, error) {
-	hash, err := light.DescriptorDigest(d)
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return nil, err
+	}
+	return p.digestForContract(c)
+}
+
+func (p lightRenewalPlan) digestForContract(c renewalContract) ([]byte, error) {
+	d := c.Binding
+	hash, err := c.identityHash()
 	if err != nil || hash != p.DescriptorHash || p.VaultID != d.VaultID || requireTxid(p.Txid) != nil || requireTxid(p.FeePolicyDigest) != nil {
 		return nil, fmt.Errorf("Light renewal identity mismatch")
 	}
@@ -46,7 +53,7 @@ func (p lightRenewalPlan) digest(d light.Descriptor) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256(append([]byte(lightRenewalDigestDomain+":"), raw...))
+	sum := sha256.Sum256(append([]byte(c.domain("renewal-plan")), raw...))
 	return sum[:], nil
 }
 
@@ -66,11 +73,20 @@ func verifyLightRenewalRegistration(raw, message string, plan lightRenewalPlan, 
 }
 
 func verifyLightRegistration(raw, message string, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, validAt, expireAt int64, expectedSession []byte) (verifiedLightRenewalRegistration, error) {
-	digest, err := plan.digest(d)
+	c, err := legacyLightRenewalContract(d, tree)
 	if err != nil {
 		return verifiedLightRenewalRegistration{}, err
 	}
-	if tree == nil || tree.DelegatePub != nil || tree.CosignerPub == nil || tree.ArkdPub == nil || hex.EncodeToString(tree.PkScript) != d.ScriptPubKey || len(tree.RevealedScripts) != 2 {
+	return verifyRenewalRegistration(raw, message, plan, c, validAt, expireAt, expectedSession)
+}
+func verifyRenewalRegistration(raw, message string, plan lightRenewalPlan, c renewalContract, validAt, expireAt int64, expectedSession []byte) (verifiedLightRenewalRegistration, error) {
+	tree := c.Tree
+
+	digest, err := plan.digestForContract(c)
+	if err != nil {
+		return verifiedLightRenewalRegistration{}, err
+	}
+	if err := c.validateTree(); err != nil {
 		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light renewal script required")
 	}
 	var register intent.RegisterMessage
@@ -91,7 +107,7 @@ func verifyLightRegistration(raw, message string, plan lightRenewalPlan, d light
 	if _, err := btcec.ParsePubKey(session); err != nil {
 		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light renewal tree session")
 	}
-	if err := verifyLightIntentProof(raw, message, plan, d, tree, &wire.TxOut{Value: plan.ReceiverSats, PkScript: tree.PkScript}); err != nil {
+	if err := verifyRenewalIntentProof(raw, message, plan, c, &wire.TxOut{Value: plan.ReceiverSats, PkScript: tree.PkScript}); err != nil {
 		return verifiedLightRenewalRegistration{}, err
 	}
 
@@ -103,11 +119,16 @@ func verifyLightRegistration(raw, message string, plan lightRenewalPlan, d light
 	if err != nil {
 		return verifiedLightRenewalRegistration{}, err
 	}
-	request := sha256.Sum256(append([]byte("vaulted-light/renewal-register/v1:"), encoded...))
+	request := sha256.Sum256(append([]byte(c.domain("renewal-register")), encoded...))
 	return verifiedLightRenewalRegistration{PlanDigest: digest, RequestDigest: request[:], TreeSession: session, CanonicalPSBT: raw, Message: message}, nil
 }
 
-func verifyLightIntentProof(raw, message string, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, receiver *wire.TxOut) error {
+func verifyRenewalIntentProof(raw, message string, plan lightRenewalPlan, c renewalContract, receiver *wire.TxOut) error {
+	if err := c.validateTree(); err != nil {
+		return err
+	}
+	tree, d := c.Tree, c.Binding
+
 	packet, err := parseCanonicalVaultBoardPSBT(raw, maxVaultBoardProofBytes)
 	if err != nil {
 		return err

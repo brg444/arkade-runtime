@@ -7,10 +7,11 @@ import (
 	"fmt"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
 )
 
-func (s *Service) reconcileDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, d light.Descriptor, tree *vtxoPolicyTree) (bool, error) {
+func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, c renewalContract) (bool, error) {
+	tree := c.Tree
+
 	if _, ok := saved.Events["confirmed"]; ok {
 		return true, nil
 	}
@@ -22,11 +23,11 @@ func (s *Service) reconcileDelegation(ctx context.Context, saved *policy.LightDe
 	if err := json.Unmarshal([]byte(event.Evidence), &final); err != nil {
 		return false, err
 	}
-	_, registration, err := validateDelegationCapability(d, p)
+	_, registration, err := validateRenewalDelegationCapability(c, p)
 	if err != nil {
 		return false, err
 	}
-	verified, err := verifyLightFinal(final.Evidence, p.Renewal, d, tree, registration, delegatedOwnerSighash)
+	verified, err := verifyRenewalFinal(final.Evidence, p.Renewal, c, registration, delegatedOwnerSighash)
 	if err != nil {
 		return false, err
 	}

@@ -1,13 +1,17 @@
 # Native Light delegated renewal
 
+This page documents the original Light wire format and the common execution
+lifecycle. The [shared Spending API](spending-delegated-renewal.md) also supports
+Standard and Advanced with their original enrolled contracts and authorization.
+
 Guardian can renew an individually authorized Light output while the browser is
 closed. The owner authorizes that particular output during an existing wallet
 unlock. A replacement or a new receipt needs another owner authorization; this
 feature does not promise indefinite renewal without returning to the wallet.
 
 The feature is disabled by default. `VAULT_LIGHT_DELEGATION_ENABLED=true` or
-`--light-delegation-enabled=true` activates its routes and scheduler for enrolled
-Light wallets. Mainnet and Mutinynet retain their respective deployment pins,
+`--light-delegation-enabled=true` activates the shared scheduler and both the original Light and new Spending
+renewal routes. Mainnet and Mutinynet retain their respective deployment pins,
 contracts, fees, and allowance policies. No owner key is retained by Guardian,
 and no additional signer process or generic signing endpoint is introduced.
 

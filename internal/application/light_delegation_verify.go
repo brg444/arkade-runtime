@@ -29,6 +29,8 @@ type lightDelegationRequest struct {
 	DeleteIntent   lightDelegateIntent `json:"deleteIntent"`
 	ExpiresAt      int64               `json:"expiresAt"`
 	OwnerSignature string              `json:"ownerSignature"`
+	Program        string              `json:"program,omitempty"`
+	DescriptorHash string              `json:"descriptorHash,omitempty"`
 }
 type lightDelegationPlan struct {
 	Request        lightDelegationRequest `json:"request"`
@@ -46,6 +48,14 @@ func delegationDigest(domain string, value any) ([]byte, error) {
 	return sum[:], nil
 }
 func lightDelegationRequestDigest(r lightDelegationRequest) ([]byte, error) {
+	if r.Program != "" {
+		shared := spendingDelegationSetRequest{Program: r.Program, DescriptorHash: r.DescriptorHash, VaultID: r.VaultID}
+		return shared.planDigest(spendingDelegationInput{OperationID: r.OperationID, Intent: r.Intent, ForfeitTxs: r.ForfeitTxs, DeleteIntent: r.DeleteIntent, ExpiresAt: r.ExpiresAt, OwnerSignature: r.OwnerSignature})
+	}
+	if r.DescriptorHash != "" {
+		return nil, fmt.Errorf("legacy Light request context")
+	}
+
 	return delegationDigest("schedule", struct {
 		VaultID      string              `json:"vaultId"`
 		OperationID  string              `json:"operationId"`
@@ -74,6 +84,22 @@ func verifyDelegationOwner(d light.Descriptor, digest []byte, encoded string) er
 // Validate the original SDK bytes; neither proof timestamps nor signed outputs
 // are rewritten. The separate owner's envelope bounds journal authorization.
 func verifyLightDelegationRequest(r lightDelegationRequest, d light.Descriptor, tree *vtxoPolicyTree, forfeitScript []byte) (lightDelegationPlan, error) {
+	c, err := legacyLightRenewalContract(d, tree)
+	if err != nil {
+		return lightDelegationPlan{}, err
+	}
+	return verifyDelegationRequest(r, c, forfeitScript)
+}
+func verifyDelegationRequest(r lightDelegationRequest, c renewalContract, forfeitScript []byte) (lightDelegationPlan, error) {
+	d := c.Binding
+	if c.legacyLight {
+		if r.Program != "" || r.DescriptorHash != "" {
+			return lightDelegationPlan{}, fmt.Errorf("legacy Light request context")
+		}
+	} else if r.Program != d.Program || r.DescriptorHash != c.DescriptorHash {
+		return lightDelegationPlan{}, fmt.Errorf("renewal request context")
+	}
+
 	var out lightDelegationPlan
 	if _, err := canonicalVtxoOperationID(r.OperationID); err != nil {
 		return out, err
@@ -85,7 +111,7 @@ func verifyLightDelegationRequest(r lightDelegationRequest, d light.Descriptor, 
 	if err != nil {
 		return out, err
 	}
-	if err := verifyDelegationOwner(d, digest, r.OwnerSignature); err != nil {
+	if err := verifyRenewalOwner(d.OwnerPub, digest, r.OwnerSignature); err != nil {
 		return out, err
 	}
 	var message intent.RegisterMessage
@@ -105,19 +131,19 @@ func verifyLightDelegationRequest(r lightDelegationRequest, d light.Descriptor, 
 	previous := p.UnsignedTx.TxIn[1].PreviousOutPoint
 	value := p.Inputs[1].WitnessUtxo.Value
 	receiver := p.UnsignedTx.TxOut[0].Value
-	hash, err := light.DescriptorDigest(d)
+	hash, err := c.identityHash()
 	if err != nil {
 		return out, err
 	}
 	plan := lightRenewalPlan{OperationID: r.OperationID, VaultID: r.VaultID, DescriptorHash: hash, Txid: previous.Hash.String(), Vout: previous.Index, ValueSats: value, ReceiverSats: receiver, FeeSats: value - receiver, FeePolicyDigest: hex.EncodeToString(make([]byte, 32)), RegisterExpireAt: r.ExpiresAt}
 	// x-only contracts use the even lift, which must also be the MuSig identity.
-	if _, err := verifyLightRegistration(r.Intent.Proof, r.Intent.Message, plan, d, tree, message.ValidAt, r.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...)); err != nil {
+	if _, err := verifyRenewalRegistration(r.Intent.Proof, r.Intent.Message, plan, c, message.ValidAt, r.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...)); err != nil {
 		return out, err
 	}
-	if err := verifyDelegatedPartialForfeit(r.ForfeitTxs[0], plan, d, tree, forfeitScript); err != nil {
+	if err := verifyRenewalPartialForfeit(r.ForfeitTxs[0], plan, c, forfeitScript); err != nil {
 		return out, err
 	}
-	if err := verifyLightDelegationDelete(r.DeleteIntent, plan, d, tree); err != nil {
+	if err := verifyRenewalDelete(r.DeleteIntent, plan, c); err != nil {
 		return out, err
 	}
 	return lightDelegationPlan{Request: r, Renewal: plan, ValidAt: message.ValidAt}, nil
@@ -130,7 +156,12 @@ func delegationForfeitScript(network string) ([]byte, error) {
 	pub := mustDecodeRenewalHex(pins.CheckpointForfeitPubHex)
 	return append([]byte{txscript.OP_0, 0x14}, btcutil.Hash160(pub)...), nil
 }
-func verifyDelegatedPartialForfeit(raw string, p lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, forfeitScript []byte) error {
+func verifyRenewalPartialForfeit(raw string, p lightRenewalPlan, c renewalContract, forfeitScript []byte) error {
+	if err := c.validateTree(); err != nil {
+		return err
+	}
+	d, tree := c.Binding, c.Tree
+
 	tx, err := parseCanonicalVaultBoardPSBT(raw, maxVaultBoardProofBytes)
 	if err != nil {
 		return err
@@ -160,7 +191,8 @@ func verifyDelegatedPartialForfeit(raw string, p lightRenewalPlan, d light.Descr
 
 // Delete authorization is BIP-322, with no monetary destination. Zero expiry
 // permits queue cleanup after downtime, but only for this exact original input.
-func verifyLightDelegationDelete(r lightDelegateIntent, p lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree) error {
+func verifyRenewalDelete(r lightDelegateIntent, p lightRenewalPlan, c renewalContract) error {
+
 	var message intent.DeleteMessage
 	if err := message.Decode(r.Message); err != nil {
 		return err
@@ -169,5 +201,5 @@ func verifyLightDelegationDelete(r lightDelegateIntent, p lightRenewalPlan, d li
 	if err != nil || canonical != r.Message || message.ExpireAt != 0 {
 		return fmt.Errorf("Light delegation delete message")
 	}
-	return verifyLightIntentProof(r.Proof, r.Message, p, d, tree, &wire.TxOut{Value: 0, PkScript: []byte{txscript.OP_RETURN}})
+	return verifyRenewalIntentProof(r.Proof, r.Message, p, c, &wire.TxOut{Value: 0, PkScript: []byte{txscript.OP_RETURN}})
 }

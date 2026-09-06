@@ -190,6 +190,26 @@
     "/v1/light/delegate/status": [
       "OPTIONS",
       "POST"
+    ],
+    "/v1/vtxo/delegate/info": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/delegate/schedule": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/delegate/status": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/delegate/list": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/delegate/cancel": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {
@@ -719,7 +739,9 @@
       "forfeitTxs:array<string>",
       "deleteIntent:object",
       "expiresAt:integer",
-      "ownerSignature:string"
+      "ownerSignature:string",
+      "program:string,omitempty",
+      "descriptorHash:string,omitempty"
     ],
     "LightDelegateIntent": [
       "proof:string",
@@ -748,6 +770,54 @@
       "txid:string",
       "tx:string",
       "children:object"
+    ],
+    "SpendingRenewalBinding": [
+      "program:string",
+      "network:string",
+      "vaultId:string",
+      "protectionTier:string",
+      "ownerPub:string",
+      "cosignerPub:string",
+      "operatorPub:string",
+      "scriptPubKey:string",
+      "spendingPolicy:object"
+    ],
+    "SpendingDelegationInput": [
+      "operationId:string",
+      "intent:object",
+      "forfeitTxs:array<string>",
+      "deleteIntent:object",
+      "expiresAt:integer",
+      "ownerSignature:string"
+    ],
+    "SpendingDelegationSetRequest": [
+      "program:string",
+      "descriptorHash:string",
+      "vaultId:string",
+      "setId:string",
+      "plans:array<object>",
+      "ownerSignature:string",
+      "authorization:object|null,omitempty"
+    ],
+    "SpendingDelegationAuthorization": [
+      "credentialId:string",
+      "clientDataJSON:string",
+      "authenticatorData:string",
+      "signature:string",
+      "directSig:string"
+    ],
+    "SpendingDelegationReadRequest": [
+      "program:string",
+      "descriptorHash:string",
+      "vaultId:string",
+      "operationId:string,omitempty",
+      "afterOperationId:string,omitempty",
+      "expiresAt:integer",
+      "ownerSignature:string"
+    ],
+    "SpendingDelegationSetResponse": [
+      "setId:string",
+      "operations:array<object>"
     ]
   }
 }

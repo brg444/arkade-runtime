@@ -42,6 +42,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"vault-board-store",
 				"connector-store",
 				"recovery-archive-store",
+				"vtxo-delegation-store",
 			},
 			KeyScopes: []string{
 				"enrollment-derivation",
@@ -49,6 +50,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"savings-connector-authorization",
 				"vtxo-transaction-authorization",
 				"vtxo-checkpoint-authorization",
+				"vtxo-delegation-authorization",
 				"vault-board-authorization",
 				"public-emulator-operation",
 			},
@@ -59,6 +61,16 @@ func Definition() arkaderuntime.ProfileDefinition {
 
 func routes() []arkaderuntime.Route {
 	return []arkaderuntime.Route{
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/info"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/info"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/schedule"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/schedule"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/status"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/status"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/list"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/list"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/cancel"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/cancel"},
 		{Method: http.MethodPost, Path: "/v1/recovery-archive/challenge"},
 		{Method: http.MethodOptions, Path: "/v1/recovery-archive/challenge"},
 		{Method: http.MethodPost, Path: "/v1/recovery-archive/open"},

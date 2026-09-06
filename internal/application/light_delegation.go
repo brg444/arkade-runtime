@@ -28,6 +28,7 @@ type lightDelegationListRequest struct {
 }
 type lightDelegationResponse struct {
 	Version           int                      `json:"version"`
+	Program           string                   `json:"program,omitempty"`
 	OperationID       string                   `json:"operationId"`
 	State             string                   `json:"state"`
 	ValidAt           int64                    `json:"validAt"`
@@ -78,20 +79,31 @@ func (s *Service) delegationContext(vault string) (light.Descriptor, *vtxoPolicy
 	}
 	return s.lightRenewalContext(vault)
 }
-func delegationStoredPlan(saved *policy.LightDelegationSnapshot, d light.Descriptor) (lightDelegationPlan, error) {
+func delegationStoredPlanForContract(saved *policy.LightDelegationSnapshot, c renewalContract) (lightDelegationPlan, error) {
+	if c.legacyLight {
+		if saved.Operation.Program != "" {
+			return lightDelegationPlan{}, fmt.Errorf("legacy Light journal required")
+		}
+	} else if saved.Operation.Program != c.Binding.Program || saved.Operation.DescriptorHash != c.DescriptorHash || saved.Operation.SetID == "" {
+		return lightDelegationPlan{}, fmt.Errorf("renewal journal context")
+	}
+
 	var p lightDelegationPlan
 	if err := json.Unmarshal([]byte(saved.Operation.Plan), &p); err != nil {
 		return p, err
 	}
 	o := saved.Operation
+	if c.legacyLight && (p.Request.Program != "" || p.Request.DescriptorHash != "") || !c.legacyLight && (p.Request.Program != c.Binding.Program || p.Request.DescriptorHash != c.DescriptorHash) {
+		return p, fmt.Errorf("renewal saved request context")
+	}
 	digest, err := lightDelegationRequestDigest(p.Request)
 	if err != nil || hex.EncodeToString(digest) != o.PlanDigest || p.Request.OperationID != o.OperationID || p.Request.VaultID != o.VaultID || p.ValidAt != o.ValidAt || p.Request.ExpiresAt != o.ExpiresAt || p.Renewal.Txid != o.InputTxid || p.Renewal.Vout != o.InputVout || p.Renewal.FeeSats != o.FeeSats {
 		return p, fmt.Errorf("Light delegation journal binding")
 	}
-	if _, err := p.Renewal.digest(d); err != nil {
+	if _, err := p.Renewal.digestForContract(c); err != nil {
 		return p, err
 	}
-	if err := verifyDelegationOwner(d, digest, p.Request.OwnerSignature); err != nil {
+	if err := verifyRenewalOwner(c.Binding.OwnerPub, digest, p.Request.OwnerSignature); err != nil {
 		return p, err
 	}
 	return p, nil
@@ -165,26 +177,37 @@ func (s *Service) scheduleLightDelegation(ctx context.Context, r lightDelegation
 	return s.delegationResponse(saved, d, true)
 }
 func (s *Service) delegationResponse(saved *policy.LightDelegationSnapshot, d light.Descriptor, withRecovery bool) (lightDelegationResponse, error) {
-	p, err := delegationStoredPlan(saved, d)
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return lightDelegationResponse{}, err
+	}
+	return s.delegationResponseForContract(saved, c, withRecovery)
+}
+func (s *Service) delegationResponseForContract(saved *policy.LightDelegationSnapshot, c renewalContract, withRecovery bool) (lightDelegationResponse, error) {
+	d := c.Binding
+
+	p, err := delegationStoredPlanForContract(saved, c)
 	if err != nil {
 		return lightDelegationResponse{}, err
 	}
 	o := saved.Operation
 	r := lightDelegationResponse{Version: 1, OperationID: o.OperationID, State: saved.State(), ValidAt: o.ValidAt, ExpiresAt: o.ExpiresAt, Txid: o.InputTxid, Vout: o.InputVout, InputValueSats: p.Renewal.ValueSats, ReceiverSats: p.Renewal.ReceiverSats, DescriptorHash: p.Renewal.DescriptorHash}
+	if !c.legacyLight {
+		r.Program = c.Binding.Program
+	}
 	if event, ok := saved.Events["final_authorized"]; ok {
 		var final lightDelegationFinal
 		if err := json.Unmarshal([]byte(event.Evidence), &final); err != nil {
 			return r, err
 		}
-		tree, err := s.buildLightPolicyTree(d)
+		if err := c.validateTree(); err != nil {
+			return r, err
+		}
+		registration, err := verifyRenewalRegistration(p.Request.Intent.Proof, p.Request.Intent.Message, p.Renewal, c, p.ValidAt, p.Request.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...))
 		if err != nil {
 			return r, err
 		}
-		registration, err := verifyLightRegistration(p.Request.Intent.Proof, p.Request.Intent.Message, p.Renewal, d, tree, p.ValidAt, p.Request.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...))
-		if err != nil {
-			return r, err
-		}
-		verified, err := verifyLightFinal(final.Evidence, p.Renewal, d, tree, registration, delegatedOwnerSighash)
+		verified, err := verifyRenewalFinal(final.Evidence, p.Renewal, c, registration, delegatedOwnerSighash)
 		if err != nil {
 			return r, err
 		}
@@ -284,7 +307,7 @@ func (s *Service) listLightDelegations(ctx context.Context, r lightDelegationLis
 		return out, err
 	}
 	for _, saved := range all {
-		if saved.Operation.VaultID != r.VaultID || saved.Operation.OperationID <= r.AfterOperationID {
+		if saved.Operation.Program != "" || saved.Operation.VaultID != r.VaultID || saved.Operation.OperationID <= r.AfterOperationID {
 			continue
 		}
 		if len(out.Operations) == 100 {

@@ -49,6 +49,11 @@ type lightDelegationFinal struct {
 	SignedForfeit string                    `json:"signedForfeit"`
 }
 type lightDelegationAuthorizer interface {
+	authorizeSpendingDelegationDelete(context.Context, renewalContract, lightDelegationPlan) (string, error)
+	authorizeSpendingDelegation(context.Context, renewalContract, lightDelegationPlan, *lightRenewalFinalEvidence) (string, error)
+	prepareSpendingDelegationTree(context.Context, renewalContract, lightDelegationPlan, lightDelegationTree) (lightDelegationNonceCapsule, error)
+	signSpendingDelegationTree(context.Context, renewalContract, lightDelegationPlan, lightDelegationPreparedTree, map[string]map[string]string) (map[string]string, error)
+
 	authorizeLightDelegationDelete(context.Context, light.Descriptor, lightDelegationPlan) (string, error)
 	authorizeLightDelegation(context.Context, light.Descriptor, lightDelegationPlan, *lightRenewalFinalEvidence) (string, error)
 	prepareLightDelegationTree(context.Context, light.Descriptor, lightDelegationPlan, lightDelegationTree) (lightDelegationNonceCapsule, error)
@@ -56,21 +61,22 @@ type lightDelegationAuthorizer interface {
 }
 
 func (k *fileBackedVaultKeys) withDelegationKey(ctx context.Context, d light.Descriptor, run func(*btcec.PrivateKey) error) error {
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return err
+	}
+	return k.withRenewalKey(ctx, c, run)
+}
+func (k *fileBackedVaultKeys) withRenewalKey(ctx context.Context, c renewalContract, run func(*btcec.PrivateKey) error) error {
+	d := c.Binding
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := light.ValidateDescriptor(d); err != nil {
+	if err := c.validateTree(); err != nil {
 		return err
 	}
-	pins, err := deployment.IdentityFor(d.Network)
-	if err != nil {
-		return err
-	}
-	scope, err := newVtxoKeyContext(d.VaultID, d.Network, mustDecodeRenewalHex(pins.OperatorSignerPubHex))
-	if err != nil {
-		return err
-	}
-	scope.lightProfile = true
+	scope := c.KeyScope
 	return k.withMaster(func(master *btcec.PrivateKey) error {
 		key, err := deriveVtxoKey(master, scope)
 		if err != nil {
@@ -88,33 +94,38 @@ func (k *fileBackedVaultKeys) withDelegationKey(ctx context.Context, d light.Des
 		return run(key)
 	})
 }
-func validateDelegationCapability(d light.Descriptor, p lightDelegationPlan) (*vtxoPolicyTree, verifiedLightRenewalRegistration, error) {
-	pins, err := deployment.IdentityFor(d.Network)
-	if err != nil {
+func validateRenewalDelegationCapability(c renewalContract, p lightDelegationPlan) (*vtxoPolicyTree, verifiedLightRenewalRegistration, error) {
+	d := c.Binding
+
+	if err := c.validateTree(); err != nil {
 		return nil, verifiedLightRenewalRegistration{}, err
 	}
-	service := &Service{}
-	service.Deployment.Network = d.Network
-	tree, err := buildLightPolicyTree(d, mustDecodeRenewalHex(pins.OperatorSignerPubHex), service.vtxoAddrHRP())
-	if err != nil {
-		return nil, verifiedLightRenewalRegistration{}, err
-	}
+	tree := c.Tree
 	script, err := delegationForfeitScript(d.Network)
 	if err != nil {
 		return nil, verifiedLightRenewalRegistration{}, err
 	}
-	expected, err := verifyLightDelegationRequest(p.Request, d, tree, script)
+	expected, err := verifyDelegationRequest(p.Request, c, script)
 	if err != nil {
 		return nil, verifiedLightRenewalRegistration{}, err
 	}
 	if !sameDelegationBytes(expected.Renewal, p.Renewal) || p.ValidAt != expected.ValidAt {
 		return nil, verifiedLightRenewalRegistration{}, fmt.Errorf("Light delegation plan changed")
 	}
-	registration, err := verifyLightRegistration(p.Request.Intent.Proof, p.Request.Intent.Message, p.Renewal, d, tree, p.ValidAt, p.Request.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...))
+	registration, err := verifyRenewalRegistration(p.Request.Intent.Proof, p.Request.Intent.Message, p.Renewal, c, p.ValidAt, p.Request.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...))
 	return tree, registration, err
 }
 func (k *fileBackedVaultKeys) authorizeLightDelegation(ctx context.Context, d light.Descriptor, p lightDelegationPlan, final *lightRenewalFinalEvidence) (string, error) {
-	tree, registration, err := validateDelegationCapability(d, p)
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return "", err
+	}
+	return k.authorizeSpendingDelegation(ctx, c, p, final)
+}
+func (k *fileBackedVaultKeys) authorizeSpendingDelegation(ctx context.Context, c renewalContract, p lightDelegationPlan, final *lightRenewalFinalEvidence) (string, error) {
+	d := c.Binding
+
+	tree, registration, err := validateRenewalDelegationCapability(c, p)
 	if err != nil {
 		return "", err
 	}
@@ -122,7 +133,7 @@ func (k *fileBackedVaultKeys) authorizeLightDelegation(ctx context.Context, d li
 	indexes := []int{0, 1}
 	sighash := txscript.SigHashAll
 	if final != nil {
-		verified, err := verifyLightFinal(*final, p.Renewal, d, tree, registration, delegatedOwnerSighash)
+		verified, err := verifyRenewalFinal(*final, p.Renewal, c, registration, delegatedOwnerSighash)
 		if err != nil {
 			return "", err
 		}
@@ -139,7 +150,7 @@ func (k *fileBackedVaultKeys) authorizeLightDelegation(ctx context.Context, d li
 		sighash = txscript.SigHashDefault
 	}
 	var result string
-	err = k.withDelegationKey(ctx, d, func(key *btcec.PrivateKey) error {
+	err = k.withRenewalKey(ctx, c, func(key *btcec.PrivateKey) error {
 		var err error
 		result, err = signExactVaultBoardStage(ctx, raw, key, mustDecodeRenewalHex(d.CosignerPub), tree.SpendLeaf, indexes, sighash)
 		return err
@@ -147,7 +158,16 @@ func (k *fileBackedVaultKeys) authorizeLightDelegation(ctx context.Context, d li
 	return result, err
 }
 func verifyDelegationSigningTree(d light.Descriptor, p lightDelegationPlan, e lightDelegationTree) (*arktree.TxTree, *psbt.Packet, []byte, error) {
-	tree, _, err := validateDelegationCapability(d, p)
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return verifyRenewalSigningTree(c, p, e)
+}
+func verifyRenewalSigningTree(c renewalContract, p lightDelegationPlan, e lightDelegationTree) (*arktree.TxTree, *psbt.Packet, []byte, error) {
+	d := c.Binding
+
+	tree, _, err := validateRenewalDelegationCapability(c, p)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -257,8 +277,16 @@ func delegationSigningNodes(graph *arktree.TxTree, key *btcec.PublicKey) (map[st
 	return out, walk(graph)
 }
 func (k *fileBackedVaultKeys) prepareLightDelegationTree(ctx context.Context, d light.Descriptor, p lightDelegationPlan, e lightDelegationTree) (lightDelegationNonceCapsule, error) {
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return lightDelegationNonceCapsule{}, err
+	}
+	return k.prepareSpendingDelegationTree(ctx, c, p, e)
+}
+func (k *fileBackedVaultKeys) prepareSpendingDelegationTree(ctx context.Context, c renewalContract, p lightDelegationPlan, e lightDelegationTree) (lightDelegationNonceCapsule, error) {
+
 	var result lightDelegationNonceCapsule
-	graph, _, _, err := verifyDelegationSigningTree(d, p, e)
+	graph, _, _, err := verifyRenewalSigningTree(c, p, e)
 	if err != nil {
 		return result, err
 	}
@@ -266,7 +294,7 @@ func (k *fileBackedVaultKeys) prepareLightDelegationTree(ctx context.Context, d 
 	if err != nil {
 		return result, err
 	}
-	err = k.withDelegationKey(ctx, d, func(key *btcec.PrivateKey) error {
+	err = k.withRenewalKey(ctx, c, func(key *btcec.PrivateKey) error {
 		seed := make([]byte, 32)
 		defer zeroServiceBytes(seed)
 		if _, err := rand.Read(seed); err != nil {
@@ -313,7 +341,8 @@ func (k *fileBackedVaultKeys) bindDelegationJournal(store lightDelegationJournal
 		k.delegationStore = store
 	}
 }
-func (k *fileBackedVaultKeys) verifyDelegationTranscript(ctx context.Context, d light.Descriptor, p lightDelegationPlan, prepared lightDelegationPreparedTree, all map[string]map[string]string) error {
+func (k *fileBackedVaultKeys) verifyRenewalTranscript(ctx context.Context, c renewalContract, p lightDelegationPlan, prepared lightDelegationPreparedTree, all map[string]map[string]string) error {
+
 	k.mu.RLock()
 	store := k.delegationStore
 	k.mu.RUnlock()
@@ -328,7 +357,7 @@ func (k *fileBackedVaultKeys) verifyDelegationTranscript(ctx context.Context, d 
 		if snapshot.Operation.OperationID != p.Request.OperationID {
 			continue
 		}
-		persisted, err := delegationStoredPlan(&snapshot, d)
+		persisted, err := delegationStoredPlanForContract(&snapshot, c)
 		if err != nil || !sameDelegationBytes(persisted, p) {
 			return fmt.Errorf("Light delegation signing plan not committed")
 		}
@@ -347,10 +376,18 @@ func (k *fileBackedVaultKeys) verifyDelegationTranscript(ctx context.Context, d 
 	return fmt.Errorf("Light delegation signing operation unavailable")
 }
 func (k *fileBackedVaultKeys) signLightDelegationTree(ctx context.Context, d light.Descriptor, p lightDelegationPlan, prepared lightDelegationPreparedTree, all map[string]map[string]string) (map[string]string, error) {
-	if err := k.verifyDelegationTranscript(ctx, d, p, prepared, all); err != nil {
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
 		return nil, err
 	}
-	graph, commitment, root, err := verifyDelegationSigningTree(d, p, prepared.Tree)
+	return k.signSpendingDelegationTree(ctx, c, p, prepared, all)
+}
+func (k *fileBackedVaultKeys) signSpendingDelegationTree(ctx context.Context, c renewalContract, p lightDelegationPlan, prepared lightDelegationPreparedTree, all map[string]map[string]string) (map[string]string, error) {
+
+	if err := k.verifyRenewalTranscript(ctx, c, p, prepared, all); err != nil {
+		return nil, err
+	}
+	graph, commitment, root, err := verifyRenewalSigningTree(c, p, prepared.Tree)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +396,7 @@ func (k *fileBackedVaultKeys) signLightDelegationTree(ctx context.Context, d lig
 		return nil, fmt.Errorf("Light delegation nonce binding")
 	}
 	result := map[string]string{}
-	err = k.withDelegationKey(ctx, d, func(key *btcec.PrivateKey) error {
+	err = k.withRenewalKey(ctx, c, func(key *btcec.PrivateKey) error {
 		aead, err := delegationNonceAEAD(key)
 		if err != nil {
 			return err
@@ -438,7 +475,16 @@ func (k *fileBackedVaultKeys) signLightDelegationTree(ctx context.Context, d lig
 }
 
 func (k *fileBackedVaultKeys) authorizeLightDelegationDelete(ctx context.Context, d light.Descriptor, p lightDelegationPlan) (string, error) {
-	tree, _, err := validateDelegationCapability(d, p)
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return "", err
+	}
+	return k.authorizeSpendingDelegationDelete(ctx, c, p)
+}
+func (k *fileBackedVaultKeys) authorizeSpendingDelegationDelete(ctx context.Context, c renewalContract, p lightDelegationPlan) (string, error) {
+	d := c.Binding
+
+	tree, _, err := validateRenewalDelegationCapability(c, p)
 	if err != nil {
 		return "", err
 	}
@@ -457,7 +503,7 @@ func (k *fileBackedVaultKeys) authorizeLightDelegationDelete(ctx context.Context
 		if snapshot.Operation.OperationID != p.Request.OperationID {
 			continue
 		}
-		saved, err := delegationStoredPlan(&snapshot, d)
+		saved, err := delegationStoredPlanForContract(&snapshot, c)
 		if err != nil || !sameDelegationBytes(saved, p) || snapshot.State() != "cleanup_pending" {
 			return "", fmt.Errorf("Light delegation abandonment not committed")
 		}
@@ -467,7 +513,7 @@ func (k *fileBackedVaultKeys) authorizeLightDelegationDelete(ctx context.Context
 		return "", fmt.Errorf("Light delegation cleanup unavailable")
 	}
 	var result string
-	err = k.withDelegationKey(ctx, d, func(key *btcec.PrivateKey) error {
+	err = k.withRenewalKey(ctx, c, func(key *btcec.PrivateKey) error {
 		var err error
 		result, err = signExactVaultBoardStage(ctx, p.Request.DeleteIntent.Proof, key, mustDecodeRenewalHex(d.CosignerPub), tree.SpendLeaf, []int{0, 1}, txscript.SigHashAll)
 		return err

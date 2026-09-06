@@ -170,6 +170,11 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 }
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
+	"/v1/vtxo/delegate/info":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/schedule":     {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/status":       {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/list":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/cancel":       {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/recovery-archive/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/recovery-archive/open":      {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/recovery-archive/read":      {http.MethodPost: {}, http.MethodOptions: {}},
@@ -254,6 +259,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	attachLightEnrollmentRoutes(mux, svc, origin)
 	attachRecoveryArchiveRoutes(mux, svc, origin)
 	attachLightRenewalRoutes(mux, svc, origin)
+	attachSpendingDelegationRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
 	attachVaultBoardRoutes(mux, svc, origin)

@@ -95,20 +95,21 @@ func (s *Service) dispatchDueDelegations(ctx context.Context, rt *lightDelegatio
 	}
 }
 func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot) error {
-	d, tree, err := s.delegationContext(saved.Operation.VaultID)
+	c, err := s.delegationContract(saved.Operation.VaultID, saved.Operation.Program == "")
+	d, tree := c.Binding, c.Tree
 	if err != nil {
 		return err
 	}
-	p, err := delegationStoredPlan(saved, d)
+	p, err := delegationStoredPlanForContract(saved, c)
 	if err != nil {
 		return err
 	}
 	id := saved.Operation.OperationID
 	if _, cleanup := saved.Events["cleanup_pending"]; cleanup {
-		return s.cleanupLightDelegation(ctx, saved, p, d)
+		return s.cleanupSpendingDelegation(ctx, saved, p, c)
 	}
 	if _, final := saved.Events["final_authorized"]; !final && policy.VaultBoardRegisterCanSupersede(p.Request.ExpiresAt, s.vtxoNow()) {
-		v, err := s.liveLightRenewalInput(ctx, d, tree, p.Renewal.Txid, p.Renewal.Vout)
+		v, err := s.liveRenewalInput(ctx, tree, p.Renewal.Txid, p.Renewal.Vout)
 		if err != nil {
 			return err
 		}
@@ -124,12 +125,12 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 			return err
 		}
 		if phase == "cleanup_pending" {
-			return s.cleanupLightDelegation(ctx, saved, p, d)
+			return s.cleanupSpendingDelegation(ctx, saved, p, c)
 		}
 		return nil
 	}
 	if _, ok := saved.Events["final_authorized"]; ok {
-		done, err := s.reconcileDelegation(ctx, saved, p, d, tree)
+		done, err := s.reconcileSpendingDelegation(ctx, saved, p, c)
 		if err != nil || done {
 			return err
 		}
@@ -146,7 +147,7 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 		return err
 	}
 	if _, signed := saved.Events["register_authorized"]; !signed {
-		v, err := s.liveLightRenewalInput(ctx, d, tree, p.Renewal.Txid, p.Renewal.Vout)
+		v, err := s.liveRenewalInput(ctx, tree, p.Renewal.Txid, p.Renewal.Vout)
 		if err != nil {
 			return err
 		}
@@ -171,7 +172,7 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 				return err
 			}
 		}
-		signed, err := s.keys.lightDelegation.authorizeLightDelegation(ctx, d, p, nil)
+		signed, err := s.keys.lightDelegation.authorizeSpendingDelegation(ctx, c, p, nil)
 		if err != nil {
 			return err
 		}
@@ -247,7 +248,7 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 	if registration.IntentID == "" {
 		return fmt.Errorf("registration response unavailable; original intent remains fenced")
 	}
-	return s.joinDelegatedBatch(ctx, op, saved, p, d, events, failures, registration.IntentID)
+	return s.joinSpendingDelegatedBatch(ctx, op, saved, p, c, events, failures, registration.IntentID)
 }
 func (s *Service) dialDelegationOperator(ctx context.Context) (lightDelegationOperator, error) {
 	if s.lightDelegationOperatorDial != nil {
@@ -259,7 +260,9 @@ func (s *Service) dialDelegationOperator(ctx context.Context) (lightDelegationOp
 	}
 	return o.(*stockVaultBoardOperator), nil
 }
-func (s *Service) joinDelegatedBatch(ctx context.Context, op lightDelegationOperator, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, d light.Descriptor, events <-chan lightDelegationEvent, failures <-chan error, intentID string) error {
+func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelegationOperator, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, c renewalContract, events <-chan lightDelegationEvent, failures <-chan error, intentID string) error {
+	d := c.Binding
+
 	replayed, err := replayDelegationStream(ctx, saved, events)
 	if err != nil {
 		return err
@@ -386,7 +389,7 @@ func (s *Service) joinDelegatedBatch(ctx context.Context, op lightDelegationOper
 				}
 				unsigned := lightDelegationTree{batch, expiry, start.Commitment, flat}
 				if _, ok := saved.Events["tree_prepared"]; !ok {
-					capsule, err := s.keys.lightDelegation.prepareLightDelegationTree(ctx, d, p, unsigned)
+					capsule, err := s.keys.lightDelegation.prepareSpendingDelegationTree(ctx, c, p, unsigned)
 					if err != nil {
 						return err
 					}
@@ -427,7 +430,7 @@ func (s *Service) joinDelegatedBatch(ctx context.Context, op lightDelegationOper
 							return err
 						}
 					} else {
-						sigs, err = s.keys.lightDelegation.signLightDelegationTree(ctx, d, p, prepared, allNonces)
+						sigs, err = s.keys.lightDelegation.signSpendingDelegationTree(ctx, c, p, prepared, allNonces)
 						if err != nil {
 							return err
 						}
@@ -475,7 +478,7 @@ func (s *Service) joinDelegatedBatch(ctx context.Context, op lightDelegationOper
 				}
 				var err error
 				if _, ok := saved.Events["final_authorized"]; !ok {
-					proof, err := s.prepareDelegationFinal(ctx, p, d, prepared, final.Commitment, delegationFlat(vtxos), delegationFlat(connectors))
+					proof, err := s.prepareSpendingDelegationFinal(ctx, p, c, prepared, final.Commitment, delegationFlat(vtxos), delegationFlat(connectors))
 					if err != nil {
 						return err
 					}
@@ -491,11 +494,11 @@ func (s *Service) joinDelegatedBatch(ctx context.Context, op lightDelegationOper
 				continue
 			}
 			if event.BatchFinalized != nil && event.BatchFinalized.ID == batch {
-				_, tree, err := s.delegationContext(d.VaultID)
+				fresh, err := s.delegationContract(d.VaultID, c.legacyLight)
 				if err != nil {
 					return err
 				}
-				_, err = s.reconcileDelegation(ctx, saved, p, d, tree)
+				_, err = s.reconcileSpendingDelegation(ctx, saved, p, fresh)
 				return err
 			}
 			if event.BatchFailed != nil && event.BatchFailed.ID == batch {
@@ -505,6 +508,14 @@ func (s *Service) joinDelegatedBatch(ctx context.Context, op lightDelegationOper
 	}
 }
 func (s *Service) prepareDelegationFinal(ctx context.Context, p lightDelegationPlan, d light.Descriptor, prepared lightDelegationPreparedTree, commitment string, vtxos, connectors arktree.FlatTxTree) (lightDelegationFinal, error) {
+	c, err := legacyLightRenewalContract(d, nil)
+	if err != nil {
+		return lightDelegationFinal{}, err
+	}
+	return s.prepareSpendingDelegationFinal(ctx, p, c, prepared, commitment, vtxos, connectors)
+}
+func (s *Service) prepareSpendingDelegationFinal(ctx context.Context, p lightDelegationPlan, c renewalContract, prepared lightDelegationPreparedTree, commitment string, vtxos, connectors arktree.FlatTxTree) (lightDelegationFinal, error) {
+
 	var out lightDelegationFinal
 	prior, err := parsePSBT(prepared.Tree.CommitmentPSBT)
 	if err != nil {
@@ -537,7 +548,7 @@ func (s *Service) prepareDelegationFinal(ctx context.Context, p lightDelegationP
 		return out, err
 	}
 	evidence := lightRenewalFinalEvidence{BatchID: prepared.Tree.BatchID, BatchExpiry: prepared.Tree.BatchExpiry, CommitmentPSBT: commitment, VtxoTree: vtxos, Connectors: flat, OwnerForfeitPSBT: forfeit}
-	signed, err := s.keys.lightDelegation.authorizeLightDelegation(ctx, d, p, &evidence)
+	signed, err := s.keys.lightDelegation.authorizeSpendingDelegation(ctx, c, p, &evidence)
 	if err != nil {
 		return out, err
 	}
@@ -563,7 +574,8 @@ func (s *Service) dispatchDelegationFinal(ctx context.Context, op lightDelegatio
 	return s.persistDelegation(saved.Operation.OperationID, "final_result", struct{}{})
 }
 
-func (s *Service) cleanupLightDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, d light.Descriptor) error {
+func (s *Service) cleanupSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, c renewalContract) error {
+
 	id := p.Request.OperationID
 	var err error
 	if _, cleared := saved.Events["cleanup_result"]; cleared {
@@ -571,7 +583,7 @@ func (s *Service) cleanupLightDelegation(ctx context.Context, saved *policy.Ligh
 		return err
 	}
 	if _, authorized := saved.Events["cleanup_authorized"]; !authorized {
-		raw, err := s.keys.lightDelegation.authorizeLightDelegationDelete(ctx, d, p)
+		raw, err := s.keys.lightDelegation.authorizeSpendingDelegationDelete(ctx, c, p)
 		if err != nil {
 			return err
 		}

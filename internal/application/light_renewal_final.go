@@ -104,11 +104,20 @@ func verifyLightRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan,
 }
 
 func verifyLightFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
-	digest, err := plan.digest(d)
+	c, err := legacyLightRenewalContract(d, tree)
+	if err != nil {
+		return verifiedLightRenewalFinal{}, err
+	}
+	return verifyRenewalFinal(e, plan, c, registration, ownerSighash)
+}
+func verifyRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, c renewalContract, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
+	tree, d := c.Tree, c.Binding
+
+	digest, err := plan.digestForContract(c)
 	if err != nil || !bytes.Equal(digest, registration.PlanDigest) || len(registration.TreeSession) != 33 {
 		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal registration binding")
 	}
-	if tree == nil || tree.DelegatePub != nil || hex.EncodeToString(tree.PkScript) != d.ScriptPubKey || len(e.BatchID) == 0 || len(e.BatchID) > 256 {
+	if tree == nil || hex.EncodeToString(tree.PkScript) != d.ScriptPubKey || len(e.BatchID) == 0 || len(e.BatchID) > 256 {
 		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal batch identity")
 	}
 	pins, err := deployment.IdentityFor(d.Network)
@@ -234,7 +243,7 @@ func verifyLightFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d ligh
 	if err != nil {
 		return verifiedLightRenewalFinal{}, err
 	}
-	sum := sha256.Sum256(append([]byte("vaulted-light/renewal-final/v1:"), raw...))
+	sum := sha256.Sum256(append([]byte(c.domain("renewal-final")), raw...))
 	return verifiedLightRenewalFinal{sum[:], e.OwnerForfeitPSBT, commitment.UnsignedTx.TxID(), receiverTxid, receiverVout}, nil
 }
 
