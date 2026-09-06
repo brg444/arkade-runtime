@@ -57,17 +57,20 @@ func newVaultBoardFinalFixtureForPolicy(t *testing.T, proof vaultBoardProofFixtu
 		t.Fatal(err)
 	}
 	treeSigner, _ := btcec.NewPrivateKey()
+	operatorTreeSigner, _ := btcec.NewPrivateKey()
+	treeSigners := []*btcec.PrivateKey{treeSigner, operatorTreeSigner}
 	expiry := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: batchExpiry}
 	leaves := []arktree.Leaf{{
 		Outputs:             []arktree.LeafOutput{{Amount: uint64(proof.receiver.Value), Script: hex.EncodeToString(proof.operation.ReceiverScript)}},
-		CosignersPublicKeys: []string{hex.EncodeToString(treeSigner.PubKey().SerializeCompressed())},
+		CosignersPublicKeys: []string{hex.EncodeToString(treeSigner.PubKey().SerializeCompressed()), hex.EncodeToString(operatorTreeSigner.PubKey().SerializeCompressed())},
 	}}
 
 	if extraReceiver {
 		otherSigner, _ := btcec.NewPrivateKey()
+		treeSigners = append(treeSigners, otherSigner)
 		leaves = append(leaves, arktree.Leaf{
 			Outputs:             []arktree.LeafOutput{{Amount: 500, Script: hex.EncodeToString(append([]byte{0x51, 0x20}, bytes.Repeat([]byte{0x65}, 32)...))}},
-			CosignersPublicKeys: []string{hex.EncodeToString(otherSigner.PubKey().SerializeCompressed())},
+			CosignersPublicKeys: []string{hex.EncodeToString(otherSigner.PubKey().SerializeCompressed()), hex.EncodeToString(operatorTreeSigner.PubKey().SerializeCompressed())},
 		})
 	}
 
@@ -123,6 +126,7 @@ func newVaultBoardFinalFixtureForPolicy(t *testing.T, proof vaultBoardProofFixtu
 	if err != nil {
 		t.Fatal(err)
 	}
+	vtxoTree = signVaultBoardTestTree(t, vtxoTree, sweepRoot[:], batchAmount, treeSigners)
 	flat, err := vtxoTree.Serialize()
 	if err != nil {
 		t.Fatal(err)
@@ -386,6 +390,82 @@ func TestVerifyVaultBoardFinalWithOtherBatchParticipants(t *testing.T) {
 			}
 			if _, err := verifyVaultBoardFinal(fixture.evidence, fixture.proof.operation, fixture.register, fixture.proof.tree, fixture.expiry, network); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// Generate real aggregate signatures for the exact transaction paths, including
+// the shared root when other participants belong to the batch.
+func signVaultBoardTestTree(t *testing.T, tree *arktree.TxTree, sweep []byte, amount int64, keys []*btcec.PrivateKey) *arktree.TxTree {
+	t.Helper()
+	coordinator, err := arktree.NewTreeCoordinatorSession(sweep, amount, tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := map[*btcec.PrivateKey]arktree.SignerSession{}
+	for _, key := range keys {
+		session := arktree.NewTreeSignerSession(key)
+		if err := session.Init(sweep, amount, tree); err != nil {
+			t.Fatal(err)
+		}
+		nonces, err := session.GetNonces()
+		if err != nil {
+			t.Fatal(err)
+		}
+		coordinator.AddNonce(key.PubKey(), nonces)
+		sessions[key] = session
+	}
+	nonces, err := coordinator.AggregateNonces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, session := range sessions {
+		session.SetAggregatedNonces(nonces)
+		sigs, err := session.Sign()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := coordinator.AddSignatures(key.PubKey(), sigs); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signed, err := coordinator.SignTree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signed
+}
+
+func TestVaultBoardFinalRequiresEveryRecoverySignature(t *testing.T) {
+	for _, network := range []string{deployment.NetworkMutinynet, deployment.NetworkMainnet} {
+		t.Run(network, func(t *testing.T) {
+			pins, _ := deployment.IdentityFor(network)
+			f := newVaultBoardFinalFixtureForPolicy(t, newVaultBoardProofFixture(t), pins.CheckpointForfeitPubHex, pins.VtxoTreeExpirySeconds, true)
+			if _, err := verifyVaultBoardFinal(f.evidence, f.proof.operation, f.register, f.proof.tree, f.expiry, network); err != nil {
+				t.Fatal(err)
+			}
+			for i, node := range f.evidence.VtxoTree {
+				for _, kind := range []string{"missing", "corrupt", "other transaction"} {
+					t.Run(node.Txid+"/"+kind, func(t *testing.T) {
+						changed := f.evidence
+						changed.VtxoTree = append(arktree.FlatTxTree(nil), f.evidence.VtxoTree...)
+						p, _ := parsePSBT(node.Tx)
+						switch kind {
+						case "missing":
+							p.Inputs[0].TaprootKeySpendSig = nil
+						case "corrupt":
+							p.Inputs[0].TaprootKeySpendSig = bytes.Repeat([]byte{7}, 64)
+						case "other transaction":
+							other, _ := parsePSBT(f.evidence.VtxoTree[(i+1)%len(f.evidence.VtxoTree)].Tx)
+							p.Inputs[0].TaprootKeySpendSig = other.Inputs[0].TaprootKeySpendSig
+						}
+						changed.VtxoTree[i].Tx, _ = p.B64Encode()
+						if _, err := verifyVaultBoardFinal(changed, f.proof.operation, f.register, f.proof.tree, f.expiry, network); err == nil {
+							t.Fatal("unverified recovery signature accepted")
+						}
+					})
+				}
 			}
 		})
 	}

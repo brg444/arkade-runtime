@@ -166,6 +166,20 @@ func verifyVaultBoardFinal(
 	if err := verifyVaultBoardBatchOutput(txTree, unsignedPacket, forfeit, expectedExpiry); err != nil {
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 VTXO tree policy: %w", err)
 	}
+	// The boarding input can become spendable by the Operator as soon as this
+	// cosigner releases its commitment signature. First require every supplied
+	// recovery transaction to be signed under the pinned sweep policy.
+	sweep := &arkscript.CSVMultisigClosure{
+		MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{forfeit}}, Locktime: expectedExpiry,
+	}
+	sweepScript, err := sweep.Script()
+	if err != nil {
+		return verifiedVaultBoardFinal{}, err
+	}
+	sweepRoot := txscript.NewBaseTapLeaf(sweepScript).TapHash()
+	if err := arktree.ValidateTreeSigs(sweepRoot[:], unsignedPacket.UnsignedTx.TxOut[0].Value, txTree); err != nil {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 signed recovery path required: %w", err)
+	}
 	receiverTxid, receiverVout, err := findExactVaultBoardReceiver(txTree, operation.ReceiverScript, evidence.Recipients[0].AmountSats)
 	if err != nil {
 		return verifiedVaultBoardFinal{}, err
