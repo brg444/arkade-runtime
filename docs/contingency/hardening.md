@@ -2,6 +2,10 @@
 
 Status: preparation only, 2026-09-05. The branch contains a design and implementation handoff; production contracts and deployment configuration retain their baseline values.
 
+The [connector reconciliation](connector-reconciliation.md) is the current mapping
+of reusable experiments, excluded L1 assumptions, hardware trust outcomes, and
+branch alignment. Its ordered proof work precedes production integration.
+
 ## Evidence Basis
 
 The current Savings contract has a phone-plus-hardware normal path and program-cosigned recovery initiation. The proposed L1 connector adds program cosigning to ordinary transfers. Upstream native transaction admission requires checkpoint-backed inputs; adding an Operator key to the existing onchain signing request does not convert that request into a native transaction.

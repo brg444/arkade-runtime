@@ -4,6 +4,11 @@
 
 Native Savings is selected for contingency investigation, with production activation still gated by the [architecture proposal](../proposals/native-savings.md). Branch preparation does not select a weaker hardware model or approve a funded migration. The first target is a supported cooperative transfer and a service-independent delayed exit with both user keys available. Key-loss recovery has its own gate.
 
+Apply the [connector reconciliation](../connector-reconciliation.md) when selecting
+code and tests. Native contract feasibility is the active path; the L1 connector
+remains a qualification reference. Direct signer support can eliminate the
+connector if it meets the same destination-review requirement.
+
 ## Source Revision And Drift Check
 
 Runtime baseline: `a70823a28b596195e033c4c25e48d8d82e22a72d`, tree `99405ac214e7f59633f2b1c12dc6e1294bf84235`.
@@ -11,6 +16,12 @@ Runtime baseline: `a70823a28b596195e033c4c25e48d8d82e22a72d`, tree `99405ac214e7
 Wallet baseline: `53c597393c68374afaec06108a8f803f24d7de6e`, tree `0582dd149b1ee59233d1347419abba4d43bf2f1f`.
 
 The [evidence inventory](../context.md) and `sourceEvidence.collectionSha256` in [the structured analysis](../hardening.json) bind the reviewed source. These branches begin at fetched main revisions. Before implementation and again before release, fetch main, review intervening changes, and compare with actual deployment manifests. Matching a previously recorded tree is historical alignment, not a fresh runtime attestation.
+
+As of 2026-09-06, fetched main advanced to runtime `15a83fb` and wallet `7687134`,
+including Light and its wallet updates. Incorporate reviewed current main before
+implementation; the preparation revisions above are historical. Preserve schema-2
+records and current Light/Standard/Advanced behavior. This documentation change
+neither rebases the branches nor verifies a live deployment.
 
 ## Affected Components
 

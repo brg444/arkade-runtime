@@ -35,3 +35,10 @@ The connector task confirmed that no native Savings implementation exists in its
 The Light task reported green CI, a confirmed generated-contract Mutinynet exit, and a confirmed recovery after enrollment, payment, and renewal. The final sweep reportedly recovered 39,702 sats at Mutinynet block 3402489, with only Bitcoin explorer access and the Vault service stopped. That report does not qualify native Savings. Private funded-test artifacts and their secrets are excluded from this collection. Source paths and source revisions are sufficient to locate reusable implementations.
 
 [BIP 68](https://bips.dev/68/) and [BIP 112](https://bips.dev/112/) were read as consensus references. They are supplementary specifications outside the hashed source collection. Current service admission, mainnet device qualification, candidate delays, and full native Savings recovery remain unverified. Deployment alignment must be rechecked against live release manifests before release.
+
+## Reconciliation update, 2026-09-06
+
+[Connector reconciliation](connector-reconciliation.md) records the combined work
+order and current branch drift. The source collection and its hashes above
+remain the original immutable snapshot; `sourceDrift: none` in `hardening.json`
+describes that inspection, not continuing alignment with main or live RC.
