@@ -10,6 +10,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/btcsuite/btcd/btcutil/psbt"
+	"github.com/btcsuite/btcd/wire"
 )
 
 const connectorOperationMACDomain = "arkade-vault/connector-operation/v1"
@@ -229,7 +232,7 @@ func scanConnectorOperation(rows *sql.Rows) (*ConnectorOperation, error) {
 // signed reservation from the conflict query and authorize a replacement
 // without ever seeing the invalid MAC. The integrity key is global, so a full
 // scan authenticates every row before Go selects conflicts by exact match.
-func listConnectorConflictsTx(tx *sql.Tx, vaultID, savingsTxid string, savingsVout uint32, connectorTxid string, connectorVout uint32, integrityKey []byte) ([]*ConnectorOperation, error) {
+func listConnectorConflictsTx(tx *sql.Tx, vaultID, savingsTxid string, savingsVout uint32, connectorTxid string, connectorVout uint32, integrityKey []byte, extra ...wire.OutPoint) ([]*ConnectorOperation, error) {
 	rows, err := tx.Query(
 		`SELECT ` + connectorOperationColumns + ` FROM connector_operation
 		  ORDER BY created_at, operation_id`,
@@ -252,8 +255,22 @@ func listConnectorConflictsTx(tx *sql.Tx, vaultID, savingsTxid string, savingsVo
 		if op.VaultID != vaultID {
 			continue
 		}
-		if (op.SavingsTxid == savingsTxid && op.SavingsVout == savingsVout) ||
-			(op.ConnectorTxid == connectorTxid && op.ConnectorVout == connectorVout) {
+		matches := func(id string, index uint32) bool {
+			if (id == savingsTxid && index == savingsVout) || (id == connectorTxid && index == connectorVout) {
+				return true
+			}
+			for _, input := range extra {
+				if id == input.Hash.String() && index == input.Index {
+					return true
+				}
+			}
+			return false
+		}
+		matched := matches(op.SavingsTxid, op.SavingsVout) || matches(op.ConnectorTxid, op.ConnectorVout)
+		if second, ok := connectorSecondReserveFromCandidate(op.CandidatePSBT); ok {
+			matched = matched || matches(second.Hash.String(), second.Index)
+		}
+		if matched {
 			out = append(out, op)
 		}
 	}
@@ -300,7 +317,11 @@ func (l *Ledger) ApplyConnectorReplay(next ConnectorOperation) (ConnectorReplayA
 		return "", nil, err
 	}
 	defer tx.Rollback()
-	conflicts, err := listConnectorConflictsTx(tx, next.VaultID, next.SavingsTxid, next.SavingsVout, next.ConnectorTxid, next.ConnectorVout, l.integrityKey)
+	var extra []wire.OutPoint
+	if second, ok := connectorSecondReserveFromCandidate(next.CandidatePSBT); ok {
+		extra = append(extra, second)
+	}
+	conflicts, err := listConnectorConflictsTx(tx, next.VaultID, next.SavingsTxid, next.SavingsVout, next.ConnectorTxid, next.ConnectorVout, l.integrityKey, extra...)
 	if err != nil {
 		return "", nil, err
 	}
@@ -540,4 +561,18 @@ func (l *Ledger) ListConnectorConflicts(vaultID, savingsTxid string, savingsVout
 	}
 	defer tx.Rollback()
 	return listConnectorConflictsTx(tx, vaultID, savingsTxid, savingsVout, connectorTxid, connectorVout, l.integrityKey)
+}
+
+// connectorSecondReserveFromCandidate extracts input 1 of a 3-input dual
+// candidate best-effort. It returns false for empty, unparseable, or v1
+// (2-input) candidates so legacy opaque fixtures never match.
+func connectorSecondReserveFromCandidate(raw string) (wire.OutPoint, bool) {
+	if raw == "" {
+		return wire.OutPoint{}, false
+	}
+	ptx, err := psbt.NewFromRawBytes(strings.NewReader(raw), true)
+	if err != nil || ptx == nil || ptx.UnsignedTx == nil || len(ptx.Inputs) != len(ptx.UnsignedTx.TxIn) || len(ptx.UnsignedTx.TxIn) != 3 {
+		return wire.OutPoint{}, false
+	}
+	return ptx.UnsignedTx.TxIn[1].PreviousOutPoint, true
 }

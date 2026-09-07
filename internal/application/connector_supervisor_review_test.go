@@ -64,7 +64,7 @@ func TestReviewedConnectorLedgerSighashUsesBothParents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := connectorCandidateSighash(p, f.family.Leaf)
+	got, err := connectorCandidateSighash(p, f.family.Leaf, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

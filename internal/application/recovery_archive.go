@@ -36,7 +36,7 @@ type RecoveryArchiveOpenResponse struct {
 }
 
 func recoveryArchiveCredentialAllowed(cred *policy.Credential) bool {
-	return cred != nil && (cred.TemplateVersion == savings.Template || cred.TemplateVersion == connector.Template) &&
+	return cred != nil && (cred.TemplateVersion == savings.Template || connector.IsTemplate(cred.TemplateVersion)) &&
 		(cred.ProtectionTier == program.ProtectionTierStandard || cred.ProtectionTier == program.ProtectionTierAdvanced)
 }
 func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchiveBinding, error) {

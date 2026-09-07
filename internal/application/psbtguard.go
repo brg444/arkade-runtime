@@ -368,17 +368,23 @@ func extractVerifiedSignerSig(submitted, response *psbt.Packet, expectedXOnly []
 }
 
 // extractVerifiedConnectorCosignerSig returns the single new expected
-// Taproot script-spend signature on input 0 from an Emulator response to a
-// two-input connector candidate. Verification is against the immutable
-// submitted packet: the unsigned transaction must be byte-identical, input 1
-// must carry no new signatures or final fields, and exactly one new DEFAULT
-// signature for the expected key and leaf must verify on input 0.
+// Taproot script-spend signature on the Savings input from an Emulator
+// response to a connector candidate. Verification is against the immutable
+// submitted packet: the unsigned transaction must be byte-identical, every
+// non-Savings input must carry no new signatures or final fields, and
+// exactly one new DEFAULT signature for the expected key and leaf must
+// verify on the Savings input (index 0 for v1, 2 for v2).
 func extractVerifiedConnectorCosignerSig(submitted, response *psbt.Packet, expectedXOnly, expectedLeaf []byte) (*psbt.TaprootScriptSpendSig, error) {
-	if submitted == nil || submitted.UnsignedTx == nil || len(submitted.Inputs) != 2 || len(submitted.UnsignedTx.TxIn) != 2 {
-		return nil, fmt.Errorf("exactly two submitted inputs required")
+	if submitted == nil || submitted.UnsignedTx == nil || len(submitted.Inputs) != len(submitted.UnsignedTx.TxIn) ||
+		(len(submitted.Inputs) != 2 && len(submitted.Inputs) != 3) {
+		return nil, fmt.Errorf("connector candidate input count required")
 	}
-	if response == nil || response.UnsignedTx == nil || len(response.Inputs) != 2 || len(response.UnsignedTx.TxIn) != 2 {
+	if response == nil || response.UnsignedTx == nil || len(response.Inputs) != len(submitted.Inputs) || len(response.UnsignedTx.TxIn) != len(submitted.UnsignedTx.TxIn) {
 		return nil, fmt.Errorf("malformed signed psbt")
+	}
+	savings := 0
+	if len(submitted.Inputs) == 3 {
+		savings = 2
 	}
 	if len(expectedXOnly) != 32 || len(expectedLeaf) == 0 {
 		return nil, fmt.Errorf("expected signer key and leaf required")
@@ -393,15 +399,20 @@ func extractVerifiedConnectorCosignerSig(submitted, response *psbt.Packet, expec
 	if !bytes.Equal(want.Bytes(), got.Bytes()) {
 		return nil, fmt.Errorf("signer changed transaction")
 	}
-	if err := requireConnectorInputUnchanged(submitted.Inputs[1], response.Inputs[1]); err != nil {
-		return nil, err
+	for i := range submitted.Inputs {
+		if i == savings {
+			continue
+		}
+		if err := requireConnectorInputUnchanged(submitted.Inputs[i], response.Inputs[i]); err != nil {
+			return nil, err
+		}
 	}
-	before := submitted.Inputs[0]
+	before := submitted.Inputs[savings]
 	leaf := txscript.NewBaseTapLeaf(expectedLeaf)
 	leafHash := leaf.TapHash()
 	matched := make([]bool, len(before.TaprootScriptSpendSig))
 	var extras []*psbt.TaprootScriptSpendSig
-	for _, s := range response.Inputs[0].TaprootScriptSpendSig {
+	for _, s := range response.Inputs[savings].TaprootScriptSpendSig {
 		if i := indexOriginalSig(before.TaprootScriptSpendSig, s); i >= 0 && !matched[i] {
 			matched[i] = true
 			continue
@@ -422,7 +433,7 @@ func extractVerifiedConnectorCosignerSig(submitted, response *psbt.Packet, expec
 		if extra.SigHash != txscript.SigHashDefault {
 			continue
 		}
-		if err := verifySchnorrOnInputWithSighash(submitted, 0, extra.Signature, expectedXOnly, expectedLeaf, txscript.SigHashDefault); err != nil {
+		if err := verifySchnorrOnInputWithSighash(submitted, savings, extra.Signature, expectedXOnly, expectedLeaf, txscript.SigHashDefault); err != nil {
 			continue
 		}
 		if found != nil {
@@ -433,10 +444,10 @@ func extractVerifiedConnectorCosignerSig(submitted, response *psbt.Packet, expec
 	if found == nil {
 		return nil, fmt.Errorf("expected exactly one new signer signature")
 	}
-	if len(response.Inputs[0].TaprootKeySpendSig) != len(before.TaprootKeySpendSig) ||
-		len(response.Inputs[0].PartialSigs) != len(before.PartialSigs) ||
-		!bytes.Equal(response.Inputs[0].FinalScriptWitness, before.FinalScriptWitness) {
-		return nil, fmt.Errorf("signer changed input 0 fields")
+	if len(response.Inputs[savings].TaprootKeySpendSig) != len(before.TaprootKeySpendSig) ||
+		len(response.Inputs[savings].PartialSigs) != len(before.PartialSigs) ||
+		!bytes.Equal(response.Inputs[savings].FinalScriptWitness, before.FinalScriptWitness) {
+		return nil, fmt.Errorf("signer changed Savings input fields")
 	}
 	return cloneSpendSig(found), nil
 }

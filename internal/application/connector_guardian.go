@@ -13,6 +13,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
 )
 
 // connectorGuardianAuthorization pins the exact Guardian signing contract for
@@ -29,10 +30,8 @@ import (
 // data: every call re-validates the full connector program and the Savings
 // leaf/control-block commitment against the verified prevout script.
 //
-// This helper is intentionally not a generic multi-input signer. It signs only
-// input 0 (the Savings input) and only when the transaction is a valid
-// connector candidate whose phone signature is already present. It is not
-// wired to any endpoint, profile, or key capability yet.
+// It signs only the enrolled Savings input after verifying the phone
+// signature and, for v2, both hardware approvals.
 type connectorGuardianAuthorization struct {
 	phone, guardianBase, emulatorBase *btcec.PublicKey
 	phoneExpectedXOnly                []byte
@@ -108,6 +107,7 @@ func newConnectorGuardianAuthorization(
 		controlBlock:          bytes.Clone(controlBlock),
 		connectorScript:       bytes.Clone(connectorScript),
 		rules: connector.Rules{
+			Version:            rules.Version,
 			ConnectorScript:    bytes.Clone(rules.ConnectorScript),
 			WitnessBytes:       rules.WitnessBytes,
 			AbsoluteFeeCapSats: rules.AbsoluteFeeCapSats,
@@ -134,25 +134,32 @@ func validateConnectorGuardianCandidate(
 	if err != nil {
 		return nil, err
 	}
-	if len(submitted.Inputs) != 2 || len(submitted.UnsignedTx.TxIn) != 2 {
-		return nil, fmt.Errorf("connector transaction requires exactly two inputs")
+	wantInputs := auth.rules.InputCount()
+	if len(submitted.Inputs) != wantInputs || len(submitted.UnsignedTx.TxIn) != wantInputs {
+		if wantInputs == 2 {
+			return nil, fmt.Errorf("connector transaction requires exactly two inputs")
+		}
+		return nil, fmt.Errorf("dual connector transaction requires exactly three inputs")
 	}
-	if n := len(submitted.UnsignedTx.TxOut); n != 4 && n != 5 {
+	if n := len(submitted.UnsignedTx.TxOut); n != auth.rules.OutputCount() && n != auth.rules.OutputCount()+1 {
 		return nil, fmt.Errorf("connector transaction shape")
 	}
 	parents, err := requireConnectorPrevouts(submitted)
 	if err != nil {
 		return nil, err
 	}
-	reserve := submitted.Inputs[connector.ConnectorInput].WitnessUtxo
-	if reserve.Value != connector.ReserveSats || !bytes.Equal(reserve.PkScript, auth.connectorScript) {
-		return nil, fmt.Errorf("connector reserve input mismatch")
+	savingsIdx := auth.rules.SavingsIndex()
+	for _, ri := range auth.rules.ReserveIndices() {
+		reserve := submitted.Inputs[ri].WitnessUtxo
+		if reserve.Value != auth.rules.ReserveValue() || !bytes.Equal(reserve.PkScript, auth.connectorScript) {
+			return nil, fmt.Errorf("connector reserve input mismatch")
+		}
 	}
-	savingsPrev := submitted.Inputs[connector.SavingsInput].WitnessUtxo
+	savingsPrev := submitted.Inputs[savingsIdx].WitnessUtxo
 	if !isConnectorP2TR(savingsPrev.PkScript) {
 		return nil, fmt.Errorf("connector Savings prevout script")
 	}
-	savings := submitted.Inputs[connector.SavingsInput]
+	savings := submitted.Inputs[savingsIdx]
 	if len(savings.TaprootLeafScript) != 1 || savings.TaprootLeafScript[0] == nil {
 		return nil, fmt.Errorf("connector Savings leaf required")
 	}
@@ -183,7 +190,7 @@ func validateConnectorGuardianCandidate(
 	if savings.SighashType != txscript.SigHashDefault {
 		return nil, fmt.Errorf("connector Savings requires DEFAULT sighash")
 	}
-	if err := requirePresentConnectorSig(submitted, connector.SavingsInput, auth.phoneExpectedXOnly, auth.spendLeaf); err != nil {
+	if err := requirePresentConnectorSig(submitted, savingsIdx, auth.phoneExpectedXOnly, auth.spendLeaf); err != nil {
 		return nil, fmt.Errorf("connector phone signature: %w", err)
 	}
 	for _, existing := range savings.TaprootScriptSpendSig {
@@ -194,11 +201,76 @@ func validateConnectorGuardianCandidate(
 	if err := connector.Validate(auth.rules, submitted.UnsignedTx, parents); err != nil {
 		return nil, fmt.Errorf("connector program: %w", err)
 	}
+	if auth.rules.Version == 2 {
+		if err := requireConnectorHardwareWitnesses(submitted); err != nil {
+			return nil, err
+		}
+	}
 	return parents, nil
 }
 
+// The packet proof and final Bitcoin witnesses must carry the same approvals.
+// Otherwise valid packet signatures could authorize an unbroadcastable candidate
+// whose durable reservation can never complete.
+func requireConnectorHardwareWitnesses(p *psbt.Packet) error {
+	entries, err := arkade.FindEmulatorPacket(p.UnsignedTx)
+	if err != nil || len(entries) != 1 {
+		return fmt.Errorf("dual approval packet required")
+	}
+	taproot := isConnectorP2TR(p.Inputs[0].WitnessUtxo.PkScript)
+	var sigs [][]byte
+	var pub []byte
+	for i := range 2 {
+		in := p.Inputs[i]
+		if len(in.FinalScriptSig) != 0 || (in.SighashType != 0 && in.SighashType != txscript.SigHashSingle) {
+			return fmt.Errorf("hardware SINGLE key-path witness required")
+		}
+		reader := bytes.NewReader(in.FinalScriptWitness)
+		count, err := wire.ReadVarInt(reader, 0)
+		want := uint64(2)
+		if taproot {
+			want = 1
+		}
+		if err != nil || count != want {
+			return fmt.Errorf("hardware witness shape")
+		}
+		sig, err := wire.ReadVarBytes(reader, 0, 73, "hardware signature")
+		if err != nil {
+			return err
+		}
+		sigs = append(sigs, sig)
+		if !taproot {
+			key, err := wire.ReadVarBytes(reader, 0, 33, "hardware public key")
+			if err != nil {
+				return err
+			}
+			if i == 0 {
+				pub = key
+			} else if !bytes.Equal(pub, key) {
+				return fmt.Errorf("hardware witness key mismatch")
+			}
+		}
+		if reader.Len() != 0 {
+			return fmt.Errorf("trailing hardware witness")
+		}
+	}
+	want, err := connector.ApprovalWitness(entries[0].Script, sigs, p.UnsignedTx.TxOut[0].PkScript, pub)
+	if err != nil {
+		return err
+	}
+	if len(want) != len(entries[0].Witness) {
+		return fmt.Errorf("hardware approval witness mismatch")
+	}
+	for i := range want {
+		if !bytes.Equal(want[i], entries[0].Witness[i]) {
+			return fmt.Errorf("hardware approval witness mismatch")
+		}
+	}
+	return nil
+}
+
 // signConnectorGuardianStage adds exactly one Guardian Taproot script-spend
-// signature to input 0 of the exact stored connector candidate and returns the
+// signature to the Savings input of the stored connector candidate and returns the
 // re-encoded snapshot. The phone signature must already be present and valid;
 // the Guardian key signs only after the full candidate program and the Savings
 // Merkle proof validate. The returned packet is built from a clone of the
@@ -227,12 +299,12 @@ func signConnectorGuardianStage(
 	if err != nil {
 		return "", err
 	}
-	added, err := signTapLeafAtWithSighash(work, connector.SavingsInput, priv, auth.spendLeaf, txscript.SigHashDefault)
+	added, err := signTapLeafAtWithSighash(work, auth.rules.SavingsIndex(), priv, auth.spendLeaf, txscript.SigHashDefault)
 	if err != nil {
 		return "", err
 	}
 	if err := verifySchnorrOnInputWithSighash(
-		submitted, connector.SavingsInput, added.Signature,
+		submitted, auth.rules.SavingsIndex(), added.Signature,
 		auth.guardianExpectedXOnly, auth.spendLeaf, txscript.SigHashDefault,
 	); err != nil {
 		return "", fmt.Errorf("connector Guardian signature invalid")
@@ -241,8 +313,8 @@ func signConnectorGuardianStage(
 	if err != nil {
 		return "", err
 	}
-	out.Inputs[connector.SavingsInput].TaprootScriptSpendSig = append(
-		out.Inputs[connector.SavingsInput].TaprootScriptSpendSig, added,
+	out.Inputs[auth.rules.SavingsIndex()].TaprootScriptSpendSig = append(
+		out.Inputs[auth.rules.SavingsIndex()].TaprootScriptSpendSig, added,
 	)
 	return out.B64Encode()
 }
@@ -255,12 +327,13 @@ func isConnectorP2TR(script []byte) bool {
 	return err == nil
 }
 
-// requireConnectorPrevouts verifies parent data for both connector inputs. The
+// requireConnectorPrevouts verifies parent data for all connector inputs. The
 // existing one-input RequireVerifiedPrevout is deliberately left untouched so
 // the recovery boundary keeps its exact shape; this scoped check covers only
-// the named two-input connector transaction.
+// the named two-input connector and three-input dual connector transactions.
 func requireConnectorPrevouts(ptx *psbt.Packet) (connector.Parents, error) {
-	if ptx == nil || ptx.UnsignedTx == nil || len(ptx.Inputs) != 2 || len(ptx.UnsignedTx.TxIn) != 2 {
+	if ptx == nil || ptx.UnsignedTx == nil || len(ptx.Inputs) != len(ptx.UnsignedTx.TxIn) ||
+		(len(ptx.Inputs) != 2 && len(ptx.Inputs) != 3) {
 		return nil, fmt.Errorf("connector transaction requires exactly two inputs")
 	}
 	parents := make(connector.Parents, 2)

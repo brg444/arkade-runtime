@@ -121,11 +121,15 @@ func newConnectorGuardianFixture(t *testing.T) *connectorGuardianFixture {
 // valid, so tests can attribute rejection to the proof check itself.
 func signConnectorInputWithPhone(t *testing.T, packet *psbt.Packet, phone *btcec.PrivateKey, leafScript []byte) {
 	t.Helper()
-	savingsOut := packet.Inputs[connector.SavingsInput].WitnessUtxo
+	idx := 0
+	if len(packet.Inputs) == 3 {
+		idx = 2
+	}
+	savingsOut := packet.Inputs[idx].WitnessUtxo
 	leaf := txscript.NewBaseTapLeaf(leafScript)
 	sig, err := txscript.RawTxInTapscriptSignature(
 		packet.UnsignedTx, txscript.NewTxSigHashes(packet.UnsignedTx, multiWitnessFetcher(packet)),
-		connector.SavingsInput, savingsOut.Value, savingsOut.PkScript, leaf, txscript.SigHashDefault, phone,
+		idx, savingsOut.Value, savingsOut.PkScript, leaf, txscript.SigHashDefault, phone,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +138,7 @@ func signConnectorInputWithPhone(t *testing.T, packet *psbt.Packet, phone *btcec
 		sig = sig[:64]
 	}
 	leafHash := leaf.TapHash()
-	packet.Inputs[connector.SavingsInput].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{{
+	packet.Inputs[idx].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{{
 		Signature: sig, XOnlyPubKey: schnorr.SerializePubKey(phone.PubKey()),
 		LeafHash: leafHash[:], SigHash: txscript.SigHashDefault,
 	}}

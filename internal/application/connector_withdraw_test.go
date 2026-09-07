@@ -23,7 +23,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-// This transport stand-in signs only input 0 with the fixture Emulator's
+// This transport stand-in signs only the Savings input with the fixture Emulator's
 // program key. Real upstream HTTP/interpreter qualification is a separate gate.
 type connectorTestSigner struct {
 	key   *btcec.PrivateKey
@@ -36,17 +36,21 @@ func (s *connectorTestSigner) Sign(_ context.Context, p *psbt.Packet) (*psbt.Pac
 	if s.fail {
 		return nil, errors.New("fixture emulator unavailable")
 	}
-	leaf := txscript.NewBaseTapLeaf(p.Inputs[0].TaprootLeafScript[0].Script)
+	savingsIdx := 0
+	if len(p.Inputs) == 3 {
+		savingsIdx = 2
+	}
+	leaf := txscript.NewBaseTapLeaf(p.Inputs[savingsIdx].TaprootLeafScript[0].Script)
 	prev, err := requireConnectorPrevouts(p)
 	if err != nil {
 		return nil, err
 	}
-	sig, err := txscript.RawTxInTapscriptSignature(p.UnsignedTx, txscript.NewTxSigHashes(p.UnsignedTx, prev), 0, p.Inputs[0].WitnessUtxo.Value, p.Inputs[0].WitnessUtxo.PkScript, leaf, txscript.SigHashDefault, s.key)
+	sig, err := txscript.RawTxInTapscriptSignature(p.UnsignedTx, txscript.NewTxSigHashes(p.UnsignedTx, prev), savingsIdx, p.Inputs[savingsIdx].WitnessUtxo.Value, p.Inputs[savingsIdx].WitnessUtxo.PkScript, leaf, txscript.SigHashDefault, s.key)
 	if err != nil {
 		return nil, err
 	}
 	hash := leaf.TapHash()
-	p.Inputs[0].TaprootScriptSpendSig = append(p.Inputs[0].TaprootScriptSpendSig, &psbt.TaprootScriptSpendSig{XOnlyPubKey: schnorr.SerializePubKey(s.key.PubKey()), LeafHash: hash[:], Signature: sig, SigHash: txscript.SigHashDefault})
+	p.Inputs[savingsIdx].TaprootScriptSpendSig = append(p.Inputs[savingsIdx].TaprootScriptSpendSig, &psbt.TaprootScriptSpendSig{XOnlyPubKey: schnorr.SerializePubKey(s.key.PubKey()), LeafHash: hash[:], Signature: sig, SigHash: txscript.SigHashDefault})
 	return p, nil
 }
 
@@ -90,6 +94,11 @@ type withdrawalFixture struct {
 
 func newWithdrawalFixture(t *testing.T) *withdrawalFixture {
 	t.Helper()
+	return newWithdrawalFixtureFor(t, connector.NativeSegwit, program.ProtectionTierStandard)
+}
+
+func newWithdrawalFixtureFor(t *testing.T, kind connector.Kind, tier string) *withdrawalFixture {
+	t.Helper()
 	f := newConnectorFixture(t, deployment.NetworkMainnet)
 	phone, _ := btcec.NewPrivateKey()
 	hardware, _ := btcec.NewPrivateKey()
@@ -102,7 +111,11 @@ func newWithdrawalFixture(t *testing.T) *withdrawalFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := connectorEnrollRequestForNetwork(t, f.network, phone, hardware, boarding, program.ProtectionTierStandard, nil, connector.NativeSegwit, false)
+	var recovery *btcec.PrivateKey
+	if tier == program.ProtectionTierAdvanced {
+		recovery, _ = btcec.NewPrivateKey()
+	}
+	req := connectorEnrollRequestForNetwork(t, f.network, phone, hardware, boarding, tier, recovery, kind, false)
 	req.WebAuthnP256 = hex.EncodeToString(webauthn.CompressedP256(pass))
 	req.PhoneDirectP256 = hex.EncodeToString(webauthn.CompressedP256(direct))
 	id, err := newOpaqueVaultID()
@@ -124,7 +137,11 @@ func newWithdrawalFixture(t *testing.T) *withdrawalFixture {
 	a.AddTxIn(wire.NewTxIn(&wire.OutPoint{Index: 99}, nil, nil))
 	b.AddTxIn(wire.NewTxIn(&wire.OutPoint{Index: 98}, nil, nil))
 	a.AddTxOut(wire.NewTxOut(10000, cred.SavingsScript))
-	b.AddTxOut(wire.NewTxOut(1000, fam.Rules.ConnectorScript))
+	reserveValue := int64(1000)
+	if fam.Rules.Version == 2 {
+		reserveValue = 500
+	}
+	b.AddTxOut(wire.NewTxOut(reserveValue, fam.Rules.ConnectorScript))
 	ap, bp := wire.OutPoint{Hash: a.TxHash()}, wire.OutPoint{Hash: b.TxHash()}
 	guardian, err := btcec.ParsePubKey(cred.VaultCosignerBase)
 	if err != nil {
@@ -134,7 +151,50 @@ func newWithdrawalFixture(t *testing.T) *withdrawalFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, err := connector.Prepare(connector.Request{Rules: fam.Rules, Parents: connector.Parents{ap: a, bp: b}, Savings: ap, Connector: bp, SavingsScript: cred.SavingsScript, Leaf: fam.Leaf, Control: fam.Control, DestinationScript: dest, Phone: phone.PubKey(), GuardianBase: guardian, EmulatorBase: f.operator.PubKey(), Origin: connector.KeyOrigin{Type: connector.NativeSegwit, PublicKey: hardware.PubKey().SerializeCompressed(), Fingerprint: req.ConnectorFingerprint, Path: req.ConnectorPath}, AmountSats: 8000, FeeSats: 1000})
+	prepareReq := connector.Request{Rules: fam.Rules, Parents: connector.Parents{ap: a, bp: b}, Savings: ap, Connector: bp, SavingsScript: cred.SavingsScript, Leaf: fam.Leaf, Control: fam.Control, DestinationScript: dest, Phone: phone.PubKey(), GuardianBase: guardian, EmulatorBase: f.operator.PubKey(), Origin: connector.KeyOrigin{Type: kind, PublicKey: hardware.PubKey().SerializeCompressed(), Fingerprint: req.ConnectorFingerprint, Path: req.ConnectorPath}, AmountSats: 8000, FeeSats: 1000}
+	chainStates := map[string]connectorOutpointState{ap.Hash.String(): {ValueSats: 10000, PkScript: cred.SavingsScript}, bp.Hash.String(): {ValueSats: reserveValue, PkScript: fam.Rules.ConnectorScript}}
+	if fam.Rules.Version == 2 {
+		c := wire.NewMsgTx(2)
+		c.AddTxIn(wire.NewTxIn(&wire.OutPoint{Index: 97}, nil, nil))
+		c.AddTxOut(wire.NewTxOut(reserveValue, fam.Rules.ConnectorScript))
+		cp := wire.OutPoint{Hash: c.TxHash()}
+		prepareReq.Parents[cp] = c
+		prepareReq.SecondConnector = &cp
+		chainStates[cp.Hash.String()] = connectorOutpointState{ValueSats: reserveValue, PkScript: fam.Rules.ConnectorScript}
+		// Hardware approves the monetary outputs before the packet exists.
+		approval := wire.NewMsgTx(2)
+		for _, op := range []wire.OutPoint{bp, cp, ap} {
+			in := wire.NewTxIn(&op, nil, nil)
+			in.Sequence = 0xfffffffd
+			approval.AddTxIn(in)
+		}
+		approval.AddTxOut(wire.NewTxOut(8000, dest))
+		approval.AddTxOut(wire.NewTxOut(760, cred.SavingsScript))
+		for range 2 {
+			approval.AddTxOut(wire.NewTxOut(500, fam.Rules.ConnectorScript))
+		}
+		approval.AddTxOut(wire.NewTxOut(240, []byte{0x51, 0x02, 0x4e, 0x73}))
+		for i := range 2 {
+			var sig []byte
+			if kind == connector.Taproot {
+				sig, err = txscript.RawTxInTaprootSignature(approval, txscript.NewTxSigHashes(approval, prepareReq.Parents), i, 500, fam.Rules.ConnectorScript, nil, txscript.SigHashSingle, hardware)
+			} else {
+				scriptCode, buildErr := txscript.NewScriptBuilder().AddOp(txscript.OP_DUP).AddOp(txscript.OP_HASH160).AddData(fam.Rules.ConnectorScript[2:]).AddOp(txscript.OP_EQUALVERIFY).AddOp(txscript.OP_CHECKSIG).Script()
+				if buildErr != nil {
+					t.Fatal(buildErr)
+				}
+				sig, err = txscript.RawTxInWitnessSignature(approval, txscript.NewTxSigHashes(approval, prepareReq.Parents), i, 500, scriptCode, txscript.SigHashSingle, hardware)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			prepareReq.HardwareSignatures = append(prepareReq.HardwareSignatures, sig)
+		}
+		if kind == connector.NativeSegwit {
+			prepareReq.HardwarePubKey = hardware.PubKey().SerializeCompressed()
+		}
+	}
+	draft, err := connector.Prepare(prepareReq)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +205,7 @@ func newWithdrawalFixture(t *testing.T) *withdrawalFixture {
 	signConnectorInputWithPhone(t, packet, phone, fam.Leaf)
 	signer := &connectorTestSigner{key: arkade.ComputeArkadeScriptPrivateKey(f.operator, arkade.ArkadeScriptHash(fam.Program))}
 	f.svc.keys.publicEmulator = &pinnedPublicEmulatorOperation{signer: signer}
-	chain := &withdrawalChain{states: map[string]connectorOutpointState{ap.Hash.String(): {ValueSats: 10000, PkScript: cred.SavingsScript}, bp.Hash.String(): {ValueSats: 1000, PkScript: fam.Rules.ConnectorScript}}, confirmed: map[string]bool{}}
+	chain := &withdrawalChain{states: chainStates, confirmed: map[string]bool{}}
 	f.svc.connectorChain = chain
 	return &withdrawalFixture{f: f, id: id, req: req, pass: pass, direct: direct, phone: phone, raw: encodeConnectorStage(t, packet), txid: packet.UnsignedTx.TxHash().String(), chain: chain, signer: signer}
 }
@@ -180,7 +240,11 @@ func TestConnectorWithdrawalStagesReplayAndConfirmation(t *testing.T) {
 		t.Fatal("first authorization")
 	}
 	p := decodeConnectorStage(t, response.SignedPSBT)
-	if len(p.Inputs[0].TaprootScriptSpendSig) != 3 {
+	savingsIdx := 0
+	if len(p.Inputs) == 3 {
+		savingsIdx = 2
+	}
+	if len(p.Inputs[savingsIdx].TaprootScriptSpendSig) != 3 {
 		t.Fatal("incomplete Savings stage")
 	}
 	for id, state := range w.chain.states {

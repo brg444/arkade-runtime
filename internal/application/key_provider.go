@@ -433,10 +433,11 @@ func (p *pinnedPublicEmulatorOperation) authorizeSavingsRecoveryStage(
 
 // authorizeConnectorStage sends the Guardian-signed connector candidate to the
 // release-pinned Emulator transport and imports exactly one new DEFAULT
-// signature on input 0 for the expected emulator-tweaked key and leaf.
-// The unsigned transaction and input-1 signing state must be unchanged.
-// Only the verified signature is imported into the retained request; response
-// metadata never replaces the enrolled transaction or its parent data.
+// signature on the Savings input for the expected emulator-tweaked key and
+// leaf. The unsigned transaction and every reserve input's signing state must
+// be unchanged. Only the verified signature is imported into the retained
+// request; response metadata never replaces the enrolled transaction or its
+// parent data.
 func (p *pinnedPublicEmulatorOperation) authorizeConnectorStage(
 	ctx context.Context,
 	req publicEmulatorConnectorStage,
@@ -465,8 +466,12 @@ func (p *pinnedPublicEmulatorOperation) authorizeConnectorStage(
 	if err != nil {
 		return "", err
 	}
-	out.Inputs[connector.SavingsInput].TaprootScriptSpendSig = append(
-		out.Inputs[connector.SavingsInput].TaprootScriptSpendSig, added,
+	savings := connector.SavingsInput
+	if len(submitted.Inputs) == 3 {
+		savings = 2
+	}
+	out.Inputs[savings].TaprootScriptSpendSig = append(
+		out.Inputs[savings].TaprootScriptSpendSig, added,
 	)
 	return out.B64Encode()
 }

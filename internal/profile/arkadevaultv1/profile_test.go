@@ -17,7 +17,7 @@ func TestArkadeVaultV1IsOneComposedProfile(t *testing.T) {
 		t.Fatalf("profile composition = %+v", definition)
 	}
 	module := definition.Modules[0]
-	if want := []string{SavingsRecoveryProgram, SavingsConnectorProgram, program.VaultBoardV1, program.VaultPolicyV1}; !reflect.DeepEqual(module.Programs, want) {
+	if want := []string{SavingsRecoveryProgram, SavingsConnectorProgram, SavingsConnectorDualProgram, program.VaultBoardV1, program.VaultPolicyV1}; !reflect.DeepEqual(module.Programs, want) {
 		t.Fatalf("programs = %v, want %v", module.Programs, want)
 	}
 	if !reflect.DeepEqual(module.Policies, []string{SpendingPolicy}) {

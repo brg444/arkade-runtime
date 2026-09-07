@@ -29,10 +29,12 @@ func BuildFamily(in savings.FamilyInput, kind Kind) (*Family, error) {
 	if !in.ServerFreeClawback {
 		return nil, fmt.Errorf("connector family requires server-free clawback")
 	}
-	if in.TemplateVersion != "" && in.TemplateVersion != Template {
+	if in.TemplateVersion != "" && !IsTemplate(in.TemplateVersion) {
 		return nil, fmt.Errorf("connector template mismatch")
 	}
-	in.TemplateVersion = Template
+	if in.TemplateVersion == "" {
+		in.TemplateVersion = Template
+	}
 	// Preserve the existing pending and quarantine construction, including its
 	// actual initiation cosigners and server-free clawback behavior.
 	base, err := savings.BuildFamily(in)
@@ -72,7 +74,7 @@ func BuildFamily(in savings.FamilyInput, kind Kind) (*Family, error) {
 		}
 		leaves = append(leaves, txscript.NewBaseTapLeaf(script))
 	}
-	internal, err := savings.ContextInternalKeyTemplate(in.VaultID, "savings", "", Template)
+	internal, err := savings.ContextInternalKeyTemplate(in.VaultID, "savings", "", in.TemplateVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +94,10 @@ func BuildFamily(in savings.FamilyInput, kind Kind) (*Family, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.WitnessBytes = WitnessBytes(normal, control, kind)
+	if in.TemplateVersion == DualTemplate {
+		r.Version = 2
+	}
+	r.WitnessBytes = expectedWitnessBytes(normal, control, kind, r.Version)
 	policy, err := BuildProgram(r)
 	if err != nil {
 		return nil, err
@@ -126,7 +131,7 @@ func BuildFamily(in savings.FamilyInput, kind Kind) (*Family, error) {
 	if err != nil {
 		return nil, err
 	}
-	if WitnessBytes(normal, control, kind) != r.WitnessBytes {
+	if expectedWitnessBytes(normal, control, kind, r.Version) != r.WitnessBytes {
 		return nil, fmt.Errorf("connector witness shape changed")
 	}
 	addr, err := btcutil.NewAddressTaproot(script[2:], net)

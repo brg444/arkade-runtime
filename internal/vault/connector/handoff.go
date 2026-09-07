@@ -3,7 +3,6 @@ package connector
 import (
 	"bytes"
 	"fmt"
-
 	"math/bits"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -27,10 +26,20 @@ type KeyOrigin struct {
 
 // Request contains externally pinned contract data and independently resolved
 // parents. No constructor here discovers coins, creates keys, or signs.
+// SecondConnector carries the v2 second hardware reserve; it must be nil for
+// v1 and non-nil for v2 (Rules.Version==2). HardwareSignatures carries the
+// two hardware-first SINGLE approvals for v2 (P2TR 65-byte SINGLE, P2WPKH
+// DER+SINGLE); HardwarePubKey carries the compressed key for P2WPKH only.
+// v1 must leave all three nil/empty. Guardian production receives only the
+// final candidate (sigs already in packet+inputs); these fields let tests
+// build the same hardware-first final candidate.
 type Request struct {
 	Rules                             Rules
 	Parents                           Parents
 	Savings, Connector                wire.OutPoint
+	SecondConnector                   *wire.OutPoint
+	HardwareSignatures                [][]byte
+	HardwarePubKey                    []byte
 	SavingsScript, Leaf, Control      []byte
 	DestinationScript                 []byte
 	Phone, GuardianBase, EmulatorBase *btcec.PublicKey
@@ -71,12 +80,23 @@ func Prepare(req Request) (*Draft, error) {
 	if err := req.Rules.validate(); err != nil {
 		return nil, err
 	}
-	if req.Savings == req.Connector {
+	dual := req.Rules.Version == 2
+	if !dual && req.SecondConnector != nil {
+		return nil, fmt.Errorf("second reserve requires dual contract")
+	}
+	if dual && req.SecondConnector == nil {
+		return nil, fmt.Errorf("dual connector second reserve required")
+	}
+	if req.Savings == req.Connector || (dual && (*req.SecondConnector == req.Savings || *req.SecondConnector == req.Connector)) {
 		return nil, fmt.Errorf("distinct outpoints required")
 	}
 	d := &Draft{rules: req.Rules, parents: Parents{}, leaf: bytes.Clone(req.Leaf), control: bytes.Clone(req.Control)}
 	d.rules.ConnectorScript = bytes.Clone(req.Rules.ConnectorScript)
-	for _, op := range []wire.OutPoint{req.Savings, req.Connector} {
+	outpoints := []wire.OutPoint{req.Savings, req.Connector}
+	if dual {
+		outpoints = []wire.OutPoint{req.Connector, *req.SecondConnector, req.Savings}
+	}
+	for _, op := range outpoints {
 		if req.Parents.FetchPrevOutput(op) == nil {
 			return nil, fmt.Errorf("verified parent required")
 		}
@@ -84,9 +104,19 @@ func Prepare(req Request) (*Draft, error) {
 	}
 	s := d.parents.FetchPrevOutput(req.Savings)
 	c := d.parents.FetchPrevOutput(req.Connector)
+	reserveValue := req.Rules.ReserveValue()
 	if !validP2TR(req.SavingsScript) || !bytes.Equal(s.PkScript, req.SavingsScript) ||
-		!bytes.Equal(c.PkScript, d.rules.ConnectorScript) || c.Value != ReserveSats {
+		!bytes.Equal(c.PkScript, d.rules.ConnectorScript) || c.Value != reserveValue {
 		return nil, fmt.Errorf("enrolled input mismatch")
+	}
+	if dual {
+		c2 := d.parents.FetchPrevOutput(*req.SecondConnector)
+		if !bytes.Equal(c2.PkScript, d.rules.ConnectorScript) || c2.Value != reserveValue {
+			return nil, fmt.Errorf("enrolled second reserve mismatch")
+		}
+		if !bytes.Equal(c.PkScript, c2.PkScript) {
+			return nil, fmt.Errorf("dual reserves share one enrolled script")
+		}
 	}
 	control, err := txscript.ParseControlBlock(d.control)
 	if err != nil {
@@ -102,7 +132,8 @@ func Prepare(req Request) (*Draft, error) {
 	if err != nil {
 		return nil, err
 	}
-	if WitnessBytes(d.leaf, d.control, kind) != d.rules.WitnessBytes {
+	wantWitness := expectedWitnessBytes(d.leaf, d.control, kind, d.rules.Version)
+	if wantWitness != d.rules.WitnessBytes {
 		return nil, fmt.Errorf("committed witness size mismatch")
 	}
 	key, err := btcec.ParsePubKey(req.Origin.PublicKey)
@@ -156,22 +187,66 @@ func Prepare(req Request) (*Draft, error) {
 	if !bytes.Equal(d.leaf, wantLeaf) {
 		return nil, fmt.Errorf("Savings leaf must bind phone and both connector programs")
 	}
-	packetOutput, err := PacketScript(policy)
-	if err != nil {
-		return nil, err
+	packetOutput := []byte(nil)
+	if !dual {
+		packetOutput, err = packetScriptAt(policy, d.rules.SavingsIndex())
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Hardware-first: the two SINGLE approvals must be supplied so the
+		// corrected packet witness can be filled before the candidate txid
+		// freezes. P2TR sigs are 65-byte SINGLE; P2WPKH sigs DER+SINGLE.
+		if len(req.HardwareSignatures) != 2 {
+			return nil, fmt.Errorf("dual hardware approval required before Savings signatures")
+		}
+		var hwPub []byte
+		if kind == Taproot {
+			if len(req.HardwarePubKey) != 0 {
+				return nil, fmt.Errorf("unexpected packet key for Taproot")
+			}
+		} else {
+			if len(req.HardwarePubKey) != 33 {
+				return nil, fmt.Errorf("compressed connector key required")
+			}
+			hwPub = bytes.Clone(req.HardwarePubKey)
+		}
+		witness, err := ApprovalWitness(policy, req.HardwareSignatures, req.DestinationScript, hwPub)
+		if err != nil {
+			return nil, err
+		}
+		packetOutput, err = PacketScriptWithWitness(policy, witness)
+		if err != nil {
+			return nil, err
+		}
 	}
 	tx := wire.NewMsgTx(2)
-	for _, op := range []wire.OutPoint{req.Savings, req.Connector} {
+	for _, op := range outpoints {
+		op := op
 		in := wire.NewTxIn(&op, nil, nil)
 		in.Sequence = savings.TransitionSequence
 		tx.AddTxIn(in)
 	}
-	tx.AddTxOut(wire.NewTxOut(req.AmountSats, bytes.Clone(req.DestinationScript)))
-	tx.AddTxOut(wire.NewTxOut(ReserveSats, bytes.Clone(c.PkScript)))
-	tx.AddTxOut(wire.NewTxOut(savings.P2AValueSats, []byte{0x51, 0x02, 0x4e, 0x73}))
-	tx.AddTxOut(wire.NewTxOut(0, packetOutput))
-	if change > 0 {
-		tx.AddTxOut(wire.NewTxOut(change, bytes.Clone(s.PkScript)))
+	if !dual {
+		tx.AddTxOut(wire.NewTxOut(req.AmountSats, bytes.Clone(req.DestinationScript)))
+		tx.AddTxOut(wire.NewTxOut(ReserveSats, bytes.Clone(c.PkScript)))
+		tx.AddTxOut(wire.NewTxOut(savings.P2AValueSats, []byte{0x51, 0x02, 0x4e, 0x73}))
+		tx.AddTxOut(wire.NewTxOut(0, packetOutput))
+		if change > 0 {
+			tx.AddTxOut(wire.NewTxOut(change, bytes.Clone(s.PkScript)))
+		}
+	} else {
+		// Dual layout mirrors the wallet: recipient, optional Savings
+		// change, both 500-sat reserves, anchor, packet. Savings is input 2
+		// and the packet commits vin 2.
+		tx.AddTxOut(wire.NewTxOut(req.AmountSats, bytes.Clone(req.DestinationScript)))
+		if change > 0 {
+			tx.AddTxOut(wire.NewTxOut(change, bytes.Clone(s.PkScript)))
+		}
+		tx.AddTxOut(wire.NewTxOut(reserveValue, bytes.Clone(c.PkScript)))
+		tx.AddTxOut(wire.NewTxOut(reserveValue, bytes.Clone(c.PkScript)))
+		tx.AddTxOut(wire.NewTxOut(savings.P2AValueSats, []byte{0x51, 0x02, 0x4e, 0x73}))
+		tx.AddTxOut(wire.NewTxOut(0, packetOutput))
 	}
 	if err := Validate(d.rules, tx, d.parents); err != nil {
 		return nil, err
@@ -189,22 +264,79 @@ func Prepare(req Request) (*Draft, error) {
 			return nil, err
 		}
 	}
-	d.packet.Inputs[0].TaprootLeafScript = []*psbt.TaprootTapLeafScript{{ControlBlock: bytes.Clone(d.control), Script: bytes.Clone(d.leaf), LeafVersion: txscript.BaseLeafVersion}}
-	d.packet.Inputs[0].TaprootInternalKey = schnorr.SerializePubKey(control.InternalKey)
+	savingsInput := d.rules.SavingsIndex()
+	d.packet.Inputs[savingsInput].TaprootLeafScript = []*psbt.TaprootTapLeafScript{{ControlBlock: bytes.Clone(d.control), Script: bytes.Clone(d.leaf), LeafVersion: txscript.BaseLeafVersion}}
+	d.packet.Inputs[savingsInput].TaprootInternalKey = schnorr.SerializePubKey(control.InternalKey)
+	reserveIndices := d.rules.ReserveIndices()
 	if kind == Taproot {
 		internal := schnorr.SerializePubKey(key)
-		d.packet.Inputs[1].TaprootInternalKey = internal
-		origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: internal, MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
-		d.packet.Inputs[1].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
-		d.packet.Outputs[ConnectorOutput].TaprootInternalKey = internal
-		d.packet.Outputs[ConnectorOutput].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
+		for _, ri := range reserveIndices {
+			d.packet.Inputs[ri].TaprootInternalKey = internal
+			origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: internal, MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
+			d.packet.Inputs[ri].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
+			if dual {
+				d.packet.Inputs[ri].SighashType = txscript.SigHashSingle
+			}
+		}
+		// Reserve change outputs mirror the enrolled script derivation.
+		if !dual {
+			d.packet.Outputs[ConnectorOutput].TaprootInternalKey = internal
+			origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: internal, MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
+			d.packet.Outputs[ConnectorOutput].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
+		} else {
+			for _, oi := range reserveOutputIndices(len(tx.TxOut)) {
+				origin := &psbt.TaprootBip32Derivation{XOnlyPubKey: internal, MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
+				d.packet.Outputs[oi].TaprootInternalKey = internal
+				d.packet.Outputs[oi].TaprootBip32Derivation = []*psbt.TaprootBip32Derivation{origin}
+			}
+		}
 	} else {
 		origin := &psbt.Bip32Derivation{PubKey: bytes.Clone(req.Origin.PublicKey), MasterKeyFingerprint: bits.ReverseBytes32(req.Origin.Fingerprint), Bip32Path: append([]uint32(nil), path...)}
-		d.packet.Inputs[1].SighashType = txscript.SigHashAll
-		d.packet.Inputs[1].Bip32Derivation = []*psbt.Bip32Derivation{origin}
-		d.packet.Outputs[ConnectorOutput].Bip32Derivation = []*psbt.Bip32Derivation{origin}
+		for _, ri := range reserveIndices {
+			if dual {
+				d.packet.Inputs[ri].SighashType = txscript.SigHashSingle
+			} else if ri == ConnectorInput {
+				d.packet.Inputs[ri].SighashType = txscript.SigHashAll
+			}
+			d.packet.Inputs[ri].Bip32Derivation = []*psbt.Bip32Derivation{origin}
+		}
+		if !dual {
+			d.packet.Outputs[ConnectorOutput].Bip32Derivation = []*psbt.Bip32Derivation{origin}
+		} else {
+			for _, oi := range reserveOutputIndices(len(tx.TxOut)) {
+				d.packet.Outputs[oi].Bip32Derivation = []*psbt.Bip32Derivation{origin}
+			}
+		}
+	}
+	if dual {
+		// Retain the hardware-approved final candidate: reserve inputs
+		// carry their SINGLE final witnesses (65-byte P2TR, DER+key
+		// P2WPKH) exactly as the wallet persists before passkey.
+		for j, ri := range reserveIndices {
+			var final wire.TxWitness
+			if kind == Taproot {
+				final = wire.TxWitness{bytes.Clone(req.HardwareSignatures[j])}
+			} else {
+				final = wire.TxWitness{bytes.Clone(req.HardwareSignatures[j]), bytes.Clone(req.HardwarePubKey)}
+			}
+			var buf bytes.Buffer
+			if err := psbt.WriteTxWitness(&buf, final); err != nil {
+				return nil, err
+			}
+			d.packet.Inputs[ri].FinalScriptWitness = bytes.Clone(buf.Bytes())
+			d.packet.Inputs[ri].FinalScriptSig = []byte{}
+		}
 	}
 	return d, nil
+}
+
+// reserveOutputIndices returns the output positions carrying the enrolled
+// hardware script for v2: indices 1/2 without change or 2/3 with change.
+func reserveOutputIndices(outputCount int) []int {
+	if outputCount == 6 {
+		return []int{2, 3}
+	}
+	return []int{1, 2}
 }
 
 func (d *Draft) PSBT() (*psbt.Packet, error) { return clonePacket(d.packet) }
@@ -219,6 +351,9 @@ type HardwareRequest struct {
 }
 
 func (d *Draft) ForHardware(witness wire.TxWitness) (*HardwareRequest, error) {
+	if d.rules.Version == 2 {
+		return nil, fmt.Errorf("v2 requires hardware approval before Savings signatures")
+	}
 	if len(witness) != 5 || !bytes.Equal(witness[3], d.leaf) || !bytes.Equal(witness[4], d.control) {
 		return nil, fmt.Errorf("unexpected Savings witness")
 	}

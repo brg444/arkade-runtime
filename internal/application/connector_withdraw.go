@@ -59,7 +59,7 @@ type ConnectorOperationView struct {
 // AuthorizeConnectorWithdrawal validates, durably authorizes, and cosigns one
 // Savings connector withdrawal. Service order: ledger integrity, MAC-verified
 // credential plus origin, enrolled family rebuild, pure candidate validation,
-// terminal-history revalidation plus confirmed and unspent checks for both
+// terminal-history revalidation plus confirmed and unspent checks for all
 // parents, rate limit, candidate-bound passkey authentication, exact
 // write-ahead authorization, Guardian stage, Emulator stage. No signing call
 // happens before the durable authorization and sequence advancement, and no
@@ -104,15 +104,20 @@ func (s *Service) AuthorizeConnectorWithdrawal(ctx context.Context, req Connecto
 	if _, err := validateConnectorGuardianCandidate(req.PSBT, auth); err != nil {
 		return nil, err
 	}
-	savingsOutpoint := candidate.UnsignedTx.TxIn[connector.SavingsInput].PreviousOutPoint
-	connectorOutpoint := candidate.UnsignedTx.TxIn[connector.ConnectorInput].PreviousOutPoint
+	savingsIdx := auth.rules.SavingsIndex()
+	reserveIdx := auth.rules.ReserveIndices()
+	if len(candidate.UnsignedTx.TxIn) != auth.rules.InputCount() {
+		return nil, fmt.Errorf("connector transaction requires exactly %d inputs", auth.rules.InputCount())
+	}
+	savingsOutpoint := candidate.UnsignedTx.TxIn[savingsIdx].PreviousOutPoint
+	connectorOutpoint := candidate.UnsignedTx.TxIn[reserveIdx[0]].PreviousOutPoint
 	dest := candidate.UnsignedTx.TxOut[0].PkScript
 	amount := candidate.UnsignedTx.TxOut[0].Value
 	fee, err := connectorCandidateFee(candidate)
 	if err != nil {
 		return nil, err
 	}
-	sighash, err := connectorCandidateSighash(candidate, auth.spendLeaf)
+	sighash, err := connectorCandidateSighash(candidate, auth.spendLeaf, savingsIdx)
 	if err != nil {
 		return nil, err
 	}
@@ -122,12 +127,14 @@ func (s *Service) AuthorizeConnectorWithdrawal(ctx context.Context, req Connecto
 	}
 	// Terminal history revalidates against the current chain view before a
 	// formerly conflicting authorization is permitted; stored labels alone
-	// never authorize reuse after a reorg.
-	if err := s.revalidateConnectorHistory(ctx, chain, vaultID, strings.ToLower(savingsOutpoint.Hash.String()), savingsOutpoint.Index, strings.ToLower(connectorOutpoint.Hash.String()), connectorOutpoint.Index); err != nil {
+	// never authorize reuse after a reorg. For v2 all three inputs are
+	// covered: the two column outpoints plus the second reserve derived
+	// from the MAC-bound candidate (no migration).
+	if err := s.revalidateConnectorHistory(ctx, chain, vaultID, candidate); err != nil {
 		return nil, mapConnectorBusy(err)
 	}
 	// An exact replay of an already-authorized candidate must resume after
-	// broadcast, when both parents are spent by the candidate itself. The
+	// broadcast, when all parents are spent by the candidate itself. The
 	// unconditional unspent check below would block that resume, so a
 	// byte-identical active operation whose parents are unspent or spent by
 	// the same candidate bypasses the fresh-authorization checks. Nothing is
@@ -177,21 +184,21 @@ func (s *Service) AuthorizeConnectorWithdrawal(ctx context.Context, req Connecto
 
 // findExactConnectorReplay returns the active operation for a byte-identical
 // resubmission of an already-authorized candidate, or nil when this request
-// needs fresh authorization. The replay is safe only while both parents are
+// needs fresh authorization. The replay is safe only while all parents are
 // unspent or spent by the same candidate: parents spent by another
 // transaction, or unreadable chain state, fall back to the fresh path, which
 // refuses with the usual spent/unconfirmed errors. Terminal rows never replay:
 // a confirmed or conflicted candidate's stages are read through GET, and a
 // changed candidate for owned inputs stays refused by the durable replay.
 func (s *Service) findExactConnectorReplay(ctx context.Context, chain connectorChainView, vaultID, rawPSBT string, candidate *psbt.Packet, candidateTxid, sighash string) (*policy.ConnectorOperation, error) {
-	if candidate == nil || candidate.UnsignedTx == nil || len(candidate.UnsignedTx.TxIn) != 2 {
+	if candidate == nil || candidate.UnsignedTx == nil || (len(candidate.UnsignedTx.TxIn) != 2 && len(candidate.UnsignedTx.TxIn) != 3) {
 		return nil, nil
 	}
-	savingsIn := candidate.UnsignedTx.TxIn[connector.SavingsInput].PreviousOutPoint
-	connectorIn := candidate.UnsignedTx.TxIn[connector.ConnectorInput].PreviousOutPoint
-	conflicts, err := s.Stores.Connector.ListConnectorConflicts(vaultID,
-		strings.ToLower(savingsIn.Hash.String()), savingsIn.Index,
-		strings.ToLower(connectorIn.Hash.String()), connectorIn.Index)
+	inputs := make([]wire.OutPoint, len(candidate.UnsignedTx.TxIn))
+	for i, in := range candidate.UnsignedTx.TxIn {
+		inputs[i] = in.PreviousOutPoint
+	}
+	conflicts, err := s.listConnectorConflictsForCandidate(vaultID, candidate)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +209,7 @@ func (s *Service) findExactConnectorReplay(ctx context.Context, chain connectorC
 		if row.CandidatePSBT != rawPSBT || row.LastSighash != sighash {
 			continue
 		}
-		for _, in := range []wire.OutPoint{savingsIn, connectorIn} {
+		for _, in := range inputs {
 			state, err := chain.confirmedOutpoint(ctx, strings.ToLower(in.Hash.String()), in.Index)
 			if err != nil {
 				return nil, nil
@@ -214,6 +221,53 @@ func (s *Service) findExactConnectorReplay(ctx context.Context, chain connectorC
 		return row, nil
 	}
 	return nil, nil
+}
+
+// listConnectorConflictsForCandidate loads conflicts for all candidate
+// inputs. The operation table indexes savings + first reserve columns; the
+// dual second reserve is derived from the MAC-bound candidate bytes (parsed
+// best-effort here, mandatory in the validated withdraw path) and matched
+// against stored candidates so a shared second reserve also owns the inputs.
+func (s *Service) listConnectorConflictsForCandidate(vaultID string, candidate *psbt.Packet) ([]*policy.ConnectorOperation, error) {
+	if candidate == nil || candidate.UnsignedTx == nil || len(candidate.UnsignedTx.TxIn) < 2 {
+		return nil, fmt.Errorf("connector candidate required")
+	}
+	savingsIdx := 0
+	reserveIdx := 1
+	if len(candidate.UnsignedTx.TxIn) == 3 {
+		savingsIdx = 2
+		reserveIdx = 0
+	}
+	savingsIn := candidate.UnsignedTx.TxIn[savingsIdx].PreviousOutPoint
+	connectorIn := candidate.UnsignedTx.TxIn[reserveIdx].PreviousOutPoint
+	conflicts, err := s.Stores.Connector.ListConnectorConflicts(vaultID,
+		strings.ToLower(savingsIn.Hash.String()), savingsIn.Index,
+		strings.ToLower(connectorIn.Hash.String()), connectorIn.Index)
+	if err != nil {
+		return nil, err
+	}
+	if len(candidate.UnsignedTx.TxIn) != 3 {
+		return conflicts, nil
+	}
+	second := candidate.UnsignedTx.TxIn[1].PreviousOutPoint
+	secondTxid := strings.ToLower(second.Hash.String())
+	seen := map[string]bool{}
+	for _, row := range conflicts {
+		if row != nil {
+			seen[row.OperationID] = true
+		}
+	}
+	extra, err := s.Stores.Connector.ListConnectorConflicts(vaultID, secondTxid, second.Index, secondTxid, second.Index)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range extra {
+		if row != nil && !seen[row.OperationID] {
+			conflicts = append(conflicts, row)
+			seen[row.OperationID] = true
+		}
+	}
+	return conflicts, nil
 }
 
 // completeConnectorStages produces any missing signing stages for the retained
@@ -322,15 +376,21 @@ func (s *Service) reconcileConnectorOperation(ctx context.Context, op *policy.Co
 	candidateTxid := candidate.UnsignedTx.TxHash().String()
 	savingsState, savingsErr := chain.confirmedOutpoint(ctx, strings.ToLower(op.SavingsTxid), op.SavingsVout)
 	connectorState, connectorErr := chain.confirmedOutpoint(ctx, strings.ToLower(op.ConnectorTxid), op.ConnectorVout)
+	secondState, secondErr := connectorOutpointState{}, error(nil)
+	hasSecond := false
+	if second, ok := connectorSecondReserveOutpoint(op); ok {
+		hasSecond = true
+		secondState, secondErr = chain.confirmedOutpoint(ctx, strings.ToLower(second.Hash.String()), second.Index)
+	}
 	// Terminal rows re-prove their stored evidence on every call. A reorg
 	// that invalidates the stored proof restores the unresolved state instead
 	// of trusting a label; a chain error that prevents revalidation retains
 	// the row but reports it unverified instead of trusting it silently.
 	if op.Resolution != policy.ConnectorResolutionNone {
-		if savingsErr != nil || connectorErr != nil {
+		if savingsErr != nil || connectorErr != nil || (hasSecond && secondErr != nil) {
 			return op, false
 		}
-		valid, stale := s.connectorTerminalEvidenceStatus(ctx, chain, op, savingsState, connectorState)
+		valid, stale := s.connectorTerminalEvidenceStatus(ctx, chain, op, savingsState, connectorState, secondState)
 		if valid {
 			return op, true
 		}
@@ -346,7 +406,7 @@ func (s *Service) reconcileConnectorOperation(ctx context.Context, op *policy.Co
 		}
 		// Fall through and re-observe the rolled-back row against the fresh
 		// parent states below.
-	} else if savingsErr != nil || connectorErr != nil {
+	} else if savingsErr != nil || connectorErr != nil || (hasSecond && secondErr != nil) {
 		// Ambiguous observation (reorg mid-query, unknown funding): only a
 		// candidate confirmation may still proceed, on canonical proof alone.
 		if blockHash, height, err := chain.confirmedTransaction(ctx, candidateTxid); err == nil {
@@ -360,7 +420,11 @@ func (s *Service) reconcileConnectorOperation(ctx context.Context, op *policy.Co
 		return op, false
 	}
 	spentByOther := ""
-	for _, state := range []connectorOutpointState{savingsState, connectorState} {
+	states := []connectorOutpointState{savingsState, connectorState}
+	if hasSecond && secondErr == nil {
+		states = append(states, secondState)
+	}
+	for _, state := range states {
 		if state.Spent && state.SpendingTxid != "" && !strings.EqualFold(state.SpendingTxid, candidateTxid) {
 			spentByOther = state.SpendingTxid
 		}
@@ -400,7 +464,8 @@ func (s *Service) reconcileConnectorOperation(ctx context.Context, op *policy.Co
 // transaction is still canonically confirmed and still spends the inputs it
 // must; stale means positive proof that it no longer does (reorg). A chain
 // error is neither: (false, false) retains the row without trusting it.
-func (s *Service) connectorTerminalEvidenceStatus(ctx context.Context, chain connectorChainView, op *policy.ConnectorOperation, savingsState, connectorState connectorOutpointState) (valid, stale bool) {
+// Extra states cover the dual second reserve when present.
+func (s *Service) connectorTerminalEvidenceStatus(ctx context.Context, chain connectorChainView, op *policy.ConnectorOperation, savingsState, connectorState connectorOutpointState, extra ...connectorOutpointState) (valid, stale bool) {
 	if op == nil || op.Resolution == policy.ConnectorResolutionNone || op.ResolutionTxid == "" {
 		return false, false
 	}
@@ -415,6 +480,11 @@ func (s *Service) connectorTerminalEvidenceStatus(ctx context.Context, chain con
 		(connectorState.Spent && strings.ToLower(connectorState.SpendingTxid) == want) {
 		return true, false
 	}
+	for _, state := range extra {
+		if state.Spent && strings.ToLower(state.SpendingTxid) == want {
+			return true, false
+		}
+	}
 	return false, true
 }
 
@@ -422,9 +492,10 @@ func (s *Service) connectorTerminalEvidenceStatus(ctx context.Context, chain con
 // terminal inputs only while every terminal row's evidence still validates
 // against the current chain view. Stale terminal rows roll back to unresolved
 // first, which makes the inputs actively owned again and refuses the changed
-// candidate: the owner retries the exact old candidate instead.
-func (s *Service) revalidateConnectorHistory(ctx context.Context, chain connectorChainView, vaultID, savingsTxid string, savingsVout uint32, connectorTxid string, connectorVout uint32) error {
-	conflicts, err := s.Stores.Connector.ListConnectorConflicts(vaultID, savingsTxid, savingsVout, connectorTxid, connectorVout)
+// candidate: the owner retries the exact old candidate instead. For dual
+// candidates all three inputs are covered via listConnectorConflictsForCandidate.
+func (s *Service) revalidateConnectorHistory(ctx context.Context, chain connectorChainView, vaultID string, candidate *psbt.Packet) error {
+	conflicts, err := s.listConnectorConflictsForCandidate(vaultID, candidate)
 	if err != nil {
 		return err
 	}
@@ -440,7 +511,15 @@ func (s *Service) revalidateConnectorHistory(ctx context.Context, chain connecto
 			// reorg and never silently free the inputs.
 			return policy.ErrConnectorBusy
 		}
-		valid, stale := s.connectorTerminalEvidenceStatus(ctx, chain, row, savingsState, connectorState)
+		secondErr := error(nil)
+		var secondState connectorOutpointState
+		if second, ok := connectorSecondReserveOutpoint(row); ok {
+			secondState, secondErr = chain.confirmedOutpoint(ctx, strings.ToLower(second.Hash.String()), second.Index)
+			if secondErr != nil {
+				return policy.ErrConnectorBusy
+			}
+		}
+		valid, stale := s.connectorTerminalEvidenceStatus(ctx, chain, row, savingsState, connectorState, secondState)
 		if valid {
 			continue
 		}
@@ -456,15 +535,29 @@ func (s *Service) revalidateConnectorHistory(ctx context.Context, chain connecto
 	return nil
 }
 
-// verifyConnectorParents requires both parents confirmed, unspent, and equal
+// connectorSecondReserveOutpoint derives the dual second reserve from the
+// MAC-bound stored candidate. It returns false for v1 rows or unparseable
+// candidates; callers treat absence as no extra input.
+func connectorSecondReserveOutpoint(row *policy.ConnectorOperation) (wire.OutPoint, bool) {
+	if row == nil || row.CandidatePSBT == "" {
+		return wire.OutPoint{}, false
+	}
+	candidate, err := parsePSBT(row.CandidatePSBT)
+	if err != nil || candidate.UnsignedTx == nil || len(candidate.UnsignedTx.TxIn) != 3 {
+		return wire.OutPoint{}, false
+	}
+	return candidate.UnsignedTx.TxIn[1].PreviousOutPoint, true
+}
+
+// verifyConnectorParents requires all parents confirmed, unspent, and equal
 // to the enrolled contract and the candidate's own prevout claims. Parent
 // bytes alone never suffice: values and scripts revalidate against chain.
 func (s *Service) verifyConnectorParents(ctx context.Context, chain connectorChainView, candidate *psbt.Packet, cred *policy.Credential, fam *connector.Family) error {
-	if len(candidate.UnsignedTx.TxIn) != 2 || len(candidate.Inputs) != 2 {
-		return fmt.Errorf("connector transaction requires exactly two inputs")
+	if len(candidate.UnsignedTx.TxIn) != fam.Rules.InputCount() || len(candidate.Inputs) != fam.Rules.InputCount() {
+		return fmt.Errorf("connector transaction requires exactly %d inputs", fam.Rules.InputCount())
 	}
-	savingsIn := candidate.UnsignedTx.TxIn[connector.SavingsInput].PreviousOutPoint
-	connectorIn := candidate.UnsignedTx.TxIn[connector.ConnectorInput].PreviousOutPoint
+	savingsIdx := fam.Rules.SavingsIndex()
+	savingsIn := candidate.UnsignedTx.TxIn[savingsIdx].PreviousOutPoint
 	savingsState, err := chain.confirmedOutpoint(ctx, strings.ToLower(savingsIn.Hash.String()), savingsIn.Index)
 	if err != nil {
 		return fmt.Errorf("connector Savings parent is not confirmed")
@@ -473,23 +566,28 @@ func (s *Service) verifyConnectorParents(ctx context.Context, chain connectorCha
 		return fmt.Errorf("connector Savings parent is spent")
 	}
 	if !bytes.Equal(savingsState.PkScript, cred.SavingsScript) ||
-		!bytes.Equal(savingsState.PkScript, candidate.Inputs[connector.SavingsInput].WitnessUtxo.PkScript) ||
-		savingsState.ValueSats != candidate.Inputs[connector.SavingsInput].WitnessUtxo.Value {
+		!bytes.Equal(savingsState.PkScript, candidate.Inputs[savingsIdx].WitnessUtxo.PkScript) ||
+		savingsState.ValueSats != candidate.Inputs[savingsIdx].WitnessUtxo.Value {
 		return fmt.Errorf("connector Savings parent mismatch")
 	}
-	connectorState, err := chain.confirmedOutpoint(ctx, strings.ToLower(connectorIn.Hash.String()), connectorIn.Index)
-	if err != nil {
-		return fmt.Errorf("connector reserve parent is not confirmed")
+	for _, ri := range fam.Rules.ReserveIndices() {
+		connectorIn := candidate.UnsignedTx.TxIn[ri].PreviousOutPoint
+		connectorState, err := chain.confirmedOutpoint(ctx, strings.ToLower(connectorIn.Hash.String()), connectorIn.Index)
+		if err != nil {
+			return fmt.Errorf("connector reserve parent is not confirmed")
+		}
+		if connectorState.Spent {
+			return fmt.Errorf("connector reserve parent is spent")
+		}
+		if connectorState.ValueSats != fam.Rules.ReserveValue() ||
+			!bytes.Equal(connectorState.PkScript, fam.Rules.ConnectorScript) ||
+			!bytes.Equal(connectorState.PkScript, candidate.Inputs[ri].WitnessUtxo.PkScript) ||
+			connectorState.ValueSats != candidate.Inputs[ri].WitnessUtxo.Value {
+			return fmt.Errorf("connector reserve parent mismatch")
+		}
 	}
-	if connectorState.Spent {
-		return fmt.Errorf("connector reserve parent is spent")
-	}
-	if connectorState.ValueSats != connector.ReserveSats ||
-		!bytes.Equal(connectorState.PkScript, fam.Rules.ConnectorScript) ||
-		!bytes.Equal(connectorState.PkScript, candidate.Inputs[connector.ConnectorInput].WitnessUtxo.PkScript) ||
-		connectorState.ValueSats != candidate.Inputs[connector.ConnectorInput].WitnessUtxo.Value {
-		return fmt.Errorf("connector reserve parent mismatch")
-	}
+	// Dual reserves must be distinct outpoints sharing one enrolled script;
+	// Validate already enforces distinctness and the program enforces script.
 	return nil
 }
 
@@ -497,7 +595,7 @@ func (s *Service) verifyConnectorParents(ctx context.Context, chain connectorCha
 // outputs. Bounds stay with connector.Validate during pure validation; the
 // ledger stores the recomputed value.
 func connectorCandidateFee(candidate *psbt.Packet) (int64, error) {
-	if candidate == nil || candidate.UnsignedTx == nil || len(candidate.Inputs) != 2 {
+	if candidate == nil || candidate.UnsignedTx == nil || (len(candidate.Inputs) != 2 && len(candidate.Inputs) != 3) {
 		return 0, fmt.Errorf("connector candidate required")
 	}
 	var in, out int64
@@ -522,12 +620,15 @@ func connectorCandidateFee(candidate *psbt.Packet) (int64, error) {
 
 // connectorCandidateSighash binds the ledger row to the exact Savings input
 // commitment the cosigners sign: the DEFAULT tapscript sighash over the
-// enrolled normal leaf, committed against BOTH actual parents. The fetcher
-// must carry the real connector-reserve prevout as well as the Savings
-// prevout: a canned single-prevout fetcher would compute a different
-// commitment than the phone and Savings signatures actually sign.
-func connectorCandidateSighash(candidate *psbt.Packet, leaf []byte) (string, error) {
-	if candidate == nil || len(candidate.Inputs) != 2 || candidate.Inputs[connector.SavingsInput].WitnessUtxo == nil {
+// enrolled normal leaf, committed against all actual parents. The fetcher
+// must carry the real reserve prevouts as well as the Savings prevout: a
+// canned single-prevout fetcher would compute a different commitment than
+// the phone and Savings signatures actually sign.
+func connectorCandidateSighash(candidate *psbt.Packet, leaf []byte, savingsIdx int) (string, error) {
+	if candidate == nil || (len(candidate.Inputs) != 2 && len(candidate.Inputs) != 3) {
+		return "", fmt.Errorf("connector candidate required")
+	}
+	if savingsIdx < 0 || savingsIdx >= len(candidate.Inputs) || candidate.Inputs[savingsIdx].WitnessUtxo == nil {
 		return "", fmt.Errorf("connector candidate required")
 	}
 	parents, err := requireConnectorPrevouts(candidate)
@@ -536,7 +637,7 @@ func connectorCandidateSighash(candidate *psbt.Packet, leaf []byte) (string, err
 	}
 	raw, err := txscript.CalcTapscriptSignaturehash(
 		txscript.NewTxSigHashes(candidate.UnsignedTx, parents),
-		txscript.SigHashDefault, candidate.UnsignedTx, connector.SavingsInput, parents, txscript.NewBaseTapLeaf(leaf),
+		txscript.SigHashDefault, candidate.UnsignedTx, savingsIdx, parents, txscript.NewBaseTapLeaf(leaf),
 	)
 	if err != nil {
 		return "", fmt.Errorf("connector sighash: %w", err)

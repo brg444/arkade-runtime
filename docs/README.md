@@ -18,3 +18,5 @@ boundary, versioned contracts, Arkade integration, and deployment model.
 The wallet owns transaction coordination, device ceremonies, user-facing
 recovery, and SDK integration. Its current documentation lives in
 [Vaulted](https://github.com/brg444/vaulted-bitcoin-wallet/tree/main/docs).
+
+Ledger connector v2 and paired activation: [connector-dual-v2.md](connector-dual-v2.md).

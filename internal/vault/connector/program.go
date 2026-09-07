@@ -30,6 +30,7 @@ const (
 // the signer response. WitnessBytes bounds marker/flag and both witnesses from below.
 // This stage supports one Savings input and optional non-dust Savings change.
 type Rules struct {
+	Version                                             int // Zero retains the immutable v1 contract; 2 selects the dual-input contract.
 	ConnectorScript                                     []byte
 	WitnessBytes, AbsoluteFeeCapSats, FeerateCapSatPerV int64
 }
@@ -43,6 +44,9 @@ func validP2TR(script []byte) bool {
 }
 
 func (r Rules) validate() error {
+	if r.Version != 0 && r.Version != 2 {
+		return fmt.Errorf("unknown connector contract version")
+	}
 	if !validP2TR(r.ConnectorScript) && !txscript.IsPayToWitnessPubKeyHash(r.ConnectorScript) {
 		return fmt.Errorf("connector native SegWit or Taproot script required")
 	}
@@ -59,9 +63,14 @@ func (r Rules) validate() error {
 // BuildProgram commits the connector identity, reserve,
 // protected change, packet envelope, and both fee limits in both cosigner keys.
 // Bitcoin enforces the resulting signatures, not these introspection opcodes.
+// v2 builds through the CSFS approval proof (length-converged); v1 retains
+// the exact prefix-converged envelope.
 func BuildProgram(r Rules) ([]byte, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
+	}
+	if r.Version == 2 {
+		return BuildDualProgram(r)
 	}
 	var prefix []byte
 	for range 8 {
@@ -69,7 +78,7 @@ func BuildProgram(r Rules) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		entry, err := arkade.NewPacket(arkade.EmulatorEntry{Vin: SavingsInput, Script: make([]byte, len(script))})
+		entry, err := arkade.NewPacket(arkade.EmulatorEntry{Vin: uint16(r.SavingsIndex()), Script: make([]byte, len(script))})
 		if err != nil {
 			return nil, err
 		}
@@ -93,8 +102,20 @@ func BuildProgram(r Rules) ([]byte, error) {
 	return nil, fmt.Errorf("connector packet envelope did not converge")
 }
 
-func PacketScript(script []byte) ([]byte, error) {
-	p, err := arkade.NewPacket(arkade.EmulatorEntry{Vin: SavingsInput, Script: script})
+func PacketScript(script []byte) ([]byte, error) { return packetScriptAt(script, SavingsInput) }
+
+func packetScriptAt(script []byte, index int) ([]byte, error) {
+	p, err := arkade.NewPacket(arkade.EmulatorEntry{Vin: uint16(index), Script: script})
+	if err != nil {
+		return nil, err
+	}
+	return (extension.Extension{p}).Serialize()
+}
+
+// PacketScriptWithWitness encodes the v2 corrected packet output: vin 2 with
+// the approval witness (compact sigs, padded recipient, optional key, chunks).
+func PacketScriptWithWitness(program []byte, witness wire.TxWitness) ([]byte, error) {
+	p, err := arkade.NewPacket(arkade.EmulatorEntry{Vin: 2, Script: program, Witness: witness})
 	if err != nil {
 		return nil, err
 	}
@@ -184,11 +205,15 @@ func (p Parents) FetchVtxoPrevOutPkScript(op wire.OutPoint) []byte {
 }
 
 func Validate(r Rules, tx *wire.MsgTx, parents Parents) error {
-	if tx == nil || len(tx.TxIn) != 2 || (len(tx.TxOut) != 4 && len(tx.TxOut) != 5) {
+	if tx == nil || len(tx.TxIn) != r.InputCount() || (len(tx.TxOut) != r.OutputCount() && len(tx.TxOut) != r.OutputCount()+1) {
 		return fmt.Errorf("connector transaction shape")
 	}
-	if tx.TxIn[0] == nil || tx.TxIn[1] == nil || tx.TxIn[0].PreviousOutPoint == tx.TxIn[1].PreviousOutPoint {
-		return fmt.Errorf("distinct inputs required")
+	seen := map[wire.OutPoint]bool{}
+	for _, in := range tx.TxIn {
+		if in == nil || seen[in.PreviousOutPoint] {
+			return fmt.Errorf("distinct inputs required")
+		}
+		seen[in.PreviousOutPoint] = true
 	}
 	var total int64
 	for _, in := range tx.TxIn {
@@ -215,22 +240,69 @@ func Validate(r Rules, tx *wire.MsgTx, parents Parents) error {
 	if err != nil {
 		return err
 	}
-	wantPacket, err := PacketScript(script)
-	if err != nil {
-		return err
+	if r.Version == 2 {
+		if err := validateDualPacket(r, tx, parents, script); err != nil {
+			return err
+		}
+	} else {
+		wantPacket, err := packetScriptAt(script, r.SavingsIndex())
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(tx.TxOut[r.PacketIndex(len(tx.TxOut))].PkScript, wantPacket) {
+			return fmt.Errorf("unexpected connector packet")
+		}
 	}
-	if !bytes.Equal(tx.TxOut[PacketOutput].PkScript, wantPacket) {
-		return fmt.Errorf("unexpected connector packet")
-	}
-	s := parents.FetchPrevOutput(tx.TxIn[SavingsInput].PreviousOutPoint).PkScript
+	s := parents.FetchPrevOutput(tx.TxIn[r.SavingsIndex()].PreviousOutPoint).PkScript
 	if !validP2TR(s) || bytes.Equal(s, r.ConnectorScript) {
 		return fmt.Errorf("distinct Savings script required")
 	}
-	engine, err := arkade.NewEngine(script, tx, SavingsInput, nil, txscript.NewTxSigHashes(tx, parents), parents.FetchPrevOutput(tx.TxIn[0].PreviousOutPoint).Value, parents)
+	engine, err := arkade.NewEngine(script, tx, r.SavingsIndex(), nil, txscript.NewTxSigHashes(tx, parents), parents.FetchPrevOutput(tx.TxIn[r.SavingsIndex()].PreviousOutPoint).Value, parents)
 	if err != nil {
 		return err
 	}
+	if r.Version == 2 {
+		entries, err := arkade.FindEmulatorPacket(tx)
+		if err != nil {
+			return err
+		}
+		engine.SetStack(entries[0].Witness)
+		engine.SetEmulatorPacket(entries)
+	}
 	return engine.Execute()
+}
+
+// validateDualPacket verifies the corrected v2 packet output: canonical
+// vin-2 entry whose witness carries both compact SINGLE signatures, the
+// padded recipient matching output 0, the P2WPKH key when present, and program
+// chunks reassembling to the expected program. Hardware signatures are then
+// verified against independently reconstructed SINGLE digests so NONE can
+// never authorize, before the Emulator engine re-proves the on-chain CSFS.
+func validateDualPacket(r Rules, tx *wire.MsgTx, parents Parents, program []byte) error {
+	packetOut := tx.TxOut[r.PacketIndex(len(tx.TxOut))]
+	taproot := validP2TR(r.ConnectorScript)
+	sigs, recipient, err := ParseApprovalPacket(packetOut.PkScript, program, taproot)
+	if err != nil {
+		return fmt.Errorf("approval packet: %w", err)
+	}
+	if !bytes.Equal(recipient, tx.TxOut[DestinationOutput].PkScript) {
+		return fmt.Errorf("approval recipient mismatch")
+	}
+	var pubKey []byte
+	if !taproot {
+		packet, err := decodePacketOutput(packetOut.PkScript)
+		if err != nil {
+			return err
+		}
+		if len(packet.Witness) < 4 {
+			return fmt.Errorf("approval key required")
+		}
+		pubKey = packet.Witness[3]
+	}
+	if err := VerifyApprovalSignatures(r, tx, parents, sigs, pubKey); err != nil {
+		return fmt.Errorf("approval signatures: %w", err)
+	}
+	return nil
 }
 
 // RecipientDust permits the ordinary address formats supported by Bitcoin

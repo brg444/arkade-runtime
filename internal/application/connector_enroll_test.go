@@ -193,7 +193,7 @@ func putConnectorInvite(t *testing.T, led *policy.Ledger, tokenHash []byte) {
 
 func enrollConnectorVault(t *testing.T, svc *Service, vaultID string, tokenHash []byte, req RegisterRequest) RegisterRequest {
 	t.Helper()
-	preview, err := svc.previewConnectorEnrollmentDescriptor(vaultID, req)
+	preview, err := svc.previewConnectorEnrollmentDescriptor(vaultID, req, connector.DualTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestConnectorEnrollmentBindsFullDescriptor(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := connectorEnrollRequest(t, phone, hardware, boarding, program.ProtectionTierStandard, nil, connector.Taproot)
-	first, err := svc.previewConnectorEnrollmentDescriptor(vaultID, base)
+	first, err := svc.previewConnectorEnrollmentDescriptor(vaultID, base, connector.DualTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestConnectorEnrollmentBindsFullDescriptor(t *testing.T) {
 	otherBoarding, _ := btcec.NewPrivateKey()
 	changedBoard := base
 	changedBoard.VaultBoardingBIP340Pub = hex.EncodeToString(schnorr.SerializePubKey(otherBoarding.PubKey()))
-	second, err := svc.previewConnectorEnrollmentDescriptor(vaultID, changedBoard)
+	second, err := svc.previewConnectorEnrollmentDescriptor(vaultID, changedBoard, connector.DualTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestConnectorEnrollmentBindsFullDescriptor(t *testing.T) {
 	// Connector binding: a different origin path must change the hash.
 	changedOrigin := base
 	changedOrigin.ConnectorPath = []uint32{0x80000056, 0x80000001, 0x80000000, 0, 1}
-	third, err := svc.previewConnectorEnrollmentDescriptor(vaultID, changedOrigin)
+	third, err := svc.previewConnectorEnrollmentDescriptor(vaultID, changedOrigin, connector.DualTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestConnectorEnrollmentBindsFullDescriptor(t *testing.T) {
 	// Partial origins are rejected, never treated as legacy.
 	partial := base
 	partial.ConnectorPub = ""
-	if _, err := svc.previewConnectorEnrollmentDescriptor(vaultID, partial); err == nil {
+	if _, err := svc.previewConnectorEnrollmentDescriptor(vaultID, partial, connector.DualTemplate); err == nil {
 		t.Fatal("partial connector origin accepted")
 	}
 }
@@ -302,8 +302,8 @@ func TestConnectorEnrollmentAtomicParityAndDuplicate(t *testing.T) {
 	if err != nil || cred == nil {
 		t.Fatalf("connector credential: %v %v", cred, err)
 	}
-	if cred.TemplateVersion != connector.Template {
-		t.Fatalf("template %q, want %q", cred.TemplateVersion, connector.Template)
+	if cred.TemplateVersion != connector.DualTemplate {
+		t.Fatalf("template %q, want %q", cred.TemplateVersion, connector.DualTemplate)
 	}
 	if !bytes.Equal(cred.ExternalOwnerWallet, hardware.PubKey().SerializeCompressed()) {
 		t.Fatal("enrolled hardware key parity was not preserved")
@@ -398,7 +398,7 @@ func TestConnectorEnrollmentTiersAndLegacy(t *testing.T) {
 	putConnectorInvite(t, led, token3)
 	bad := connectorEnrollRequest(t, phone3, hardware3, boarding3, program.ProtectionTierStandard, nil, connector.Taproot)
 	bad.ConnectorPub = hex.EncodeToString(other.PubKey().SerializeCompressed())
-	if _, err := svc.previewConnectorEnrollmentDescriptor(vault3, bad); err == nil {
+	if _, err := svc.previewConnectorEnrollmentDescriptor(vault3, bad, connector.DualTemplate); err == nil {
 		t.Fatal("mismatched connector origin accepted")
 	}
 
@@ -633,7 +633,7 @@ func TestConnectorEnrollmentMainnetMatrix(t *testing.T) {
 			if err != nil || cred == nil {
 				t.Fatal(err)
 			}
-			if cred.TemplateVersion != connector.Template || cred.Network != deployment.NetworkMainnet {
+			if cred.TemplateVersion != connector.DualTemplate || cred.Network != deployment.NetworkMainnet {
 				t.Fatalf("enrolled %+v", cred.TemplateVersion+" / "+cred.Network)
 			}
 			stored, err := f.svc.Stores.Connector.GetConnectorEnrollment(vaultID)
@@ -730,7 +730,7 @@ func TestConnectorDescriptorReconstruction(t *testing.T) {
 	token := bytes.Repeat([]byte{0x82}, 32)
 	putConnectorInvite(t, led, token)
 	req := connectorEnrollRequest(t, phone, hardware, boarding, program.ProtectionTierStandard, nil, connector.Taproot)
-	preview, err := svc.previewConnectorEnrollmentDescriptor(vaultID, req)
+	preview, err := svc.previewConnectorEnrollmentDescriptor(vaultID, req, connector.DualTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -758,7 +758,7 @@ func TestConnectorDescriptorReconstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, origin, err := svc.connectorFamilyInput(vaultID, parsed, childPub, svc.ArkadeCosignerPub)
+	in, origin, err := svc.connectorFamilyInput(vaultID, parsed, childPub, svc.ArkadeCosignerPub, connector.DualTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +861,7 @@ func connectorHardwareInitiatePSBT(t *testing.T, svc *Service, vaultID string, o
 	if !ok {
 		t.Fatal("connector initiate proof missing")
 	}
-	internal, err := savings.ContextInternalKeyTemplate(vaultID, "savings", "", connector.Template)
+	internal, err := savings.ContextInternalKeyTemplate(vaultID, "savings", "", cred.TemplateVersion)
 	if err != nil {
 		t.Fatal(err)
 	}

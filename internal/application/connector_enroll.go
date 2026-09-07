@@ -197,14 +197,14 @@ func (s *Service) createConnectorTenantVault(vaultID string, tokenHash []byte, r
 	if parsed.connectorOrigin == nil || s.Stores.VaultBoard == nil || s.Stores.Connector == nil {
 		return fmt.Errorf("connector enrollment store required")
 	}
-	proposed, err := s.previewConnectorEnrollmentDescriptor(vaultID, req)
+	proposed, err := s.previewConnectorEnrollmentDescriptor(vaultID, req, connector.DualTemplate)
 	if err != nil {
 		return err
 	}
 	if req.DescriptorHash == "" || req.DescriptorHash != proposed.DescriptorHash {
 		return fmt.Errorf("enrollment descriptor hash does not match the proposed vault")
 	}
-	descriptor, sv, _, connectorRow, err := s.mintConnectorCredential(vaultID, parsed, childPub)
+	descriptor, sv, _, connectorRow, err := s.mintConnectorCredential(vaultID, parsed, childPub, connector.DualTemplate)
 	if err != nil {
 		return err
 	}
@@ -258,8 +258,9 @@ func (s *Service) createConnectorTenantVault(vaultID string, tokenHash []byte, r
 // commits. The wallet reconstructs the identical tuple from its descriptor.
 // in.Hardware carries the full parity-preserving origin key so P2WPKH scripts
 // commit correctly; binding to the enrolled x-only hardware key is checked by
-// x-coordinate, never by even-normalizing the origin.
-func (s *Service) connectorFamilyInput(vaultID string, parsed parsedRegisterRequest, vaultBase, arkadeBase *btcec.PublicKey) (savings.FamilyInput, *connector.KeyOrigin, error) {
+// x-coordinate, never by even-normalizing the origin. New enrollments select
+// the dual v2 template; existing v1 credentials rebuild via cred.TemplateVersion.
+func (s *Service) connectorFamilyInput(vaultID string, parsed parsedRegisterRequest, vaultBase, arkadeBase *btcec.PublicKey, template string) (savings.FamilyInput, *connector.KeyOrigin, error) {
 	if parsed.connectorOrigin == nil || parsed.externalOwner == nil || parsed.connectorPub == nil {
 		return savings.FamilyInput{}, nil, fmt.Errorf("connector enrollment origin required")
 	}
@@ -267,7 +268,10 @@ func (s *Service) connectorFamilyInput(vaultID string, parsed parsedRegisterRequ
 	if err != nil {
 		return savings.FamilyInput{}, nil, err
 	}
-	in.TemplateVersion = connector.Template
+	if !connector.IsTemplate(template) {
+		return savings.FamilyInput{}, nil, fmt.Errorf("unsupported connector template")
+	}
+	in.TemplateVersion = template
 	in.ServerFreeClawback = true
 	origin := *parsed.connectorOrigin
 	origin.PublicKey = append([]byte(nil), parsed.connectorOrigin.PublicKey...)
@@ -294,9 +298,9 @@ func connectorOriginPathString(path []uint32) string {
 
 // mintConnectorCredential builds the connector credential, its descriptor,
 // and the sealed origin row from already-parsed enrollment material.
-func (s *Service) mintConnectorCredential(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey) (policy.Credential, *savingsSnapshot, *connector.Family, policy.ConnectorEnrollment, error) {
+func (s *Service) mintConnectorCredential(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey, template string) (policy.Credential, *savingsSnapshot, *connector.Family, policy.ConnectorEnrollment, error) {
 	var empty policy.ConnectorEnrollment
-	in, origin, err := s.connectorFamilyInput(vaultID, parsed, vaultBase, s.ArkadeCosignerPub)
+	in, origin, err := s.connectorFamilyInput(vaultID, parsed, vaultBase, s.ArkadeCosignerPub, template)
 	if err != nil {
 		return policy.Credential{}, nil, nil, empty, err
 	}
@@ -323,7 +327,7 @@ func (s *Service) mintConnectorCredential(vaultID string, parsed parsedRegisterR
 		ArkadeCosignerBase:    s.ArkadeCosignerPub.SerializeCompressed(),
 		ArkadeCosignerOrigin:  arkadeOrigin,
 		ArkadeCosignerVersion: arkadeVersion,
-		TemplateVersion:       connector.Template,
+		TemplateVersion:       in.TemplateVersion,
 		PolicyVersion:         program.PolicyVersion,
 		ProtectionTier:        parsed.protectionTier,
 		Network:               cfg.Network,
@@ -359,7 +363,7 @@ func (s *Service) mintConnectorCredential(vaultID string, parsed parsedRegisterR
 // boarding wrapper hash over the ACTUAL connector Savings descriptor (see
 // connectorSavingsPublicDescriptor). The legacy savings builder always renders
 // the old admin-leaf tree, so the wallet applies the same documented override.
-func (s *Service) previewConnectorEnrollmentDescriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
+func (s *Service) previewConnectorEnrollmentDescriptor(vaultID string, req RegisterRequest, template string) (*ProposedEnrollment, error) {
 	if vaultID == "" {
 		return nil, fmt.Errorf("tenant vault id required")
 	}
@@ -382,7 +386,7 @@ func (s *Service) previewConnectorEnrollmentDescriptor(vaultID string, req Regis
 	if parsed.connectorOrigin == nil {
 		return nil, fmt.Errorf("connector enrollment origin required")
 	}
-	in, origin, err := s.connectorFamilyInput(vaultID, parsed, childPub, s.ArkadeCosignerPub)
+	in, origin, err := s.connectorFamilyInput(vaultID, parsed, childPub, s.ArkadeCosignerPub, template)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +432,7 @@ func (s *Service) previewConnectorEnrollmentDescriptor(vaultID string, req Regis
 	desc := connectorBoardCompositeDescriptor{
 		Schema: connectorBoardEnrollmentSchema, VaultID: vaultID,
 		Connector: connectorEnrollmentDescriptor{
-			Schema: connectorEnrollmentSchema, Template: connector.Template,
+			Schema: connectorEnrollmentSchema, Template: in.TemplateVersion,
 			VaultID: vaultID, Network: in.Network, ProtectionTier: in.ProtectionTier,
 			PhonePub:         hex.EncodeToString(in.Phone.SerializeCompressed()),
 			HardwarePub:      hex.EncodeToString(in.Hardware.SerializeCompressed()),
@@ -511,7 +515,7 @@ func (s *Service) connectorFamilyParameters(cred *policy.Credential) (savings.Fa
 		VaultID: cred.VaultID, Network: cred.Network, Phone: phone, Hardware: hardware,
 		Recovery: recovery, PhoneDirectP256: append([]byte(nil), cred.PhoneDirectP256...),
 		VaultCosignerBase: vaultBase, ArkadeCosignerBase: arkadeBase,
-		TemplateVersion: connector.Template, ServerFreeClawback: true,
+		TemplateVersion: cred.TemplateVersion, ServerFreeClawback: true,
 		ProtectionTier: cred.ProtectionTier,
 		SpendingPolicy: program.SpendingPolicyFromValues(
 			cred.TxRecipientCapSats, cred.PeriodAllowanceSats, cred.AbsoluteFeeCapSats, cred.FeerateCapSatPerV,
@@ -521,7 +525,7 @@ func (s *Service) connectorFamilyParameters(cred *policy.Credential) (savings.Fa
 }
 
 func (s *Service) rebuildConnectorFamily(cred *policy.Credential) (*connector.Family, error) {
-	if cred == nil || cred.TemplateVersion != connector.Template {
+	if cred == nil || !connector.IsTemplate(cred.TemplateVersion) {
 		return nil, fmt.Errorf("connector credential required")
 	}
 	in, origin, err := s.connectorFamilyParameters(cred)
@@ -557,7 +561,7 @@ func (s *Service) connectorRecoveryFamily(cred *policy.Credential) (*savings.Fam
 }
 
 func isConnectorCredential(cred *policy.Credential) bool {
-	return cred != nil && cred.TemplateVersion == connector.Template
+	return cred != nil && connector.IsTemplate(cred.TemplateVersion)
 }
 
 // acceptConnectorDuplicateFinish resumes an already-finished connector
@@ -568,7 +572,7 @@ func (s *Service) acceptConnectorDuplicateFinish(vaultID string, req RegisterReq
 	if rec == nil || cred == nil || parsed.connectorOrigin == nil {
 		return nil, false
 	}
-	preview, err := s.previewConnectorEnrollmentDescriptor(vaultID, req)
+	preview, err := s.previewConnectorEnrollmentDescriptor(vaultID, req, rec.TemplateVersion)
 	if err != nil || req.DescriptorHash == "" || req.DescriptorHash != preview.DescriptorHash {
 		return nil, false
 	}
@@ -576,7 +580,7 @@ func (s *Service) acceptConnectorDuplicateFinish(vaultID string, req RegisterReq
 	if err != nil {
 		return nil, false
 	}
-	descriptor, _, _, wantConnector, err := s.mintConnectorCredential(vaultID, parsed, childPub)
+	descriptor, _, _, wantConnector, err := s.mintConnectorCredential(vaultID, parsed, childPub, rec.TemplateVersion)
 	if err != nil {
 		return nil, false
 	}
@@ -647,7 +651,7 @@ func (s *Service) statusConnectorBoardDescriptor(cred *policy.Credential, snap e
 		VaultID: cred.VaultID, Network: cred.Network, Phone: phone, Hardware: hardware,
 		Recovery: recovery, PhoneDirectP256: append([]byte(nil), cred.PhoneDirectP256...),
 		VaultCosignerBase: vaultBase, ArkadeCosignerBase: arkadeBase,
-		TemplateVersion: connector.Template, ServerFreeClawback: true,
+		TemplateVersion: cred.TemplateVersion, ServerFreeClawback: true,
 		ProtectionTier: cred.ProtectionTier,
 		SpendingPolicy: program.SpendingPolicyFromValues(
 			cred.TxRecipientCapSats, cred.PeriodAllowanceSats, cred.AbsoluteFeeCapSats, cred.FeerateCapSatPerV,
@@ -703,7 +707,7 @@ type ConnectorCapability struct {
 }
 
 func currentConnectorCapability() *ConnectorCapability {
-	return &ConnectorCapability{Schema: "arkade-vault/connector-capability-v1", Program: "savings-connector-v1", Template: connector.Template, ReserveSats: connector.ReserveSats, EnrollmentSchema: connectorBoardEnrollmentSchema}
+	return &ConnectorCapability{Schema: "arkade-vault/connector-capability-v1", Program: connector.DualName, Template: connector.DualTemplate, ReserveSats: 1000, EnrollmentSchema: connectorBoardEnrollmentSchema}
 }
 
 // ConnectorEnrollmentStatus is reconstructed from authenticated enrollment

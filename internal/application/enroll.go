@@ -11,6 +11,7 @@ import (
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
 
@@ -197,7 +198,7 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 		return nil, err
 	}
 	if hasConnectorRequest(req.RegisterRequest) {
-		return s.previewConnectorEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
+		return s.previewConnectorEnrollmentDescriptor(pending.VaultID, req.RegisterRequest, connector.DualTemplate)
 	}
 	return s.previewVaultBoardEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
 }

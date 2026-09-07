@@ -14,9 +14,10 @@ const (
 	ProfileID = "arkade-vault-v1"
 	ModuleID  = "arkade-vault-v1"
 
-	SavingsRecoveryProgram  = "savings-recovery-v1"
-	SavingsConnectorProgram = "savings-connector-v1"
-	SpendingPolicy          = "vault-spending-policy-v1"
+	SavingsRecoveryProgram      = "savings-recovery-v1"
+	SavingsConnectorProgram     = "savings-connector-v1"
+	SavingsConnectorDualProgram = "savings-connector-dual-v2"
+	SpendingPolicy              = "vault-spending-policy-v1"
 )
 
 // Definition returns a fresh compile-time profile definition. Policy values,
@@ -29,6 +30,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 			Programs: []string{
 				SavingsRecoveryProgram,
 				SavingsConnectorProgram,
+				SavingsConnectorDualProgram,
 				program.VaultBoardV1,
 				program.VaultPolicyV1,
 			},

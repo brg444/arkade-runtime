@@ -49,7 +49,11 @@ func EnrollmentDigest(in savings.FamilyInput, origin KeyOrigin) (string, error) 
 	if in.Recovery != nil {
 		recovery = hex.EncodeToString(in.Recovery.SerializeCompressed())
 	}
-	fields := []string{EnrollmentSchema, Template, in.VaultID, in.Network, in.ProtectionTier,
+	template := in.TemplateVersion
+	if template == "" {
+		template = Template
+	}
+	fields := []string{EnrollmentSchema, template, in.VaultID, in.Network, in.ProtectionTier,
 		hex.EncodeToString(in.Phone.SerializeCompressed()), hex.EncodeToString(in.Hardware.SerializeCompressed()), recovery,
 		hex.EncodeToString(in.PhoneDirectP256), hex.EncodeToString(in.VaultCosignerBase.SerializeCompressed()), hex.EncodeToString(in.ArkadeCosignerBase.SerializeCompressed()), policy,
 		hex.EncodeToString(f.Program), hex.EncodeToString(f.Recovery.Savings.PkScript), hex.EncodeToString(f.Rules.ConnectorScript), fmt.Sprintf("%08x", origin.Fingerprint), strings.Join(path, "/")}
