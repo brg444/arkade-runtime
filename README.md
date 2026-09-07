@@ -52,6 +52,70 @@ signing environment. Browser integrity, host key protection, storage
 independence, and the exact enrolled recovery path remain material assumptions.
 See [security](docs/security.md) and [storage](docs/storage.md).
 
+## HTTP surface
+
+The mounted route allowlist, compiled profiles and compatibility golden are
+checked against this table by the test suite. Mutation requests require JSON,
+the configured Origin and gateway authentication; operation-specific passkey
+and signature checks provide user authorization. See [security](docs/security.md)
+for the service and tenant access boundaries.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /health` | Process liveness only. |
+| `GET /ready` | Database and release-pinned signer/resolver readiness. |
+| `GET /v1/status` | Public service status or one vault's status with `?vault=`. |
+| `GET /v1/invite` | Invitation availability. |
+| `POST /v1/enroll/session` | Issue a ten-minute, single-use setup session when invite-only admission is off. |
+| `POST /v1/light/renew/prepare` | Reserve the fee for renewing one Light output. |
+| `POST /v1/light/renew/register` | Verify owner and passkey approval, then register the exact Light renewal. |
+| `POST /v1/light/renew/final` | Verify signed replacement paths and submit the owner-authorized forfeit. |
+| `POST /v1/light/renew/status` | Reconcile the replacement output and confirmed Bitcoin commitment. |
+| `POST /v1/light/renew/release` | Cancel an unsent renewal or fence an expired registration after checking the old output. |
+| `POST /v1/light/delegate/info` | Read enrolled native delegate capabilities when enabled. |
+| `POST /v1/light/delegate/schedule` | Persist bounded owner authorization for one Light renewal. |
+| `POST /v1/light/delegate/status` | Read operation state and verified replacement recovery paths. |
+| `POST /v1/light/delegate/list` | Discover this vault’s scheduled operations with owner authorization. |
+| `POST /v1/light/delegate/cancel` | Cancel an armed renewal before dispatch claims its input. |
+| `POST /v1/vtxo/delegate/info` | Read native renewal capabilities for the enrolled Spending program. |
+| `POST /v1/vtxo/delegate/schedule` | Atomically authorize 1–50 exact Spending renewal plans. |
+| `POST /v1/vtxo/delegate/status` | Read a Spending renewal and its verified recovery paths. |
+| `POST /v1/vtxo/delegate/list` | Discover Spending renewals with owner authorization. |
+| `POST /v1/vtxo/delegate/cancel` | Cancel an armed Spending renewal before dispatch. |
+| `POST /v1/recovery-archive/challenge` | Issue a discoverable Savings archive passkey challenge. |
+| `POST /v1/recovery-archive/open` | Authenticate a Savings passkey and pin the enrolled descriptor for eight hours. |
+| `POST /v1/recovery-archive/read` | Read the authenticated encrypted archive of recovery data. |
+| `POST /v1/recovery-archive/write` | Save an encrypted archive at the expected revision with its original header. |
+| `POST /v1/light/backup/challenge` | Issue a single-use discoverable passkey challenge. |
+| `POST /v1/light/backup/open` | Authenticate a Light passkey and open an eight-hour backup-only session. |
+| `POST /v1/light/backup/read` | Read the authenticated encrypted recovery snapshot. |
+| `POST /v1/light/backup/write` | Atomically replace an encrypted snapshot at the expected revision. |
+| `POST /v1/light/enroll/start` | Assign a Light identity and freeze its spending policy. |
+| `POST /v1/light/enroll/propose` | Return the Light descriptor for local verification and backup. |
+| `POST /v1/light/enroll/finish` | Verify the passkey ceremony and atomically consume admission. |
+| `POST /v1/enroll/start` | Freeze the protection tier and canonical policy digest, reserve a vault ID, and return the create-ceremony challenge. |
+| `POST /v1/enroll/propose` | Return the Savings and `vault-board-v1` descriptors for wallet review. |
+| `POST /v1/enroll/finish` | Verify the complete enrollment and consume the invitation. |
+| `POST /v1/vtxo/board/prepare` | Reconcile and prepare one exact boarding attempt. |
+| `POST /v1/vtxo/board/register` | Verify, cosign, and submit the exact registration intent. |
+| `POST /v1/vtxo/board/release` | Verify, cosign, and submit release of a retained prior intent. |
+| `POST /v1/vtxo/board/final` | Verify and submit the SDK-validated final commitment artifacts. |
+| `POST /v1/vtxo/reserve` | Authenticate and create an immutable VTXO operation. |
+| `POST /v1/vtxo/authorize` | Validate and sign the Arkade transaction and its pending-transaction recovery proof. |
+| `POST /v1/vtxo/checkpoints/authorize` | Validate and sign Operator checkpoints. |
+| `POST /v1/vtxo/finalize` | Verify the recorded spend and finalize the operation. |
+| `GET /v1/vtxo/operation` | Read one operation for retry reconciliation. |
+| `POST /v1/vtxo/abort` | Abort a pre-signature reservation and release its inputs. |
+| `POST /v1/initiate` | Authorize a Savings-to-Pending recovery transition. |
+| `POST /v1/clawback` | Authorize a Pending-to-Quarantine transition. |
+| `POST /v1/passkey/challenge` | Issue a purpose-bound passkey challenge. |
+| `POST /v1/passkey/binding` | Build the authenticated Recovery Kit binding. |
+| `POST /v1/passkey/install` | Install a passkey credential envelope. |
+| `POST /v1/passkey/recover` | Recover a passkey credential envelope. |
+| `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
+| `POST /v1/connector/withdraw/authorize` | Validate, durably authorize, and cosign one Savings connector withdrawal. |
+| `GET /v1/connector/operation` | Read one connector operation for retry reconciliation. |
+
 ## Build and test
 
 Use Go 1.26.6, as pinned in [go.mod](go.mod):
