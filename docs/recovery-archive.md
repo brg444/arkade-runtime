@@ -1,8 +1,7 @@
 # Encrypted recovery archives
 
 Standard and Advanced Savings wallets can persist encrypted recovery data at
-`/v1/recovery-archive/{challenge,open,read,write}`. Both the existing Savings
-script and `phone-connector-recovery-savings-v1` are supported. The existing
+`/v1/recovery-archive/{challenge,open,read,write}`. Direct-hardware Savings and both connector template versions are supported. The existing
 `/v1/light/backup/*` routes remain restricted to Light enrollment.
 
 The archive transport grants no signing, payment or recovery authority. Clients
@@ -57,9 +56,9 @@ encrypted data, and each encryption nonce belongs in the outer envelope. Opening
 an existing archive pins its header hash; the first successful write pins a new
 archive. Another session opened before that first write must honor the stored
 header as well. A fresh passkey ceremony does not permit silently replacing it.
-Phone-envelope rotation requires a separately designed protocol.
+The endpoint does not support phone-envelope rotation.
 
-## Persistence and release
+## Persistence
 
 Light and Savings share one opaque `recovery_backup` table and one CAS store,
 keyed by vault ID. Rows authenticate the vault ID, revision and payload with a
@@ -67,14 +66,6 @@ separate MAC domain. Reads verify the MAC before returning data, and writes
 verify the prior row before testing its revision. Archive updates neither debit
 allowances nor advance the economic policy sequence.
 
-This is an explicit behavior change to the undeployed schema-4 integration.
-Schemas 1, 2 and 3 remain frozen and migrate through their verified structural
-baselines to the shared schema 4. The earlier scratch schema 4 with only the
-`light_backup` table is refused. Startup does not infer lineage from table
-presence or recover a missing economic sequence from database rows.
-
-Transport qualification covers both networks, templates and protection tiers,
-passkey and route isolation, descriptor and header substitution, concurrent CAS,
-exact retries, restart and expiry, malformed envelopes and HTTP body bounds.
-Client encryption, complete exit-graph restoration and recovery execution remain
-separate release qualifications.
+The current database is schema 5. Supported earlier schemas migrate through
+strictly validated structures. Archive transport does not prove that the client
+has captured a complete exit graph or retained a usable signing key.

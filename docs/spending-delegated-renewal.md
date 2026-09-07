@@ -35,7 +35,22 @@ both networks and every enrollment template.
 POST `/v1/vtxo/delegate/schedule` accepts these ordered semantic fields:
 
 ```json
-{"program":"vault-policy-v1","descriptorHash":"...","vaultId":"...","setId":"...","plans":[{"operationId":"...","intent":{"proof":"...","message":"..."},"forfeitTxs":["..."],"deleteIntent":{"proof":"...","message":"..."},"expiresAt":1,"ownerSignature":"..."}]}
+{
+  "program": "vault-policy-v1",
+  "descriptorHash": "...",
+  "vaultId": "...",
+  "setId": "...",
+  "plans": [
+    {
+      "operationId": "...",
+      "intent": { "proof": "...", "message": "..." },
+      "forfeitTxs": ["..."],
+      "deleteIntent": { "proof": "...", "message": "..." },
+      "expiresAt": 1,
+      "ownerSignature": "..."
+    }
+  ]
+}
 ```
 
 There must be 1–50 distinct plans, with unique operation IDs and input
@@ -100,7 +115,7 @@ rows. MAC verification and complete set membership checks precede use. A missing
 or substituted member fails closed, while global set-ID collisions cannot
 combine different vaults.
 
-## Execution and release gates
+## Execution and recovery
 
 Armed plans consume no allowance. Per-plan claim keeps the existing input and
 vault execution fences and reserves only the renewal fee. Final Guardian
@@ -114,11 +129,3 @@ remains conservative. No-match is not proof of deletion, and an unresolved
 signed operation retains its fence. The wallet must import and verify the new
 recovery graph and update its encrypted archive on return; an earlier archive
 cannot contain a graph produced after it was saved.
-
-Release requires all source gates, real wallet-to-Guardian API coverage,
-stock Operator funded renewal for each program, verified replacement import,
-and independent recovery using the actual required exit keys. Tests must also
-cover changed tree/control/recovery leaves, wrong passkey or direct signature,
-exact retries after later counters, atomic rejection, payment conflicts, restart,
-and legacy Light journals. Production activation and fund migration are separate
-from preparing this implementation.

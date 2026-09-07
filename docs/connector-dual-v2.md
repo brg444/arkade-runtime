@@ -43,7 +43,7 @@ approves a new v2 proposal; the server does not silently change its commitment.
 Recovery reconstructs the enrolled family for either version, including after
 restart and in the pinned offline companion.
 
-## Qualification and activation
+## Compatibility checks
 
 The shared vectors cover both networks, protection tiers, signer types and
 full/partial withdrawals. Go and TypeScript must reproduce the same program,
@@ -51,17 +51,10 @@ Savings script, leaf, control block and enrollment digest. Completed transaction
 fixtures execute through Bitcoin validation and the current Emulator. The v1
 vectors remain unchanged.
 
-The wallet's [Ledger qualification](https://github.com/brg444/vaulted-bitcoin-wallet/blob/codex/ledger-dual-connector-20260907/tools/connector-signers/LEDGER.md)
+The wallet's [Ledger qualification](https://github.com/brg444/vaulted-bitcoin-wallet/blob/main/tools/connector-signers/LEDGER.md)
 records the firmware simulator and Emulator evidence. Physical hardware and
 funded production relay acceptance remain separate qualifications. The
 Emulator verifies the destination approved by the hardware; it cannot infer
 whether that destination matches the user's intention. Bitcoin does not execute
 the Arkade Script program, so its policy still depends on an honest enforcing
 cosigner.
-
-Deploy the paired wallet and runtime with byte-identical network Contract Packs
-and the verified recovery companion. Stage the new binary while the existing
-Guardian runs. Activation requires the operator's interactive unlock, followed
-by readiness and capability verification before wallet promotion. Existing
-wallets require no fund migration. Once v2 contracts or authorizations exist,
-an older runtime that does not understand them is not a safe rollback target.

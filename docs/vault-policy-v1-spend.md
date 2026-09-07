@@ -6,7 +6,7 @@ the reserved set is persisted and returned in canonical outpoint order. A
 single operation can therefore spend fragmented balances without making caller
 order part of the signed contract.
 
-The destination must be a `tark` address for the same release-pinned Operator.
+The destination must be an Arkade address for the selected network and pinned Operator.
 Bitcoin destinations and VTXO offboarding remain separate programs. Spending
 never falls back to an onchain transaction.
 
@@ -85,9 +85,3 @@ the persisted fee, change facts, signed transaction stages, and authorized
 pending proof so an ambiguous Vault-service response can resume the same
 operation. An empty or mismatched Operator lookup remains locked and never
 triggers a second submission.
-
-Mutinynet qualification must cover fragmented inputs, exact no-change spends,
-nonzero and amount-dependent fees, reloads, dropped Vault-service responses,
-ambiguous Operator submissions, empty and mismatched pending lookups,
-checkpoint reordering, and concurrent exact retries before this path is
-considered for mainnet.
