@@ -110,8 +110,8 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 }
 
 // cachedResolverReadiness bounds the unauthenticated readiness endpoint to at
-// most one external Operator probe per TTL. The mutex also coalesces concurrent
-// probes, preventing a readiness burst from becoming upstream amplification.
+// most one external Operator and Bitcoin checkpoint probe per TTL. The mutex
+// also coalesces concurrent probes, preventing upstream amplification.
 func (s *Service) cachedResolverReadiness(_ context.Context) error {
 	s.resolverReadyMu.Lock()
 	defer s.resolverReadyMu.Unlock()
@@ -124,6 +124,13 @@ func (s *Service) cachedResolverReadiness(_ context.Context) error {
 	readyCtx, cancel := context.WithTimeout(context.Background(), resolverReadyTimeout)
 	defer cancel()
 	_, err := s.ArkResolver.IntentFeePolicy(readyCtx)
+	if err == nil {
+		var runtime *vaultBoardRuntime
+		runtime, err = s.requireVaultBoardRuntime()
+		if err == nil {
+			err = runtime.chain.verifyCheckpoint(readyCtx, s.runtimeConfig().Network)
+		}
+	}
 	s.resolverReadyAt = now
 	s.resolverReadyErr = err
 	return err

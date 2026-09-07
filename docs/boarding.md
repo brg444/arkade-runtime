@@ -24,22 +24,22 @@ enrollment record and release pins. A changed key, role, delay, script, address,
 or destination fails before signing. Routine boarding does not use or unlock
 the phone key.
 
-The Mutinynet release accepts one confirmed boarding input and one BTC
+Boarding accepts one confirmed boarding input and one BTC
 recipient. That recipient must be the enrolled `vault-policy-v1` Spending
-address. Boarding principal does not debit the rolling allowance. A later
-payment from the resulting VTXO uses ordinary Spending authorization and the
-allowance ledger.
+address. Boarding principal leaves the rolling allowance unchanged; a later payment
+from the resulting VTXO uses ordinary Spending authorization and the allowance
+ledger.
 
 ## Phase boundary
 
 The service exposes four program-specific mutation routes:
 
-| Route | Result |
-| --- | --- |
-| `POST /v1/vtxo/board/prepare` | Verifies the confirmed outpoint, recovery window, exact recipient, fee, current attempt, and chain facts. Returns an authenticated short-lived handle. |
-| `POST /v1/vtxo/board/register` | Verifies the SDK registration proof, adds the VaultBoardCosigner signature, and submits the exact intent through the stock public Operator API. |
-| `POST /v1/vtxo/board/release` | Verifies and cosigns the SDK deletion proof for a retained prior attempt, then submits it through the stock public Operator API. |
-| `POST /v1/vtxo/board/final` | Verifies the SDK-validated Batch Output expiry, commitment, tree, forfeits, input indexes, and exact Spending recipient before submitting the final artifacts. |
+| Route                          | Result                                                                                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/vtxo/board/prepare`  | Verifies the confirmed outpoint, recovery window, exact recipient, fee, current attempt, and chain facts. Returns an authenticated short-lived handle.         |
+| `POST /v1/vtxo/board/register` | Verifies the SDK registration proof, adds the VaultBoardCosigner signature, and submits the exact intent through the stock public Operator API.                |
+| `POST /v1/vtxo/board/release`  | Verifies and cosigns the SDK deletion proof for a retained prior attempt, then submits it through the stock public Operator API.                               |
+| `POST /v1/vtxo/board/final`    | Verifies the SDK-validated Batch Output expiry, commitment, tree, forfeits, input indexes, and exact Spending recipient before submitting the final artifacts. |
 
 The service never returns a VaultBoardCosigner signature. It records the
 authorization, outbound dispatch, and known Operator outcome so a lost HTTP
@@ -52,18 +52,11 @@ Only stock public Operator routes are used: `registerIntent`, `deleteIntent`,
 and `submitForfeitTxs`. The service does not require a modified `arkd`, private
 Operator state, a replay endpoint, or a Vault-specific Operator deployment.
 
-## Release pins
+## Network parameters
 
-The Mutinynet release pins:
-
-- Operator origin: `https://mutinynet.arkade.sh`;
-- Operator signer: `03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a`;
-- Esplora origin: `https://mempool.mutinynet.arkade.sh/api`;
-- Batch Output expiry: exactly 604672 seconds.
-
-Startup installs the resolver, Operator identity, chain adapter, and expiry
-policy before persisted vaults are loaded. `/ready` remains false when any pin
-or dependency is unavailable.
+The selected network supplies Operator identity, chain access, and delay
+parameters from `internal/deployment` and its Contract Pack. Readiness requires
+compatible dependencies. Mainnet and Mutinynet identities are not interchangeable.
 
 ## Persistence and recovery
 
@@ -75,14 +68,4 @@ rollback detection.
 
 The cooperative path closes when the Bitcoin median-time-past threshold reaches
 the recovery delay. After that cutoff, the service refuses new cooperative
-authorization and the phone recovery leaf is the valid path. Mutinynet release
-qualification must exercise both sides of the cutoff.
-
-## Qualification
-
-Deployment remains blocked until a fresh vault passes enrollment, onchain
-receive, Savings-to-Spending, reload, worker wake, offline recovery, response
-loss at every phase, retained-intent release, exact final reconciliation,
-balance and activity convergence, and recovery after the CSV cutoff. Mainnet
-parameters and per-device worker-key registration remain separate release
-decisions.
+authorization and the phone recovery leaf is the valid path. Tests exercise both sides of the cutoff.

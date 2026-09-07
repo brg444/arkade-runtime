@@ -6,7 +6,7 @@ the reserved set is persisted and returned in canonical outpoint order. A
 single operation can therefore spend fragmented balances without making caller
 order part of the signed contract.
 
-The destination must be a `tark` address for the same release-pinned Operator.
+The destination must be an Arkade address for the selected network and pinned Operator.
 Bitcoin destinations and VTXO offboarding remain separate programs. Spending
 never falls back to an onchain transaction.
 
@@ -31,6 +31,25 @@ authenticated vault record, Savings descriptor, Recovery Kit, and wallet pin.
 Authorization always loads the tenant record; a different vault on the same
 service may use different exposure limits without changing the compiled
 `vault-policy-v1` program.
+
+The rolling allowance remains charged while an operation is signed or
+submitted, regardless of its age. Once the Guardian verifies finalization,
+the completed payment counts for another 24 hours from that observation.
+For example, a payment held for two days still consumes allowance for 24 hours
+after its finalization is observed. This conservative rule prevents delayed
+execution from immediately restoring the full allowance.
+
+A conflicting spend enters `unresolved`. Its debit ages out after 24 hours,
+but the vault continues to refuse new cooperative payments. Time alone does
+not release that fence. Recovery requires checking the committed transaction
+paths and the current chain state; the appropriate unilateral recovery path
+depends on which outputs remain controlled by the wallet.
+
+The persisted `CreatedAt` field is the original reservation time during
+signing and becomes the accounting timestamp on terminal reconciliation.
+Terminal retries preserve that timestamp. The stored bundle digest remains
+the original signed reservation commitment; reconstructing it from terminal
+accounting fields is unsupported.
 
 The fee is evaluated from the Operator's four `fees.intentFee` CEL programs.
 It includes every selected offchain input, the destination, and the change
@@ -66,9 +85,3 @@ the persisted fee, change facts, signed transaction stages, and authorized
 pending proof so an ambiguous Vault-service response can resume the same
 operation. An empty or mismatched Operator lookup remains locked and never
 triggers a second submission.
-
-Mutinynet qualification must cover fragmented inputs, exact no-change spends,
-nonzero and amount-dependent fees, reloads, dropped Vault-service responses,
-ambiguous Operator submissions, empty and mismatched pending lookups,
-checkpoint reordering, and concurrent exact retries before this path is
-considered for mainnet.

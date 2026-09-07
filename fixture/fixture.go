@@ -1,11 +1,7 @@
 // Package fixture is testdata. Production code imports internal/program.
 package fixture
 
-import (
-	"net/url"
-
-	"github.com/brg444/arkade-runtime/internal/program"
-)
+import "github.com/brg444/arkade-runtime/internal/program"
 
 const (
 	VaultID = "vault-test-v2"
@@ -40,11 +36,3 @@ const (
 	PolicyVersion   = program.PolicyVersion
 	Network         = program.NetworkMutinynet
 )
-
-func OriginURL() *url.URL {
-	u, err := url.Parse(Origin)
-	if err != nil {
-		panic(err)
-	}
-	return u
-}

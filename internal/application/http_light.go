@@ -7,6 +7,7 @@ import (
 )
 
 func attachLightEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
+	attachLightBackupRoutes(mux, svc, origin)
 	mux.HandleFunc("POST /v1/light/enroll/start", func(w http.ResponseWriter, r *http.Request) {
 		var req LightEnrollStartRequest
 		if err := decodeMutation(r, &req, origin); err != nil {

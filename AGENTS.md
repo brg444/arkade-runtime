@@ -37,7 +37,7 @@ official Arkade SDK owns wallet-side transaction coordination.
 - `make race` runs the full race suite.
 - `make lint` runs the pinned golangci-lint release.
 - `make vuln` runs the pinned vulnerability scanner.
-- `make images` builds both images and checks persistent-volume ownership.
+- `make images` builds the configured images and checks persistent-volume ownership.
 - `make bench` runs policy benchmarks.
 - `make ci` runs the complete local equivalent of GitHub CI.
 
@@ -75,8 +75,13 @@ separate security-sensitive PR.
 - Key capabilities accept semantic operations, not arbitrary digests or PSBTs.
 - Enrollment, boarding, Spending, and recovery are one immutable named
   profile, not dynamically loaded plugins.
-- The wallet owns transaction coordination through the official Arkade SDK;
-  this server independently verifies and authorizes the named Vault Program.
+- The wallet owns foreground transaction coordination through the official
+  Arkade SDK. The opt-in native delegate executes only durable owner-presigned renewal
+  requests for the enrolled Light, Standard, or Advanced Spending program
+  through stock Operator batch interfaces;
+  its scoped key capability verifies the persisted signing transcript.
+  See `docs/spending-delegated-renewal.md` and
+  `docs/light-delegated-renewal.md` for authorization and cleanup behavior.
 
 ## Test fixtures
 

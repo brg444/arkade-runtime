@@ -161,6 +161,9 @@ func (s *Service) statusVaultBoardDescriptor(cred *policy.Credential, snap enrol
 	if cred == nil || snap.Board == nil || snap.Board.BoardingPub == nil {
 		return vaultBoardCompositeDescriptor{}, "", fmt.Errorf("vault-board-v1 enrollment descriptor unavailable")
 	}
+	if isConnectorCredential(cred) {
+		return s.statusConnectorBoardDescriptor(cred, snap)
+	}
 	phone, hardware, recovery, vaultBase, arkadeBase, _, err := s.rebuildSavings(cred)
 	if err != nil {
 		return vaultBoardCompositeDescriptor{}, "", err

@@ -37,19 +37,20 @@ import (
 // VaultCosigner key and each operator-provisioned enrollment token are file-backed secrets; they
 // cannot be supplied through environment text or a network signer.
 type Config struct {
-	Deployment           deployment.Config
-	DatabasePath         string
-	PolicySequencePath   string
-	VaultCosignerKeyFile string
-	EnrollmentTokenFile  string
-	EnrollmentWindow     time.Duration
-	LightEnabled         bool // explicit opt-in until Light lifecycle qualification passes
-	OpenEnrollment       bool // false preserves invite-only admission
-	StorageIsolation     string
-	EdgeRateLimit        string
-	MainnetAcknowledged  string
-	CosignerKeyUnlink    string
-	ArkadeCosignerOrigin string
+	Deployment             deployment.Config
+	DatabasePath           string
+	PolicySequencePath     string
+	VaultCosignerKeyFile   string
+	EnrollmentTokenFile    string
+	EnrollmentWindow       time.Duration
+	LightDelegationEnabled bool
+	LightEnabled           bool // explicit opt-in until Light lifecycle qualification passes
+	OpenEnrollment         bool // false preserves invite-only admission
+	StorageIsolation       string
+	EdgeRateLimit          string
+	MainnetAcknowledged    string
+	CosignerKeyUnlink      string
+	ArkadeCosignerOrigin   string
 }
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
@@ -102,6 +103,12 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 	if err := rt.host.Ready(ctx); err != nil {
 		_ = rt.Close()
 		return nil, fmt.Errorf("authorizer readiness: %w", err)
+	}
+	// Background authorizations must not race the production chain and
+	// readiness checks, including when resuming a persisted operation.
+	if err := rt.service.StartLightDelegation(); err != nil {
+		_ = rt.Close()
+		return nil, err
 	}
 	return rt, nil
 }
@@ -249,17 +256,18 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		return nil, err
 	}
 	deps := application.Deps{
-		Stores:                stores,
-		Deployment:            cfg.Deployment,
-		OpenEnrollment:        cfg.OpenEnrollment,
-		LightEnabled:          cfg.LightEnabled,
-		IntegrityKey:          credentialIntegrityKey,
-		Keys:                  keys,
-		VaultCosignerPub:      vaultCosignerKey.PubKey(),
-		ArkadeCosignerPub:     arkadeIdentity.BasePub,
-		ArkadeCosignerOrigin:  arkadeIdentity.Origin,
-		ArkadeCosignerVersion: arkadeIdentity.Version,
-		ArkResolver:           resolver,
+		Stores:                 stores,
+		Deployment:             cfg.Deployment,
+		OpenEnrollment:         cfg.OpenEnrollment,
+		LightEnabled:           cfg.LightEnabled,
+		LightDelegationEnabled: cfg.LightDelegationEnabled,
+		IntegrityKey:           credentialIntegrityKey,
+		Keys:                   keys,
+		VaultCosignerPub:       vaultCosignerKey.PubKey(),
+		ArkadeCosignerPub:      arkadeIdentity.BasePub,
+		ArkadeCosignerOrigin:   arkadeIdentity.Origin,
+		ArkadeCosignerVersion:  arkadeIdentity.Version,
+		ArkResolver:            resolver,
 	}
 	svc := application.New(deps)
 	keyOwnedByService = true

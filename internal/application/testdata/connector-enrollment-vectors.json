@@ -1,0 +1,1110 @@
+[
+  {
+    "input": {
+      "arkadeCosignerBase": "0222e3334a01d404686c4420e34db694bfaeacc1325df9562ac1cb78c578940ef3",
+      "arkadeOrigin": "urn:vaulted:mainnet-signer:v1",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "0215a92700117cbf316064aec56f28f5c4dd416ead3f2f31002f22c6e3aec564e3",
+        "recoveryPhonePub": "035bd615e4744fda28e65d356c26dce9dfc99310afcc6fdb58f9c78a0a0adede1c",
+        "vaultBoardCosignerPub": "02cfbd4cd2494c1c0c2a7b9e1813114bef3fe165e506aa1edcef606dcec60063b1",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "5120ae469d5b16fa27ab01c0232fb7295e97b0f6e95c0a22ae704e02bbbea6e98ecd",
+        "address": "bc1p4erf6kcklgn6kqwqyvhmw227j7c0d62upg32uuzwq2amafhf3mxsqfs0ug"
+      },
+      "network": "mainnet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483734,
+          2147483648,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "025d1e585f7c9bf566db66c50635a468f55199b922e1fe01939d37ca9d9e0c74de",
+        "connectorType": "p2tr"
+      },
+      "phoneDirectP256": "02bf149a55f9d2a3b9ca0e6d2f56ffa78100487b7b06ed8e1c90b8132e9a33af31",
+      "phonePub": "035bd615e4744fda28e65d356c26dce9dfc99310afcc6fdb58f9c78a0a0adede1c",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      },
+      "vaultCosignerBase": "032bdeaa56ad5d30a93713c6fa618ca923ce6a4d5560a7851ab24b5ee83dce1596",
+      "vaultId": "connector-cross-language-mainnet-standard-p2tr"
+    },
+    "name": "mainnet/standard/p2tr",
+    "proposed": {
+      "vaultId": "connector-cross-language-mainnet-standard-p2tr",
+      "descriptorHash": "af1a3e21a7d8da83e718756382aaee2c3ec588cb8183f7bd725823244e224957",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mainnet-standard-p2tr",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mainnet-standard-p2tr",
+          "network": "mainnet",
+          "protectionTier": "standard",
+          "phonePub": "035bd615e4744fda28e65d356c26dce9dfc99310afcc6fdb58f9c78a0a0adede1c",
+          "hardwarePub": "025d1e585f7c9bf566db66c50635a468f55199b922e1fe01939d37ca9d9e0c74de",
+          "phoneDirectP256": "02bf149a55f9d2a3b9ca0e6d2f56ffa78100487b7b06ed8e1c90b8132e9a33af31",
+          "vaultCosignerBase": "032bdeaa56ad5d30a93713c6fa618ca923ce6a4d5560a7851ab24b5ee83dce1596",
+          "arkadeCosignerBase": "0222e3334a01d404686c4420e34db694bfaeacc1325df9562ac1cb78c578940ef3",
+          "spendingPolicyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca5188200cbaed749a4fe8489cbc1f1d4d9cce855b7174bb6dd4789c73e18658e0d0ea3c8851d15188200cbaed749a4fe8489cbc1f1d4d9cce855b7174bb6dd4789c73e18658e0d0ea3c8852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f4690a6a4d080141524b0182027c7ea853d14f888800c900cf9452cf94d555876354cf94687600a2697602204ea169d602d1019353935496011995a1",
+          "savingsScript": "512023c722618cbe50b9225e411a4a43e077befc67d6e05b9b2fc72298cd6a111369",
+          "savingsAddress": "bc1py0rjycvvhegtjgj7gydy5slqw7l0ce7kupdekt78y2vv66s3zd5strr677",
+          "connectorScript": "51200cbaed749a4fe8489cbc1f1d4d9cce855b7174bb6dd4789c73e18658e0d0ea3c",
+          "connectorType": "p2tr",
+          "fingerprint": 305419896,
+          "originPath": "2147483734/2147483648/2147483648/0/0",
+          "enrollmentDigest": "4dc67e90557d68563a3eaff1c32026580d1cfea513dc2f0bb8331fa77ad895e6"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mainnet",
+          "boardingPub": "0215a92700117cbf316064aec56f28f5c4dd416ead3f2f31002f22c6e3aec564e3",
+          "recoveryPhonePub": "035bd615e4744fda28e65d356c26dce9dfc99310afcc6fdb58f9c78a0a0adede1c",
+          "vaultBoardCosignerPub": "02cfbd4cd2494c1c0c2a7b9e1813114bef3fe165e506aa1edcef606dcec60063b1",
+          "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+          "exitDelay": 7776256,
+          "exitDelayUnit": "seconds",
+          "script": "5120ae469d5b16fa27ab01c0232fb7295e97b0f6e95c0a22ae704e02bbbea6e98ecd",
+          "address": "bc1p4erf6kcklgn6kqwqyvhmw227j7c0d62upg32uuzwq2amafhf3mxsqfs0ug"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "03f58f3ccde61247111e69d7e13f08b154a09fb5c2a037c0be1f0cfbb456808a2f",
+      "arkadeOrigin": "urn:vaulted:mainnet-signer:v1",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "02b256e75f9c37f8823e79cd904351f22e66130c3a72bc544b69a20bc6d010e2a9",
+        "recoveryPhonePub": "036d9160f8f48e60d1270ef074c5278125fc854538e47bbe91d54dc85d7693f22b",
+        "vaultBoardCosignerPub": "02603ce44555a471cb7b4a7809d2a3b127a4b40831eb0c357cdf188b20c79f30da",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "51208899fbebe17e147997fad19adeceeac1a1c200efd4b0f83522374c0ae4940c18",
+        "address": "bc1p3zvlh6lp0c28n9l66xddanh2cxsuyq806jc0sdfzxaxq4ey5psvqm33hyn"
+      },
+      "network": "mainnet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483732,
+          2147483648,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "024177d150e98f0782b459093addebc41a1d008e9fa7f12b73a12e05356ee6533d",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "0204fa9f09074db87e6cd86b6358b3816453652761cf7ef761634fee756b1a7356",
+      "phonePub": "036d9160f8f48e60d1270ef074c5278125fc854538e47bbe91d54dc85d7693f22b",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      },
+      "vaultCosignerBase": "02da20352d516c1e7f845b1f8693813780f3876c20da8a7b5f7f97d4fc8ac1669a",
+      "vaultId": "connector-cross-language-mainnet-standard-p2wpkh"
+    },
+    "name": "mainnet/standard/p2wpkh",
+    "proposed": {
+      "vaultId": "connector-cross-language-mainnet-standard-p2wpkh",
+      "descriptorHash": "2c83bb4f1a4165f356424d6450bcd3ea5bf0b953cfb14ff9e608fbf0500bbe19",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mainnet-standard-p2wpkh",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mainnet-standard-p2wpkh",
+          "network": "mainnet",
+          "protectionTier": "standard",
+          "phonePub": "036d9160f8f48e60d1270ef074c5278125fc854538e47bbe91d54dc85d7693f22b",
+          "hardwarePub": "024177d150e98f0782b459093addebc41a1d008e9fa7f12b73a12e05356ee6533d",
+          "phoneDirectP256": "0204fa9f09074db87e6cd86b6358b3816453652761cf7ef761634fee756b1a7356",
+          "vaultCosignerBase": "02da20352d516c1e7f845b1f8693813780f3876c20da8a7b5f7f97d4fc8ac1669a",
+          "arkadeCosignerBase": "03f58f3ccde61247111e69d7e13f08b154a09fb5c2a037c0be1f0cfbb456808a2f",
+          "spendingPolicyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca008814dbebcd279d839575d109ea042a58aad8288651798851d1008814dbebcd279d839575d109ea042a58aad8288651798852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cef41524b01e9017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a2697602204ea169d602bc019353935496011995a1",
+          "savingsScript": "512007c4ad586f1b2c15c6973bf4cb4f566362df763e43a1c25b98cceb8c810c70d1",
+          "savingsAddress": "bc1pqlz26kr0rvkpt35h806vkn6kvd3d7a37gwsuykucen4ceqgvwrgsngdjg3",
+          "connectorScript": "0014dbebcd279d839575d109ea042a58aad828865179",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483732/2147483648/2147483648/0/0",
+          "enrollmentDigest": "1fc8fa141cdf7ad62f6477f2a1905cfd48d7abeb9ebd3db816bb052182ee5229"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mainnet",
+          "boardingPub": "02b256e75f9c37f8823e79cd904351f22e66130c3a72bc544b69a20bc6d010e2a9",
+          "recoveryPhonePub": "036d9160f8f48e60d1270ef074c5278125fc854538e47bbe91d54dc85d7693f22b",
+          "vaultBoardCosignerPub": "02603ce44555a471cb7b4a7809d2a3b127a4b40831eb0c357cdf188b20c79f30da",
+          "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+          "exitDelay": 7776256,
+          "exitDelayUnit": "seconds",
+          "script": "51208899fbebe17e147997fad19adeceeac1a1c200efd4b0f83522374c0ae4940c18",
+          "address": "bc1p3zvlh6lp0c28n9l66xddanh2cxsuyq806jc0sdfzxaxq4ey5psvqm33hyn"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "02e573c0bee49b65bab5943b1e1be503da863e8b3c7629f66d9d0f08d0e60e6dde",
+      "arkadeOrigin": "urn:vaulted:mainnet-signer:v1",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "0271e255e9418edb14a10cab40eaa140856b776d269c642a31cc5d6701313e2a87",
+        "recoveryPhonePub": "0333cd29fca1b759cf83221bec0675aca27e79c6588cc2a617f29384c30c29c0db",
+        "vaultBoardCosignerPub": "02a8daf17448e0fcfacd9c8ddf201400a953d84b3fd25714e751cbb2f95726c326",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "5120e3fde8d47939d09d59166d299735694291e7447f3d105c0ad8596d60eadf5db8",
+        "address": "bc1pu07734re88gf6kgkd55ewdtfg2g7w3rl85g9czkct9kkp6kltkuqa6qqfk"
+      },
+      "network": "mainnet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483648,
+          0,
+          7
+        ],
+        "connectorPub": "03d65d8a8beb203c514b3a5a63592607478cff9b2d9ee466dabbae4de1e0bdc656",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "030c59b1f2c798fb79886ac98ee1fc67abaeb4410a2057b95d5cf034e8773936e3",
+      "phonePub": "0333cd29fca1b759cf83221bec0675aca27e79c6588cc2a617f29384c30c29c0db",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      },
+      "vaultCosignerBase": "023c645e479cf8eb69155b29dcae3dc560759c7525e760f22acf215ab602da4567",
+      "vaultId": "connector-cross-language-mainnet-standard-electrum"
+    },
+    "name": "mainnet/standard/electrum",
+    "proposed": {
+      "vaultId": "connector-cross-language-mainnet-standard-electrum",
+      "descriptorHash": "7f592d63ffbd1a56e5fa84e9def21a2a25e5313d9cbff499e674217273a83e30",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mainnet-standard-electrum",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mainnet-standard-electrum",
+          "network": "mainnet",
+          "protectionTier": "standard",
+          "phonePub": "0333cd29fca1b759cf83221bec0675aca27e79c6588cc2a617f29384c30c29c0db",
+          "hardwarePub": "03d65d8a8beb203c514b3a5a63592607478cff9b2d9ee466dabbae4de1e0bdc656",
+          "phoneDirectP256": "030c59b1f2c798fb79886ac98ee1fc67abaeb4410a2057b95d5cf034e8773936e3",
+          "vaultCosignerBase": "023c645e479cf8eb69155b29dcae3dc560759c7525e760f22acf215ab602da4567",
+          "arkadeCosignerBase": "02e573c0bee49b65bab5943b1e1be503da863e8b3c7629f66d9d0f08d0e60e6dde",
+          "spendingPolicyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca008814d7a620f077a17daeb726fa3e66e993991caeea458851d1008814d7a620f077a17daeb726fa3e66e993991caeea458852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cef41524b01e9017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a2697602204ea169d602bc019353935496011995a1",
+          "savingsScript": "5120ef67d04bc4cce8746b595b7f910aa117ddbe417f53fcf811c5f02cb6feb9c2b6",
+          "savingsAddress": "bc1paanaqj7yen58g66etdlezz4pzlwmustl2070syw97qktdl4ec2mq60u0r7",
+          "connectorScript": "0014d7a620f077a17daeb726fa3e66e993991caeea45",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483648/0/7",
+          "enrollmentDigest": "a5fa97b2d9194c11533172b4a1d131f437bb8b00f31fac3aa536fabc9ba9c97d"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mainnet",
+          "boardingPub": "0271e255e9418edb14a10cab40eaa140856b776d269c642a31cc5d6701313e2a87",
+          "recoveryPhonePub": "0333cd29fca1b759cf83221bec0675aca27e79c6588cc2a617f29384c30c29c0db",
+          "vaultBoardCosignerPub": "02a8daf17448e0fcfacd9c8ddf201400a953d84b3fd25714e751cbb2f95726c326",
+          "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+          "exitDelay": 7776256,
+          "exitDelayUnit": "seconds",
+          "script": "5120e3fde8d47939d09d59166d299735694291e7447f3d105c0ad8596d60eadf5db8",
+          "address": "bc1pu07734re88gf6kgkd55ewdtfg2g7w3rl85g9czkct9kkp6kltkuqa6qqfk"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "038f7ec1202cc49b888abec6807c3c5ffa4d6e5a1dac299682a9ea15ab2c9ab69c",
+      "arkadeOrigin": "urn:vaulted:mainnet-signer:v1",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "02ca036d43499ced4432e9d64f75c41a22aeb32e5605cd0d0d11d5c43fb27909d9",
+        "recoveryPhonePub": "02c9443c83505d1dcbe401c3008e808cf3f8f20b3ca9653a1c4f6f7da36f47771f",
+        "vaultBoardCosignerPub": "02623cc1787887d7abef7e5152823ff0ab254858f509ff6183670896a490d2f4c6",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "5120f19acbdcff7852b4186c1dfaaa764a53d5b7da1ed53aa3358d242f65a6cf137e",
+        "address": "bc1p7xdvhh8l0pftgxrvrha25aj2202m0ks765a2xdvdyshktfk0zdlqvz00r3"
+      },
+      "network": "mainnet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483734,
+          2147483648,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "03a10ae7ed06543b8b9ac51365f2d6c95a0be6efe0482ce6d44b070c4c40cd28d2",
+        "connectorType": "p2tr"
+      },
+      "phoneDirectP256": "0396195bafe4c66e2d18e0274e6f7230556f4c89aac1bd5360f494ac9f6e9b412d",
+      "phonePub": "02c9443c83505d1dcbe401c3008e808cf3f8f20b3ca9653a1c4f6f7da36f47771f",
+      "protectionTier": "advanced",
+      "recoveryPub": "025386c869dc80b87a9c69554c0267181d6d22c0b51806e8544d6be38e6af0d002",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      },
+      "vaultCosignerBase": "0237b6ce3b0c6daef66db2c5646d144c624fde24f8e5e51bebb9c1d21db9a3f9b1",
+      "vaultId": "connector-cross-language-mainnet-advanced-p2tr"
+    },
+    "name": "mainnet/advanced/p2tr",
+    "proposed": {
+      "vaultId": "connector-cross-language-mainnet-advanced-p2tr",
+      "descriptorHash": "2e8b5635384cff254966976223d1d824b3c25ea258c4e5fbd91b3826998d6506",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mainnet-advanced-p2tr",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mainnet-advanced-p2tr",
+          "network": "mainnet",
+          "protectionTier": "advanced",
+          "phonePub": "02c9443c83505d1dcbe401c3008e808cf3f8f20b3ca9653a1c4f6f7da36f47771f",
+          "hardwarePub": "03a10ae7ed06543b8b9ac51365f2d6c95a0be6efe0482ce6d44b070c4c40cd28d2",
+          "recoveryPub": "025386c869dc80b87a9c69554c0267181d6d22c0b51806e8544d6be38e6af0d002",
+          "phoneDirectP256": "0396195bafe4c66e2d18e0274e6f7230556f4c89aac1bd5360f494ac9f6e9b412d",
+          "vaultCosignerBase": "0237b6ce3b0c6daef66db2c5646d144c624fde24f8e5e51bebb9c1d21db9a3f9b1",
+          "arkadeCosignerBase": "038f7ec1202cc49b888abec6807c3c5ffa4d6e5a1dac299682a9ea15ab2c9ab69c",
+          "spendingPolicyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca518820b6fe4ec90f8446758bdc14246bbd33bd038a63fe170d190d443ca20a24bf3b188851d1518820b6fe4ec90f8446758bdc14246bbd33bd038a63fe170d190d443ca20a24bf3b188852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f4690a6a4d080141524b0182027c7ea853d14f888800c900cf9452cf94d555876354cf94687600a2697602204ea169d602d1019353935496011995a1",
+          "savingsScript": "5120a47c8b42a14ab93ec19ff3ba061f165b4fabf81ff48ef334bd0c973109fa7cc2",
+          "savingsAddress": "bc1p537gks4pf2unasvl7waqv8cktd86h7ql7j80xd9apjtnzz060npqd70whx",
+          "connectorScript": "5120b6fe4ec90f8446758bdc14246bbd33bd038a63fe170d190d443ca20a24bf3b18",
+          "connectorType": "p2tr",
+          "fingerprint": 305419896,
+          "originPath": "2147483734/2147483648/2147483648/0/0",
+          "enrollmentDigest": "ae19d6a41bf00ec6506631eaa77d4a2a09a4516d65942acd2dadc8fce52645c4"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mainnet",
+          "boardingPub": "02ca036d43499ced4432e9d64f75c41a22aeb32e5605cd0d0d11d5c43fb27909d9",
+          "recoveryPhonePub": "02c9443c83505d1dcbe401c3008e808cf3f8f20b3ca9653a1c4f6f7da36f47771f",
+          "vaultBoardCosignerPub": "02623cc1787887d7abef7e5152823ff0ab254858f509ff6183670896a490d2f4c6",
+          "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+          "exitDelay": 7776256,
+          "exitDelayUnit": "seconds",
+          "script": "5120f19acbdcff7852b4186c1dfaaa764a53d5b7da1ed53aa3358d242f65a6cf137e",
+          "address": "bc1p7xdvhh8l0pftgxrvrha25aj2202m0ks765a2xdvdyshktfk0zdlqvz00r3"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "02e63a4db0d9050068401841f46a011f57f222c60bc9e4b4c7a8d1db970742e4f6",
+      "arkadeOrigin": "urn:vaulted:mainnet-signer:v1",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "02479bfe59b8cd556e452c513eccf6f9f0cbdcf62d5f2d3e18952c8df087a3ac09",
+        "recoveryPhonePub": "02bcf4944040fd08684fdfa3a8309b2f1a41427310e68c79d06d849933d2d277a4",
+        "vaultBoardCosignerPub": "024a8d726621bbc505dc482bcf7aa2f792dabe924facb36b91cf12071b1036c3b0",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "5120168ea95ee910f3a00d2a423f6bfce8725dd8871b474124542eb64f5fe7593b52",
+        "address": "bc1pz682jhhfzre6qrf2gglkhl8gwfwa3pcmgaqjg4pwke84le6e8dfq2qa6zk"
+      },
+      "network": "mainnet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483732,
+          2147483648,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "026406d216eeadd1d921a1799934dcd47461c76ced02b5385d25a96dcd021e2956",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "0306736b223c46bed76fa6e671b1400287cf10bfcdc0550751ea42c461511f433d",
+      "phonePub": "02bcf4944040fd08684fdfa3a8309b2f1a41427310e68c79d06d849933d2d277a4",
+      "protectionTier": "advanced",
+      "recoveryPub": "024397821af3fa1169cbd59e018bb39c886522d693c9ed9d8427b7caf36c3064b8",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      },
+      "vaultCosignerBase": "029c156daadc4bd9fc53df93c10acf091dba927b41a021a256156e50c289c3c6c2",
+      "vaultId": "connector-cross-language-mainnet-advanced-p2wpkh"
+    },
+    "name": "mainnet/advanced/p2wpkh",
+    "proposed": {
+      "vaultId": "connector-cross-language-mainnet-advanced-p2wpkh",
+      "descriptorHash": "ad351d327ca1a76bc4a6fbfae26d4cc6684df5c861abe01be15f1c7ea82f4e01",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mainnet-advanced-p2wpkh",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mainnet-advanced-p2wpkh",
+          "network": "mainnet",
+          "protectionTier": "advanced",
+          "phonePub": "02bcf4944040fd08684fdfa3a8309b2f1a41427310e68c79d06d849933d2d277a4",
+          "hardwarePub": "026406d216eeadd1d921a1799934dcd47461c76ced02b5385d25a96dcd021e2956",
+          "recoveryPub": "024397821af3fa1169cbd59e018bb39c886522d693c9ed9d8427b7caf36c3064b8",
+          "phoneDirectP256": "0306736b223c46bed76fa6e671b1400287cf10bfcdc0550751ea42c461511f433d",
+          "vaultCosignerBase": "029c156daadc4bd9fc53df93c10acf091dba927b41a021a256156e50c289c3c6c2",
+          "arkadeCosignerBase": "02e63a4db0d9050068401841f46a011f57f222c60bc9e4b4c7a8d1db970742e4f6",
+          "spendingPolicyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca008814f689e7fc1e700ec25aae97ebb80823278f7e7bff8851d1008814f689e7fc1e700ec25aae97ebb80823278f7e7bff8852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cef41524b01e9017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a2697602204ea169d602bc019353935496011995a1",
+          "savingsScript": "51208cba1dd5b87b904b5ac218113775a0b7a9436fab362c76d334425b9ddde08bab",
+          "savingsAddress": "bc1p3japm4dc0wgykkkzrqgnwadqk755xmatxck8d5e5gfdemh0q3w4sfejahw",
+          "connectorScript": "0014f689e7fc1e700ec25aae97ebb80823278f7e7bff",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483732/2147483648/2147483648/0/0",
+          "enrollmentDigest": "5071dac2fd2b0d3d92dc4e4d2d70eaa70eeeccbc04faf556b3143520ae1a6b80"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mainnet",
+          "boardingPub": "02479bfe59b8cd556e452c513eccf6f9f0cbdcf62d5f2d3e18952c8df087a3ac09",
+          "recoveryPhonePub": "02bcf4944040fd08684fdfa3a8309b2f1a41427310e68c79d06d849933d2d277a4",
+          "vaultBoardCosignerPub": "024a8d726621bbc505dc482bcf7aa2f792dabe924facb36b91cf12071b1036c3b0",
+          "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+          "exitDelay": 7776256,
+          "exitDelayUnit": "seconds",
+          "script": "5120168ea95ee910f3a00d2a423f6bfce8725dd8871b474124542eb64f5fe7593b52",
+          "address": "bc1pz682jhhfzre6qrf2gglkhl8gwfwa3pcmgaqjg4pwke84le6e8dfq2qa6zk"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "0296184e234f821dd0faa5fecc97df20361dc8faa90af8a4ec8e63098c567e2eb9",
+      "arkadeOrigin": "urn:vaulted:mainnet-signer:v1",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "02f5f8533b263505fd16efa0c1be75d2b1c7c6db9acbca17e4a4a68684092f17d1",
+        "recoveryPhonePub": "0360b45af7e43c7831a05bd559d83d7d11775b8f283a6a8d6d03612efad92a4259",
+        "vaultBoardCosignerPub": "024cec22d0aae5739d83a70580103d9176d89f913b950d98d6c5275e5e533ddb3d",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "5120cccd45afac6b51edfe4816801d1a8eb844c14c25db515a707e48a573aea25b86",
+        "address": "bc1penx5ttavddg7mljgz6qp6x5whpzvznp9mdg45ur7fzjh8t4ztwrqunuxs5"
+      },
+      "network": "mainnet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483648,
+          0,
+          7
+        ],
+        "connectorPub": "02fd918f9bc902e7434506ff0db2d352ae7f70ff69161d39bbefa857df6dfc9ad9",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "037f247bf3c771c431fc04f7a87198e15973335ef90a352a74ce4991afa4747529",
+      "phonePub": "0360b45af7e43c7831a05bd559d83d7d11775b8f283a6a8d6d03612efad92a4259",
+      "protectionTier": "advanced",
+      "recoveryPub": "02864bbfda7858371bd8aa92905d49e8e3ba48bf26befa9f4f1e116cf90bcde6a8",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 20000,
+        "feerateCapSatPerV": 25
+      },
+      "vaultCosignerBase": "0213dd6a8c671dccb92da4c767a97f0698e58402d151cf35229e4dc91681aacbad",
+      "vaultId": "connector-cross-language-mainnet-advanced-electrum"
+    },
+    "name": "mainnet/advanced/electrum",
+    "proposed": {
+      "vaultId": "connector-cross-language-mainnet-advanced-electrum",
+      "descriptorHash": "0cbec6196037c92b5161632ac2f93ef9675724f09eab0f937d9bec0a85c56a3e",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mainnet-advanced-electrum",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mainnet-advanced-electrum",
+          "network": "mainnet",
+          "protectionTier": "advanced",
+          "phonePub": "0360b45af7e43c7831a05bd559d83d7d11775b8f283a6a8d6d03612efad92a4259",
+          "hardwarePub": "02fd918f9bc902e7434506ff0db2d352ae7f70ff69161d39bbefa857df6dfc9ad9",
+          "recoveryPub": "02864bbfda7858371bd8aa92905d49e8e3ba48bf26befa9f4f1e116cf90bcde6a8",
+          "phoneDirectP256": "037f247bf3c771c431fc04f7a87198e15973335ef90a352a74ce4991afa4747529",
+          "vaultCosignerBase": "0213dd6a8c671dccb92da4c767a97f0698e58402d151cf35229e4dc91681aacbad",
+          "arkadeCosignerBase": "0296184e234f821dd0faa5fecc97df20361dc8faa90af8a4ec8e63098c567e2eb9",
+          "spendingPolicyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca0088143a9902c3aca66d29cecc64305b2a806e008fd16e8851d10088143a9902c3aca66d29cecc64305b2a806e008fd16e8852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cef41524b01e9017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a2697602204ea169d602bc019353935496011995a1",
+          "savingsScript": "5120b47d1e86d369b9c04d1eadefea4268e58c546d30aec016468f96c0030ef65c90",
+          "savingsAddress": "bc1pk373apkndxuuqng74hh75sngukx9gmfs4mqpv350jmqqxrhktjgqs4lj7a",
+          "connectorScript": "00143a9902c3aca66d29cecc64305b2a806e008fd16e",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483648/0/7",
+          "enrollmentDigest": "7d85385c8f2689dd00b726bb8635da14eb17273b5820fc2153ca04a00a42a8ee"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mainnet",
+          "boardingPub": "02f5f8533b263505fd16efa0c1be75d2b1c7c6db9acbca17e4a4a68684092f17d1",
+          "recoveryPhonePub": "0360b45af7e43c7831a05bd559d83d7d11775b8f283a6a8d6d03612efad92a4259",
+          "vaultBoardCosignerPub": "024cec22d0aae5739d83a70580103d9176d89f913b950d98d6c5275e5e533ddb3d",
+          "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+          "exitDelay": 7776256,
+          "exitDelayUnit": "seconds",
+          "script": "5120cccd45afac6b51edfe4816801d1a8eb844c14c25db515a707e48a573aea25b86",
+          "address": "bc1penx5ttavddg7mljgz6qp6x5whpzvznp9mdg45ur7fzjh8t4ztwrqunuxs5"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "03de55094d2b2480c9ef79fee38615d38374300ccf2c8c8366bcd778563ddb86c9",
+      "arkadeOrigin": "https://operator.test",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "026ec43a7e43441679c62944cfdc7887ad55dd0420eb6ae704388ce7c33ec660d5",
+        "recoveryPhonePub": "0352034de0e3812023371a5d5469634f7dd9e38696fb4b01b51e395cdc3d1187b8",
+        "vaultBoardCosignerPub": "0254c0ba7fb559e5ce2ffa216d624a210011616957a1c10f7dafc0326697bf7a7a",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "5120ad8adb99d6837189e50b86b9c00dfec7803bb6f0cbf750e89c82548661d43d08",
+        "address": "tb1p4k9dhxwksdccnegts6uuqr07c7qrhdhse0m4p6yusf2gvcw585yqm9kmej"
+      },
+      "network": "mutinynet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483734,
+          2147483649,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "03c7728a001b1e0ad3cf1a2a20a98f7f54cf148ea8730600e1dec57d19a6b3d5fb",
+        "connectorType": "p2tr"
+      },
+      "phoneDirectP256": "03a6fb457b0182b4a1758cb2640dff87462bb24e8d43429f7009710404988802b7",
+      "phonePub": "0352034de0e3812023371a5d5469634f7dd9e38696fb4b01b51e395cdc3d1187b8",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      },
+      "vaultCosignerBase": "0207acf906708bc3d5292403445c973cc6770fff19fed92d5eaf99e2f51145f3e7",
+      "vaultId": "connector-cross-language-mutinynet-standard-p2tr"
+    },
+    "name": "mutinynet/standard/p2tr",
+    "proposed": {
+      "vaultId": "connector-cross-language-mutinynet-standard-p2tr",
+      "descriptorHash": "63cb75d1df2fc035eb9b6502929f948a48608c6eb8c76d8c8391223479ef3d22",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mutinynet-standard-p2tr",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mutinynet-standard-p2tr",
+          "network": "mutinynet",
+          "protectionTier": "standard",
+          "phonePub": "0352034de0e3812023371a5d5469634f7dd9e38696fb4b01b51e395cdc3d1187b8",
+          "hardwarePub": "03c7728a001b1e0ad3cf1a2a20a98f7f54cf148ea8730600e1dec57d19a6b3d5fb",
+          "phoneDirectP256": "03a6fb457b0182b4a1758cb2640dff87462bb24e8d43429f7009710404988802b7",
+          "vaultCosignerBase": "0207acf906708bc3d5292403445c973cc6770fff19fed92d5eaf99e2f51145f3e7",
+          "arkadeCosignerBase": "03de55094d2b2480c9ef79fee38615d38374300ccf2c8c8366bcd778563ddb86c9",
+          "spendingPolicyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca51882001d18c0ebb48739667d4fe58ef4c513858b8591f7798ecc3d210dcf54db8ba908851d151882001d18c0ebb48739667d4fe58ef4c513858b8591f7798ecc3d210dcf54db8ba908852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f4690a6a4d070141524b0181027c7ea853d14f888800c900cf9452cf94d555876354cf94687600a26976028813a169d602d10193539354965a95a1",
+          "savingsScript": "512090feeb2db9f109bb9c885ed4b8aff09560131c586a04d92a1c8efca07b60ddca",
+          "savingsAddress": "tb1pjrlwktde7yymh8ygtm2t3tlsj4spx8zcdgzdj2su3m72q7mqmh9q83k4ej",
+          "connectorScript": "512001d18c0ebb48739667d4fe58ef4c513858b8591f7798ecc3d210dcf54db8ba90",
+          "connectorType": "p2tr",
+          "fingerprint": 305419896,
+          "originPath": "2147483734/2147483649/2147483648/0/0",
+          "enrollmentDigest": "db0a16f6ad39acdd6b59dbaa42dfca6cf6862f731fd2eda48ba48844336f2378"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mutinynet",
+          "boardingPub": "026ec43a7e43441679c62944cfdc7887ad55dd0420eb6ae704388ce7c33ec660d5",
+          "recoveryPhonePub": "0352034de0e3812023371a5d5469634f7dd9e38696fb4b01b51e395cdc3d1187b8",
+          "vaultBoardCosignerPub": "0254c0ba7fb559e5ce2ffa216d624a210011616957a1c10f7dafc0326697bf7a7a",
+          "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+          "exitDelay": 604672,
+          "exitDelayUnit": "seconds",
+          "script": "5120ad8adb99d6837189e50b86b9c00dfec7803bb6f0cbf750e89c82548661d43d08",
+          "address": "tb1p4k9dhxwksdccnegts6uuqr07c7qrhdhse0m4p6yusf2gvcw585yqm9kmej"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "03c28cd444e79d53b1b0257ecfd21bd296007b7c8c14500fde4161fe8d4e9a344c",
+      "arkadeOrigin": "https://operator.test",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "022d16a22c37a5e34b6d9e5450ac6fca3f733cefb0ca77a1625eb6775a5efe968e",
+        "recoveryPhonePub": "021e34a0820f3e7df4d5242151f3d0bc59214c66ab116f467239dd8da11331f0d3",
+        "vaultBoardCosignerPub": "023ad7dd22216bd7dc4325d375d4f095f35dfc6fedc472a44be5f613421702f422",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "51209bc4da78e64008d441874170519bf4ca2b2988de13403c535c48bec432d7d43a",
+        "address": "tb1pn0zd578xgqydgsv8g9c9rxl5eg4jnzx7zdqrc56ufzlvgvkh6saqrpspcs"
+      },
+      "network": "mutinynet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483732,
+          2147483649,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "037393644952184444b75094c5bf4f3b059267932be3be3e20df79b50009b3b20e",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "03f95e001bb38897083e31cf286d26cd430d5be4012697b256a95e9a4f909e8f29",
+      "phonePub": "021e34a0820f3e7df4d5242151f3d0bc59214c66ab116f467239dd8da11331f0d3",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      },
+      "vaultCosignerBase": "033aea9c2113c67a9e2aa17e5068c4e78c17bd4a174834db68b231c7e5667e6552",
+      "vaultId": "connector-cross-language-mutinynet-standard-p2wpkh"
+    },
+    "name": "mutinynet/standard/p2wpkh",
+    "proposed": {
+      "vaultId": "connector-cross-language-mutinynet-standard-p2wpkh",
+      "descriptorHash": "a3608e065858bdabebe3d5b60eeb3a7e5561e975400c9446149f44ff01109aee",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mutinynet-standard-p2wpkh",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mutinynet-standard-p2wpkh",
+          "network": "mutinynet",
+          "protectionTier": "standard",
+          "phonePub": "021e34a0820f3e7df4d5242151f3d0bc59214c66ab116f467239dd8da11331f0d3",
+          "hardwarePub": "037393644952184444b75094c5bf4f3b059267932be3be3e20df79b50009b3b20e",
+          "phoneDirectP256": "03f95e001bb38897083e31cf286d26cd430d5be4012697b256a95e9a4f909e8f29",
+          "vaultCosignerBase": "033aea9c2113c67a9e2aa17e5068c4e78c17bd4a174834db68b231c7e5667e6552",
+          "arkadeCosignerBase": "03c28cd444e79d53b1b0257ecfd21bd296007b7c8c14500fde4161fe8d4e9a344c",
+          "spendingPolicyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca00881432078ce4aa235b0ee71848e01e2ddee0ab9249c48851d100881432078ce4aa235b0ee71848e01e2ddee0ab9249c48852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cee41524b01e8017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a26976028813a169d602bc0193539354965a95a1",
+          "savingsScript": "5120f9a920b857bacf0c0a868df4a6dd3206aa77b83570fba204692b9b4b8f0f09e1",
+          "savingsAddress": "tb1plx5jpwzhht8scz5x3h62dhfjq6480wp4wra6yprf9wd5hrc0p8ssu0hh63",
+          "connectorScript": "001432078ce4aa235b0ee71848e01e2ddee0ab9249c4",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483732/2147483649/2147483648/0/0",
+          "enrollmentDigest": "a37bd9ba09e0ccebf9c5a1cca3488c4e442e9439a5eb72e750f6815db3d2765d"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mutinynet",
+          "boardingPub": "022d16a22c37a5e34b6d9e5450ac6fca3f733cefb0ca77a1625eb6775a5efe968e",
+          "recoveryPhonePub": "021e34a0820f3e7df4d5242151f3d0bc59214c66ab116f467239dd8da11331f0d3",
+          "vaultBoardCosignerPub": "023ad7dd22216bd7dc4325d375d4f095f35dfc6fedc472a44be5f613421702f422",
+          "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+          "exitDelay": 604672,
+          "exitDelayUnit": "seconds",
+          "script": "51209bc4da78e64008d441874170519bf4ca2b2988de13403c535c48bec432d7d43a",
+          "address": "tb1pn0zd578xgqydgsv8g9c9rxl5eg4jnzx7zdqrc56ufzlvgvkh6saqrpspcs"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "033c1275baef2e29426babc55e9d0a8af1838f6bbace901122e058a6a78f65bebe",
+      "arkadeOrigin": "https://operator.test",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "0285501b1a44e9a6799c2e19c524a4721a8b1fc4bec7a5a45b2306cb893e460e0e",
+        "recoveryPhonePub": "028dd77a1c6a4d88d3d48d5c8e94f1aa24743cfe6c55fe6bdac8ba02a0b35c9a28",
+        "vaultBoardCosignerPub": "020b93236345c31a04e4de857fe89f396045fd74d2b778887724224a0801879edb",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "5120149b36b150971488c28ecc430dc32f58813cb851606411f438aa36c7cdf7d4e3",
+        "address": "tb1pzjdndv2sju2g3s5we3psmse0tzqnewz3vpjprapc4gmv0n0h6n3slgarpc"
+      },
+      "network": "mutinynet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483648,
+          0,
+          7
+        ],
+        "connectorPub": "03cd5d4a6edc762ccdc63ad3c0ca93ec2259f90ec16b8fd68867c21c556940fbb9",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "02ceaf63c2d259436562d9055d229e7b6d00f319b9ecc1a92a4dd2940c11bd9bcc",
+      "phonePub": "028dd77a1c6a4d88d3d48d5c8e94f1aa24743cfe6c55fe6bdac8ba02a0b35c9a28",
+      "protectionTier": "standard",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      },
+      "vaultCosignerBase": "03d09846ad936720bd85d0c5ba633b7eea073fad524de37c6003ff6fb07565d290",
+      "vaultId": "connector-cross-language-mutinynet-standard-electrum"
+    },
+    "name": "mutinynet/standard/electrum",
+    "proposed": {
+      "vaultId": "connector-cross-language-mutinynet-standard-electrum",
+      "descriptorHash": "ca5931a22cf229089dba37c143051f0c1e5690ec71d1e573d22a695e6378242c",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mutinynet-standard-electrum",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mutinynet-standard-electrum",
+          "network": "mutinynet",
+          "protectionTier": "standard",
+          "phonePub": "028dd77a1c6a4d88d3d48d5c8e94f1aa24743cfe6c55fe6bdac8ba02a0b35c9a28",
+          "hardwarePub": "03cd5d4a6edc762ccdc63ad3c0ca93ec2259f90ec16b8fd68867c21c556940fbb9",
+          "phoneDirectP256": "02ceaf63c2d259436562d9055d229e7b6d00f319b9ecc1a92a4dd2940c11bd9bcc",
+          "vaultCosignerBase": "03d09846ad936720bd85d0c5ba633b7eea073fad524de37c6003ff6fb07565d290",
+          "arkadeCosignerBase": "033c1275baef2e29426babc55e9d0a8af1838f6bbace901122e058a6a78f65bebe",
+          "spendingPolicyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca008814dfc28dd13aeac2f16c7389bc158212dd554733b08851d1008814dfc28dd13aeac2f16c7389bc158212dd554733b08852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cee41524b01e8017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a26976028813a169d602bc0193539354965a95a1",
+          "savingsScript": "5120a2f9c45d81453d814e37da4c465570b58248f1cb6f96017c6c7cb6445b532496",
+          "savingsAddress": "tb1p5tuughvpg57czn3hmfxyv4tskkpy3uwtd7tqzlrv0jmygk6nyjtq928w27",
+          "connectorScript": "0014dfc28dd13aeac2f16c7389bc158212dd554733b0",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483648/0/7",
+          "enrollmentDigest": "7d10207ef9b41f7f808804c449bb3072bf780f13d9bc0d91f44ee887b38f5f7f"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mutinynet",
+          "boardingPub": "0285501b1a44e9a6799c2e19c524a4721a8b1fc4bec7a5a45b2306cb893e460e0e",
+          "recoveryPhonePub": "028dd77a1c6a4d88d3d48d5c8e94f1aa24743cfe6c55fe6bdac8ba02a0b35c9a28",
+          "vaultBoardCosignerPub": "020b93236345c31a04e4de857fe89f396045fd74d2b778887724224a0801879edb",
+          "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+          "exitDelay": 604672,
+          "exitDelayUnit": "seconds",
+          "script": "5120149b36b150971488c28ecc430dc32f58813cb851606411f438aa36c7cdf7d4e3",
+          "address": "tb1pzjdndv2sju2g3s5we3psmse0tzqnewz3vpjprapc4gmv0n0h6n3slgarpc"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "03ce7cc74114ca760c9725f426acd5abe8c4ed0ff86b854745d59a9c3091ddbe66",
+      "arkadeOrigin": "https://operator.test",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "022411e780951a94559a6874449f230a2ea9a86422c53f20465fd01c0471a248f6",
+        "recoveryPhonePub": "0261add3d5a76bb42ae685e9069c55c406d90c5ab9e94b3362dabc8ad806a663a0",
+        "vaultBoardCosignerPub": "020aac425d54ffe62773824f612d2fd63a5b1341307463ecde45a74f700f33d570",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "5120c828dad0adf825186446d9ecf54026915590bda32b0deed8a212d6f139df8b65",
+        "address": "tb1peq5d459dlqj3sezxm8k02spxj92ep0dr9vx7ak9zztt0zwwl3djsns2avk"
+      },
+      "network": "mutinynet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483734,
+          2147483649,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "029f09c0abe230b5371f34941373aea2031de1e415548a2fe07d5fb03f772dab98",
+        "connectorType": "p2tr"
+      },
+      "phoneDirectP256": "03b6f8203788648994ff8033995b6790fbd2fdceb56824ae79042cec65091256c3",
+      "phonePub": "0261add3d5a76bb42ae685e9069c55c406d90c5ab9e94b3362dabc8ad806a663a0",
+      "protectionTier": "advanced",
+      "recoveryPub": "029e84b07ed4cab73e16082b746db8001eee6739c4d60e62ca0cc32ff614521ab6",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      },
+      "vaultCosignerBase": "03461ec6ef4e217c4384b0b86677f1caea4bd18a9e9395fa6d8d8b62b1ec2ee0a5",
+      "vaultId": "connector-cross-language-mutinynet-advanced-p2tr"
+    },
+    "name": "mutinynet/advanced/p2tr",
+    "proposed": {
+      "vaultId": "connector-cross-language-mutinynet-advanced-p2tr",
+      "descriptorHash": "049e63ccce27563662ca82d633bfc8d622ea3f9b6561b7fbf71f80b5d39c65bf",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mutinynet-advanced-p2tr",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mutinynet-advanced-p2tr",
+          "network": "mutinynet",
+          "protectionTier": "advanced",
+          "phonePub": "0261add3d5a76bb42ae685e9069c55c406d90c5ab9e94b3362dabc8ad806a663a0",
+          "hardwarePub": "029f09c0abe230b5371f34941373aea2031de1e415548a2fe07d5fb03f772dab98",
+          "recoveryPub": "029e84b07ed4cab73e16082b746db8001eee6739c4d60e62ca0cc32ff614521ab6",
+          "phoneDirectP256": "03b6f8203788648994ff8033995b6790fbd2fdceb56824ae79042cec65091256c3",
+          "vaultCosignerBase": "03461ec6ef4e217c4384b0b86677f1caea4bd18a9e9395fa6d8d8b62b1ec2ee0a5",
+          "arkadeCosignerBase": "03ce7cc74114ca760c9725f426acd5abe8c4ed0ff86b854745d59a9c3091ddbe66",
+          "spendingPolicyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca518820989e1727bd06ea2ef7588946945bf5cf0ec5e815454d6eeae3cf81a6a63727f48851d1518820989e1727bd06ea2ef7588946945bf5cf0ec5e815454d6eeae3cf81a6a63727f48852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f4690a6a4d070141524b0181027c7ea853d14f888800c900cf9452cf94d555876354cf94687600a26976028813a169d602d10193539354965a95a1",
+          "savingsScript": "512042fca9e91cf0fe677b6aded61975f58f36bb00899e5d50b945990542efcf0962",
+          "savingsAddress": "tb1pgt72n6gu7rlxw7m2mmtpja043umtkqyfnew4pw29nyz59m70p93qf33f6n",
+          "connectorScript": "5120989e1727bd06ea2ef7588946945bf5cf0ec5e815454d6eeae3cf81a6a63727f4",
+          "connectorType": "p2tr",
+          "fingerprint": 305419896,
+          "originPath": "2147483734/2147483649/2147483648/0/0",
+          "enrollmentDigest": "eca91d689fa9c6b4848b9d68458afba3cbff89773744b07b8c9ec414880562a7"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mutinynet",
+          "boardingPub": "022411e780951a94559a6874449f230a2ea9a86422c53f20465fd01c0471a248f6",
+          "recoveryPhonePub": "0261add3d5a76bb42ae685e9069c55c406d90c5ab9e94b3362dabc8ad806a663a0",
+          "vaultBoardCosignerPub": "020aac425d54ffe62773824f612d2fd63a5b1341307463ecde45a74f700f33d570",
+          "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+          "exitDelay": 604672,
+          "exitDelayUnit": "seconds",
+          "script": "5120c828dad0adf825186446d9ecf54026915590bda32b0deed8a212d6f139df8b65",
+          "address": "tb1peq5d459dlqj3sezxm8k02spxj92ep0dr9vx7ak9zztt0zwwl3djsns2avk"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "02959899b389bc274bb5851de5a5e295cca89f869e9bf94a51c12e63baf2ecf19d",
+      "arkadeOrigin": "https://operator.test",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "0237634676fb10885d92f2065eaedeb4ce6a232d1ff722ab32bdfbc309bc8a9a68",
+        "recoveryPhonePub": "030f3ed8b04a9788c4ac02997a78d74171e1ea77db8fbd435edea9790c26b70e7c",
+        "vaultBoardCosignerPub": "027bd79667b0f7ff0ab8e193b725a5a4f34a3404744e25898ac7567b0b1973510f",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "5120e5968d7d08419650d5d12be9a9257a7b1ce04caf84a1934773a99ee81411f4f9",
+        "address": "tb1puktg6lgggxt9p4w39056jft60vwwqn90sjsex3mn4x0ws9q37nus94n52j"
+      },
+      "network": "mutinynet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483732,
+          2147483649,
+          2147483648,
+          0,
+          0
+        ],
+        "connectorPub": "03293f0d0fae6cfb4013385009bd15928567549bfb4c553e5bca7dde5422f8855b",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "024ec113aa959d814d60d53493ecf212c0d58706aaf582a07f892166d9f4f70cb7",
+      "phonePub": "030f3ed8b04a9788c4ac02997a78d74171e1ea77db8fbd435edea9790c26b70e7c",
+      "protectionTier": "advanced",
+      "recoveryPub": "02b061880bfdfd7c652cece17c6ce90202451cef146804ce398409151050a1ba2f",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      },
+      "vaultCosignerBase": "0344ca8ad8c18c8f9a575539f39621715495f740cb09f3a344c2b62d897d9ae487",
+      "vaultId": "connector-cross-language-mutinynet-advanced-p2wpkh"
+    },
+    "name": "mutinynet/advanced/p2wpkh",
+    "proposed": {
+      "vaultId": "connector-cross-language-mutinynet-advanced-p2wpkh",
+      "descriptorHash": "46db4ae85b7a1ea660822cdeb9c029faec095e58d73e7a7358d784e8d60ff168",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mutinynet-advanced-p2wpkh",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mutinynet-advanced-p2wpkh",
+          "network": "mutinynet",
+          "protectionTier": "advanced",
+          "phonePub": "030f3ed8b04a9788c4ac02997a78d74171e1ea77db8fbd435edea9790c26b70e7c",
+          "hardwarePub": "03293f0d0fae6cfb4013385009bd15928567549bfb4c553e5bca7dde5422f8855b",
+          "recoveryPub": "02b061880bfdfd7c652cece17c6ce90202451cef146804ce398409151050a1ba2f",
+          "phoneDirectP256": "024ec113aa959d814d60d53493ecf212c0d58706aaf582a07f892166d9f4f70cb7",
+          "vaultCosignerBase": "0344ca8ad8c18c8f9a575539f39621715495f740cb09f3a344c2b62d897d9ae487",
+          "arkadeCosignerBase": "02959899b389bc274bb5851de5a5e295cca89f869e9bf94a51c12e63baf2ecf19d",
+          "spendingPolicyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca008814c8224401d25a77975240d7140e815ae044e5b1588851d1008814c8224401d25a77975240d7140e815ae044e5b1588852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cee41524b01e8017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a26976028813a169d602bc0193539354965a95a1",
+          "savingsScript": "51204fc0bc322ec1cfba344aac054552443415b1b50a596bbcdf85e3f5ccd2513e99",
+          "savingsAddress": "tb1pflqtcv3wc88m5dz24sz525jyxs2mrdg2t94mehu9u06ue5j386vslaammq",
+          "connectorScript": "0014c8224401d25a77975240d7140e815ae044e5b158",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483732/2147483649/2147483648/0/0",
+          "enrollmentDigest": "a723595f70248be23480ef0b8e17594ee4798292b956b4dc1596eeb896203d0a"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mutinynet",
+          "boardingPub": "0237634676fb10885d92f2065eaedeb4ce6a232d1ff722ab32bdfbc309bc8a9a68",
+          "recoveryPhonePub": "030f3ed8b04a9788c4ac02997a78d74171e1ea77db8fbd435edea9790c26b70e7c",
+          "vaultBoardCosignerPub": "027bd79667b0f7ff0ab8e193b725a5a4f34a3404744e25898ac7567b0b1973510f",
+          "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+          "exitDelay": 604672,
+          "exitDelayUnit": "seconds",
+          "script": "5120e5968d7d08419650d5d12be9a9257a7b1ce04caf84a1934773a99ee81411f4f9",
+          "address": "tb1puktg6lgggxt9p4w39056jft60vwwqn90sjsex3mn4x0ws9q37nus94n52j"
+        }
+      }
+    }
+  },
+  {
+    "input": {
+      "arkadeCosignerBase": "034adbece24bf9ce900288d99d2f125f7feb00db857b9e59b2a84b1e8cf7f331fe",
+      "arkadeOrigin": "https://operator.test",
+      "arkadeVersion": "savings-v1-test",
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "02e127b6284631b24f3e20e616f959bbbf619efa77ee8cf707909a907d52e6e2a1",
+        "recoveryPhonePub": "03a8189725fdb12b9a0dc75c4f9d153f82a47fc7dbc6c98ae3a489a4a5768ff471",
+        "vaultBoardCosignerPub": "02e89007b1283f0a81cfdb912f74707f0fdaf163a97aee67654e736a0b77ab01e1",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "5120f68507a36210f85fef698962801e8b21c0edcdd37594cf4022132cebc3a1c72e",
+        "address": "tb1p76zs0gmzzru9lmmf393gq85ty8qwmnwnwk2v7spzzvkwhsapcuhqh09d95"
+      },
+      "network": "mutinynet",
+      "origin": {
+        "connectorFingerprint": 305419896,
+        "connectorPath": [
+          2147483648,
+          0,
+          7
+        ],
+        "connectorPub": "0345d18580cba9775b0846fdd34f99d94af360d3a759d010b8756e260654fa2f56",
+        "connectorType": "p2wpkh"
+      },
+      "phoneDirectP256": "032e97deea102dacd752ad5fe8e39c3f75ea34638880357830164ee74e396d172a",
+      "phonePub": "03a8189725fdb12b9a0dc75c4f9d153f82a47fc7dbc6c98ae3a489a4a5768ff471",
+      "protectionTier": "advanced",
+      "recoveryPub": "028b39857927494a5f595d73c1f090c918cbf892227b199bd0fc475b2150c29567",
+      "spendingPolicy": {
+        "program": "vault-policy-v1",
+        "schema": "vault-spending-policy-v1",
+        "period": "rolling-24h",
+        "periodAllowanceSats": 100000,
+        "txRecipientCapSats": 50000,
+        "absoluteFeeCapSats": 5000,
+        "feerateCapSatPerV": 10
+      },
+      "vaultCosignerBase": "03369a347c512747b9bf9d2f44fa0a2c418a1580d50eec32436fdbeacc1475a709",
+      "vaultId": "connector-cross-language-mutinynet-advanced-electrum"
+    },
+    "name": "mutinynet/advanced/electrum",
+    "proposed": {
+      "vaultId": "connector-cross-language-mutinynet-advanced-electrum",
+      "descriptorHash": "bb0b28bb01db0d2181bbaa0fbf00890a9ef3f6b510bfad8fc1b2b9798179a24f",
+      "descriptor": {
+        "schema": "arkade-vault/enrollment-with-connector-v1",
+        "vaultId": "connector-cross-language-mutinynet-advanced-electrum",
+        "connector": {
+          "schema": "arkade-vault/connector-enrollment-v1",
+          "template": "phone-connector-recovery-savings-v1",
+          "vaultId": "connector-cross-language-mutinynet-advanced-electrum",
+          "network": "mutinynet",
+          "protectionTier": "advanced",
+          "phonePub": "03a8189725fdb12b9a0dc75c4f9d153f82a47fc7dbc6c98ae3a489a4a5768ff471",
+          "hardwarePub": "0345d18580cba9775b0846fdd34f99d94af360d3a759d010b8756e260654fa2f56",
+          "recoveryPub": "028b39857927494a5f595d73c1f090c918cbf892227b199bd0fc475b2150c29567",
+          "phoneDirectP256": "032e97deea102dacd752ad5fe8e39c3f75ea34638880357830164ee74e396d172a",
+          "vaultCosignerBase": "03369a347c512747b9bf9d2f44fa0a2c418a1580d50eec32436fdbeacc1475a709",
+          "arkadeCosignerBase": "034adbece24bf9ce900288d99d2f125f7feb00db857b9e59b2a84b1e8cf7f331fe",
+          "spendingPolicyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "program": "14736176696e67732d636f6e6e6563746f722d763175d25288d30088d45288d57654877c55879b6900cb05fdffffff008851cb05fdffffff008851ca00881432756339d87c1f484d572e1ca7f8d38d4b72c61a8851d100881432756339d87c1f484d572e1ca7f8d38d4b72c61a8852d15188024e7388d555876300ca6b54d16c888854cf024a01a2696851c902e8038851cf02e8038852cf02f0008853cf008800cf022601a26951f469096a4cee41524b01e8017c7ea853d14f888800c900cf9452cf94d555876354cf94687600a26976028813a169d602bc0193539354965a95a1",
+          "savingsScript": "5120c2acc90b6a6c4eaf40ff6bf313e239860edbaaaffaef83eb7dc64e525f2063da",
+          "savingsAddress": "tb1pc2kvjzm2d3827s8ld0e38c3esc8dh240lthc86mace89yheqv0dq5y6lmc",
+          "connectorScript": "001432756339d87c1f484d572e1ca7f8d38d4b72c61a",
+          "connectorType": "p2wpkh",
+          "fingerprint": 305419896,
+          "originPath": "2147483648/0/7",
+          "enrollmentDigest": "047ec80b118f0779a4378620897913c6752152162fec313d40cccde7bf1ef5e0"
+        },
+        "boarding": {
+          "schema": "arkade-vault/board-v1",
+          "program": "vault-board-v1",
+          "template": "vault-board-v1-boarding-vault-and-operator",
+          "network": "mutinynet",
+          "boardingPub": "02e127b6284631b24f3e20e616f959bbbf619efa77ee8cf707909a907d52e6e2a1",
+          "recoveryPhonePub": "03a8189725fdb12b9a0dc75c4f9d153f82a47fc7dbc6c98ae3a489a4a5768ff471",
+          "vaultBoardCosignerPub": "02e89007b1283f0a81cfdb912f74707f0fdaf163a97aee67654e736a0b77ab01e1",
+          "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+          "exitDelay": 604672,
+          "exitDelayUnit": "seconds",
+          "script": "5120f68507a36210f85fef698962801e8b21c0edcdd37594cf4022132cebc3a1c72e",
+          "address": "tb1p76zs0gmzzru9lmmf393gq85ty8qwmnwnwk2v7spzzvkwhsapcuhqh09d95"
+        }
+      }
+    }
+  }
+]

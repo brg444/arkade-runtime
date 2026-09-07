@@ -1,0 +1,201 @@
+{
+  "source": "Vaulted vendored SDK DelegateManagerImpl plus bounded Intent.create",
+  "fixtures": [
+    {
+      "network": "mainnet",
+      "operatorFee": 0,
+      "quotedOperatorFee": 0,
+      "isPreconfirmed": false,
+      "now": 1788700000,
+      "validAt": 1788703600,
+      "coinExpiresAt": 1788786400,
+      "descriptor": {
+        "schema": "vaulted-light/descriptor-v1",
+        "profile": "vaulted-light-v1",
+        "program": "vault-light-policy-v1",
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "network": "mainnet",
+        "ownerPub": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+        "cosignerPub": "4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+        "operatorPub": "8202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelaySeconds": 605184,
+        "spendingPolicy": {
+          "program": "vault-light-policy-v1",
+          "schema": "vault-light-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 20000,
+          "feerateCapSatPerV": 25
+        },
+        "spendingPolicyDigest": "11a2d9377227fbe683ac1b62eba09efbea28672c18c3f334881e3b3b68f76a70",
+        "scriptPubKey": "51201599371185a31cd95b694f17dec4d8a169dd2c599bfe2ec23585739fe0e2a209"
+      },
+      "forfeitAddress": "bc1qzzdzp5c443vsetzatf2ra6hku322y7e5aq50rs",
+      "request": {
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operationId": "33333333333333333333333333333333",
+        "intent": {
+          "proof": "cHNidP8BAIcCAAAAAsNrGoJuBqtGOKq0UybhH9+vzI16jRSiz+7p+pC6RedXAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BECcAAAAAAAAiUSAVmTcRhaMc2VtpTxfexNihad0sWZv+LsI1hXOf4OKiCQAAAAABCbt7InR5cGUiOiJyZWdpc3RlciIsIm9uY2hhaW5fb3V0cHV0X2luZGV4ZXMiOltdLCJ2YWxpZF9hdCI6MTc4ODcwMzYwMCwiZXhwaXJlX2F0IjoxNzg4NzA3MjAwLCJjb3NpZ25lcnNfcHVibGljX2tleXMiOlsiMDI0ZDRiNmNkMTM2MTAzMmNhOWJkMmFlYjlkOTAwYWE0ZDQ1ZDllYWQ4MGFjOTQyMzM3NGM0NTFhNzI1NGQwNzY2Il19AAEBKwAAAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1QXYUyP1bJPqKplU6r+BVGQMNCqJrnORvmz2dbk7srbPhYwjmrW8EC0KuuIQFKmbJtJN9NtwzJx7nWHr7Mkh1DIcBQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzAAAEBKxAnAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1QRJsQTg2cWZOGTcGqeacCvAji9a7iGeLtaG0BcMI4CjPUf69W2HFyrTDeSeKft1RqVqaVv0uB+A1dQy99HlW7BIBQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIIICvr3esfdEKAOJeoXq886SVNB98Bcvw3JatfDQl3ecrAHAKAOeBECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"register\",\"onchain_output_indexes\":[],\"valid_at\":1788703600,\"expire_at\":1788707200,\"cosigners_public_keys\":[\"024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766\"]}"
+        },
+        "forfeitTxs": [
+          "cHNidP8BAF8DAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AlooAAAAAAAAFgAUEJog0xWsWQysXVpUPur25FSiezQAAAAAAAAAAARRAk5zAAAAAAABASsQJwAAAAAAACJRIBWZNxGFoxzZW2lPF97E2KFp3SxZm/4uwjWFc5/g4qIJAQMEgQAAAEEUG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+fxMfU6Re9eTweXZxwgVCadm6M9BrWd58k1XEKQ1sHdUEiAXcSGN5q+qveDezgMzBEJtAd8jFDvq5YhPyWyjyXCV+vtD58MaNZMXXMOOWn67iB/akU4/f1SxaveqzK/+1KgUIVwVCSm3TBoElUt4tLYDXpel4HiloPKOyW1Ue/7prOgDrAdGtcZN9ETzo0DLmIW8/4EcEPhPG5S2BsVyU4kwbMghxnIBuExVZ7EmRAmV0+1aq6BWXXHhg0YEgZ/5wX9enV3QePrSBNS2zRNhAyypvSrrnZAKpNRdnq2ArJQjN0xFGnJU0HZq0gggK+vd6x90QoA4l6herzzpJU0H3wFy/Dclq18NCXd5yswAAAAA=="
+        ],
+        "deleteIntent": {
+          "proof": "cHNidP8BAGYCAAAAArlOTh886X01IWyNp3qSuFn/uu3YBxge+dOASsQFBRskAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BAAAAAAAAAAABagAAAAABCR97InR5cGUiOiJkZWxldGUiLCJleHBpcmVfYXQiOjB9AAEBKwAAAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1QflinUwpmOcbhGnr4gk/RIJ8GIJNqKpGOugZ/FDnyBPt5FJhjFvXeIjstNVv6dOzFHkDoEa7H/h/V6nFYqCNHCUBQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzAAAEBKxAnAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1QTyAAoKKpmDgXbG/z195SvwDU5dvtwHh9PGoasouOhBK2OuNEfiZMcIXBL4Lys4xZVJTQ54k9JTLL9gHqgfGJI4BQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIIICvr3esfdEKAOJeoXq886SVNB98Bcvw3JatfDQl3ecrAHAKAOeBECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"delete\",\"expire_at\":0}"
+        },
+        "expiresAt": 1788707200,
+        "ownerSignature": "ec0230ac052d08064c784a80fcfaa6ef08dc513dfcf5ad11b1aea7b09dcd02e86ff74c9e441fef7793e3a194c84481b09d5b4644319e902fd16fd2ba81fd5669"
+      }
+    },
+    {
+      "network": "mainnet",
+      "operatorFee": 100,
+      "quotedOperatorFee": 150,
+      "isPreconfirmed": true,
+      "now": 1788700000,
+      "validAt": 1788703600,
+      "coinExpiresAt": 1788786400,
+      "descriptor": {
+        "schema": "vaulted-light/descriptor-v1",
+        "profile": "vaulted-light-v1",
+        "program": "vault-light-policy-v1",
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "network": "mainnet",
+        "ownerPub": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+        "cosignerPub": "4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+        "operatorPub": "8202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelaySeconds": 605184,
+        "spendingPolicy": {
+          "program": "vault-light-policy-v1",
+          "schema": "vault-light-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 20000,
+          "feerateCapSatPerV": 25
+        },
+        "spendingPolicyDigest": "11a2d9377227fbe683ac1b62eba09efbea28672c18c3f334881e3b3b68f76a70",
+        "scriptPubKey": "51201599371185a31cd95b694f17dec4d8a169dd2c599bfe2ec23585739fe0e2a209"
+      },
+      "forfeitAddress": "bc1qzzdzp5c443vsetzatf2ra6hku322y7e5aq50rs",
+      "request": {
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operationId": "33333333333333333333333333333333",
+        "intent": {
+          "proof": "cHNidP8BAIcCAAAAAsNrGoJuBqtGOKq0UybhH9+vzI16jRSiz+7p+pC6RedXAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BrCYAAAAAAAAiUSAVmTcRhaMc2VtpTxfexNihad0sWZv+LsI1hXOf4OKiCQAAAAABCbt7InR5cGUiOiJyZWdpc3RlciIsIm9uY2hhaW5fb3V0cHV0X2luZGV4ZXMiOltdLCJ2YWxpZF9hdCI6MTc4ODcwMzYwMCwiZXhwaXJlX2F0IjoxNzg4NzA3MjAwLCJjb3NpZ25lcnNfcHVibGljX2tleXMiOlsiMDI0ZDRiNmNkMTM2MTAzMmNhOWJkMmFlYjlkOTAwYWE0ZDQ1ZDllYWQ4MGFjOTQyMzM3NGM0NTFhNzI1NGQwNzY2Il19AAEBKwAAAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1Qb03oUFy3SRyH++8TK/8I+jKOFOulEunCOAuhJTClhXGPisshJ4S/awZ5/9Ztf6VGToifEUhssrix4fm0GBSBe0BQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzAAAEBKxAnAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1QcEJ766bX7IOG3J6u2g9pXQJdJh3mU92RUP6s6m8qQx1J6IDKKMjau24nAoIimst0ywxWXEZhhYSBCeixMvPbRMBQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIIICvr3esfdEKAOJeoXq886SVNB98Bcvw3JatfDQl3ecrAHAKAOeBECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"register\",\"onchain_output_indexes\":[],\"valid_at\":1788703600,\"expire_at\":1788707200,\"cosigners_public_keys\":[\"024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766\"]}"
+        },
+        "forfeitTxs": [
+          "cHNidP8BAF8DAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AlooAAAAAAAAFgAUEJog0xWsWQysXVpUPur25FSiezQAAAAAAAAAAARRAk5zAAAAAAABASsQJwAAAAAAACJRIBWZNxGFoxzZW2lPF97E2KFp3SxZm/4uwjWFc5/g4qIJAQMEgQAAAEEUG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+fxMfU6Re9eTweXZxwgVCadm6M9BrWd58k1XEKQ1sHdUH11PaegxLzHxjEWy385KeiFCS638VKFVAcgouk0z/4MNTQTQ9DLGJrT0MwbuWKPqpriONpSVspAWDCuHrurZT5gUIVwVCSm3TBoElUt4tLYDXpel4HiloPKOyW1Ue/7prOgDrAdGtcZN9ETzo0DLmIW8/4EcEPhPG5S2BsVyU4kwbMghxnIBuExVZ7EmRAmV0+1aq6BWXXHhg0YEgZ/5wX9enV3QePrSBNS2zRNhAyypvSrrnZAKpNRdnq2ArJQjN0xFGnJU0HZq0gggK+vd6x90QoA4l6herzzpJU0H3wFy/Dclq18NCXd5yswAAAAA=="
+        ],
+        "deleteIntent": {
+          "proof": "cHNidP8BAGYCAAAAArlOTh886X01IWyNp3qSuFn/uu3YBxge+dOASsQFBRskAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BAAAAAAAAAAABagAAAAABCR97InR5cGUiOiJkZWxldGUiLCJleHBpcmVfYXQiOjB9AAEBKwAAAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1QRwodtj1pE7rB48hBNNoZVq1/T8drXR0FCditb808wW2zkgmhwV6B5tuqX6vXdoY0Iy/QU3NbQOqXBrOARwgxO0BQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzAAAEBKxAnAAAAAAAAIlEgFZk3EYWjHNlbaU8X3sTYoWndLFmb/i7CNYVzn+DiogkBAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj5/Ex9TpF715PB5dnHCBUJp2boz0GtZ3nyTVcQpDWwd1QQDyTQ83xuA6Q6fAWa5NYykz/WOstn7fQGkGSE95/7GEX2KI5/CrUVnuh79xCQg3yZ9mSABt+vTceJCE42j371sBQhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsB0a1xk30RPOjQMuYhbz/gRwQ+E8blLYGxXJTiTBsyCHGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSCCAr693rH3RCgDiXqF6vPOklTQffAXL8NyWrXw0Jd3nKzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIIICvr3esfdEKAOJeoXq886SVNB98Bcvw3JatfDQl3ecrAHAKAOeBECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"delete\",\"expire_at\":0}"
+        },
+        "expiresAt": 1788707200,
+        "ownerSignature": "7a2751a64d487a423ef1bc1592530e3594990a0b2461f49ffc4aa0562de4036eb67ac6a7213e2faccde97e0292dc22f6c989134959f6607e5c2488c3485c799b"
+      }
+    },
+    {
+      "network": "mutinynet",
+      "operatorFee": 0,
+      "quotedOperatorFee": 0,
+      "isPreconfirmed": false,
+      "now": 1788700000,
+      "validAt": 1788703600,
+      "coinExpiresAt": 1788786400,
+      "descriptor": {
+        "schema": "vaulted-light/descriptor-v1",
+        "profile": "vaulted-light-v1",
+        "program": "vault-light-policy-v1",
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "network": "mutinynet",
+        "ownerPub": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+        "cosignerPub": "4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+        "operatorPub": "301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelaySeconds": 4608,
+        "spendingPolicy": {
+          "program": "vault-light-policy-v1",
+          "schema": "vault-light-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 5000,
+          "feerateCapSatPerV": 10
+        },
+        "spendingPolicyDigest": "64a750cf39d7f0c5d7fba135c5f71d9ca2e6b4a0f4586ee43058e9bed9a87c1c",
+        "scriptPubKey": "51203476b1fdbe9f499c3a81f93edee87ebfe5c5c6e01cb70e05f4b28936687df1fd"
+      },
+      "forfeitAddress": "tb1qz5zgustrxzztljhfr5pm8s4m0a4v0pzqzct90v",
+      "request": {
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operationId": "33333333333333333333333333333333",
+        "intent": {
+          "proof": "cHNidP8BAIcCAAAAApbOsWrvWcNd2o1gwldHHcRaDg8EwNoZlZ3DMMzvk5mrAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BECcAAAAAAAAiUSA0drH9vp9JnDqB+T7e6H6/5cXG4By3DgX0sok2aH3x/QAAAAABCbt7InR5cGUiOiJyZWdpc3RlciIsIm9uY2hhaW5fb3V0cHV0X2luZGV4ZXMiOltdLCJ2YWxpZF9hdCI6MTc4ODcwMzYwMCwiZXhwaXJlX2F0IjoxNzg4NzA3MjAwLCJjb3NpZ25lcnNfcHVibGljX2tleXMiOlsiMDI0ZDRiNmNkMTM2MTAzMmNhOWJkMmFlYjlkOTAwYWE0ZDQ1ZDllYWQ4MGFjOTQyMzM3NGM0NTFhNzI1NGQwNzY2Il19AAEBKwAAAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQQrdbItZiJHb+AHu7aGj7uuwcJ7h4aHrKQKvkWVGHK69IRIsDl9yZdm6RkgZ7bTTSq177MxGy16d0gMitsM09kIBQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzAAAEBKxAnAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQTMs+VQbFKOFM9Hrs2whEuLrxGuCwwLY6erJJ/dp1CMIfmPtO0mAtc7GkckggaRIoJDivp/ZM6cqTkDMQlbcHqsBQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIDAQeICOT3vA2t/injSx346vAQjvBrFyInQHXrwQehJ6rAHAKAMJAECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"register\",\"onchain_output_indexes\":[],\"valid_at\":1788703600,\"expire_at\":1788707200,\"cosigners_public_keys\":[\"024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766\"]}"
+        },
+        "forfeitTxs": [
+          "cHNidP8BAF8DAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AlooAAAAAAAAFgAUFQSOQWMwhL/K6R0Ds8K7f2rHhEAAAAAAAAAAAARRAk5zAAAAAAABASsQJwAAAAAAACJRIDR2sf2+n0mcOoH5Pt7ofr/lxcbgHLcOBfSyiTZoffH9AQMEgQAAAEEUG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4/8GO8Utie28p8l+g1Lu3q/FZG6u0qeg74SiadM/grvUEH9W6D53kumZE/sOmP29lTVgdC0tWH1ZtwT6u5D6pHQ8BwDnX4w/AgUQY8oGB+ogtGCUjudT9AWWIMfQAvNJXqVgUIVwFCSm3TBoElUt4tLYDXpel4HiloPKOyW1Ue/7prOgDrAj0/fKpBhy9jxaQt92S3dgrhRtg9XRzxrx3ejMl6dUXhnIBuExVZ7EmRAmV0+1aq6BWXXHhg0YEgZ/5wX9enV3QePrSBNS2zRNhAyypvSrrnZAKpNRdnq2ArJQjN0xFGnJU0HZq0gMBB4gI5Pe8Da3+KeNLHfjq8BCO8GsXIidAdevBB6EnqswAAAAA=="
+        ],
+        "deleteIntent": {
+          "proof": "cHNidP8BAGYCAAAAAgprg/O9sNEITYbmyxTdmEfe/gnDbhkII6QSsWtPUuDNAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BAAAAAAAAAAABagAAAAABCR97InR5cGUiOiJkZWxldGUiLCJleHBpcmVfYXQiOjB9AAEBKwAAAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQRvhsOnekFh/BBE6xY0iEx0HntHVLZDxu0gGmnAu+mpkRN2/d7aWk2bXbmPThYmt6dN9+hNfKfvP1/8Gpm+QEQsBQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzAAAEBKxAnAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQWs9rtd5HBo/EyYiH+6BXu30T0FwoX+qZenW1SrN7fBYHUJU5/NvoTJCEfQrGwVT+fbqHAU0RSqM1u4wQO21PTYBQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIDAQeICOT3vA2t/injSx346vAQjvBrFyInQHXrwQehJ6rAHAKAMJAECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"delete\",\"expire_at\":0}"
+        },
+        "expiresAt": 1788707200,
+        "ownerSignature": "27ab579efd9b4ce8239401ff35f523c68c296251be59682f0b61f291e9039f0a632ac31683adfc7c971570dde29c1370f602182bec73a0b5a83cb9ef295a9f48"
+      }
+    },
+    {
+      "network": "mutinynet",
+      "operatorFee": 100,
+      "quotedOperatorFee": 150,
+      "isPreconfirmed": true,
+      "now": 1788700000,
+      "validAt": 1788703600,
+      "coinExpiresAt": 1788786400,
+      "descriptor": {
+        "schema": "vaulted-light/descriptor-v1",
+        "profile": "vaulted-light-v1",
+        "program": "vault-light-policy-v1",
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "network": "mutinynet",
+        "ownerPub": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+        "cosignerPub": "4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766",
+        "operatorPub": "301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelaySeconds": 4608,
+        "spendingPolicy": {
+          "program": "vault-light-policy-v1",
+          "schema": "vault-light-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 5000,
+          "feerateCapSatPerV": 10
+        },
+        "spendingPolicyDigest": "64a750cf39d7f0c5d7fba135c5f71d9ca2e6b4a0f4586ee43058e9bed9a87c1c",
+        "scriptPubKey": "51203476b1fdbe9f499c3a81f93edee87ebfe5c5c6e01cb70e05f4b28936687df1fd"
+      },
+      "forfeitAddress": "tb1qz5zgustrxzztljhfr5pm8s4m0a4v0pzqzct90v",
+      "request": {
+        "vaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operationId": "33333333333333333333333333333333",
+        "intent": {
+          "proof": "cHNidP8BAIcCAAAAApbOsWrvWcNd2o1gwldHHcRaDg8EwNoZlZ3DMMzvk5mrAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BrCYAAAAAAAAiUSA0drH9vp9JnDqB+T7e6H6/5cXG4By3DgX0sok2aH3x/QAAAAABCbt7InR5cGUiOiJyZWdpc3RlciIsIm9uY2hhaW5fb3V0cHV0X2luZGV4ZXMiOltdLCJ2YWxpZF9hdCI6MTc4ODcwMzYwMCwiZXhwaXJlX2F0IjoxNzg4NzA3MjAwLCJjb3NpZ25lcnNfcHVibGljX2tleXMiOlsiMDI0ZDRiNmNkMTM2MTAzMmNhOWJkMmFlYjlkOTAwYWE0ZDQ1ZDllYWQ4MGFjOTQyMzM3NGM0NTFhNzI1NGQwNzY2Il19AAEBKwAAAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQedm4wROLs87x1V1jApxKOlgBeooSVjGwvkOzdljkAVPIDLhX9YjYNkqzWAK8ySadYAo0dW5CHtym2x+ZzxWs6sBQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzAAAEBKxAnAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQdloTCUArHulJVC+aoOqRMD+A7RtNI5O3SRK/HPBjps9NMCjaVOkJntHxxVwjky3RGUlCIXL/nh4b90aNG0S4HkBQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIDAQeICOT3vA2t/injSx346vAQjvBrFyInQHXrwQehJ6rAHAKAMJAECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"register\",\"onchain_output_indexes\":[],\"valid_at\":1788703600,\"expire_at\":1788707200,\"cosigners_public_keys\":[\"024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766\"]}"
+        },
+        "forfeitTxs": [
+          "cHNidP8BAF8DAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AlooAAAAAAAAFgAUFQSOQWMwhL/K6R0Ds8K7f2rHhEAAAAAAAAAAAARRAk5zAAAAAAABASsQJwAAAAAAACJRIDR2sf2+n0mcOoH5Pt7ofr/lxcbgHLcOBfSyiTZoffH9AQMEgQAAAEEUG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4/8GO8Utie28p8l+g1Lu3q/FZG6u0qeg74SiadM/grvUEE/8XcKQf1SO6gfgyl7CGqgAINg6EmZEs6O1MVr2MCjDL3mTgsNPSuZ/xdvI3Ygqi4tKIEOfY8A+G39lE2c2f8hgUIVwFCSm3TBoElUt4tLYDXpel4HiloPKOyW1Ue/7prOgDrAj0/fKpBhy9jxaQt92S3dgrhRtg9XRzxrx3ejMl6dUXhnIBuExVZ7EmRAmV0+1aq6BWXXHhg0YEgZ/5wX9enV3QePrSBNS2zRNhAyypvSrrnZAKpNRdnq2ArJQjN0xFGnJU0HZq0gMBB4gI5Pe8Da3+KeNLHfjq8BCO8GsXIidAdevBB6EnqswAAAAA=="
+        ],
+        "deleteIntent": {
+          "proof": "cHNidP8BAGYCAAAAAgprg/O9sNEITYbmyxTdmEfe/gnDbhkII6QSsWtPUuDNAAAAAAD/////EREREREREREREREREREREREREREREREREREREREREREAAAAAAP////8BAAAAAAAAAAABagAAAAABCR97InR5cGUiOiJkZWxldGUiLCJleHBpcmVfYXQiOjB9AAEBKwAAAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQWHkmGMcwWVnBpfRK1QLmFsLq1cSjaoJILqAdAsH5FKuLhbnCQQgTXxfP250UUxk733qFUWXx3Lh87p50FMH8nABQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzAAAEBKxAnAAAAAAAAIlEgNHax/b6fSZw6gfk+3uh+v+XFxuActw4F9LKJNmh98f0BAwQBAAAAQRQbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj/wY7xS2J7bynyX6DUu7er8Vkbq7Sp6DvhKJp0z+Cu9QQQJVjlZCt3toxz4pwVr9PT8fRRMI43z4TNBQfyuzz0d3cCg2qebHt3ULFU1UVaTNyOq9mQUNhA4OEBsNjGHedAEBQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCPT98qkGHL2PFpC33ZLd2CuFG2D1dHPGvHd6MyXp1ReGcgG4TFVnsSZECZXT7VqroFZdceGDRgSBn/nBf16dXdB4+tIE1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmrSAwEHiAjk97wNrf4p40sd+OrwEI7waxciJ0B168EHoSeqzACN50YXB0cmVllAHAZiAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj60gTUts0TYQMsqb0q652QCqTUXZ6tgKyUIzdMRRpyVNB2atIDAQeICOT3vA2t/injSx346vAQjvBrFyInQHXrwQehJ6rAHAKAMJAECydSAbhMVWexJkQJldPtWqugVl1x4YNGBIGf+cF/Xp1d0Hj6wAAA==",
+          "message": "{\"type\":\"delete\",\"expire_at\":0}"
+        },
+        "expiresAt": 1788707200,
+        "ownerSignature": "401b1bb7f882edf21bce41262857b48b599c83f9712ef1aafd88c5c6ee244a933be0c5053145ad194c9b16303c73a73df1f7fde5bb3b0a3ca213b11bed9ad91d"
+      }
+    }
+  ]
+}

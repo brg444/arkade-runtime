@@ -1,70 +1,31 @@
 # Versioned contracts
 
-The v2 service accepts one database schema and one enrollment template. Startup
-rejects every other nonempty schema or template.
+Database versions, Bitcoin scripts, enrollment formats, and cryptographic
+domains identify separate contracts. Their numeric suffixes are independent.
 
-Three independent identifiers remain in the codebase because they protect
-different contracts:
+| Contract                    | Implemented values                                                               |
+| --------------------------- | -------------------------------------------------------------------------------- |
+| SQLite schema               | `schema_meta.version = 5`, with validated migrations from supported versions 1–4 |
+| Full-wallet profile         | `arkade-vault-v1`                                                                |
+| Light profile and Spending  | `vaulted-light-v1`, `vault-light-policy-v1`                                      |
+| Direct-hardware Savings     | `arkade-vault/savings-v1`, template `phone-hww-recovery-savings-v1`              |
+| Connector enrollment schema | `arkade-vault/connector-enrollment-v1`                                           |
+| Connector templates         | `phone-connector-recovery-savings-v1` and `phone-connector-recovery-savings-v2`  |
+| Full-wallet VTXO programs   | `vault-board-v1`, `vault-policy-v1`                                              |
+| Protection tier             | `standard` or `advanced`                                                         |
+| Full-wallet Spending policy | `vault-spending-policy-v1`                                                       |
+| Recovery binding            | v4 for direct-hardware Savings; v5 for connector enrollment                      |
+| Connector public kit        | Version 1, retaining its enrolled connector family                               |
 
-| Identifier | Current value | Protects |
-| --- | --- | --- |
-| Database schema | `schema_meta.version = 1` | The exact v2 SQLite tables, columns, checks, foreign keys, and indexes. |
-| Savings descriptor schema | `arkade-vault/savings-v1` | The canonical L1 Savings descriptor encoding. |
-| Enrollment template | `phone-hww-recovery-savings-v1` | The Savings-only L1 tree family enrolled by this release. |
-| Protection tier | `standard` or `advanced` | Whether the immutable program forbids or requires a distinct recovery key. |
-| Spending policy schema | `vault-spending-policy-v1` | The canonical bounded policy instance selected and frozen during enrollment. |
-| VTXO programs | `vault-board-v1`, `vault-policy-v1` | The worker-owned boarding intermediate and Spending VTXO tree. |
-| Recovery binding | `arkade-vault/recovery-binding/v4` | The signed credential envelope, protection tier, complete Savings descriptor, and release-pinned Spending and boarding descriptors. |
-| Recovery artifacts | Recovery Kit `3`, map backup `3` | The portable public program map and its encrypted backup envelope. |
-| Domain strings | Individual `.../vN` literals | One MAC, digest, KDF, or encrypted-envelope preimage. |
+New connector enrollments select v2. Existing records reconstruct the family
+stored at enrollment; their scripts remain unchanged when the binary is updated.
+Public Recovery Kits and encrypted archives are distinct formats with different
+key-unlock and transaction-path content.
 
-The digits are local to each contract. A database schema change does not
-rotate an onchain tree or key-derivation domain. A tree change does not imply a
-SQLite migration. Domain suffixes remain unchanged when their byte-level
-preimages remain unchanged, even when their names predate the v2 codebase.
+The [Contract Packs](../contract-pack.json) and
+[mainnet variant](../contract-pack.mainnet.json) define network-specific program
+parameters shared with the wallet. Domain strings are pinned by source and
+cross-language fixtures. Renaming a domain can change keys, MACs, or signed
+preimages even when no visible product behavior changes.
 
-## Fresh database rule
-
-Startup creates an empty schema or validates the complete existing v2 schema.
-It rejects extra tables, triggers, views, indexes, altered constraints, and any
-other schema version before application data is read. An older database must
-remain with the deployment that understands it. No production code in this
-branch upgrades or imports it.
-
-Future changes begin at this baseline. Each new schema version requires a
-small forward migration, exact structural validation, a rollback test, and an
-operations decision about when the new binary may open the database.
-
-## Domain rotation
-
-The active persistence domains are listed in `internal/policy` and pinned by
-tests. A domain changes only when its preimage or derived-key contract changes.
-That change requires all three steps:
-
-1. Define and write the new preimage under a new domain.
-2. Re-seal authenticated rows that verify under the old domain, while refusing
-   any row that verifies under neither domain.
-3. Remove old-domain acceptance after every eligible database has crossed the
-   migration.
-
-Keeping both domains in a hot verification path creates a permanent downgrade
-window. Renaming a historical prefix for appearance alone would also rotate
-keys or MACs without changing the protected contract, so those literals remain
-byte-for-byte stable.
-
-## Contract pack
-
-The server and wallet copies of `contract-pack.json` must remain
-byte-identical. A release that changes an enrollment template, VTXO tree,
-delay, signing role, policy schema or bounds, or economic-policy identifier
-updates both copies and the corresponding cross-implementation vectors in the
-same change. A policy instance selected within those bounds does not create a
-new program version; its canonical digest and derived Savings descriptor are
-unique to that vault.
-
-Recovery binding v4 is the only accepted binding in this fresh release. The
-server derives its Spending and boarding fields from the authenticated
-credential, immutable protection tier, and release-pinned Operator policy. It
-does not trust a wallet status snapshot for those values. A missing resolver,
-incompatible deployment, or incomplete descriptor prevents binding creation
-and installation.
+[Storage](storage.md) describes structural validation and migration behavior.

@@ -50,7 +50,7 @@ func TestLightRenewalMigrationPreservesLegacyRecordsAndSequence(t *testing.T) {
 	if !bytes.Equal(before, after) {
 		t.Fatal("migration changed authenticated identity")
 	}
-	if version, err := migrated.SchemaVersion(); err != nil || version != 2 {
+	if version, err := migrated.SchemaVersion(); err != nil || version != schemaVersion {
 		t.Fatalf("migration version %d %v", version, err)
 	}
 	if n, err := economicOutflowCount(migrated.db); err != nil || n != 0 {

@@ -166,6 +166,20 @@ func verifyVaultBoardFinal(
 	if err := verifyVaultBoardBatchOutput(txTree, unsignedPacket, forfeit, expectedExpiry); err != nil {
 		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 VTXO tree policy: %w", err)
 	}
+	// The boarding input can become spendable by the Operator as soon as this
+	// cosigner releases its commitment signature. First require every supplied
+	// recovery transaction to be signed under the pinned sweep policy.
+	sweep := &arkscript.CSVMultisigClosure{
+		MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{forfeit}}, Locktime: expectedExpiry,
+	}
+	sweepScript, err := sweep.Script()
+	if err != nil {
+		return verifiedVaultBoardFinal{}, err
+	}
+	sweepRoot := txscript.NewBaseTapLeaf(sweepScript).TapHash()
+	if err := arktree.ValidateTreeSigs(sweepRoot[:], unsignedPacket.UnsignedTx.TxOut[0].Value, txTree); err != nil {
+		return verifiedVaultBoardFinal{}, fmt.Errorf("vault-board-v1 signed recovery path required: %w", err)
+	}
 	receiverTxid, receiverVout, err := findExactVaultBoardReceiver(txTree, operation.ReceiverScript, evidence.Recipients[0].AmountSats)
 	if err != nil {
 		return verifiedVaultBoardFinal{}, err
@@ -202,7 +216,29 @@ func parseCanonicalVaultBoardPSBT(raw string, max int) (*psbt.Packet, error) {
 	return packet, nil
 }
 
+// Boarding receives an SDK graph snapshot with only supplied child references.
 func canonicalVaultBoardTree(flat arktree.FlatTxTree) (arktree.FlatTxTree, error) {
+	out, err := canonicalVaultBoardTreeNodes(flat)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(out))
+	for _, node := range out {
+		seen[node.Txid] = true
+	}
+	for _, node := range out {
+		for _, child := range node.Children {
+			if !seen[child] {
+				return nil, fmt.Errorf("vault-board-v1 VTXO tree child missing")
+			}
+		}
+	}
+	return out, nil
+}
+
+// Parse and preserve the complete supplied transcript before graph traversal.
+// Native renewal streams can name sibling transactions not sent to this participant.
+func canonicalVaultBoardTreeNodes(flat arktree.FlatTxTree) (arktree.FlatTxTree, error) {
 	if len(flat) == 0 || len(flat) > maxVaultBoardTreeNodes {
 		return nil, fmt.Errorf("vault-board-v1 VTXO tree size")
 	}
@@ -233,13 +269,6 @@ func canonicalVaultBoardTree(flat arktree.FlatTxTree) (arktree.FlatTxTree, error
 			children[index] = child
 		}
 		out[i] = arktree.TxTreeNode{Txid: node.Txid, Tx: node.Tx, Children: children}
-	}
-	for _, node := range out {
-		for _, child := range node.Children {
-			if _, ok := seen[child]; !ok {
-				return nil, fmt.Errorf("vault-board-v1 VTXO tree child missing")
-			}
-		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Txid < out[j].Txid })
 	return out, nil

@@ -24,6 +24,9 @@ func (s *Service) InstallVaultBoardAuthorization(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := chain.verifyCheckpoint(ctx, id.Network); err != nil {
+		return err
+	}
 	operatorDial := func(ctx context.Context) (vaultBoardOperator, error) {
 		return dialVaultBoardOperator(ctx, id.Network)
 	}

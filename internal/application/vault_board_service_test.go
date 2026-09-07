@@ -25,11 +25,18 @@ import (
 )
 
 type vaultBoardTestChain struct {
-	state       vaultBoardConfirmedOutpoint
-	err         error
-	errAt       int
-	calls       int
-	sawDeadline bool
+	checkpointErr   error
+	checkpointCalls int
+	state           vaultBoardConfirmedOutpoint
+	err             error
+	errAt           int
+	calls           int
+	sawDeadline     bool
+}
+
+func (c *vaultBoardTestChain) verifyCheckpoint(context.Context, string) error {
+	c.checkpointCalls++
+	return c.checkpointErr
 }
 
 func (c *vaultBoardTestChain) confirmedOutpoint(context.Context, string, uint32) (vaultBoardConfirmedOutpoint, error) {

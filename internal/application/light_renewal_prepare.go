@@ -66,6 +66,10 @@ func (s *Service) lightRenewalContext(vaultID string) (light.Descriptor, *vtxoPo
 	return *snapshot.Light, tree, err
 }
 func (s *Service) liveLightRenewalInput(ctx context.Context, d light.Descriptor, tree *vtxoPolicyTree, txid string, vout uint32) (ports.ResolvedVtxo, error) {
+	return s.liveRenewalInput(ctx, tree, txid, vout)
+}
+func (s *Service) liveRenewalInput(ctx context.Context, tree *vtxoPolicyTree, txid string, vout uint32) (ports.ResolvedVtxo, error) {
+
 	all, err := s.ArkResolver.SpendableVtxos(ctx, tree.PkScript)
 	if err != nil {
 		return ports.ResolvedVtxo{}, err

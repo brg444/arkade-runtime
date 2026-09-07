@@ -46,3 +46,20 @@ func TestParseLightEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestParseLightDelegationEnabled(t *testing.T) {
+	for _, value := range []string{"", "false"} {
+		got, err := parseLightDelegationEnabled(value)
+		if err != nil || got {
+			t.Fatal(value, got, err)
+		}
+	}
+	if got, err := parseLightDelegationEnabled("true"); err != nil || !got {
+		t.Fatal(got, err)
+	}
+	for _, value := range []string{"1", "TRUE", " false ", "yes"} {
+		if _, err := parseLightDelegationEnabled(value); err == nil {
+			t.Fatal(value)
+		}
+	}
+}

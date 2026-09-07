@@ -170,39 +170,61 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 }
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
-	"/v1/light/renew/prepare":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/register":       {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/final":          {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/status":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/release":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/enroll/start":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/enroll/propose":       {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/enroll/finish":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/health":                        {http.MethodGet: {}},
-	"/ready":                         {http.MethodGet: {}},
-	"/v1/status":                     {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/enroll/session":             {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/invite":                     {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/enroll/start":               {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/enroll/propose":             {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/enroll/finish":              {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/initiate":                   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/clawback":                   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/passkey/challenge":          {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/passkey/binding":            {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/passkey/install":            {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/passkey/recover":            {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/map":                        {http.MethodGet: {}, http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/reserve":               {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/authorize":             {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/checkpoints/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/finalize":              {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/operation":             {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/vtxo/abort":                 {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/board/prepare":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/board/register":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/board/release":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/board/final":           {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/info":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/schedule":     {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/status":       {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/list":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/delegate/cancel":       {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/recovery-archive/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/recovery-archive/open":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/recovery-archive/read":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/recovery-archive/write":     {http.MethodPost: {}, http.MethodOptions: {}},
+
+	"/v1/light/backup/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/backup/open":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/backup/read":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/backup/write":     {http.MethodPost: {}, http.MethodOptions: {}},
+
+	"/v1/light/renew/prepare":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/register":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/final":            {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/status":           {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/delegate/info":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/delegate/schedule":      {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/delegate/status":        {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/delegate/cancel":        {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/delegate/list":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/renew/release":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/enroll/start":           {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/enroll/propose":         {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/light/enroll/finish":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/health":                          {http.MethodGet: {}},
+	"/ready":                           {http.MethodGet: {}},
+	"/v1/status":                       {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/enroll/session":               {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/invite":                       {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/enroll/start":                 {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/enroll/propose":               {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/enroll/finish":                {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/initiate":                     {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/clawback":                     {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/passkey/challenge":            {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/passkey/binding":              {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/passkey/install":              {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/passkey/recover":              {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/map":                          {http.MethodGet: {}, http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/reserve":                 {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/authorize":               {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/checkpoints/authorize":   {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/finalize":                {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/operation":               {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/vtxo/abort":                   {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/prepare":           {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/register":          {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/release":           {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/board/final":             {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/connector/withdraw/authorize": {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/connector/operation":          {http.MethodGet: {}, http.MethodOptions: {}},
 }
 
 func sortedMethods(methods map[string]struct{}) []string {
@@ -235,10 +257,13 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	})
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachLightEnrollmentRoutes(mux, svc, origin)
+	attachRecoveryArchiveRoutes(mux, svc, origin)
 	attachLightRenewalRoutes(mux, svc, origin)
+	attachSpendingDelegationRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)
 	attachVaultBoardRoutes(mux, svc, origin)
+	attachConnectorRoutes(mux, svc, origin)
 }
 
 type mutationError struct {
@@ -256,10 +281,14 @@ func decodeMutation(r *http.Request, dst any, expectedOrigin string) error {
 	if expectedOrigin == "" || r.Header.Get("Origin") != expectedOrigin {
 		return &mutationError{http.StatusForbidden, "origin"}
 	}
-	if r.ContentLength > maxJSONBody {
+	limit := int64(maxJSONBody)
+	if r.URL.Path == "/v1/light/backup/write" || r.URL.Path == "/v1/recovery-archive/write" {
+		limit = 3_100_000
+	}
+	if r.ContentLength > limit {
 		return &mutationError{http.StatusRequestEntityTooLarge, "request too large"}
 	}
-	r.Body = http.MaxBytesReader(nil, r.Body, maxJSONBody)
+	r.Body = http.MaxBytesReader(nil, r.Body, limit)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {

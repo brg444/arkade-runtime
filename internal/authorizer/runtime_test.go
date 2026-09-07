@@ -302,9 +302,10 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 			ClientOrigin: "https://vault.example.com", RPID: "vault.example.com",
 			Network: deployment.NetworkMutinynet,
 		},
-		DatabasePath:         filepath.Join(dir, "vault.sqlite"),
-		PolicySequencePath:   filepath.Join(dir, "policy-sequence"),
-		VaultCosignerKeyFile: vaultCosignerPath,
+		LightDelegationEnabled: true,
+		DatabasePath:           filepath.Join(dir, "vault.sqlite"),
+		PolicySequencePath:     filepath.Join(dir, "policy-sequence"),
+		VaultCosignerKeyFile:   vaultCosignerPath,
 	}
 	emulatorDials := 0
 	emulatorDial := func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, allowDeprecated bool) (application.Signer, application.PublicEmulatorIdentity, error) {
@@ -334,6 +335,14 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Construction has not checked the live chain or installed boarding yet.
+	// Starting successfully here proves it did not already launch the worker;
+	// production Open starts it only after those checks and initial readiness.
+	if err := runtime.service.StartLightDelegation(); err != nil {
+		_ = runtime.Close()
+		t.Fatalf("background worker started before production checks: %v", err)
+	}
+	runtime.service.StopLightDelegation()
 	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
 	}

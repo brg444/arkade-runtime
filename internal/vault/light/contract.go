@@ -1,5 +1,4 @@
-// Package light implements the candidate Light contract. It is not mounted in
-// the production profile and cannot enroll, reserve, or sign live funds.
+// Package light implements the named vault-light-policy-v1 contract.
 package light
 
 import (

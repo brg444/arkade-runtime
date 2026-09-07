@@ -11,6 +11,7 @@ import (
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
 
@@ -196,6 +197,9 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	if err := requirePendingSpendingPolicy(s.runtimeConfig().Network, pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return nil, err
 	}
+	if hasConnectorRequest(req.RegisterRequest) {
+		return s.previewConnectorEnrollmentDescriptor(pending.VaultID, req.RegisterRequest, connector.DualTemplate)
+	}
 	return s.previewVaultBoardEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
 }
 
@@ -331,6 +335,16 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	if err != nil {
 		return nil, false
 	}
+	parsed, err = applyConnectorEnrollmentRequest(parsed, req, s.runtimeConfig().Network)
+	if err != nil {
+		return nil, false
+	}
+	if parsed.connectorOrigin != nil {
+		return s.acceptConnectorDuplicateFinish(vaultID, req, parsed, rec, cred)
+	}
+	if hasConnectorRequest(req) {
+		return nil, false
+	}
 	preview, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil || req.DescriptorHash == "" || req.DescriptorHash != preview.DescriptorHash {
 		return nil, false
@@ -363,6 +377,13 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 		storedBoard.ExitDelay != wantBoard.ExitDelay || storedBoard.ExitDelayUnit != wantBoard.ExitDelayUnit ||
 		!bytesEqualConst(storedBoard.PkScript, wantBoard.PkScript) || storedBoard.Address != wantBoard.Address {
 		return nil, false
+	}
+	// A legacy replay must not match a connector vault: any stored origin row
+	// rejects the legacy duplicate.
+	if s.Stores.Connector != nil {
+		if storedConnector, err := s.Stores.Connector.GetConnectorEnrollment(vaultID); err != nil || storedConnector != nil {
+			return nil, false
+		}
 	}
 	st, err := s.statusFor(context.Background(), vaultID)
 	if err != nil {

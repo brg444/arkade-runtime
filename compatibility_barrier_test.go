@@ -14,11 +14,13 @@ import (
 // decision rather than an incidental fixture update.
 func TestArkadeVaultV1CompatibilityArtifacts(t *testing.T) {
 	want := map[string]string{
-		"contract-pack.json":                                          "3a30b9819a071d6bcec4d5ae5a27a0bae20a1e3445293998a60402525ba44526",
-		"internal/contractpack/contract-pack.json":                    "3a30b9819a071d6bcec4d5ae5a27a0bae20a1e3445293998a60402525ba44526",
-		"contract-pack.mainnet.json":                                  "7d78c79aaebf4b85e1996fb8e7ad119dd37aae610bdf6ac794a4304a71abfcd3",
-		"internal/contractpack/contract-pack.mainnet.json":            "7d78c79aaebf4b85e1996fb8e7ad119dd37aae610bdf6ac794a4304a71abfcd3",
-		"internal/application/testdata/http-v1-compatibility.json":    "9dd5c73ca3df53c8f3e25e7360c6a08e67114e8ae9baa631160de2dd3368d83c",
+		"experiments/connector/testdata/dual-vectors.json":                "2fe59062431d2f93d4612f41f5c169409543bf3c417dbf5d44af4d7ab1f78089",
+		"internal/application/testdata/connector-enrollment-vectors.json": "7c9fd567b0d1da2ab93edbf24649fefc5d4ba8fa0124345ed79850cf929613a2",
+		"contract-pack.json":                                          "a9ccccb8505a2da22fbb0ca39ca9903d839317389c56a95176093099f6f88aa6",
+		"internal/contractpack/contract-pack.json":                    "a9ccccb8505a2da22fbb0ca39ca9903d839317389c56a95176093099f6f88aa6",
+		"contract-pack.mainnet.json":                                  "804f535d54afd67eb3bdb8cb0241612222ff76917e8ad1e8dfa3400546b605f0",
+		"internal/contractpack/contract-pack.mainnet.json":            "804f535d54afd67eb3bdb8cb0241612222ff76917e8ad1e8dfa3400546b605f0",
+		"internal/application/testdata/http-v1-compatibility.json":    "8cf14b8b54f79bdfa7edfb3cd7fb22cf287dc0c3a8dbe71877e95412a7ac958c",
 		"internal/policy/testdata/hkdf-sha256-v1.json":                "0739edebb44f122e70aee6153e9aaf6875c73a01412469d8f16124a8f9186cde",
 		"internal/policy/testdata/vtxo-hkdf-sha256-v1.json":           "9b376662c2d33f51981d2e8b1aa1f0134ccb06b556aa2536c5f93ad2c48b1285",
 		"internal/policy/testdata/vault-policy-v1-tree.json":          "2774756345e8cc01aa43743f62afe831baa9cbba0f4f7117e7b9a2f38776e993",

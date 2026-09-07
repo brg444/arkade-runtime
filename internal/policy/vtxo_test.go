@@ -712,3 +712,29 @@ func TestVtxoOverlapLookupAcceptsMaximumCandidateSet(t *testing.T) {
 		t.Fatalf("maximum candidate lookup exceeded SQLite parameter budget: %v", err)
 	}
 }
+
+func TestSettledAllowanceWindowAndUnresolvedFenceHaveDifferentLifetimes(t *testing.T) {
+	for _, state := range []string{vtxoStateFinalized, vtxoStateUnresolved} {
+		t.Run(state, func(t *testing.T) {
+			now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+			led := openPolicyTestLedger(t, func() time.Time { return now })
+			createPolicyTestVault(t, led, "vault-a", 0x74)
+			insertTestVtxoOperation(t, led, testVtxoOperation("vault-a", "settled", vtxoPurposeSpend, state, 10000, 500, now))
+			now = now.Add(24 * time.Hour)
+			if spent, err := led.SpentInPeriod(t.Context(), "vault-a", ""); err != nil || spent != 10500 {
+				t.Fatal("24-hour boundary changed", spent, err)
+			}
+			now = now.Add(time.Nanosecond)
+			if spent, err := led.SpentInPeriod(t.Context(), "vault-a", ""); err != nil || spent != 0 {
+				t.Fatal("observed settlement window did not expire", spent, err)
+			}
+			if state == vtxoStateUnresolved {
+				candidate := testVtxoOperation("vault-a", "candidate", vtxoPurposeSpend, vtxoStateReserved, 1000, 0, now)
+				input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x7a}, 32), Vout: 0, ValueSats: 2000, Script: []byte{0x51}}
+				if err := led.ReserveVtxoOperation(t.Context(), candidate, []VtxoOperationInput{input}, 100000); err == nil || !strings.Contains(err.Error(), "operation already active") {
+					t.Fatal("expired debit released unresolved authority fence", err)
+				}
+			}
+		})
+	}
+}

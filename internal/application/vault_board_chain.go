@@ -39,6 +39,7 @@ type vaultBoardConfirmedOutpoint struct {
 }
 
 type vaultBoardChain interface {
+	verifyCheckpoint(context.Context, string) error
 	confirmedOutpoint(context.Context, string, uint32) (vaultBoardConfirmedOutpoint, error)
 	revalidateOutpoint(context.Context, vaultBoardConfirmedOutpoint) (vaultBoardConfirmedOutpoint, error)
 }
@@ -87,6 +88,24 @@ func dialVaultBoardChainWithClient(rawOrigin string, hc httpDoer) (vaultBoardCha
 		return nil, fmt.Errorf("vault-board-v1 Esplora HTTP client required")
 	}
 	return &esploraVaultBoardChain{origin: rawOrigin, hc: hc}, nil
+}
+
+// verifyCheckpoint binds the observed chain to the compiled network identity.
+// The pinned HTTPS service remains the chain authority; this detects a wrong
+// chain behind that origin, not a service deliberately fabricating responses.
+func (e *esploraVaultBoardChain) verifyCheckpoint(ctx context.Context, network string) error {
+	id, err := deployment.IdentityFor(network)
+	if err != nil || e == nil || e.hc == nil || e.origin != id.EsploraOrigin {
+		return fmt.Errorf("release-pinned Bitcoin chain required")
+	}
+	hash, err := e.getText(ctx, "/block-height/"+strconv.FormatInt(id.CheckpointHeight, 10), vaultBoardChainTextLimit)
+	if err != nil {
+		return fmt.Errorf("Bitcoin checkpoint unavailable: %w", err)
+	}
+	if hash != id.CheckpointHash {
+		return fmt.Errorf("Bitcoin checkpoint does not match the release pin")
+	}
+	return nil
 }
 
 type vaultBoardEsploraTx struct {

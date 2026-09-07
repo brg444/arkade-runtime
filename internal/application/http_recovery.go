@@ -1,6 +1,9 @@
 package application
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+)
 
 func attachRecoveryRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	mux.HandleFunc("POST /v1/initiate", func(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +30,22 @@ func attachRecoveryRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		var request PasskeyChallengeRequest
 		if err := decodeMutation(r, &request, origin); err != nil {
 			writeMutationError(w, err)
+			return
+		}
+		// The candidate binding belongs exclusively to connector withdrawals:
+		// that purpose requires it and every existing purpose rejects it, so
+		// established byte encodings stay identical when it is absent.
+		if request.CandidateTxid != "" {
+			if request.Purpose != passkeyPurposeConnectorWithdraw {
+				writeMutationError(w, fmt.Errorf("candidateTxid is only valid for connector-withdraw"))
+				return
+			}
+			response, err := svc.IssueConnectorWithdrawChallenge(r.Context(), request.VaultID, request.CandidateTxid)
+			writeJSON(w, response, err)
+			return
+		}
+		if request.Purpose == passkeyPurposeConnectorWithdraw {
+			writeMutationError(w, fmt.Errorf("candidateTxid required"))
 			return
 		}
 		response, err := svc.IssuePasskeyChallengeFor(r.Context(), request.VaultID, request.Purpose)
