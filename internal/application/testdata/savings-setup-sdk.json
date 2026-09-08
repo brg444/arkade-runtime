@@ -1,0 +1,132 @@
+{
+  "status": {
+    "enrolled": true,
+    "network": "mainnet",
+    "clientOrigin": "https://vault.example",
+    "rpId": "vault.example",
+    "vaultId": "aabbccddeeff00112233445566778899",
+    "templateVersion": "phone-connector-recovery-savings-v2",
+    "policyVersion": "vault-spending-policy-v1",
+    "protectionTier": "standard",
+    "externalOwnerWalletPub": "02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+    "vaultCosignerBasePub": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+    "arkadeCosignerBasePub": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e",
+    "arkadeCosignerOrigin": "https://operator.example",
+    "arkadeCosignerVersion": "savings-v1-fixture",
+    "savingsAddress": "bc1pfv4qv27zzrrjwzkrhkf690yrmx6gudnlh6jj29et5g9gjnynd0tqeuat0a",
+    "savingsScript": "51204b2a062bc210c7270ac3bd93a2bc83d9b48e367fbea525172ba20a894c936bd6",
+    "periodAllowance": 100000,
+    "periodSpent": 0,
+    "periodRemaining": 100000,
+    "txCap": 50000,
+    "absoluteFeeCap": 20000,
+    "feerateCapSatVb": 25,
+    "spendingPolicy": {
+      "program": "vault-policy-v1",
+      "schema": "vault-spending-policy-v1",
+      "period": "rolling-24h",
+      "periodAllowanceSats": 100000,
+      "txRecipientCapSats": 50000,
+      "absoluteFeeCapSats": 20000,
+      "feerateCapSatPerV": 25
+    },
+    "spendingPolicyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+    "phoneBip340Pub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+    "vtxoVaultCosignerPub": "025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc",
+    "vtxoDelegatePub": "026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6",
+    "vtxoExitDelay": 605184,
+    "vtxoExitDelayUnit": "seconds",
+    "spendingArkAddress": "ark1qzpq904am6clw3pgqwyh4p02708fy4xs0hcpwt7rwfdttuxsjamec0akrcyp3ds8th52gnhkltfm0rm2ld8wvpt3uunf9vl5mqjy233tcelt7d",
+    "spendingArkScript": "51203fb61e0818b6075de8a44ef6fad3b78f6afb4ee60571e72692b3f4d82445462b",
+    "vtxoBoardingActive": true,
+    "vtxoBoardingProgram": "vault-board-v1",
+    "vtxoBoardingDescriptor": {
+      "schema": "arkade-vault/board-v1",
+      "program": "vault-board-v1",
+      "template": "vault-board-v1-boarding-vault-and-operator",
+      "network": "mainnet",
+      "boardingPub": "022b4ea0a797a443d293ef5cff444f4979f06acfebd7e86d277475656138385b6c",
+      "recoveryPhonePub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+      "vaultBoardCosignerPub": "024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97",
+      "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+      "exitDelay": 7776256,
+      "exitDelayUnit": "seconds",
+      "script": "5120fe7c3689684b62dcece699968db1bfac6eda4592af10d89623ed78862b209e2c",
+      "address": "bc1ple7rdztgfd3dem8xnxtgmvdl43hd53vj4ugd393ra4ugv2eqnckq3gdjc0"
+    },
+    "vtxoBoardingDescriptorHash": "87bfe10e2c1aec09c5a5d4e42a3e8cddfff568f0de45052b7c1459ddcea47f51",
+    "vtxoBoardingScript": "5120fe7c3689684b62dcece699968db1bfac6eda4592af10d89623ed78862b209e2c",
+    "vtxoBoardingAddress": "bc1ple7rdztgfd3dem8xnxtgmvdl43hd53vj4ugd393ra4ugv2eqnckq3gdjc0",
+    "vtxoBoardingExitDelay": 7776256,
+    "vtxoBoardingExitDelayUnit": "seconds",
+    "connectorEnrollment": {
+      "connectorType": "p2wpkh",
+      "connectorPub": "02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+      "connectorFingerprint": 305419896,
+      "connectorPath": [
+        2147483732,
+        2147483648,
+        2147483648,
+        0,
+        0
+      ],
+      "enrollmentDigest": "c76991502395c731946a1426fb8f661f6dfa7e12496d81195dc50d2b1cc5df5e",
+      "descriptorHash": "5af0a4f3c25b3b994e4710b9860d3e61f220a21938463efdc5b213561f7a986f"
+    }
+  },
+  "context": {
+    "program": "vault-policy-v1",
+    "network": "mainnet",
+    "vaultId": "aabbccddeeff00112233445566778899",
+    "protectionTier": "standard",
+    "ownerPub": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "cosignerPub": "5601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc",
+    "operatorPub": "8202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+    "scriptPubKey": "51203fb61e0818b6075de8a44ef6fad3b78f6afb4ee60571e72692b3f4d82445462b",
+    "spendingPolicy": {
+      "program": "vault-policy-v1",
+      "schema": "vault-spending-policy-v1",
+      "period": "rolling-24h",
+      "periodAllowanceSats": 100000,
+      "txRecipientCapSats": 50000,
+      "absoluteFeeCapSats": 20000,
+      "feerateCapSatPerV": 25
+    }
+  },
+  "prepared": {
+    "plan": {
+      "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "descriptorHash": "8ce1ca1e49fbce45fa448a45dc4b56036f746c9550340eeb104ff13d29e6412e",
+      "enrollmentDigest": "c76991502395c731946a1426fb8f661f6dfa7e12496d81195dc50d2b1cc5df5e",
+      "txid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "vout": 0,
+      "valueSats": 40000,
+      "changeSats": 38600,
+      "reserveScript": "0014c42e7ef92fdb603af844d064faad95db9bcdfd3d",
+      "reserveSats": 500,
+      "reserveCount": 2,
+      "feeSats": 400,
+      "feePolicyDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "registerExpireAt": 1788840734
+    },
+    "planDigest": "a3d51e6050322f471a10a2a659e0cb95bb4485195aed88f90ae24879abc24c45",
+    "state": "prepared"
+  },
+  "prepare": {
+    "vaultId": "aabbccddeeff00112233445566778899",
+    "operationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "txid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "vout": 0,
+    "reserveCount": 2,
+    "expiresAt": 1788840734,
+    "ownerSignature": "32735115e9033bee1aa82ffef8ea58adfee518509170a1568689384e567f0f4e8e8a55110fda54da5bd018418e46afa9a4180841a1fa2c1ddec53229ad2ce24b"
+  },
+  "deleteIntent": {
+    "proof": "cHNidP8BAGYCAAAAAqPeOGUbPjH7UG+dv2XUbQy6OszGj9jILS//3YskuQkcAAAAAAD/////u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7sAAAAAAP////8BAAAAAAAAAAABagAAAAABCR97InR5cGUiOiJkZWxldGUiLCJleHBpcmVfYXQiOjB9AAEBKwAAAAAAAAAAIlEgP7YeCBi2B13opE72+tO3j2r7TuYFcecmkrP02CRFRisBAwQBAAAAQRT5MIoBkljDEEk0T4X4nVIptTHIRYNvmbCGAfETvOA2+cPY7ULKwshUo7Tteo9BoQATizl2qXGPRgbg6MGo9lvBQSP5NqexpjikqlryMcJgfVTYqP67xHd6ly7oCLYjvjd6CUb9UcZiV5oXdPVplfMJUEUa5RV4Nuqedx6gHOgYLYMBYhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsAyZX19fLafNg4Vr7qdiOJCv8TfD1T/ge8D1KPlAPz9GhopqiaC4Am3H6bjTDc2R9hrfF46MLV8kJzAJ1sc9CQuZyD5MIoBkljDEEk0T4X4nVIptTHIRYNvmbCGAfETvOA2+a0gVgFXDLR/I40rAobbSpkPoPO6KNGjGfXnz1XCokRNp8ytIIICvr3esfdEKAOJeoXq886SVNB98Bcvw3JatfDQl3ecrMAAAQErQJwAAAAAAAAiUSA/th4IGLYHXeikTvb607ePavtO5gVx5yaSs/TYJEVGKwEDBAEAAABBFPkwigGSWMMQSTRPhfidUim1MchFg2+ZsIYB8RO84Db5w9jtQsrCyFSjtO16j0GhABOLOXapcY9GBuDowaj2W8FBQN3X56yu4gQmsonerDLAu50e6MSj52R4eEyuA8Q52jH2ik9oNa9hX/2p5khEHcjpc86gG+a8YeSdwiHoUHFsoQFiFcBQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wDJlfX18tp82DhWvup2I4kK/xN8PVP+B7wPUo+UA/P0aGimqJoLgCbcfpuNMNzZH2Gt8XjowtXyQnMAnWxz0JC5nIPkwigGSWMMQSTRPhfidUim1MchFg2+ZsIYB8RO84Db5rSBWAVcMtH8jjSsChttKmQ+g87oo0aMZ9efPVcKiRE2nzK0gggK+vd6x90QoA4l6herzzpJU0H3wFy/Dclq18NCXd5yswAjedGFwdHJlZf1BAQHAZiD5MIoBkljDEEk0T4X4nVIptTHIRYNvmbCGAfETvOA2+a0gVgFXDLR/I40rAobbSpkPoPO6KNGjGfXnz1XCokRNp8ytIIICvr3esfdEKAOJeoXq886SVNB98Bcvw3JatfDQl3ecrAHASgOeBECydSD5MIoBkljDEEk0T4X4nVIptTHIRYNvmbCGAfETvOA2+a0g5JPb8cENgPNYHkkEkwsUBMxsE5AO4HWEdPqUq+jEzROsAcCIIPkwigGSWMMQSTRPhfidUim1MchFg2+ZsIYB8RO84Db5rSBWAVcMtH8jjSsChttKmQ+g87oo0aMZ9efPVcKiRE2nzK0gbX1FNgAUvOmorTChDCjdFXGiKi6QyWgiaEBNN7WxFKatIIICvr3esfdEKAOJeoXq886SVNB98Bcvw3JatfDQl3ecrAAA",
+    "message": "{\"type\":\"delete\",\"expire_at\":0}"
+  },
+  "psbt": "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",
+  "message": "{\"type\":\"register\",\"onchain_output_indexes\":[1,2],\"valid_at\":0,\"expire_at\":1788840734,\"cosigners_public_keys\":[\"029248279b09b4d68dab21a9b066edda83263c3d84e09572e269ca0cd7f5453714\"]}"
+}

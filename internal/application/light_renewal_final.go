@@ -131,11 +131,23 @@ func verifyLightFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d ligh
 	return verifyRenewalFinal(e, plan, c, registration, ownerSighash)
 }
 func verifyRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, c renewalContract, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
-	tree, d := c.Tree, c.Binding
-
 	digest, err := plan.digestForContract(c)
-	if err != nil || !bytes.Equal(digest, registration.PlanDigest) || len(registration.TreeSession) != 33 {
-		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal registration binding")
+	if err != nil {
+		return verifiedLightRenewalFinal{}, err
+	}
+	return verifySpendingBatchFinal(e, plan, c, registration, ownerSighash, digest, c.domain("renewal-final"), nil)
+}
+
+// Callers validate their named plan before sharing batch-path verification.
+// Setup additionally requires distinct matching onchain outputs in the same
+// commitment that backs the forfeit connector and protected Spending change.
+func verifySpendingBatchFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, c renewalContract, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType, digest []byte, domain string, onchain []*wire.TxOut) (verifiedLightRenewalFinal, error) {
+	tree, d := c.Tree, c.Binding
+	if err := c.validateTree(); err != nil {
+		return verifiedLightRenewalFinal{}, err
+	}
+	if len(digest) != 32 || !bytes.Equal(digest, registration.PlanDigest) || len(registration.TreeSession) != 33 {
+		return verifiedLightRenewalFinal{}, fmt.Errorf("batch registration binding")
 	}
 	if tree == nil || hex.EncodeToString(tree.PkScript) != d.ScriptPubKey || len(e.BatchID) == 0 || len(e.BatchID) > 256 {
 		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal batch identity")
@@ -147,6 +159,21 @@ func verifyRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, c re
 	commitment, err := parseCanonicalVaultBoardPSBT(e.CommitmentPSBT, maxVaultBoardProofBytes)
 	if err != nil || commitment.UnsignedTx.Version != 2 || commitment.UnsignedTx.LockTime != 0 || len(commitment.UnsignedTx.TxOut) < 2 {
 		return verifiedLightRenewalFinal{}, fmt.Errorf("Light renewal commitment")
+	}
+	// Match with multiplicity: one 1,000-sat output cannot replace two 500-sat outputs.
+	used := make(map[int]bool)
+	for _, required := range onchain {
+		matched := false
+		for i, out := range commitment.UnsignedTx.TxOut {
+			if i < 2 || used[i] || required == nil || out.Value != required.Value || !bytes.Equal(out.PkScript, required.PkScript) {
+				continue
+			}
+			used[i], matched = true, true
+			break
+		}
+		if !matched {
+			return verifiedLightRenewalFinal{}, fmt.Errorf("batch approval output missing or changed")
+		}
 	}
 	flat, vtxos, err := canonicalLightRenewalTree(e.VtxoTree)
 	if err != nil {
@@ -263,7 +290,7 @@ func verifyRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, c re
 	if err != nil {
 		return verifiedLightRenewalFinal{}, err
 	}
-	sum := sha256.Sum256(append([]byte(c.domain("renewal-final")), raw...))
+	sum := sha256.Sum256(append([]byte(domain), raw...))
 	return verifiedLightRenewalFinal{sum[:], e.OwnerForfeitPSBT, commitment.UnsignedTx.TxID(), receiverTxid, receiverVout}, nil
 }
 

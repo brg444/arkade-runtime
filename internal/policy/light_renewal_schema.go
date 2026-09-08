@@ -175,6 +175,20 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		}
 		version = 5
 	}
+	if version == 5 {
+		if err := validateConnectorBaseline(db, boardSchema, true, true); err != nil {
+			return err
+		}
+		if err := validateLightDelegationSchema(db); err != nil {
+			return err
+		}
+		// Version 6 keeps the physical tables and all legacy MAC preimages.
+		// It requires readers that understand the setup principal in batch rows.
+		if err := applySavingsSetupMigration(db); err != nil {
+			return err
+		}
+		version = 6
+	}
 	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)
 	}

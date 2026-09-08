@@ -210,6 +210,30 @@
     "/v1/vtxo/delegate/cancel": [
       "OPTIONS",
       "POST"
+    ],
+    "/v1/vtxo/savings-setup/final": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/savings-setup/info": [
+      "GET",
+      "OPTIONS"
+    ],
+    "/v1/vtxo/savings-setup/prepare": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/savings-setup/register": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/savings-setup/release": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/savings-setup/status": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {
@@ -818,6 +842,41 @@
     "SpendingDelegationSetResponse": [
       "setId:string",
       "operations:array<object>"
+    ],
+    "SavingsSetupPlan": [
+      "operationId:string",
+      "vaultId:string",
+      "descriptorHash:string",
+      "enrollmentDigest:string",
+      "txid:string",
+      "vout:integer",
+      "valueSats:integer",
+      "changeSats:integer",
+      "reserveScript:string",
+      "reserveSats:integer",
+      "reserveCount:integer",
+      "feeSats:integer",
+      "feePolicyDigest:string",
+      "registerExpireAt:integer"
+    ],
+    "SavingsSetupReleaseRequest": [
+      "vaultId:string",
+      "operationId:string",
+      "deleteIntent:object|null,omitempty"
+    ],
+    "SavingsSetupPrepareRequest": [
+      "vaultId:string",
+      "operationId:string",
+      "txid:string",
+      "vout:integer",
+      "reserveCount:integer",
+      "expiresAt:integer",
+      "ownerSignature:string"
+    ],
+    "SavingsSetupPrepared": [
+      "plan:object",
+      "planDigest:string",
+      "state:string"
     ]
   }
 }
