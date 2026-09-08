@@ -8,6 +8,9 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"regexp"
+	"strings"
+	"unicode"
 
 	"github.com/brg444/arkade-runtime/internal/deployment"
 )
@@ -35,10 +38,14 @@ type stockVaultBoardOperator struct {
 // only for register: delete no-match and final rejection remain fail-closed.
 type vaultBoardOperatorRejection struct {
 	status int
+	reason string
 }
 
 func (e vaultBoardOperatorRejection) Error() string {
-	return fmt.Sprintf("vault-board-v1 Operator rejected request with HTTP %d", e.status)
+	if e.reason != "" {
+		return e.reason
+	}
+	return fmt.Sprintf("Operator rejected request with HTTP %d", e.status)
 }
 
 func isDefiniteVaultBoardRegisterRejection(err error) bool {
@@ -161,9 +168,10 @@ func (o *stockVaultBoardOperator) post(ctx context.Context, path string, payload
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		_, _ = readBoundedResponse(res.Body, vaultBoardOperatorErrorLimit)
+		raw, _ := readBoundedResponse(res.Body, vaultBoardOperatorErrorLimit)
+		defer zeroServiceBytes(raw)
 		if isStockOperatorPreAcceptanceRejection(res.StatusCode) {
-			return vaultBoardOperatorRejection{status: res.StatusCode}
+			return vaultBoardOperatorRejection{status: res.StatusCode, reason: operatorRejectionReason(raw)}
 		}
 		return fmt.Errorf("vault-board-v1 Operator HTTP %d", res.StatusCode)
 	}
@@ -214,3 +222,28 @@ func decodeVaultBoardOperatorJSON(raw []byte, dest any) error {
 }
 
 var _ vaultBoardOperator = (*stockVaultBoardOperator)(nil)
+
+// Preserve only bounded human-readable diagnostics. Error metadata can contain
+// signed PSBTs and must never enter responses or application logs.
+var operatorOpaqueToken = regexp.MustCompile(`[A-Za-z0-9_+/=:-]{48,}`)
+
+func operatorRejectionReason(raw []byte) string {
+	var body struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(raw, &body) != nil {
+		return ""
+	}
+	message := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, body.Message)
+	message = strings.Join(strings.Fields(message), " ")
+	message = operatorOpaqueToken.ReplaceAllString(message, "[redacted]")
+	if runes := []rune(message); len(runes) > 320 {
+		message = string(runes[:320])
+	}
+	return message
+}

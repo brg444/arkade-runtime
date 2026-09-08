@@ -51,6 +51,7 @@ type lightRenewalRegistrationEvidence struct {
 }
 type lightRenewalResponse struct {
 	State          string `json:"state"`
+	Reason         string `json:"reason,omitempty"`
 	IntentID       string `json:"intentId,omitempty"`
 	CommitmentTxid string `json:"commitmentTxid,omitempty"`
 	ReceiverTxid   string `json:"receiverTxid,omitempty"`

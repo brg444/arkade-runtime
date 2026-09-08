@@ -172,7 +172,7 @@ func TestVaultBoardOperatorClassifiesOnlyStockPreAcceptanceRejections(t *testing
 				if step == 1 {
 					return jsonResponse(http.StatusOK, vaultBoardOperatorInfoJSON(vaultBoardTestOperatorDigest)), nil
 				}
-				return jsonResponse(test.status, `{}`), nil
+				return jsonResponse(test.status, `{"message":"input already spent", "details":[{"proof":"secret-proof"}]}`), nil
 			})
 			operator, err := dialVaultBoardOperatorWithClient(context.Background(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer)
 			if err != nil {
@@ -181,6 +181,12 @@ func TestVaultBoardOperatorClassifiesOnlyStockPreAcceptanceRejections(t *testing
 			_, err = operator.registerIntent(context.Background(), "proof", "message")
 			if err == nil || isDefiniteVaultBoardRegisterRejection(err) != test.definite {
 				t.Fatalf("error = %v, definite=%v", err, isDefiniteVaultBoardRegisterRejection(err))
+			}
+			if test.definite && !strings.Contains(err.Error(), "input already spent") {
+				t.Fatal("lost rejection reason")
+			}
+			if strings.Contains(err.Error(), "secret-proof") {
+				t.Fatal("leaked error metadata")
 			}
 		})
 	}
@@ -210,5 +216,19 @@ func TestVaultBoardOperatorRejectsCrossNetworkOriginBeforeDispatch(t *testing.T)
 				t.Fatalf("cross-network dispatch: calls=%d err=%v", calls, err)
 			}
 		})
+	}
+}
+
+func TestOperatorRejectionReasonDropsMetadataAndOpaqueMaterial(t *testing.T) {
+	raw := `{"message":"INVALID_INTENT_PROOF (23): invalid signature ` + strings.Repeat("a", 64) + `\ntry again", "details":[{"proof":"secret-proof","message":"secret-message"}]}`
+	got := operatorRejectionReason([]byte(raw))
+	if got != "INVALID_INTENT_PROOF (23): invalid signature [redacted] try again" {
+		t.Fatalf("unsafe or missing diagnostic: %q", got)
+	}
+	if operatorRejectionReason([]byte(`<html>gateway error</html>`)) != "" {
+		t.Fatal("unstructured response exposed")
+	}
+	if len(operatorRejectionReason([]byte(`{"message":"`+strings.Repeat("bad ", 200)+`"}`))) > 320 {
+		t.Fatal("unbounded diagnostic")
 	}
 }
