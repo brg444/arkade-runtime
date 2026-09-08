@@ -35,6 +35,9 @@ func (s *Service) registerBitcoinPayment(ctx context.Context, r lightRenewalRegi
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
+	if _, ok := snapshot.Events["released"]; ok {
+		return lightRenewalResponse{State: "released"}, nil
+	}
 	release, err := s.acquireVerification(ctx)
 	if err != nil {
 		return lightRenewalResponse{}, err
@@ -129,6 +132,9 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r lightRenewalFina
 	snapshot, p, c, err := s.loadBitcoinPayment(ctx, r.VaultID, r.OperationID)
 	if err != nil {
 		return lightRenewalResponse{}, err
+	}
+	if _, ok := snapshot.Events["released"]; ok {
+		return lightRenewalResponse{State: "released"}, nil
 	}
 	release, err := s.acquireVerification(ctx)
 	if err != nil {

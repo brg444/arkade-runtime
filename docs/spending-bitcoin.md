@@ -43,8 +43,8 @@ canonical prepare route accepts explicit output plans under new prepare/plan
 digest phases and persists `spending-bitcoin-v1` operations. Old reserve fields
 in the shared wire plan must be empty for these new operations.
 
-Schema 7 changes the reader fence while preserving pending rows and the
-independent policy sequence. The database rejects schema-6 binaries at startup.
+Schema 8 extends the reader fence while preserving pending rows and the
+independent policy sequence. The database rejects binaries that support only schema 7 or earlier at startup.
 The browser retains the historical journal key and event name so existing
 reservations, cross-tab observers, and recovery capture remain coordinated.
 The journal parser binds any new output plan back to its saved owner-signed
@@ -52,9 +52,11 @@ prepare request; changing displayed destinations and recomputing a plan hash
 cannot change that authority.
 
 A lost final response remains uncertain. Expiry, an ended batch, or an unspent
-input alone cannot release a potentially escaped signature. The existing
-mainnet pending signer-funding attempt is preserved by this change; it is not
-authority to resend or reset the allowance. Pre-final cancellation still needs
+input alone cannot release a potentially escaped signature. A separate conflict recovery path can release the reservation after the
+Guardian verifies that another Bitcoin transaction has spent an input of the
+exact retained commitment, with at least six confirmations. See
+[Bitcoin conflict recovery](bitcoin-conflict-recovery.md) for its proof and
+chain-authority requirements. Pre-final cancellation still needs
 the retained owner deletion proof and the existing release conditions.
 
 After confirmation, the wallet retains the operation until the exact
@@ -90,7 +92,7 @@ Fresh funded drills generate a fresh disposable signer identity so approval
 outputs left by earlier tests cannot silently skip the payment. Private test
 keys and signed recovery artifacts remain outside the repositories.
 
-Deploy the schema-7 Guardian before assigning the matching wallet to RC. A
+Deploy the schema-8 Guardian before assigning the matching wallet to RC. A
 Guardian restart requires a live operator unlock because its plaintext signing
 key is removed after load. Preserve the existing mainnet pending operation
 through deployment.

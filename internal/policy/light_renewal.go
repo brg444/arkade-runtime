@@ -429,6 +429,9 @@ func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now
 			return fmt.Errorf("Light renewal deletion changed")
 		}
 	case "released":
+		if events["final_dispatched"].Phase != "" {
+			return validateBitcoinConflictRelease(s, e)
+		}
 		if isBitcoinBatch(s.Operation.Kind) && events["delete_result"].Outcome != "released" {
 			return fmt.Errorf("Savings setup intent deletion is unconfirmed")
 		}
