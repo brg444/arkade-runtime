@@ -22,6 +22,11 @@ func (r *rollingResolverFixture) verifyRollingInputs(context.Context, *rolling.C
 
 func rollingApplicationFixture(t *testing.T) (*env, *RollingOperations, *fileBackedVaultKeys, *rollingResolverFixture, rolling.Proposal) {
 	t.Helper()
+	return rollingApplicationFixtureWithGrant(t, false)
+}
+
+func rollingApplicationFixtureWithGrant(t *testing.T, automatic bool) (*env, *RollingOperations, *fileBackedVaultKeys, *rollingResolverFixture, rolling.Proposal) {
+	t.Helper()
 	e := newEnvForNetwork(t, "mainnet")
 	c, p, err := fixture.RollingPayment()
 	if err != nil {
@@ -33,6 +38,11 @@ func rollingApplicationFixture(t *testing.T) (*env, *RollingOperations, *fileBac
 		t.Fatal(err)
 	}
 	c.Keys.Guardian = guardian
+	delegate, err := keys.rollingDelegatePublic(rollingKeyContext{vault: fixture.VaultID, network: "mainnet", operator: c.Keys.Operator.SerializeCompressed()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Parameters.DelegatePubkey = delegate.SerializeCompressed()
 	c.Keys.User = e.hot.PubKey()
 	c.Keys.Hardware = e.externalOwner.PubKey()
 	c.Tier = "standard"
@@ -56,7 +66,7 @@ func rollingApplicationFixture(t *testing.T) (*env, *RollingOperations, *fileBac
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = e.ledger.EnrollRolling(t.Context(), policy.RollingEnrollment{VaultID: fixture.VaultID, ControllerID: c.Parameters.ControllerID.String(), Descriptor: string(descriptor), BootstrapTxid: parent.TxHash().String()})
+	_, err = e.ledger.EnrollRolling(t.Context(), policy.RollingEnrollment{VaultID: fixture.VaultID, ControllerID: c.Parameters.ControllerID.String(), Descriptor: string(descriptor), BootstrapTxid: parent.TxHash().String(), AutomaticRenewal: automatic})
 	if err != nil {
 		t.Fatal(err)
 	}

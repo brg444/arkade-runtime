@@ -15,7 +15,12 @@ import (
 
 func rollingRenewalApplicationFixture(t *testing.T) (*env, *RollingOperations, *fileBackedVaultKeys, *rollingResolverFixture, string) {
 	t.Helper()
-	e, manager, keys, resolver, payment := rollingApplicationFixture(t)
+	return rollingRenewalApplicationFixtureWithGrant(t, false)
+}
+
+func rollingRenewalApplicationFixtureWithGrant(t *testing.T, automatic bool) (*env, *RollingOperations, *fileBackedVaultKeys, *rollingResolverFixture, string) {
+	t.Helper()
+	e, manager, keys, resolver, payment := rollingApplicationFixtureWithGrant(t, automatic)
 	now := e.ledger.NowUTC().Unix()
 	built, err := rolling.BuildRenewal(manager.contract, payment.Sources, payment.Proof, 100, now, now+600)
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 )
 
 const rollingReceiptKeyScope = rolling.RollingProgram + "/finalization-receipt-v1"
+const rollingDelegateKeyScope = rolling.RollingProgram + "/renewal-delegate-v1"
 
 type rollingKeyContext struct {
 	vault, network string
@@ -28,10 +29,14 @@ type rollingJournal interface {
 }
 
 type rollingOperationAuthorizer interface {
+	prepareRollingTree(context.Context, string, string) (rollingPreparedTree, error)
+	signRollingTree(context.Context, string, string) (rollingSignedTree, error)
 	authorizeRollingFinal(context.Context, string, string) (rollingFinalAuthorization, error)
 	authorizeRollingCleanup(context.Context, string, string) (rollingCleanupAuthorization, error)
 	rollingPublic(rollingKeyContext) (*btcec.PublicKey, *btcec.PublicKey, error)
+	rollingDelegatePublic(rollingKeyContext) (*btcec.PublicKey, error)
 	authorizeRollingOperation(context.Context, string, string) (RollingAuthorization, error)
+	authorizeRollingRenewal(context.Context, string, string) (RollingAuthorization, error)
 	issueRollingReceipt(context.Context, string, uint64) (rolling.FinalizationReceipt, error)
 }
 
@@ -70,6 +75,26 @@ func deriveRollingKey(master *btcec.PrivateKey, scope rollingKeyContext, receipt
 		program = rollingReceiptKeyScope
 	}
 	return policy.DeriveVtxoVaultCosignerScalar(master, scope.vault, program, scope.network, scope.operator)
+}
+
+func deriveRollingDelegateKey(master *btcec.PrivateKey, scope rollingKeyContext) (*btcec.PrivateKey, error) {
+	return policy.DeriveVtxoVaultCosignerScalar(master, scope.vault, rollingDelegateKeyScope, scope.network, scope.operator)
+}
+
+func (k *fileBackedVaultKeys) rollingDelegatePublic(scope rollingKeyContext) (*btcec.PublicKey, error) {
+	var result *btcec.PublicKey
+	err := k.withMaster(func(master *btcec.PrivateKey) error {
+		key, err := deriveRollingDelegateKey(master, scope)
+		if err != nil {
+			return err
+		}
+		defer key.Key.Zero()
+		// The shared derivation returns the even lift. Commit that exact
+		// compressed identity; tree signing must not accept its opposite parity.
+		result = key.PubKey()
+		return nil
+	})
+	return result, err
 }
 
 func (k *fileBackedVaultKeys) rollingPublic(scope rollingKeyContext) (guardian, receipt *btcec.PublicKey, err error) {

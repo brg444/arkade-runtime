@@ -14,7 +14,8 @@ import (
 var rollingRenewalPredecessors = map[string]string{
 	"register_dispatched": "authorized",
 	"registered":          "register_dispatched",
-	"tree_prepared":       "registered",
+	"tree_requested":      "registered",
+	"tree_prepared":       "tree_requested",
 	"nonces_committed":    "tree_prepared",
 	"tree_signed":         "nonces_committed",
 	"final_authorized":    "tree_signed",
@@ -33,7 +34,7 @@ type RollingCleanupDeadline struct {
 // created. The service clock sets the proof deadline exactly once. A deadline
 // or deletion acknowledgement never releases an uncertain controller fence.
 func (l *Ledger) BeginRollingCleanup(ctx context.Context, operationID string) (RollingEvent, error) {
-	return l.appendRollingEvent(ctx, RollingEvent{OperationID: operationID, Phase: "cleanup_pending"}, nil, 0)
+	return l.appendRollingEvent(ctx, RollingEvent{OperationID: operationID, Phase: "cleanup_pending"}, nil, 0, false)
 }
 
 func rollingCleanupDeadline(e RollingEvent) (RollingCleanupDeadline, error) {

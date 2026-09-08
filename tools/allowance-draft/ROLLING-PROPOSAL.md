@@ -77,6 +77,16 @@ Guardian signatures commit atomically. Native and renewal registration
 authorization reconstruct the saved semantic proposal; their key capability
 accepts no caller PSBT, digest or observation timestamp.
 
+Unattended renewal requires an immutable `AutomaticRenewal` enrollment grant.
+Absent grants remain false without changing existing record MAC encodings.
+The semantic key capability and atomic journal commit accept only renewal;
+automatic authorization leaves the passkey counter unchanged. Before first
+authorization, one independent indexer projection must show every source
+unspent and within its renewal window, with the registration expiring before
+each source. An exact retained authorization can be replayed without another
+input lookup or access to the signing key. Full-profile enrollment must still
+include this grant in the device-approved profile and recovery binding.
+
 The wallet independently builds the scripts, complete tree, native payments,
 credits, renewal proofs and authorization digest. The shared fixture covers
 transaction bytes, zero-fee and fee-bearing renewal, checkpoint bytes, state,
@@ -95,12 +105,27 @@ header; valid signatures cannot conceal an added absolute or relative delay.
 Cleanup and final authority exclude each other at the same persistence
 boundary, and final signatures are retained before release.
 
-First registration authority, final authority and final-signature retention
-must occur within the registration validity window. The key backend also
-checks current time before generating fresh final signatures. A clock crossing
-after final authority leaves the fence intact. Already retained final signatures
-can be returned after expiry without access to the master signing key. These
-private capabilities still need the production delegation session adapter.
+The tree-signing capability accepts only a vault and retained operation ID.
+It verifies the complete replacement output group, recovery headers, parent
+graph, sweep script and exact compressed delegate key before generating nonces.
+The separately derived `renewal-delegate-v1` key retains the shared derivation's
+even lift. The descriptor and every signing node must use that exact identity.
+
+The journal retains the full requested tree before key access, then retains an
+encrypted nonce capsule before public nonces can leave the service. It checks
+nonce coverage, curve points and envelope shape before retention. Peer nonces
+commit as one immutable transcript before the capsule opens, and verified
+partial signatures commit before release. Concurrent requests can expose only
+one retained capsule and one peer challenge; retries recover the same partials.
+Final signing revalidates this complete transcript alongside the signed tree.
+
+First registration authority, every new signing-session stage, final authority
+and final-signature retention must occur within the registration validity
+window. The key backend also checks current time before generating fresh
+signatures. A clock crossing after final authority leaves the fence intact.
+Already retained partial and final signatures can be returned after expiry
+without access to the master signing key. The stock Operator event adapter and
+automatic scheduler still need integration with these private capabilities.
 
 ## Qualification evidence
 
@@ -133,10 +158,20 @@ source `552106239d9ebfadd56e79c1a5286951029e97b1` and SHA256
 The SDK lifecycle remains the reference for transaction coordination and
 retained recovery ancestry.
 
+Runtime tests additionally close and reopen the authenticated SQLite file and
+key backend after nonce preparation, complete the tree through the stock
+MuSig coordinator, validate every recovery signature and authorize final
+forfeits. Restoring the earlier database while retaining the newer independent
+policy sequence is refused before nonce access. Concurrent preparation and
+different peer challenges, malformed key responses, and cleanup during signing
+are covered by focused tests. These tests use local fixtures; the production
+event adapter and funded emergency exit still require qualification.
+
 ## Required before activation
 
 1. Bind one immutable full profile to the funded controller, Guardian and
-   receipt scopes, exact delegate, release emulator, protection tier and policy.
+   receipt scopes, exact delegate, unattended-renewal grant, release emulator,
+   protection tier and policy.
    Independently verify single-unit issuance and bootstrap admission, and retain
    recovery material before publishing a receiving destination. Existing funded
    trees cannot be edited in place; migration requires its own transaction path.
@@ -144,12 +179,10 @@ retained recovery ancestry.
    discovery, reserve, device proof, emulator submission, reconciliation and
    history recovery. Native builders currently require zero Operator fee;
    nonzero fee policy must refuse admission until separately qualified.
-3. Adapt the existing delegation scheduler and retained nonce/transcript
-   machinery to the controller and all principal inputs. Bind actual Operator
-   registration and tree-session events to the new journal stages, and apply
-   the recovery header and output checks before nonce generation as well as
-   final signing. The private final verifier and signature journal are implemented;
-   the production session adapter remains absent.
+3. Adapt the existing delegation scheduler to the controller and all principal
+   inputs. Bind actual Operator registration and tree-session events to the
+   retained nonce and signature capabilities. The private session and final
+   verifiers are implemented; the production event adapter remains absent.
 4. Connect the cleanup capability to stale-dispatch protection, a qualified
    clock margin and a barrier for already accepted remote deletions. The basic
    registered-intent deletion passed regtest; qualification still requires lost responses,

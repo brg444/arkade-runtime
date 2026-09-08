@@ -34,7 +34,7 @@ func appendRollingRenewalStage(t *testing.T, l *Ledger, id, phase string) {
 
 func TestRollingRenewalFinalAuthorityAndCleanupAreAtomic(t *testing.T) {
 	l, _, op := rollingRenewalFixture(t)
-	for _, phase := range []string{"register_dispatched", "registered", "tree_prepared", "nonces_committed", "tree_signed"} {
+	for _, phase := range []string{"register_dispatched", "registered", "tree_requested", "tree_prepared", "nonces_committed", "tree_signed"} {
 		appendRollingRenewalStage(t, l, op.OperationID, phase)
 	}
 	var wait sync.WaitGroup
@@ -145,7 +145,7 @@ func TestRollingRenewalRestartPreservesExclusiveAuthority(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				for _, phase := range []string{"register_dispatched", "registered", "tree_prepared", "nonces_committed", "tree_signed", "final_authorized"} {
+				for _, phase := range []string{"register_dispatched", "registered", "tree_requested", "tree_prepared", "nonces_committed", "tree_signed", "final_authorized"} {
 					appendRollingRenewalStage(t, l, op.OperationID, phase)
 				}
 				if _, err = l.AppendRollingEvent(t.Context(), RollingEvent{OperationID: op.OperationID, Phase: "submitted"}); err == nil {
@@ -197,7 +197,7 @@ func TestRollingRenewalRestartPreservesExclusiveAuthority(t *testing.T) {
 func TestRollingRenewalExpiryPreventsNewFinalAuthority(t *testing.T) {
 	for _, retainFinal := range []bool{false, true} {
 		l, now, op := rollingRenewalFixture(t)
-		for _, phase := range []string{"register_dispatched", "registered", "tree_prepared", "nonces_committed", "tree_signed"} {
+		for _, phase := range []string{"register_dispatched", "registered", "tree_requested", "tree_prepared", "nonces_committed", "tree_signed"} {
 			appendRollingRenewalStage(t, l, op.OperationID, phase)
 		}
 		phase := "final_authorized"

@@ -15,6 +15,10 @@ import (
 )
 
 func rollingFixture(t *testing.T) (*Ledger, *time.Time, *rolling.Contract, RollingOperation) {
+	return rollingFixtureWithGrant(t, false)
+}
+
+func rollingFixtureWithGrant(t *testing.T, automatic bool) (*Ledger, *time.Time, *rolling.Contract, RollingOperation) {
 	t.Helper()
 	l, now, legacy := renewalFixture(t)
 	c, proposal, err := fixture.RollingPayment()
@@ -25,7 +29,7 @@ func rollingFixture(t *testing.T) (*Ledger, *time.Time, *rolling.Contract, Rolli
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = l.EnrollRolling(t.Context(), RollingEnrollment{VaultID: legacy.VaultID, ControllerID: c.Parameters.ControllerID.String(), Descriptor: string(descriptor), BootstrapTxid: proposal.Sources[0].Previous.TxHash().String()}); err != nil {
+	if _, err = l.EnrollRolling(t.Context(), RollingEnrollment{VaultID: legacy.VaultID, ControllerID: c.Parameters.ControllerID.String(), Descriptor: string(descriptor), BootstrapTxid: proposal.Sources[0].Previous.TxHash().String(), AutomaticRenewal: automatic}); err != nil {
 		t.Fatal(err)
 	}
 	op := RollingOperation{OperationID: proposal.Transaction.TxHash().String(), VaultID: legacy.VaultID, Proposal: proposal}

@@ -113,6 +113,7 @@ type RollingAllowanceStore interface {
 	ReserveRolling(context.Context, policy.RollingOperation, int64) (*policy.RollingSnapshot, error)
 	AppendRollingEvent(context.Context, policy.RollingEvent) (policy.RollingEvent, error)
 	CommitRollingAuthorization(context.Context, policy.RollingEvent, []byte, uint32) (policy.RollingEvent, error)
+	CommitRollingRenewalAuthorization(context.Context, policy.RollingEvent) (policy.RollingEvent, error)
 }
 
 // Stores is the complete persistence capability set compiled into the

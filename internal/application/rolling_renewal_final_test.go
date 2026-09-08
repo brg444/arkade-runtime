@@ -84,6 +84,10 @@ func TestRollingFinalExpiredReplayDoesNotUseMasterKey(t *testing.T) {
 }
 
 func rollingFinalFixtureWithHeaders(t *testing.T, mutate func(*arktree.TxTree)) (*env, *RollingOperations, *fileBackedVaultKeys, string, rollingRenewalFinalEvidence) {
+	return rollingFinalFixtureBuild(t, mutate, true)
+}
+
+func rollingFinalFixtureBuild(t *testing.T, mutate func(*arktree.TxTree), stages bool, capture ...func(*btcec.PrivateKey)) (*env, *RollingOperations, *fileBackedVaultKeys, string, rollingRenewalFinalEvidence) {
 	t.Helper()
 	e, manager, keys, _, id := rollingRenewalApplicationFixture(t)
 	authorizeRollingFixture(t, e, manager, id)
@@ -107,10 +111,17 @@ func rollingFinalFixtureWithHeaders(t *testing.T, mutate func(*arktree.TxTree)) 
 		t.Fatal(err)
 	}
 	root := txscript.NewBaseTapLeaf(sweepScript).TapHash()
-	delegate, _ := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{5}, 32))
+	delegate, err := deriveRollingDelegateKey(e.master, rollingKeyContext{vault: fixture.VaultID, network: record.Enrollment.Network, operator: manager.contract.Keys.Operator.SerializeCompressed()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer delegate.Key.Zero()
 	operatorSession, err := btcec.NewPrivateKey()
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, save := range capture {
+		save(operatorSession)
 	}
 	ext, err := extension.NewExtensionFromTx(p.Transaction)
 	if err != nil {
@@ -250,20 +261,18 @@ func rollingFinalFixtureWithHeaders(t *testing.T, mutate func(*arktree.TxTree)) 
 		t.Fatal(err)
 	}
 	evidence := rollingRenewalFinalEvidence{BatchID: "rolling-batch", BatchExpiry: pins.VtxoTreeExpirySeconds, CommitmentPSBT: commitmentRaw, VtxoTree: flat, Connectors: connectorFlat, ForfeitPSBTs: forfeits}
-	binding, err := rollingTreeBinding(evidence)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bound, err := json.Marshal(binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, phase := range []string{"register_dispatched", "registered", "tree_prepared", "nonces_committed", "tree_signed"} {
-		evidence := `{}`
-		if phase == "tree_prepared" || phase == "tree_signed" {
-			evidence = string(bound)
+	for _, phase := range []string{"register_dispatched", "registered"} {
+		if _, err = e.ledger.AppendRollingEvent(t.Context(), policy.RollingEvent{OperationID: id, Phase: phase, Evidence: `{}`}); err != nil {
+			t.Fatal(err)
 		}
-		if _, err = e.ledger.AppendRollingEvent(t.Context(), policy.RollingEvent{OperationID: id, Phase: phase, Evidence: evidence}); err != nil {
+	}
+	if stages && mutate == nil {
+		prepared, err := e.svc.prepareRollingRenewalTree(t.Context(), manager, id, rollingUnsignedTreeFixture(t, evidence))
+		if err != nil {
+			t.Fatal(err)
+		}
+		peers := rollingPeerNoncesFixture(t, manager.contract, prepared)
+		if _, err = e.svc.signRollingRenewalTree(t.Context(), manager, id, peers); err != nil {
 			t.Fatal(err)
 		}
 	}

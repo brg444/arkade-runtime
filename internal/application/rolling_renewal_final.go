@@ -129,14 +129,33 @@ func verifyRollingRenewalFinal(c *rolling.Contract, record policy.RollingSnapsho
 	if err != nil {
 		return fail(err)
 	}
-	bound, err := json.Marshal(binding)
+	var requested rollingRenewalTree
+	var prepared rollingPreparedTree
+	var peers map[string]map[string]string
+	var signed rollingSignedTree
+	for _, stage := range []struct {
+		phase  string
+		target any
+	}{
+		{"tree_requested", &requested}, {"tree_prepared", &prepared},
+		{"nonces_committed", &peers}, {"tree_signed", &signed},
+	} {
+		if err = decodeRollingTreeEvent(record, stage.phase, stage.target); err != nil {
+			return fail(err)
+		}
+	}
+	if err = verifyRollingPrepared(record, requested, prepared); err != nil {
+		return fail(err)
+	}
+	if prepared.Binding != binding || signed.Binding != binding {
+		return fail(fmt.Errorf("rolling final differs from retained tree session"))
+	}
+	challenges, signingRoot, err := rollingTreeChallenges(c, record, prepared, peers)
 	if err != nil {
 		return fail(err)
 	}
-	for _, phase := range []string{"tree_prepared", "tree_signed"} {
-		if record.Events[phase].Evidence != string(bound) {
-			return fail(fmt.Errorf("rolling final differs from retained %s session", phase))
-		}
+	if err = verifyRollingPartials(c, binding, challenges, signingRoot, signed); err != nil {
+		return fail(err)
 	}
 	forfeitPub, err := btcec.ParsePubKey(mustDecodeRenewalHex(pins.CheckpointForfeitPubHex))
 	if err != nil {

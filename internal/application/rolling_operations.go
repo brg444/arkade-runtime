@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"strconv"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
@@ -16,6 +17,10 @@ import (
 type RollingOperationStore = arkadevaultv1.RollingAllowanceStore
 type rollingInputResolver interface {
 	verifyRollingInputs(context.Context, *rolling.Contract, rolling.Proposal) error
+}
+
+type rollingRenewalInputResolver interface {
+	verifyRollingRenewalInputs(context.Context, *rolling.Contract, rolling.Proposal, int64) error
 }
 
 // RollingOperations binds one enrolled vault to the journal and release-pinned
@@ -149,6 +154,17 @@ func (s *RollingOperations) Finalize(ctx context.Context, id, outcome string, ba
 }
 
 func (r *arkResolver) verifyRollingInputs(ctx context.Context, c *rolling.Contract, p rolling.Proposal) error {
+	return r.verifyRollingInputsAt(ctx, c, p, nil)
+}
+
+func (r *arkResolver) verifyRollingRenewalInputs(ctx context.Context, c *rolling.Contract, p rolling.Proposal, now int64) error {
+	if p.Kind != rolling.RenewalOperation {
+		return fmt.Errorf("rolling renewal input scope required")
+	}
+	return r.verifyRollingInputsAt(ctx, c, p, &now)
+}
+
+func (r *arkResolver) verifyRollingInputsAt(ctx context.Context, c *rolling.Contract, p rolling.Proposal, renewalNow *int64) error {
 	if len(p.Sources) < 1 || len(p.Sources) > rolling.MaxMoneyInputs+1 {
 		return fmt.Errorf("rolling source count")
 	}
@@ -188,6 +204,12 @@ func (r *arkResolver) verifyRollingInputs(ctx context.Context, c *rolling.Contra
 		}
 		if resolved.IsSwept || resolved.ValueSats != uint64(p.Sources[i].Previous.TxOut[p.Sources[i].Index].Value) {
 			return fmt.Errorf("rolling source value or lifecycle mismatch")
+		}
+		if renewalNow != nil {
+			var message intent.RegisterMessage
+			if err = message.Decode(p.Message); err != nil || rolling.CheckRenewalTime(p.Message, *renewalNow) != nil || resolved.ExpiresAt == nil || *renewalNow <= *resolved.ExpiresAt-c.Parameters.RenewalWindow || *renewalNow >= *resolved.ExpiresAt || message.ExpireAt > *resolved.ExpiresAt {
+				return fmt.Errorf("rolling source is outside its renewal window")
+			}
 		}
 	}
 	return nil

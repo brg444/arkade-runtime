@@ -19,6 +19,8 @@ const rollingRecordDomain = "arkade-vault/rolling-journal/v1/"
 // The descriptor and initial controller cannot change after funds arrive.
 type RollingEnrollment struct {
 	VaultID, ControllerID, Descriptor, BootstrapTxid, Network, CreatedAt string
+	// Omission preserves existing records and grants no unattended authority.
+	AutomaticRenewal bool `json:"AutomaticRenewal,omitempty"`
 }
 type RollingOperation struct {
 	OperationID, VaultID, CreatedAt string
@@ -403,7 +405,7 @@ func (l *Ledger) AppendRollingEvent(ctx context.Context, e RollingEvent) (Rollin
 	if e.Phase == "authorized" || e.Phase == "cleanup_pending" {
 		return RollingEvent{}, fmt.Errorf("rolling authority requires its semantic commit")
 	}
-	return l.appendRollingEvent(ctx, e, nil, 0)
+	return l.appendRollingEvent(ctx, e, nil, 0, false)
 }
 
 // CommitRollingAuthorization persists signatures and the verified authenticator
@@ -412,10 +414,19 @@ func (l *Ledger) CommitRollingAuthorization(ctx context.Context, e RollingEvent,
 	if e.Phase != "authorized" || len(credentialID) == 0 {
 		return RollingEvent{}, fmt.Errorf("rolling authorization credential required")
 	}
-	return l.appendRollingEvent(ctx, e, credentialID, signCount)
+	return l.appendRollingEvent(ctx, e, credentialID, signCount, false)
 }
 
-func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credentialID []byte, signCount uint32) (RollingEvent, error) {
+// CommitRollingRenewalAuthorization consumes only the immutable enrollment
+// grant. It cannot authorize payment or credit, or advance a passkey counter.
+func (l *Ledger) CommitRollingRenewalAuthorization(ctx context.Context, e RollingEvent) (RollingEvent, error) {
+	if e.Phase != "authorized" {
+		return RollingEvent{}, fmt.Errorf("rolling renewal authorization phase required")
+	}
+	return l.appendRollingEvent(ctx, e, nil, 0, true)
+}
+
+func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credentialID []byte, signCount uint32, automaticRenewal bool) (RollingEvent, error) {
 	e.CreatedAt = l.NowUTC().Format(time.RFC3339)
 	var result RollingEvent
 	err := l.withRollingTx(ctx, func(tx *sql.Conn, key []byte) error {
@@ -427,7 +438,10 @@ func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credent
 		if s == nil {
 			return fmt.Errorf("rolling operation missing")
 		}
-		if e.Phase == "authorized" {
+		if automaticRenewal && (e.Phase != "authorized" || !s.Enrollment.AutomaticRenewal || s.Operation.Proposal.Kind != rolling.RenewalOperation) {
+			return fmt.Errorf("immutable rolling renewal grant required")
+		}
+		if e.Phase == "authorized" && !automaticRenewal {
 			if err = verifyRollingCredential(ctx, tx, key, s.Operation.VaultID, credentialID); err != nil {
 				return err
 			}
@@ -440,7 +454,7 @@ func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credent
 			if e != old {
 				return fmt.Errorf("rolling event changed")
 			}
-			if e.Phase == "authorized" {
+			if e.Phase == "authorized" && !automaticRenewal {
 				if err = l.verifySignCountReplayLocked(tx, s.Operation.VaultID, credentialID, signCount); err != nil {
 					return err
 				}
@@ -451,7 +465,7 @@ func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credent
 		if _, cleanup := s.Events["cleanup_pending"]; cleanup && !strings.HasPrefix(e.Phase, "cleanup_") {
 			return fmt.Errorf("rolling cleanup fenced later authority")
 		}
-		if s.Operation.Proposal.Kind == rolling.RenewalOperation && (e.Phase == "authorized" || e.Phase == "final_authorized" || e.Phase == "final_signed") {
+		if s.Operation.Proposal.Kind == rolling.RenewalOperation && (e.Phase == "authorized" || e.Phase == "tree_requested" || e.Phase == "tree_prepared" || e.Phase == "nonces_committed" || e.Phase == "tree_signed" || e.Phase == "final_authorized" || e.Phase == "final_signed") {
 			if err = rolling.CheckRenewalTime(s.Operation.Proposal.Message, l.NowUTC().Unix()); err != nil {
 				return err
 			}
@@ -480,7 +494,7 @@ func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credent
 		if err = validateRollingLifecycle(s); err != nil {
 			return err
 		}
-		if e.Phase == "authorized" {
+		if e.Phase == "authorized" && !automaticRenewal {
 			if err = l.advanceSignCountLocked(tx, s.Operation.VaultID, credentialID, signCount); err != nil {
 				return err
 			}
