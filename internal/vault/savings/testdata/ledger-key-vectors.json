@@ -1,0 +1,502 @@
+[
+  {
+    "input": {
+      "templateVersion": "phone-ledger-recovery-savings-v1",
+      "network": "mutinynet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+      "phone": {
+        "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "hardware": {
+        "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+      "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+    },
+    "contextDigest": "88271d88483e26192896ca9d182fb2e05a0d3d57a3bfe9f58aaf74ac3a937b95",
+    "internal": {
+      "xpub": "tpubD6NzVbkrYhZ4YLBhJ3GnBee1kQmLB43E8FLFtXgLyCWHsnWkYJW9nnRDUaGxorRLqYHqopnqfyaoGNdmBsW1XUy6YDcyomDneX5honFVAjm",
+      "children": [
+        "038a152bc497af5756f908035d0f805d76b2e18372ae4c6787c8634458e6c9e79b",
+        "021b3d62bb8e97035fcbf4c3ea80762779687d0abbec4506b4270fd08170991e38"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "0361d8a06b88b71e3f177b175d6d4069ee65d81d8a7d5b35d8f287eb27474a8733",
+        "0270ef6156160d1cad79aef29022cda11677b829544a25265bab90425e5b156b35",
+        "02cf26bc71a918853a5e2713236fba928b44e7a5f59ac0b7101ed981ed9eefe082",
+        "032eac321e5144e7bf1a8c857ebfee67de308a1f40a0b8993b9c98a62de2105852"
+      ],
+      "hardware": [
+        "037e9f7821caecda39dd872f8387962bccc2c3951744d926609aadd90b694c0fac",
+        "02ac823451d16dd02025661dd3a2add2deae527b30a3c5cea264bef927a9478ed7",
+        "02d42b2ef494f3721f098399a035167e950808ca77fe7bb050f5b392673a05d549",
+        "034b52e0ef875f1f6bd6dc1375be7951ac6ec102c90041d3f19d26c9cfe84b0d1e"
+      ]
+    },
+    "programParents": [
+      {
+        "claimant": "phone",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d151882000c960b48ae4af8c07602d3b80f152d051665e433edc85b956482d54c13c94e18800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "tpubD6NzVbkrYhZ4WtMMg4fBvYUTMFSJKpe4i7S8dTkpYP4DKHx9tK1PSaYtfu8kPHwuKPqJPVxDAQsa6DpF1VC8kgFY4wqMdth9ckvqQzJr7Xq",
+        "children": [
+          "02f2f7380814de4c6dbfb134e3ec66526916599301b23a77dfcfd888e13646bbe9",
+          "036875ec5b875eabcab57cea56daf84a3a60061a33e545b58b92f9f6b7376ec6f9"
+        ]
+      },
+      {
+        "claimant": "phone",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d151882000c960b48ae4af8c07602d3b80f152d051665e433edc85b956482d54c13c94e18800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "tpubD6NzVbkrYhZ4YCEAVHyLVDF5DDnN1rfgn6opUeFMahP1nTT98VhDecmNt3A2Pxz1s38QWUKerRvcVzXdoM9QtuUpUYtqmxcJF3RrRPinVLQ",
+        "children": [
+          "02ea6ae0f9108278bdd8cd7954b0cfb24bd319c4ac8297e2ad8024bc742e611fb6",
+          "03ed167b1d6eb4f86792d30a5c19c2422dd5a2485356b9fa46b29e1f48b4ba77e6"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820ead95c7467482a1002696338720fcbe9e433307e6d33af742aa81fb069a0090f8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6026f0193539354965a95a1697551",
+        "xpub": "tpubD6NzVbkrYhZ4X8mJg7QZT6PZqzsSoJsugzu8iFESJHTTm28XDPc3tKVK64kVtcyUYsqLbXrpodvKiqMGMB6pYVRVFFwfjkH7NmbrooVNCsR",
+        "children": [
+          "03568e2ba7d3ee0cd4f8c7bfb461f46c4616814e6ffef718cf40ad5f86df4328f2",
+          "02e4fe17abf32848e9d4afbef20d0ad64459112c0866aa3711377b36aaddfe3d59"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820ead95c7467482a1002696338720fcbe9e433307e6d33af742aa81fb069a0090f8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6026f0193539354965a95a1697551",
+        "xpub": "tpubD6NzVbkrYhZ4WMrxeF19QgS7Lc1EbJLsDFpWCBg5BQJ8fTKB6YYXU77TVWw7pv1iE6hNeBzXkA4p8AghVpkU8cP5kxquZssqUqZCtepR2ez",
+        "children": [
+          "0353f70f27c495852847b096ada7ebf029637ef3a803a9a9cb7a3c0000c367f3b0",
+          "02a10515d7973f029750ba6cb82b489069074c5328dd81fb9f1d9de700c7ca68d3"
+        ]
+      }
+    ],
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),and_v(v:pk(@3/**),pk(@4/**)))},and_v(v:pk(@2/<2;3>/*),and_v(v:pk(@5/**),pk(@6/**)))})",
+        "keysInfo": [
+          "tpubD6NzVbkrYhZ4YLBhJ3GnBee1kQmLB43E8FLFtXgLyCWHsnWkYJW9nnRDUaGxorRLqYHqopnqfyaoGNdmBsW1XUy6YDcyomDneX5honFVAjm",
+          "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+          "tpubD6NzVbkrYhZ4WtMMg4fBvYUTMFSJKpe4i7S8dTkpYP4DKHx9tK1PSaYtfu8kPHwuKPqJPVxDAQsa6DpF1VC8kgFY4wqMdth9ckvqQzJr7Xq",
+          "tpubD6NzVbkrYhZ4YCEAVHyLVDF5DDnN1rfgn6opUeFMahP1nTT98VhDecmNt3A2Pxz1s38QWUKerRvcVzXdoM9QtuUpUYtqmxcJF3RrRPinVLQ",
+          "tpubD6NzVbkrYhZ4X8mJg7QZT6PZqzsSoJsugzu8iFESJHTTm28XDPc3tKVK64kVtcyUYsqLbXrpodvKiqMGMB6pYVRVFFwfjkH7NmbrooVNCsR",
+          "tpubD6NzVbkrYhZ4WMrxeF19QgS7Lc1EbJLsDFpWCBg5BQJ8fTKB6YYXU77TVWw7pv1iE6hNeBzXkA4p8AghVpkU8cP5kxquZssqUqZCtepR2ez"
+        ]
+      },
+      "receive": {
+        "address": "tb1phr4sgca3cn5twaf6v9lsarq5r43mgh7quq07haadhq047n37wu9q4wfuzn",
+        "script": "5120b8eb0463b1c4e8b7753a617f0e8c141d63b45fc0e01febf7adb81f5f4e3e770a"
+      },
+      "change": {
+        "address": "tb1pqx5w880k7fmt59hkgfp227g8yrxst0k58k2e326p7ywgsv7l5hksff00t6",
+        "script": "512001a8e39df6f276ba16f64242a5790720cd05bed43d9598ab41f11c8833dfa5ed"
+      }
+    }
+  },
+  {
+    "input": {
+      "templateVersion": "phone-ledger-recovery-savings-v1",
+      "network": "mutinynet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+      "phone": {
+        "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "hardware": {
+        "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "recovery": {
+        "xpub": "tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk",
+        "fingerprint": "8bc48cf1",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+      "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+    },
+    "contextDigest": "d808e22883c7742a2e7a9b2ec899b875656a3581ed1213bbb4ac016e207eb49d",
+    "internal": {
+      "xpub": "tpubD6NzVbkrYhZ4WXnBr92WhbQe1VRXwooTFbkqSkvJmDxz7n91fV9ThicXEHED7KjRN6WqE1HwBQyrAbJNpi57kunFQzJrUPJZ6igb6t2ggJK",
+      "children": [
+        "02a797c420457080e43e907b2350488d31ab7baee0040441768ecac9237cae5c5f",
+        "033710e4f760ba95f7dbf52b4d8d7fb29251af7c2c7b1e4b1a8bafa956dad32bcc"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "0361d8a06b88b71e3f177b175d6d4069ee65d81d8a7d5b35d8f287eb27474a8733",
+        "0270ef6156160d1cad79aef29022cda11677b829544a25265bab90425e5b156b35",
+        "02cf26bc71a918853a5e2713236fba928b44e7a5f59ac0b7101ed981ed9eefe082",
+        "032eac321e5144e7bf1a8c857ebfee67de308a1f40a0b8993b9c98a62de2105852"
+      ],
+      "hardware": [
+        "037e9f7821caecda39dd872f8387962bccc2c3951744d926609aadd90b694c0fac",
+        "02ac823451d16dd02025661dd3a2add2deae527b30a3c5cea264bef927a9478ed7",
+        "02d42b2ef494f3721f098399a035167e950808ca77fe7bb050f5b392673a05d549",
+        "034b52e0ef875f1f6bd6dc1375be7951ac6ec102c90041d3f19d26c9cfe84b0d1e"
+      ],
+      "recovery": [
+        "03a3b1d80d735c6dccd4da38217487265e392745e54864aa0f43f6545c0560bc07",
+        "034e0f01cc7e9e4fe44380bf410cf9ee134e9d8c49f9ec17cf076f09ad3730b54c",
+        "03a80e7e87fce6d251c54d57e15e32918e260c2d73c9bd70c1d70da8b76b486157",
+        "030e77e9ea9202824f60edcb8885a67efae399ee6901ccde9fba9dfe3de05c1e3d"
+      ]
+    },
+    "programParents": [
+      {
+        "claimant": "phone",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188209defa10985a689a621a036ef56ec390c3e6af2e6d63cde3403d10366c5c5c47a8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "tpubD6NzVbkrYhZ4YWDd78zjnA9ybYUjhqBBLvubP8ur78xavga46yq22aWSZAGK9Sd7yu5kpbtoFatppgPJ699qZ83J4AVPoBgBcw7KGoiHvw2",
+        "children": [
+          "0335434d7cb250038d01e90800cc65d3caa4ea106a9f70913d66472c80747f9ce7",
+          "03d752ee4844af649ebedde475d274d5ac30a13f66d2dfd8a4f4ed8add2963e18a"
+        ]
+      },
+      {
+        "claimant": "phone",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188209defa10985a689a621a036ef56ec390c3e6af2e6d63cde3403d10366c5c5c47a8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "tpubD6NzVbkrYhZ4XcjKLUPw16b45hV6xKijbNiSog7Vrm1RDZfxz42i7B6TtpbJjPMJh4WUgCXaZGFEyFWavX3pQAD4GoxFf7zGWv3qGGAKXbc",
+        "children": [
+          "020d7fe490a0f38d1173dc8bfa21e1275f728a9f6f72c66f8392bdab98dfbe3a71",
+          "0393e9b3f09fc39902f7d35393ac1ca78282357ecc302cc4a479ded3512043b686"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820693b6649388a51199eb087909b8099d30ae3dab49deffb69f6de558023b7e3fb8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697551",
+        "xpub": "tpubD6NzVbkrYhZ4YN8oz9TNp5Ca1hGdHh6DE8xHsq4GmCDo7HVL2XrqU2Jri46rAnYBKT17KkojtsAZe7Lyz5MrCd58WTXoQE64YnS9HMEN1A4",
+        "children": [
+          "0340dc193853c708a7224aa92c77659adf2eb622a2b5b5f22c9c4c1e413e9550ba",
+          "02e470b5abada775a4e175e57bf5c78661f44d151b413159f647652733c9eac436"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820693b6649388a51199eb087909b8099d30ae3dab49deffb69f6de558023b7e3fb8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697551",
+        "xpub": "tpubD6NzVbkrYhZ4YcafAZoKJQ8fYkGrNucZvvK62cSgAiPxxP4MSiPt2BJxoVZQASpncFEgDQtBNjguusWRZiACrFWVU3P4AXS1KpFysowe6tw",
+        "children": [
+          "037be128e08e54101af43bde1c0c133ba0593f461996df2324701fe7a7e1e6ea70",
+          "036e7ccbce738a4e519d0f95cf3c16004bf1545e4069f4891b90f5fa077b934d9a"
+        ]
+      },
+      {
+        "claimant": "recovery",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188207d4a403ec6bb70875f3f2c23b2a84d5e083ac557fc1af33bf178c59987b67f368800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697551",
+        "xpub": "tpubD6NzVbkrYhZ4YpcgyhdjTG9r4rTuQyJP1wH8MWAzekRKh5bDqW5HcVJpSnH9S3pQN7ZQzpUSS1UkCWoHP6DrWKiwLYW2vnJoVfgVhwuBKtB",
+        "children": [
+          "020496fd654864bea08597f0b78e5f0442341d1577573bb6fbc477a7c2d30f9c49",
+          "03cdb0de9fc3b0871d121dd7af5156eaca7cd0db6e6a99f3429beb9a4491b1a330"
+        ]
+      },
+      {
+        "claimant": "recovery",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188207d4a403ec6bb70875f3f2c23b2a84d5e083ac557fc1af33bf178c59987b67f368800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a26976028813a16976d6028f0193539354965a95a1697551",
+        "xpub": "tpubD6NzVbkrYhZ4XQmTnkX6pT3BNQNxZFLfK2cziJVFqtAddb8c2CegkgouYpnMa2PzsvqAxKN8BSjt6SmEsGNHdj2RE76RHPGrvFeakhsnPV6",
+        "children": [
+          "02254a788308640bb25e235c28661d1aaf19ab6d37c1f0559b107f03ce01150421",
+          "0319a527d7cbfd1a26b0d3a80ae2ab4e2fe474c8a4e35100b4f2fb5e072e3fa21c"
+        ]
+      }
+    ],
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),and_v(v:pk(@3/**),pk(@4/**)))},{and_v(v:pk(@2/<2;3>/*),and_v(v:pk(@5/**),pk(@6/**))),and_v(v:pk(@9/**),and_v(v:pk(@7/**),pk(@8/**)))}})",
+        "keysInfo": [
+          "tpubD6NzVbkrYhZ4WXnBr92WhbQe1VRXwooTFbkqSkvJmDxz7n91fV9ThicXEHED7KjRN6WqE1HwBQyrAbJNpi57kunFQzJrUPJZ6igb6t2ggJK",
+          "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+          "tpubD6NzVbkrYhZ4YWDd78zjnA9ybYUjhqBBLvubP8ur78xavga46yq22aWSZAGK9Sd7yu5kpbtoFatppgPJ699qZ83J4AVPoBgBcw7KGoiHvw2",
+          "tpubD6NzVbkrYhZ4XcjKLUPw16b45hV6xKijbNiSog7Vrm1RDZfxz42i7B6TtpbJjPMJh4WUgCXaZGFEyFWavX3pQAD4GoxFf7zGWv3qGGAKXbc",
+          "tpubD6NzVbkrYhZ4YN8oz9TNp5Ca1hGdHh6DE8xHsq4GmCDo7HVL2XrqU2Jri46rAnYBKT17KkojtsAZe7Lyz5MrCd58WTXoQE64YnS9HMEN1A4",
+          "tpubD6NzVbkrYhZ4YcafAZoKJQ8fYkGrNucZvvK62cSgAiPxxP4MSiPt2BJxoVZQASpncFEgDQtBNjguusWRZiACrFWVU3P4AXS1KpFysowe6tw",
+          "tpubD6NzVbkrYhZ4YpcgyhdjTG9r4rTuQyJP1wH8MWAzekRKh5bDqW5HcVJpSnH9S3pQN7ZQzpUSS1UkCWoHP6DrWKiwLYW2vnJoVfgVhwuBKtB",
+          "tpubD6NzVbkrYhZ4XQmTnkX6pT3BNQNxZFLfK2cziJVFqtAddb8c2CegkgouYpnMa2PzsvqAxKN8BSjt6SmEsGNHdj2RE76RHPGrvFeakhsnPV6",
+          "[8bc48cf1/86'/1'/0']tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk"
+        ]
+      },
+      "receive": {
+        "address": "tb1p94x325w227pnn08kp47htkr5dcpk4nhfxdqwuskppdw5gec2ctms3pu2kt",
+        "script": "51202d4d1551ca578339bcf60d7d75d8746e036acee93340ee42c10b5d44670ac2f7"
+      },
+      "change": {
+        "address": "tb1pzk7349e368qtz4dfmwnr78pvd5aeyh6vpxgse3v4rpknx5sy8kjqwwpt7w",
+        "script": "512015bd1a9731d1c0b155a9dba63f1c2c6d3b925f4c09910cc595186d3352043da4"
+      }
+    }
+  },
+  {
+    "input": {
+      "templateVersion": "phone-ledger-recovery-savings-v1",
+      "network": "mainnet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+      "phone": {
+        "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "hardware": {
+        "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+      "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+    },
+    "contextDigest": "8da60f92e0d0a6702f4bb64e3b3f04871c97d21a5a5193c92733ac70d922007a",
+    "internal": {
+      "xpub": "xpub661MyMwAqRbcEiMd93uyXmzGNUkc78wSZxt1me8NRTmVDdfndZPS5xoWqBdPxWcTtStW94va9LPUhcoRhxv4ex1oas6SXLxP36z6nRatHeM",
+      "children": [
+        "0380c8565d1024cdac31881fc00f89c4278be78d725ce755166ccc83a3dfd5f4e0",
+        "03507e2d5bc33e3d3ff6e1061e3b706d34bf71971eaa9395dbf5980256c567ca15"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "03acb7874dfe4edf8b9e65bf22c41d60d4b21d49ef0c768587bf5fcd6d4906d510",
+        "03668bab71e824edb20314552bf6d380a8787d330896f4b7240a6ba4e44266d07c",
+        "03d9dc86adcf86af8a7ec0fb3d697ca31f106e7cde98c72885d3eff7ae41138b2a",
+        "030d36b6ce43d85035b31d0233fc43d01bd77705061ab8f432029b63892b29dfb1"
+      ],
+      "hardware": [
+        "0341c397b8d911d527fc48f9de9253d915f997162bdc2f72ea3e0e1a81191ed48c",
+        "0310adc7152ffe123b2193e78f7ac33cea5096ca9840680fa90ba0bf9e0bd63f59",
+        "0214a7e269fcd142e6ee78b8d767d466b4f0b7bcdbecf33dc50fc4a1bf7daf5359",
+        "03e3440f2fcd27118e53e6084e76eb269d9be9277bdd2ee3072302e1a5bbedbcf6"
+      ]
+    },
+    "programParents": [
+      {
+        "claimant": "phone",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820dd12545e0051f7fd6c89f605dca1b4ed05ac9f25bc8062255c2fcceb0d2526578800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "xpub661MyMwAqRbcGJMMZBSzqTmLQw3zimzzC6H7BDCxfwWfnSdLFEg7kyt1hajJLL8fXoQDG53Xd2udJu74EyMGQxzEHwmEiTfiAmgF3zXjLt3",
+        "children": [
+          "03e4cd2c7ac94752532f47b5a2ea38a9d4d246530c292c1fda013220ce91c3e4b7",
+          "032bb74e778cfae438e267b6f39e82d97396129e14834f5173b736142082fdc679"
+        ]
+      },
+      {
+        "claimant": "phone",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820dd12545e0051f7fd6c89f605dca1b4ed05ac9f25bc8062255c2fcceb0d2526578800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "xpub661MyMwAqRbcGk7baoMoWXRzjWpEPFFEy8EfgULPZQnpKHiNLQWzamcrLnvLKzm4yPUYCq2WSLrswFbY97B1idbiLsKDRKMLqTzovCZivtB",
+        "children": [
+          "036f86bf70e4f762d65aa2087b6f0a2db4fdf16dd75aee49cea00b88bb4ac43dd6",
+          "02c7315c9e8298282d35ba2e2b273961928508c97685bc1413507b9003fe1af450"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820f8284edf6f1a58c4a658619bf2ed6ff2ad441f5009af8c8a7f357233c7677a9a8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6026f0193539354965a95a1697551",
+        "xpub": "xpub661MyMwAqRbcGyDC7pmW3XJDKpg9FghNbjQruh3xZQDjS4CQBz4y4jGfomgPSzbQxwyYixhycZFCYqTGKLcBu9H16jHrvRaQK6rw2LGnoHU",
+        "children": [
+          "03760b6383490be11bebdffb70b92211806ef527dca1cc6e5deb23804951ea4a9b",
+          "0331283efc80043b35f611f1f309985d9954cb93d8bdf4241d25f7caefb25a2346"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820f8284edf6f1a58c4a658619bf2ed6ff2ad441f5009af8c8a7f357233c7677a9a8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6026f0193539354965a95a1697551",
+        "xpub": "xpub661MyMwAqRbcFQVSHK1sdRLAW5iYcpAmv8gWJJ3a8gPVodsgNX5Br5HRTZu6VoTnyHuXfWW3stpzX1MC8WBwZ5gTQsncXaL9jAwZW3comKS",
+        "children": [
+          "0249a5dfdae62e6f3fc78b53ee9bb7edbb776420db0999a537d797c9ffc214d1e0",
+          "033267398dae53852408e793e336d589ee2cdbc64a666fee478f603c1a9590da37"
+        ]
+      }
+    ],
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),and_v(v:pk(@3/**),pk(@4/**)))},and_v(v:pk(@2/<2;3>/*),and_v(v:pk(@5/**),pk(@6/**)))})",
+        "keysInfo": [
+          "xpub661MyMwAqRbcEiMd93uyXmzGNUkc78wSZxt1me8NRTmVDdfndZPS5xoWqBdPxWcTtStW94va9LPUhcoRhxv4ex1oas6SXLxP36z6nRatHeM",
+          "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+          "xpub661MyMwAqRbcGJMMZBSzqTmLQw3zimzzC6H7BDCxfwWfnSdLFEg7kyt1hajJLL8fXoQDG53Xd2udJu74EyMGQxzEHwmEiTfiAmgF3zXjLt3",
+          "xpub661MyMwAqRbcGk7baoMoWXRzjWpEPFFEy8EfgULPZQnpKHiNLQWzamcrLnvLKzm4yPUYCq2WSLrswFbY97B1idbiLsKDRKMLqTzovCZivtB",
+          "xpub661MyMwAqRbcGyDC7pmW3XJDKpg9FghNbjQruh3xZQDjS4CQBz4y4jGfomgPSzbQxwyYixhycZFCYqTGKLcBu9H16jHrvRaQK6rw2LGnoHU",
+          "xpub661MyMwAqRbcFQVSHK1sdRLAW5iYcpAmv8gWJJ3a8gPVodsgNX5Br5HRTZu6VoTnyHuXfWW3stpzX1MC8WBwZ5gTQsncXaL9jAwZW3comKS"
+        ]
+      },
+      "receive": {
+        "address": "bc1pdl8t5xr7vzlp9nz8aaa4prey44vf2exm7v8fel3zhpc020sdtzqssvwrtk",
+        "script": "51206fceba187e60be12cc47ef7b508f24ad589564dbf30e9cfe22b870f53e0d5881"
+      },
+      "change": {
+        "address": "bc1pp5wdqj64ptd6l4u5e970glvxp5377jyw54enxvphlhjs5ej0j2gq74xujy",
+        "script": "51200d1cd04b550adbafd794c97cf47d860d23ef488ea573333037fde50a664f9290"
+      }
+    }
+  },
+  {
+    "input": {
+      "templateVersion": "phone-ledger-recovery-savings-v1",
+      "network": "mainnet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+      "phone": {
+        "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "hardware": {
+        "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "recovery": {
+        "xpub": "xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2",
+        "fingerprint": "8bc48cf1",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+      "arkadeCosignerBase": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e"
+    },
+    "contextDigest": "39c36067cd27f8da5580b8b3a1906bead98c61fdae13e0363408b68e04e3bc7e",
+    "internal": {
+      "xpub": "xpub661MyMwAqRbcFkiQKJ75DNMmU3WXi6D2qQzbfTkbW5rTqMAZkWANz8CszP2S5cHx1w84bMDd1BrFrn3CMYa9AXSPBABPVigRcewjpJUHweg",
+      "children": [
+        "025f8fd3af7fbbdb2d9d37bdfcef815cb2384e153e81511385ec9b51f639f3ff38",
+        "03c817796e129fa75c690fe53e1e121796d25df35486d69c481d09cb90325be4e4"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "03acb7874dfe4edf8b9e65bf22c41d60d4b21d49ef0c768587bf5fcd6d4906d510",
+        "03668bab71e824edb20314552bf6d380a8787d330896f4b7240a6ba4e44266d07c",
+        "03d9dc86adcf86af8a7ec0fb3d697ca31f106e7cde98c72885d3eff7ae41138b2a",
+        "030d36b6ce43d85035b31d0233fc43d01bd77705061ab8f432029b63892b29dfb1"
+      ],
+      "hardware": [
+        "0341c397b8d911d527fc48f9de9253d915f997162bdc2f72ea3e0e1a81191ed48c",
+        "0310adc7152ffe123b2193e78f7ac33cea5096ca9840680fa90ba0bf9e0bd63f59",
+        "0214a7e269fcd142e6ee78b8d767d466b4f0b7bcdbecf33dc50fc4a1bf7daf5359",
+        "03e3440f2fcd27118e53e6084e76eb269d9be9277bdd2ee3072302e1a5bbedbcf6"
+      ],
+      "recovery": [
+        "029fee2ea1079fad1c4fcdbcd53ac4ef30839222bc57b8eed9eaa0e42304e105cc",
+        "032801a497836fe7d4b5202e5cae53197bfea0d495c521755c16cd2e730466e86e",
+        "0253072b77e18d9a8fe44d4dc5a60198b73e16d31e4827e4bb0c8f4fbedea42dd1",
+        "031413e729cb3026ca8175b3899d0c96ed9e9fcf38ad9cfa24571b10bd32d2d6f6"
+      ]
+    },
+    "programParents": [
+      {
+        "claimant": "phone",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188203ecc4c678976a969cec6fa29306c1d621c8bc589c0dfa19566b4ad0be5b379858800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "xpub661MyMwAqRbcGzo1urU16ZG6QoP2tsyC9WsznCKJZFF5j7u2jMNgZ3xmuU12RmcvwePJt45v24Ts2ShJpBeHPfuuXeHJqvt8MVaNHHcHxHT",
+        "children": [
+          "02690df80296f91cf6a245f0b8190fb9afb6b48f7af53501ab54935c6e009b26ff",
+          "022c55d83b5a3cac23f873c64909983a2c5dc290ed96d2c32ef25a1be7e9d03bd0"
+        ]
+      },
+      {
+        "claimant": "phone",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188203ecc4c678976a969cec6fa29306c1d621c8bc589c0dfa19566b4ad0be5b379858800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4cfd41524b01f7017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697500f6221102c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721cc",
+        "xpub": "xpub661MyMwAqRbcG95qSkQHiRZR66WYctyyi3QYcJ14HZA7YZnffsM3z2EZmNrgmTWPu2HzfUkUxxDQ3VNvn1uw2VXY4hGqzxraR8y6VD6hQrt",
+        "children": [
+          "029b05a8de1968d39d2e53dcd3b9f1eaf8cfc4e822fc2ad9cdeef9bad1b3b72658",
+          "03ab5926a46451fd04b5176ffddda5ef9ce3bff7addba5fa9c03514b45ade104b1"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820afe333b61e466627d2c019561c9295031d34e2febba9c8f79521de8f30b0635e8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697551",
+        "xpub": "xpub661MyMwAqRbcFfEtR13HnxGB3sC6SyrdkMrUNZxoMwYsU1K2kdY5GbjNLrRPYTUctWunWYDNkddBBDvSgQAXF1bgyRMPKzXkPvieD79Cpwk",
+        "children": [
+          "0383a99007995e7b988589000ea9ce10966cbd21adc9bf83cf1bd244d181d940aa",
+          "020a7da611176aa198e12397667503844e209d339d6c32c1219c16f6530521d94b"
+        ]
+      },
+      {
+        "claimant": "hardware",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d1518820afe333b61e466627d2c019561c9295031d34e2febba9c8f79521de8f30b0635e8800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697551",
+        "xpub": "xpub661MyMwAqRbcF4DY1YsQESrhZwjGpeBY1VV6Tfx3G6Sv2TvGG21DKjXGTpgcia86tww3BTUJBfM5yutBkVPXELLLTZ5qxmpKE9pZAFRmwud",
+        "children": [
+          "037745e64830897c6251a0416b5a4b6ceb92a9f83f7660eb7310039dedc0925421",
+          "03ac13bf4cb2d4fdc81b4344793beb948e1a111ccea6dd7e1181ef778dcf6ef697"
+        ]
+      },
+      {
+        "claimant": "recovery",
+        "cosigner": "vault",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188203432b9669db78ca2b829c595e7aa38881b480250829769d2d605a00707d7f3568800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697551",
+        "xpub": "xpub661MyMwAqRbcFEmLHa8Kr3JC8zMnScvYZ5pbi8ibenNrsNn7VaCxDTahzUSzHrJMKHAakvqhH9w7Fy3ajuYFL7oHe2hWL85e7JjxssVtneb",
+        "children": [
+          "036afce8475bca51a63f8df512961e85e08592ba2630da489c30fa8652819abf5e",
+          "0324a1ce31331af64388a7e1eb56aba0da98f60444abe142fc0f3f17f173eae63c"
+        ]
+      },
+      {
+        "claimant": "recovery",
+        "cosigner": "arkade",
+        "program": "d25288d30088d4518800cb05fdffffff0088d5538800d15188203432b9669db78ca2b829c595e7aa38881b480250829769d2d605a00707d7f3568800cf024a01a26951d15188024e738851cf02f0008852cf008851f469096a4c9741524b0191017c7ea852d14f888800c900cf9451cf947600a2697602204ea16976d6028f0193539354965a95a1697551",
+        "xpub": "xpub661MyMwAqRbcFLewdSMy5zrxKE54XrAu4bpmw8UaPffhjEHtBoRjj7e7uBpaRwKbAMi9MZYYHQ7KkswLNNY3drD4JRxaHWYPFkSGLfyQkoA",
+        "children": [
+          "032b1ab83ee5b54fecddc1f8df243fef43538c8924c0933fbb4767f6a195df01e0",
+          "027fa5511a82d89200f5674183964930f5b66380ba4f49a4523992065f027f4d8f"
+        ]
+      }
+    ],
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),and_v(v:pk(@3/**),pk(@4/**)))},{and_v(v:pk(@2/<2;3>/*),and_v(v:pk(@5/**),pk(@6/**))),and_v(v:pk(@9/**),and_v(v:pk(@7/**),pk(@8/**)))}})",
+        "keysInfo": [
+          "xpub661MyMwAqRbcFkiQKJ75DNMmU3WXi6D2qQzbfTkbW5rTqMAZkWANz8CszP2S5cHx1w84bMDd1BrFrn3CMYa9AXSPBABPVigRcewjpJUHweg",
+          "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+          "xpub661MyMwAqRbcGzo1urU16ZG6QoP2tsyC9WsznCKJZFF5j7u2jMNgZ3xmuU12RmcvwePJt45v24Ts2ShJpBeHPfuuXeHJqvt8MVaNHHcHxHT",
+          "xpub661MyMwAqRbcG95qSkQHiRZR66WYctyyi3QYcJ14HZA7YZnffsM3z2EZmNrgmTWPu2HzfUkUxxDQ3VNvn1uw2VXY4hGqzxraR8y6VD6hQrt",
+          "xpub661MyMwAqRbcFfEtR13HnxGB3sC6SyrdkMrUNZxoMwYsU1K2kdY5GbjNLrRPYTUctWunWYDNkddBBDvSgQAXF1bgyRMPKzXkPvieD79Cpwk",
+          "xpub661MyMwAqRbcF4DY1YsQESrhZwjGpeBY1VV6Tfx3G6Sv2TvGG21DKjXGTpgcia86tww3BTUJBfM5yutBkVPXELLLTZ5qxmpKE9pZAFRmwud",
+          "xpub661MyMwAqRbcFEmLHa8Kr3JC8zMnScvYZ5pbi8ibenNrsNn7VaCxDTahzUSzHrJMKHAakvqhH9w7Fy3ajuYFL7oHe2hWL85e7JjxssVtneb",
+          "xpub661MyMwAqRbcFLewdSMy5zrxKE54XrAu4bpmw8UaPffhjEHtBoRjj7e7uBpaRwKbAMi9MZYYHQ7KkswLNNY3drD4JRxaHWYPFkSGLfyQkoA",
+          "[8bc48cf1/86'/0'/0']xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2"
+        ]
+      },
+      "receive": {
+        "address": "bc1p7kh9r7t8pxjv76e3n8tx956wxpdaz34ax05fssfsfgxcx5zny4ys68wj3s",
+        "script": "5120f5ae51f96709a4cf6b3199d662d34e305bd146bd33e89841304a0d8350532549"
+      },
+      "change": {
+        "address": "bc1pgws3w5vxpjk4ysffq9us5030vw00ktrymlcuecr2dcphkvawtsys60ll4j",
+        "script": "512043a11751860cad52412901790a3e2f639efb2c64dff1cce06a6e037b33ae5c09"
+      }
+    }
+  }
+]
