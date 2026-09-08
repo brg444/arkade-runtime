@@ -28,7 +28,7 @@ func TestStoresFromLedgerKeepsOnePhysicalDatabase(t *testing.T) {
 		"identity": stores.Identity, "allowance": stores.Allowance,
 		"VTXO operation":     stores.VtxoOperations,
 		"recovery operation": stores.RecoveryOperations, "map": stores.Maps,
-		"Vault Board": stores.VaultBoard,
+		"Vault Board": stores.VaultBoard, "rolling allowance": stores.RollingAllowance,
 	} {
 		if got := reflect.ValueOf(store).Pointer(); got != want {
 			t.Fatalf("%s store uses a different backend: %x != %x", name, got, want)
@@ -79,6 +79,7 @@ func TestStoresRejectMissingCapabilities(t *testing.T) {
 		name  string
 		clear func(*Stores)
 	}{
+		{name: "rolling allowance", clear: func(s *Stores) { s.RollingAllowance = nil }},
 		{name: "identity", clear: func(s *Stores) { s.Identity = nil }},
 		{name: "allowance", clear: func(s *Stores) { s.Allowance = nil }},
 		{name: "VTXO operation", clear: func(s *Stores) { s.VtxoOperations = nil }},

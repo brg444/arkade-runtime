@@ -39,6 +39,10 @@ func TestLightDelegationSchemaGolden(t *testing.T) {
 	testSchemaGolden(t, 5, "ccd7170292a50cbff1db786235a0fc86d24bea1ab9362b4f3e6a01dffef65df5")
 }
 
+func TestRollingSchemaGolden(t *testing.T) {
+	testSchemaGolden(t, 6, "d4766bb257b3fee4a83c15f247d7b804a6c2137f1964e2b69a445da4e5790c3c")
+}
+
 func testSchemaGolden(t *testing.T, version int, want string) {
 	ledger, err := OpenLedger(filepath.Join(t.TempDir(), "vault.sqlite"), nil)
 	if err != nil {
@@ -61,6 +65,9 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		var kind, name, table, sqlText string
 		if err := rows.Scan(&kind, &name, &table, &sqlText); err != nil {
 			t.Fatal(err)
+		}
+		if version < 6 && (table == "rolling_enrollment" || table == "rolling_operation" || table == "rolling_event") {
+			continue
 		}
 		if version < 5 && (table == "light_delegation_operation" || table == "light_delegation_event") {
 			continue

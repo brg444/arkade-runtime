@@ -15,6 +15,6 @@ Status requires both the indexer's matching settlement and an independently conf
 ## Persistence
 
 Authenticated operation and event records retain the exact renewal plan and
-outcome. The current database is schema 6. Supported migrations preserve prior
+outcome. The current database is schema 7. Supported migrations preserve prior
 renewal records and their authentication domains; see [storage](storage.md).
 Disabling new Light enrollment preserves existing wallets and pending operations.

@@ -66,6 +66,6 @@ separate MAC domain. Reads verify the MAC before returning data, and writes
 verify the prior row before testing its revision. Archive updates neither debit
 allowances nor advance the economic policy sequence.
 
-The current database is schema 6. Supported earlier schemas migrate through
+The current database is schema 7. Supported earlier schemas migrate through
 strictly validated structures. Archive transport does not prove that the client
 has captured a complete exit graph or retained a usable signing key.

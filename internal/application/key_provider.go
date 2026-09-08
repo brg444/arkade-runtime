@@ -8,6 +8,7 @@ import (
 
 	"github.com/arkade-os/emulator/pkg/arkade"
 	"github.com/brg444/arkade-runtime/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/ports"
 	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/light"
@@ -74,6 +75,7 @@ type KeyCapabilities struct {
 	lightRenewal        lightRenewalAuthorizer
 	savingsSetup        savingsSetupAuthorizer
 	lightDelegation     lightDelegationAuthorizer
+	rollingOperation    rollingOperationAuthorizer
 	publicEmulator      publicEmulatorOperation
 	lifecycle           keyLifecycle
 }
@@ -210,7 +212,7 @@ func NewFileBackedKeyCapabilities(master *btcec.PrivateKey, emulator Signer) (Ke
 	capabilities := KeyCapabilities{
 		enrollment: keys, savingsRecovery: savings, connectorWithdrawal: connector,
 		vtxoTransaction: keys, vtxoCheckpoint: keys,
-		vaultBoard: keys, lightRenewal: keys, savingsSetup: keys, lightDelegation: keys, publicEmulator: public, lifecycle: keys,
+		vaultBoard: keys, lightRenewal: keys, savingsSetup: keys, lightDelegation: keys, rollingOperation: keys, publicEmulator: public, lifecycle: keys,
 	}
 	if err := capabilities.Validate(); err != nil {
 		return KeyCapabilities{}, err
@@ -222,6 +224,8 @@ type fileBackedVaultKeys struct {
 	mu              sync.RWMutex
 	master          *btcec.PrivateKey
 	delegationStore lightDelegationJournal
+	rollingStore    rollingJournal
+	rollingResolver ports.ArkResolver
 }
 
 func (k *fileBackedVaultKeys) withMaster(fn func(*btcec.PrivateKey) error) error {

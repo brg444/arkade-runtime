@@ -123,6 +123,9 @@ func New(d Deps) *Service {
 	if key, ok := s.keys.lightDelegation.(*fileBackedVaultKeys); ok {
 		key.bindDelegationJournal(d.Stores.LightDelegation)
 	}
+	if key, ok := s.keys.rollingOperation.(*fileBackedVaultKeys); ok {
+		key.bindRollingJournal(d.Stores.RollingAllowance, d.ArkResolver)
+	}
 	if raw, err := liveContractPackJSONFor(d.Deployment.Network); err == nil {
 		s.contractPackJSON = raw
 	}

@@ -26,7 +26,7 @@ those declarations require independent verification of the claimed infrastructur
 
 Check `/health` for process liveness and `/ready` for usable dependencies and
 state. Route signing traffic only to a ready process. [Storage](../docs/storage.md)
-describes schema 5, supported migrations, and sequence continuity.
+describes schema 7, supported migrations, and sequence continuity.
 
 Hardware isolation and remote attestation require separate implementation and verification.
 See [the security model](../docs/security.md) before relying on a deployment.

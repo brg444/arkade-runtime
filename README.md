@@ -37,7 +37,7 @@ retained operation state.
 
 The Guardian's allowance ledger and signing capability share one process.
 Rows are authenticated before use, and economic state changes advance an
-independent policy sequence. SQLite schema 6 includes validated forward
+independent policy sequence. SQLite schema 7 includes validated forward
 migrations from supported earlier schemas.
 
 Spending requires the owner and Arkade Operator in addition to the Guardian.
