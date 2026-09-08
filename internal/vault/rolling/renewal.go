@@ -3,6 +3,7 @@ package rolling
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/asset"
@@ -21,6 +22,11 @@ type Renewal struct {
 	Debit         *Debit
 }
 
+type PrincipalRenewal struct {
+	Proof   *intent.Proof
+	Message string
+}
+
 // CheckRenewalTime bounds new signing authority, separately from historical
 // reconstruction. Exact retained responses may be replayed after this window.
 func CheckRenewalTime(message string, now int64) error {
@@ -36,6 +42,37 @@ func CheckRenewalTime(message string, now int64) error {
 // before final forfeit signing. Principal-only zero-fee renewal is a separate
 // scheduling operation and cannot charge the shared controller.
 func BuildRenewal(contract *Contract, sources []Source, proof HistoryProof, fee, validAt, expireAt int64) (*Renewal, error) {
+	return buildRenewal(contract, sources, proof, fee, validAt, expireAt, true)
+}
+
+// BuildPrincipalRenewal preserves each asset-free principal output exactly,
+// without consuming the controller or charging a fee. Source admission and
+// renewal windows remain independently verified lifecycle prerequisites.
+func BuildPrincipalRenewal(contract *Contract, sources []Source, validAt, expireAt int64) (*PrincipalRenewal, error) {
+	for _, source := range sources {
+		if !wellFormedTx(source.Previous) {
+			return nil, fmt.Errorf("principal renewal source missing")
+		}
+		ext, err := extension.NewExtensionFromTx(source.Previous)
+		if err != nil && !errors.Is(err, extension.ErrExtensionNotFound) {
+			return nil, err
+		}
+		for _, group := range ext.GetAssetPacket() {
+			for _, output := range group.Outputs {
+				if uint32(output.Vout) == source.Index && output.Amount > 0 {
+					return nil, fmt.Errorf("principal renewal cannot consume an asset output")
+				}
+			}
+		}
+	}
+	built, err := buildRenewal(contract, sources, HistoryProof{}, 0, validAt, expireAt, false)
+	if err != nil {
+		return nil, err
+	}
+	return &PrincipalRenewal{Proof: built.Proof, Message: built.Message}, nil
+}
+
+func buildRenewal(contract *Contract, sources []Source, proof HistoryProof, fee, validAt, expireAt int64, controller bool) (*Renewal, error) {
 	c, err := canonicalContract(contract)
 	if err != nil {
 		return nil, err
@@ -43,16 +80,19 @@ func BuildRenewal(contract *Contract, sources []Source, proof HistoryProof, fee,
 	if validAt < 0 || expireAt <= validAt || expireAt-validAt > 3600 {
 		return nil, fmt.Errorf("renewal validity bounds")
 	}
-	inputs, _, err := sourceInputs(c, sources, c.Renew)
+	inputs, _, err := sourceInputsForRole(c, sources, c.Renew, controller)
 	if err != nil {
 		return nil, err
 	}
-	if fee < 0 || fee > c.Parameters.FeeCap || (fee > 0 && len(inputs) < 2) {
+	if fee < 0 || fee > c.Parameters.FeeCap || (fee > 0 && (len(inputs) < 2 || !controller)) {
 		return nil, fmt.Errorf("renewal fee bounds")
 	}
-	before, err := readState(sources[0].Previous)
-	if err != nil {
-		return nil, err
+	var before RollingState
+	if controller {
+		before, err = readState(sources[0].Previous)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if before.Remaining > c.Parameters.Budget {
 		return nil, fmt.Errorf("renewal state exceeds budget")
@@ -108,13 +148,17 @@ func BuildRenewal(contract *Contract, sources []Source, proof HistoryProof, fee,
 	for i := 1; i < len(ptx.Inputs); i++ {
 		entries = append(entries, arkade.EmulatorEntry{Vin: uint16(i), Script: bytes.Clone(c.Programs.Renew), Witness: witness})
 	}
-	id := c.Parameters.ControllerID
-	marker := asset.Packet{{AssetId: &id, Inputs: []asset.AssetInput{{Type: asset.AssetInputTypeLocal, Vin: 1, Amount: 1}}, Outputs: []asset.AssetOutput{{Type: asset.AssetOutputTypeLocal, Vout: 0, Amount: 1}}}}
-	state, err := after.Packet()
-	if err != nil {
-		return nil, err
+	packets := []extension.Packet{entries}
+	if controller {
+		id := c.Parameters.ControllerID
+		marker := asset.Packet{{AssetId: &id, Inputs: []asset.AssetInput{{Type: asset.AssetInputTypeLocal, Vin: 1, Amount: 1}}, Outputs: []asset.AssetOutput{{Type: asset.AssetOutputTypeLocal, Vout: 0, Amount: 1}}}}
+		state, err := after.Packet()
+		if err != nil {
+			return nil, err
+		}
+		packets = []extension.Packet{marker, entries, state}
 	}
-	ext, err := extension.NewExtensionFromPackets(marker, entries, state)
+	ext, err := extension.NewExtensionFromPackets(packets...)
 	if err != nil {
 		return nil, err
 	}

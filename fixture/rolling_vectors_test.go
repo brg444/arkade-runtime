@@ -111,6 +111,11 @@ func TestRollingPortableVectors(t *testing.T) {
 		"receipt": map[string]any{"domain": h(receipt.Domain[:]), "observedAt": receipt.ObservedAt, "message": h(message), "signature": h(receipt.Signature[:])},
 		"scripts": map[string]string{"spend": h(c.Programs.Spend), "credit": h(c.Programs.Credit), "renew": h(c.Programs.Renew), "cleanup": h(c.Programs.Cleanup), "pkScript": h(c.PkScript), "spendLeaf": h(c.Spend.Script), "creditLeaf": h(c.Credit.Script), "renewLeaf": h(c.Renew.Script), "cleanupLeaf": h(c.Cleanup.Script), "exitLeaf": h(c.Exit.Script), "spendControl": h(c.Spend.ControlBlock), "creditControl": h(c.Credit.ControlBlock), "renewControl": h(c.Renew.ControlBlock), "cleanupControl": h(c.Cleanup.ControlBlock), "exitControl": h(c.Exit.ControlBlock)},
 	}
+	principalRenewal, err := rolling.BuildPrincipalRenewal(c, p.Sources[1:], 1800000000, 1800000600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value["principalRenewal"] = map[string]any{"validAt": int64(1800000000), "expireAt": int64(1800000600), "message": principalRenewal.Message, "proofTx": rawTx(principalRenewal.Proof.UnsignedTx)}
 	raw, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		t.Fatal(err)

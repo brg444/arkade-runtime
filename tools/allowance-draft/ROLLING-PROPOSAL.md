@@ -88,8 +88,11 @@ input lookup or access to the signing key. Full-profile enrollment must still
 include this grant in the device-approved profile and recovery binding.
 
 The wallet independently builds the scripts, complete tree, native payments,
-credits, renewal proofs and authorization digest. The shared fixture covers
-transaction bytes, zero-fee and fee-bearing renewal, checkpoint bytes, state,
+credits, renewal proofs and authorization digest. Go and TypeScript also build
+zero-fee principal-only renewals, preserving each asset-free output without
+consuming the controller. Their input admission and scheduling still require
+integration with the production lifecycle. The shared fixture covers
+transaction bytes, controller-bearing and principal-only renewal, checkpoint bytes, state,
 proofs, receipts and every leaf/control block. Source metadata retains complete
 previous transactions, including witnesses. Generic
 SDK selection cannot spend this contract. Enrollment, foreground coordination
@@ -188,8 +191,10 @@ event adapter and funded emergency exit still require qualification.
    registered-intent deletion passed regtest; qualification still requires lost responses,
    expired proofs, no-match handling and later-generation safety.
 5. Close renewal liveness cases: incompatible source windows, fee exhaustion,
-   mature credits near expiry and principal-only renewal. Charge each renewal
-   fee once in the shared allowance system.
+   mature credits near expiry and principal-only scheduling. The zero-fee
+   principal-only builders pass script execution and reject asset-bearing
+   sources; the emulator refuses an unaccounted fee through that branch. Charge
+   each controller-bearing renewal fee once in the shared allowance system.
 6. Integrate complete controller history and grouped successor imports into the
    encrypted recovery archive. Exercise each offered protection tier with funded
    outputs after payment, credit and renewal, with Guardian, emulator, Operator

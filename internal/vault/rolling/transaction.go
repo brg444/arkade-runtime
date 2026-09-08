@@ -54,7 +54,15 @@ func readState(tx *wire.MsgTx) (RollingState, error) {
 }
 
 func sourceInputs(c *Contract, sources []Source, leaf *psbt.TaprootTapLeafScript) ([]offchain.VtxoInput, int64, error) {
-	if len(sources) < 1 || len(sources) > MaxMoneyInputs+1 || sources[0].Index != 0 {
+	return sourceInputsForRole(c, sources, leaf, true)
+}
+
+func sourceInputsForRole(c *Contract, sources []Source, leaf *psbt.TaprootTapLeafScript, controller bool) ([]offchain.VtxoInput, int64, error) {
+	maxInputs := MaxMoneyInputs
+	if controller {
+		maxInputs++
+	}
+	if len(sources) < 1 || len(sources) > maxInputs || (controller && sources[0].Index != 0) {
 		return nil, 0, fmt.Errorf("source count or controller index")
 	}
 	revealed, err := c.Tree.Encode()
@@ -86,7 +94,7 @@ func sourceInputs(c *Contract, sources []Source, leaf *psbt.TaprootTapLeafScript
 		if out.Value < ControllerSats || out.Value > maxMoney || !bytes.Equal(out.PkScript, c.PkScript) {
 			return nil, 0, fmt.Errorf("source value or contract")
 		}
-		if i == 0 && out.Value != ControllerSats {
+		if controller && i == 0 && out.Value != ControllerSats {
 			return nil, 0, fmt.Errorf("controller value")
 		}
 		op := wire.OutPoint{Hash: source.Previous.TxHash(), Index: source.Index}
@@ -95,7 +103,7 @@ func sourceInputs(c *Contract, sources []Source, leaf *psbt.TaprootTapLeafScript
 		}
 		seen[op] = true
 		inputs = append(inputs, offchain.VtxoInput{Outpoint: &op, Amount: out.Value, Tapscript: &waddrmgr.Tapscript{ControlBlock: control, RevealedScript: leaf.Script}, RevealedTapscripts: revealed})
-		if i > 0 {
+		if !controller || i > 0 {
 			if principal > maxMoney-out.Value {
 				return nil, 0, fmt.Errorf("principal overflow")
 			}
