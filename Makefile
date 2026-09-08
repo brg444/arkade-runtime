@@ -1,6 +1,7 @@
 GO ?= go
 GOLANGCI_LINT_VERSION ?= v2.13.1
 GOVULNCHECK_VERSION ?= v1.7.0
+RACE_TIMEOUT ?= 30m
 
 .PHONY: check race lint vuln images bench ci rolling-check
 
@@ -11,7 +12,7 @@ check:
 	$(GO) test ./... -count=1
 
 race:
-	$(GO) test -race ./... -count=1
+	$(GO) test -race ./... -count=1 -timeout=$(RACE_TIMEOUT)
 
 lint:
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run
