@@ -10,7 +10,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/program"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 const connectorSchemaVersion = 3
 const recoveryBackupSchemaVersion = 4
 const legacySchemaVersion = 1

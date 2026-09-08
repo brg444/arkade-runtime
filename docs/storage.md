@@ -1,8 +1,8 @@
 # Authenticated storage
 
-The current database version is 5, defined in
+The current database version is 7, defined in
 [`internal/policy/schema.go`](../internal/policy/schema.go). Startup validates
-the exact supported schema and migrates supported versions 1 through 4 along
+the exact supported schema and migrates supported versions 1 through 6 along
 the implemented chain. Unexpected structures and incompatible schemas fail
 before their data is trusted.
 
@@ -19,9 +19,19 @@ independence must be established by the deployment.
 
 A SQLite backup must be transactionally consistent, including committed WAL
 state. Preserve the keys needed to authenticate its records and the independent
-sequence's continuity. An older binary that cannot read schema 5 or the enrolled
+sequence's continuity. An older binary that cannot read schema 7 or the enrolled
 program families is not a compatible reader of current state.
 
 Encrypted backup writes use their own authenticated rows and compare-and-swap
 revisions. They leave Spending allowances and the economic sequence unchanged. Operation records and signed candidates remain necessary to reconcile
 ambiguous network outcomes after restart.
+
+Schema 6 preserves the physical tables while requiring batch-journal readers
+that account for signer-setup principal as well as fees. See
+[Savings signer funding](savings-signer-setup.md) for its lifecycle and upgrade
+requirements.
+
+Schema 7 adds the authenticated rolling controller, operation and event tables
+after the Savings setup reader migration. Existing authority bytes and the
+independent economic sequence remain unchanged. The earlier unreleased rolling
+schema-6 fixture layout is rejected as an unsupported baseline.

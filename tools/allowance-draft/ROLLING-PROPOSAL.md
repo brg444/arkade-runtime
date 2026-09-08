@@ -70,7 +70,7 @@ the script again. Guardian's full transaction signature must never transfer to
 a monetary transaction or a weaker sighash. A delete-only script is therefore
 not, on its own, a claim about every emulator API.
 
-The runtime journal uses additive schema 6 tables in the existing SQLite
+The runtime journal uses additive schema 7 tables in the existing SQLite
 ledger, verifies MACs before filtering, and advances the independent sequence
 before committing economic mutations. WebAuthn counter advancement and retained
 Guardian signatures commit atomically. Native and renewal registration

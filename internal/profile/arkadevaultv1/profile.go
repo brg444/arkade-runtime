@@ -63,6 +63,18 @@ func Definition() arkaderuntime.ProfileDefinition {
 
 func routes() []arkaderuntime.Route {
 	return []arkaderuntime.Route{
+		{Method: http.MethodGet, Path: "/v1/vtxo/savings-setup/info"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/info"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/prepare"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/prepare"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/register"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/register"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/final"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/final"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/status"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/status"},
+		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/release"},
+		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/release"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/info"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/info"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/schedule"},

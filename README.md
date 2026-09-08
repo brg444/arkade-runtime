@@ -37,7 +37,7 @@ retained operation state.
 
 The Guardian's allowance ledger and signing capability share one process.
 Rows are authenticated before use, and economic state changes advance an
-independent policy sequence. SQLite schema 5 includes validated forward
+independent policy sequence. SQLite schema 7 includes validated forward
 migrations from supported earlier schemas.
 
 Spending requires the owner and Arkade Operator in addition to the Guardian.
@@ -77,6 +77,12 @@ for the service and tenant access boundaries.
 | `POST /v1/light/delegate/status` | Read operation state and verified replacement recovery paths. |
 | `POST /v1/light/delegate/list` | Discover this vault’s scheduled operations with owner authorization. |
 | `POST /v1/light/delegate/cancel` | Cancel an armed renewal before dispatch claims its input. |
+| `GET /v1/vtxo/savings-setup/info` | Read signer setup capability for the enrolled vault. |
+| `POST /v1/vtxo/savings-setup/prepare` | Reserve the signer funding amount and Operator fee. |
+| `POST /v1/vtxo/savings-setup/register` | Authorize the exact signer funding batch. |
+| `POST /v1/vtxo/savings-setup/final` | Verify replacement recovery paths before submitting the forfeit. |
+| `POST /v1/vtxo/savings-setup/status` | Check signer funding and Bitcoin confirmation. |
+| `POST /v1/vtxo/savings-setup/release` | Release a safely cancelled signer setup. |
 | `POST /v1/vtxo/delegate/info` | Read native renewal capabilities for the enrolled Spending program. |
 | `POST /v1/vtxo/delegate/schedule` | Atomically authorize 1–50 exact Spending renewal plans. |
 | `POST /v1/vtxo/delegate/status` | Read a Spending renewal and its verified recovery paths. |

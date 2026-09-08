@@ -5,7 +5,7 @@ domains identify separate contracts. Their numeric suffixes are independent.
 
 | Contract                    | Implemented values                                                               |
 | --------------------------- | -------------------------------------------------------------------------------- |
-| SQLite schema               | `schema_meta.version = 5`, with validated migrations from supported versions 1–4 |
+| SQLite schema               | `schema_meta.version = 7`, with validated migrations from supported versions 1–6 |
 | Full-wallet profile         | `arkade-vault-v1`                                                                |
 | Light profile and Spending  | `vaulted-light-v1`, `vault-light-policy-v1`                                      |
 | Direct-hardware Savings     | `arkade-vault/savings-v1`, template `phone-hww-recovery-savings-v1`              |

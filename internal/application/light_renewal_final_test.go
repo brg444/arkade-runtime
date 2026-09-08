@@ -35,6 +35,11 @@ func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, ses
 	if err != nil {
 		t.Fatal(err)
 	}
+	return buildSpendingBatchEvidenceFixture(t, f, registered, sessionKey, operatorSessionKey, nil, otherSessions...)
+}
+
+func buildSpendingBatchEvidenceFixture(t *testing.T, f lightRenewalProofFixture, registered verifiedLightRenewalRegistration, sessionKey, operatorSessionKey *btcec.PrivateKey, onchain []*wire.TxOut, otherSessions ...*btcec.PrivateKey) (lightRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+	t.Helper()
 	pins, err := deployment.IdentityFor(f.descriptor.Network)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +72,7 @@ func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, ses
 	if err != nil {
 		t.Fatal(err)
 	}
-	commitment, err := psbt.New([]*wire.OutPoint{{Hash: chainhash.Hash{7}, Index: 0}}, []*wire.TxOut{{Value: batchAmount, PkScript: batchScript}, {Value: 330, PkScript: connectorScript}}, 2, 0, []uint32{wire.MaxTxInSequenceNum})
+	commitment, err := psbt.New([]*wire.OutPoint{{Hash: chainhash.Hash{7}, Index: 0}}, append([]*wire.TxOut{{Value: batchAmount, PkScript: batchScript}, {Value: 330, PkScript: connectorScript}}, onchain...), 2, 0, []uint32{wire.MaxTxInSequenceNum})
 	if err != nil {
 		t.Fatal(err)
 	}

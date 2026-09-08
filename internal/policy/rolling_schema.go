@@ -37,12 +37,12 @@ func applyRollingMigration(db *sql.DB) error {
 	if _, err = tx.Exec(createRollingSchema); err != nil {
 		return err
 	}
-	r, err := tx.Exec(`UPDATE schema_meta SET version=6 WHERE version=5`)
+	r, err := tx.Exec(`UPDATE schema_meta SET version=7 WHERE version=6`)
 	if err != nil {
 		return err
 	}
 	if n, err := r.RowsAffected(); err != nil || n != 1 {
-		return fmt.Errorf("rolling allowance requires schema 5")
+		return fmt.Errorf("rolling allowance requires schema 6")
 	}
 	return tx.Commit()
 }
