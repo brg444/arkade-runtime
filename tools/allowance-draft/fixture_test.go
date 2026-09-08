@@ -60,9 +60,13 @@ func testKey(n byte) *btcec.PublicKey {
 }
 
 func newFixture(t *testing.T) *fixture {
+	return newFixtureForController(t, asset.AssetId{Txid: chainhash.Hash{1, 2, 3}, Index: 0})
+}
+
+func newFixtureForController(t *testing.T, id asset.AssetId) *fixture {
 	t.Helper()
 	f := &fixture{t: t, emulator: testKey(3), prev: make(map[chainhash.Hash]*wire.MsgTx), assets: make(map[wire.OutPoint][]asset.Asset), expiries: make(map[int]int64)}
-	f.p = Parameters{ControllerID: asset.AssetId{Txid: chainhash.Hash{1, 2, 3}, Index: 0}, Budget: 10000, RecipientCap: 5000, FeeCap: 200, DelegatePubkey: testKey(5).SerializeCompressed(), RenewalWindow: 259200}
+	f.p = Parameters{ControllerID: id, Budget: 10000, RecipientCap: 5000, FeeCap: 200, DelegatePubkey: testKey(5).SerializeCompressed(), RenewalWindow: 259200}
 	var err error
 	f.scripts, err = Compile(f.p)
 	check(t, err)

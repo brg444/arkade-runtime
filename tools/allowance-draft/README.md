@@ -1,6 +1,8 @@
 # Vaulted allowance script draft
 
-6 September 2026. Local executable research for `vault-allowance-fixed-draft-v0`.
+Updated 8 September 2026. Local executable research for
+`vault-allowance-fixed-draft-v0`; see [construction qualification](NATIVE-QUALIFICATION.md)
+and the separate [rolling allowance proposal](ROLLING-PROPOSAL.md).
 
 A payment consumes a shared allowance controller, deducts the recipient amount
 and transaction fee, and recreates that controller with the remaining budget.
@@ -41,8 +43,11 @@ qualification; its Light recovery evidence covers a different contract.
 Each enrolled vault requires one previously issued asset unit with a fixed
 issuance ID. The controller VTXO holds that unit and 330 sats. Principal VTXOs
 use the same taproot tree, so every ordinary payment requires the controller.
-The tests supply an existing asset identity and authenticated input ownership
-as fixtures; bootstrap and issuance are unfinished.
+The initial VM tests supply asset identity and input ownership as fixtures.
+Additional tests construct a genesis and native bootstrap transfer, with
+`ValidateBootstrap` checking supply, absence of reissuance authority, destination,
+initial state, and checkpoint linkage. Admitted issuance and enrollment
+activation remain unqualified.
 
 The custom type-2 transaction packet has a canonical 20-byte encoding:
 
@@ -148,9 +153,11 @@ deadline after which an issued signature becomes invalid.
 
 Each renewal input reads four intent fields. A five-input renewal passes with
 the stock shared request budget of 64 message inspections and fails with a
-shared limit of 19. Batch packet propagation, native BIP322 proof acceptance,
-tree signing, and finalization are outside these local tests. In particular,
-the fixture's synthetic input represents indexing and value context only.
+shared limit of 19. The original VM fixture's synthetic input represents
+indexing and value context only. Additional native construction tests use the
+stock intent builder and signature verifier, including its message commitment.
+Signing-service admission, actual batch packet propagation, batch tree signing,
+and finalization remain unqualified.
 
 ## Qualification and next implementation
 
@@ -181,7 +188,7 @@ measurement on the completed transaction path.
 
 The next implementation should qualify these dependencies in order:
 
-1. **Bootstrap and native admission.** Issue one immutable controller unit,
+1. **Bootstrap and native admission.** Qualify issuance of one immutable controller unit,
    establish the enrolled initial state, and exercise native VTXOs and
    checkpoints through the supported emulator and Operator interfaces.
    Qualify resolution of both logical VTXO scripts and previous transaction
