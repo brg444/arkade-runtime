@@ -186,6 +186,9 @@ func (s *Service) prepareLightRenewal(ctx context.Context, r lightRenewalPrepare
 	return lightRenewalPreparedSnapshot(saved, d)
 }
 func lightRenewalPreparedSnapshot(s *policy.LightRenewalSnapshot, d light.Descriptor) (lightRenewalPrepared, error) {
+	if s.Operation.Kind != "" || s.Operation.AmountSats != 0 {
+		return lightRenewalPrepared{}, fmt.Errorf("renewal operation required")
+	}
 	var p lightRenewalPlan
 	if err := json.Unmarshal([]byte(s.Operation.Plan), &p); err != nil {
 		return lightRenewalPrepared{}, err

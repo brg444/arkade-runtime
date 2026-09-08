@@ -124,6 +124,10 @@ func verifyRenewalRegistration(raw, message string, plan lightRenewalPlan, c ren
 }
 
 func verifyRenewalIntentProof(raw, message string, plan lightRenewalPlan, c renewalContract, receiver *wire.TxOut) error {
+	return verifySpendingBatchIntentProof(raw, message, plan, c, []*wire.TxOut{receiver})
+}
+
+func verifySpendingBatchIntentProof(raw, message string, plan lightRenewalPlan, c renewalContract, outputs []*wire.TxOut) error {
 	if err := c.validateTree(); err != nil {
 		return err
 	}
@@ -133,12 +137,17 @@ func verifyRenewalIntentProof(raw, message string, plan lightRenewalPlan, c rene
 	if err != nil {
 		return err
 	}
-	if packet.UnsignedTx.Version != 2 || packet.UnsignedTx.LockTime != 0 || len(packet.Inputs) != 2 || len(packet.UnsignedTx.TxIn) != 2 || len(packet.Outputs) != 1 || len(packet.UnsignedTx.TxOut) != 1 || len(packet.Unknowns) != 1 || packet.Unknowns[0] == nil || !bytes.Equal(packet.Unknowns[0].Key, []byte{0x09}) || !bytes.Equal(packet.Unknowns[0].Value, []byte(message)) {
+	if packet.UnsignedTx.Version != 2 || packet.UnsignedTx.LockTime != 0 || len(packet.Inputs) != 2 || len(packet.UnsignedTx.TxIn) != 2 || len(outputs) < 1 || len(outputs) > 3 || len(packet.Outputs) != len(outputs) || len(packet.UnsignedTx.TxOut) != len(outputs) || len(packet.Unknowns) != 1 || packet.Unknowns[0] == nil || !bytes.Equal(packet.Unknowns[0].Key, []byte{0x09}) || !bytes.Equal(packet.Unknowns[0].Value, []byte(message)) {
 		return fmt.Errorf("Light renewal proof shape")
 	}
 	previous := packet.UnsignedTx.TxIn[1].PreviousOutPoint
-	if previous.Hash.String() != plan.Txid || previous.Index != plan.Vout || packet.UnsignedTx.TxOut[0].Value != receiver.Value || !bytes.Equal(packet.UnsignedTx.TxOut[0].PkScript, receiver.PkScript) {
+	if previous.Hash.String() != plan.Txid || previous.Index != plan.Vout {
 		return fmt.Errorf("Light renewal exact input and receiver required")
+	}
+	for i, out := range outputs {
+		if out == nil || packet.UnsignedTx.TxOut[i].Value != out.Value || !bytes.Equal(packet.UnsignedTx.TxOut[i].PkScript, out.PkScript) {
+			return fmt.Errorf("batch receiver changed")
+		}
 	}
 	owner, err := hex.DecodeString(d.OwnerPub)
 	if err != nil {

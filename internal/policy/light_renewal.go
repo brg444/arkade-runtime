@@ -11,8 +11,9 @@ import (
 	"time"
 )
 
-// LightRenewalOperation is one immutable, fee-only renewal reservation. Plan
-// contains the named program's canonical plan, not arbitrary executable data.
+// LightRenewalOperation is the durable batch journal. Existing renewal rows
+// remain fee-only. Savings setup uses an explicit kind and charges its recipient
+// amount as well. Plan contains a compiled program plan, never executable data.
 type LightRenewalOperation struct {
 	OperationID string `json:"operationId"`
 	VaultID     string `json:"vaultId"`
@@ -23,6 +24,8 @@ type LightRenewalOperation struct {
 	Plan        string `json:"plan"`
 	ExpiresAt   string `json:"expiresAt"`
 	CreatedAt   string `json:"createdAt"`
+	Kind        string `json:"kind,omitempty"`
+	AmountSats  int64  `json:"amountSats,omitempty"`
 }
 
 // Phases are append-only. A dispatched phase with no result stays uncertain;
@@ -46,8 +49,16 @@ func canonicalRenewalHex(value string, n int) bool {
 	raw, err := hex.DecodeString(value)
 	return err == nil && len(raw) == n && hex.EncodeToString(raw) == value
 }
+
+const SavingsSetupBatchKind = "savings-setup-v1"
+
 func validateLightRenewalOperation(r LightRenewalOperation) error {
-	if !canonicalRenewalHex(r.OperationID, 16) || !canonicalRenewalHex(r.VaultID, 32) || !canonicalRenewalHex(r.InputTxid, 32) || !canonicalRenewalHex(r.PlanDigest, 32) || r.FeeSats < 0 || r.FeeSats > 5000 || len(r.Plan) == 0 || len(r.Plan) > 8192 || !json.Valid([]byte(r.Plan)) {
+	if r.Kind != "" && r.Kind != SavingsSetupBatchKind ||
+		r.Kind == "" && r.AmountSats != 0 ||
+		r.Kind == SavingsSetupBatchKind && r.AmountSats != 500 && r.AmountSats != 1000 {
+		return fmt.Errorf("invalid batch operation kind or amount")
+	}
+	if !canonicalRenewalHex(r.OperationID, 16) || !(r.Kind == "" && canonicalRenewalHex(r.VaultID, 32) || r.Kind == SavingsSetupBatchKind && ValidDelegationVaultID("vault-policy-v1", r.VaultID) && len(r.VaultID) <= 256) || !canonicalRenewalHex(r.InputTxid, 32) || !canonicalRenewalHex(r.PlanDigest, 32) || r.FeeSats < 0 || r.FeeSats > 5000 || len(r.Plan) == 0 || len(r.Plan) > 8192 || !json.Valid([]byte(r.Plan)) {
 		return fmt.Errorf("invalid Light renewal reservation")
 	}
 	expiry, e1 := time.Parse(time.RFC3339, r.ExpiresAt)
@@ -246,6 +257,11 @@ func (l *Ledger) ReserveLightRenewal(ctx context.Context, r LightRenewalOperatio
 			result = prior
 			return nil
 		}
+		// A client may clear an absent setup only after its signed expiry.
+		// Check under the ledger lock so a delayed prepare cannot race that read.
+		if r.Kind == SavingsSetupBatchKind {
+			r.CreatedAt = l.NowUTC().Format(time.RFC3339)
+		}
 		if err := validateLightRenewalOperation(r); err != nil {
 			return err
 		}
@@ -264,7 +280,7 @@ func (l *Ledger) ReserveLightRenewal(ctx context.Context, r LightRenewalOperatio
 		if err != nil {
 			return err
 		}
-		if allowance < 0 || used > allowance || r.FeeSats > allowance-used {
+		if allowance < 0 || used > allowance || r.FeeSats+r.AmountSats > allowance-used {
 			return ErrPeriodAllowanceExceeded
 		}
 		payload, _ := json.Marshal(r)
@@ -365,7 +381,7 @@ func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now
 			return fmt.Errorf("Light renewal finalization unavailable")
 		}
 	case "final_dispatched", "final_result":
-		if e.Phase == "final_dispatched" && !now.Before(expiry) {
+		if e.Phase == "final_dispatched" && (!now.Before(expiry) || events["delete_authorized"].Phase != "") {
 			return fmt.Errorf("Light renewal final dispatch expired")
 		}
 		prior := "final_authorized"
@@ -389,8 +405,11 @@ func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now
 		if err := require("register_dispatched"); err != nil {
 			return err
 		}
-		if events["final_authorized"].Phase != "" {
+		if events["final_authorized"].Phase != "" && (s.Operation.Kind != SavingsSetupBatchKind || now.Before(expiry.Add(15*time.Second)) || events["final_dispatched"].Phase != "") {
 			return fmt.Errorf("Light renewal has a forfeit authorization")
+		}
+		if s.Operation.Kind == SavingsSetupBatchKind && now.Before(expiry.Add(15*time.Second)) {
+			return fmt.Errorf("Savings setup cancellation must wait for expiry")
 		}
 	case "delete_dispatched", "delete_result":
 		prior := "delete_authorized"
@@ -404,6 +423,9 @@ func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now
 			return fmt.Errorf("Light renewal deletion changed")
 		}
 	case "released":
+		if s.Operation.Kind == SavingsSetupBatchKind && events["delete_result"].Outcome != "released" {
+			return fmt.Errorf("Savings setup intent deletion is unconfirmed")
+		}
 		if events["register_dispatched"].Phase == "" || events["final_dispatched"].Phase != "" || now.Before(expiry.Add(15*time.Second)) || e.RequestDigest != events["register_dispatched"].RequestDigest {
 			return fmt.Errorf("Light renewal release not final")
 		}
@@ -439,10 +461,10 @@ func (l *Ledger) lightRenewalAllowance(ctx context.Context, q queryContext, vaul
 				continue
 			}
 		}
-		if total > (1<<63-1)-s.Operation.FeeSats {
+		if total > (1<<63-1)-s.Operation.FeeSats-s.Operation.AmountSats {
 			return 0, fmt.Errorf("Light renewal allowance overflow")
 		}
-		total += s.Operation.FeeSats
+		total += s.Operation.FeeSats + s.Operation.AmountSats
 	}
 	return total, nil
 }

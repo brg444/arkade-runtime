@@ -3,7 +3,7 @@
 New Savings connector enrollments use `savings-connector-dual-v2` and
 `phone-connector-recovery-savings-v2`. Existing v1 enrollments retain their
 scripts, derivations, recovery paths and operation history. The release changes
-neither the current Emulator nor SQLite schema 5.
+neither the current Emulator nor the existing SQLite tables.
 
 Two 500-sat hardware reserves occupy inputs 0 and 1; Savings occupies input 2.
 The hardware signer approves both reserves with `SIGHASH_SINGLE`, without
