@@ -204,6 +204,21 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		}
 		version = 7
 	}
+	if version == 7 {
+		if err := validateConnectorBaseline(db, boardSchema, true, true); err != nil {
+			return err
+		}
+		if err := validateRecoveryBackupSchema(db); err != nil {
+			return err
+		}
+		if err := validateLightDelegationSchema(db); err != nil {
+			return err
+		}
+		if err := applyBitcoinConflictMigration(db); err != nil {
+			return err
+		}
+		version = 8
+	}
 	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)
 	}

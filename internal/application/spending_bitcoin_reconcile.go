@@ -32,6 +32,9 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
+	if _, ok := snapshot.Events["released"]; ok {
+		return lightRenewalResponse{State: "released"}, nil
+	}
 	if _, ok := snapshot.Events["final_dispatched"]; !ok {
 		return lightRenewalResponse{State: lightRenewalState(snapshot), IntentID: snapshot.Events["register_result"].OperatorRef}, nil
 	}
@@ -71,6 +74,13 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 		return response, err
 	}
 	if !settled {
+		released, err := s.releaseConflictedBitcoinPayment(ctx, snapshot, p, c, evidence, final)
+		if err != nil {
+			return response, err
+		}
+		if released {
+			return lightRenewalResponse{State: "released"}, nil
+		}
 		return response, nil
 	}
 	// A projected VTXO alone is insufficient: independently check the exact
