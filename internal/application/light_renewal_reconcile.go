@@ -56,8 +56,8 @@ func (r *arkResolver) lightRenewalSettled(ctx context.Context, p lightRenewalPla
 		return false, nil
 	}
 	current, err := parseResolvedVtxo(replacement, script)
-	if err != nil || current.ValueSats != uint64(p.ReceiverSats) || current.ExpiresAt == nil || prior.ExpiresAt == nil || *current.ExpiresAt <= *prior.ExpiresAt {
-		return false, fmt.Errorf("Light renewal replacement did not extend expiry")
+	if err != nil || current.ValueSats != uint64(p.ReceiverSats) || current.ExpiresAt == nil || prior.ExpiresAt == nil || (!p.bitcoinPayment && *current.ExpiresAt <= *prior.ExpiresAt) {
+		return false, fmt.Errorf("Spending replacement value, script, or expiry mismatch")
 	}
 	matched := false
 	for _, commitment := range current.CommitmentTxids {

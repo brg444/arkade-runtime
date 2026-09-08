@@ -18,32 +18,34 @@ import (
 
 const savingsSetupDomain = "vaulted-vtxo/savings-setup/"
 
-// One live Spending input, protected change, and only the enrolled signer's
-// exact-value approval outputs. This is not a general Bitcoin-send capability.
-type savingsSetupPlan struct {
-	OperationID      string `json:"operationId"`
-	VaultID          string `json:"vaultId"`
-	DescriptorHash   string `json:"descriptorHash"`
-	EnrollmentDigest string `json:"enrollmentDigest"`
-	Txid             string `json:"txid"`
-	Vout             uint32 `json:"vout"`
-	ValueSats        int64  `json:"valueSats"`
-	ChangeSats       int64  `json:"changeSats"`
-	ReserveScript    string `json:"reserveScript"`
-	ReserveSats      int64  `json:"reserveSats"`
-	ReserveCount     int    `json:"reserveCount"`
-	FeeSats          int64  `json:"feeSats"`
-	FeePolicyDigest  string `json:"feePolicyDigest"`
-	RegisterExpireAt int64  `json:"registerExpireAt"`
+// One live Spending input, protected change, and an ordered Bitcoin output plan.
+// Reserve fields remain only to verify legacy signed setup records byte-for-byte;
+// canonical Bitcoin payments require these fields to be empty and bind Outputs.
+type bitcoinPaymentPlan struct {
+	OperationID      string                 `json:"operationId"`
+	VaultID          string                 `json:"vaultId"`
+	DescriptorHash   string                 `json:"descriptorHash"`
+	EnrollmentDigest string                 `json:"enrollmentDigest"`
+	Txid             string                 `json:"txid"`
+	Vout             uint32                 `json:"vout"`
+	ValueSats        int64                  `json:"valueSats"`
+	ChangeSats       int64                  `json:"changeSats"`
+	ReserveScript    string                 `json:"reserveScript"`
+	ReserveSats      int64                  `json:"reserveSats"`
+	ReserveCount     int                    `json:"reserveCount"`
+	FeeSats          int64                  `json:"feeSats"`
+	FeePolicyDigest  string                 `json:"feePolicyDigest"`
+	RegisterExpireAt int64                  `json:"registerExpireAt"`
+	Outputs          []bitcoinPaymentOutput `json:"outputs,omitempty"`
 }
 
-type savingsSetupContext struct {
+type bitcoinPaymentContext struct {
 	spending renewalContract
 	savings  savings.FamilyInput
 	origin   connector.KeyOrigin
 }
 
-func (c savingsSetupContext) family() (*connector.Family, string, error) {
+func (c bitcoinPaymentContext) family() (*connector.Family, string, error) {
 	if err := c.spending.validateTree(); err != nil {
 		return nil, "", err
 	}
@@ -85,7 +87,10 @@ func setupDigest(phase string, body any) ([]byte, error) {
 	return digest[:], nil
 }
 
-func (p savingsSetupPlan) digest(c savingsSetupContext) ([]byte, error) {
+func (p bitcoinPaymentPlan) digest(c bitcoinPaymentContext) ([]byte, error) {
+	if p.Outputs != nil {
+		return p.bitcoinDigest(c)
+	}
 	f, enrollment, err := c.family()
 	if err != nil {
 		return nil, err
@@ -111,19 +116,19 @@ func (p savingsSetupPlan) digest(c savingsSetupContext) ([]byte, error) {
 	return setupDigest("plan", p)
 }
 
-func (p savingsSetupPlan) batchInput() lightRenewalPlan {
-	return lightRenewalPlan{Txid: p.Txid, Vout: p.Vout, ValueSats: p.ValueSats, ReceiverSats: p.ChangeSats}
+func (p bitcoinPaymentPlan) batchInput() lightRenewalPlan {
+	return lightRenewalPlan{bitcoinPayment: true, Txid: p.Txid, Vout: p.Vout, ValueSats: p.ValueSats, ReceiverSats: p.ChangeSats}
 }
 
-func (p savingsSetupPlan) outputs(c savingsSetupContext) []*wire.TxOut {
+func (p bitcoinPaymentPlan) outputs(c bitcoinPaymentContext) []*wire.TxOut {
 	outputs := []*wire.TxOut{{Value: p.ChangeSats, PkScript: c.spending.Tree.PkScript}}
-	for i := 0; i < p.ReserveCount; i++ {
-		outputs = append(outputs, &wire.TxOut{Value: p.ReserveSats, PkScript: mustDecodeRenewalHex(p.ReserveScript)})
+	for _, output := range p.onchainOutputs() {
+		outputs = append(outputs, &wire.TxOut{Value: output.AmountSats, PkScript: mustDecodeRenewalHex(output.Script)})
 	}
 	return outputs
 }
 
-func verifySavingsSetupRegistration(raw, message string, p savingsSetupPlan, c savingsSetupContext) (verifiedLightRenewalRegistration, error) {
+func verifyBitcoinPaymentRegistration(raw, message string, p bitcoinPaymentPlan, c bitcoinPaymentContext) (verifiedLightRenewalRegistration, error) {
 	digest, err := p.digest(c)
 	if err != nil {
 		return verifiedLightRenewalRegistration{}, err
@@ -134,7 +139,7 @@ func verifySavingsSetupRegistration(raw, message string, p savingsSetupPlan, c s
 	}
 	canonical, err := registration.Encode()
 	if err != nil || canonical != message || registration.ValidAt != 0 || registration.ExpireAt != p.RegisterExpireAt ||
-		len(registration.CosignersPublicKeys) != 1 || len(registration.OnchainOutputIndexes) != p.ReserveCount {
+		len(registration.CosignersPublicKeys) != 1 || len(registration.OnchainOutputIndexes) != len(p.onchainOutputs()) {
 		return verifiedLightRenewalRegistration{}, fmt.Errorf("Savings setup register conditions")
 	}
 	for i, index := range registration.OnchainOutputIndexes {
@@ -156,7 +161,7 @@ func verifySavingsSetupRegistration(raw, message string, p savingsSetupPlan, c s
 	return verifiedLightRenewalRegistration{PlanDigest: digest, RequestDigest: request, TreeSession: session, CanonicalPSBT: raw, Message: message}, err
 }
 
-func verifySavingsSetupFinal(e lightRenewalFinalEvidence, p savingsSetupPlan, c savingsSetupContext, r verifiedLightRenewalRegistration) (verifiedLightRenewalFinal, error) {
+func verifyBitcoinPaymentFinal(e lightRenewalFinalEvidence, p bitcoinPaymentPlan, c bitcoinPaymentContext, r verifiedLightRenewalRegistration) (verifiedLightRenewalFinal, error) {
 	digest, err := p.digest(c)
 	if err != nil {
 		return verifiedLightRenewalFinal{}, err

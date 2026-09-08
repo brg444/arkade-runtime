@@ -51,14 +51,20 @@ func canonicalRenewalHex(value string, n int) bool {
 }
 
 const SavingsSetupBatchKind = "savings-setup-v1"
+const SpendingBitcoinBatchKind = "spending-bitcoin-v1"
+
+func isBitcoinBatch(kind string) bool {
+	return kind == SavingsSetupBatchKind || kind == SpendingBitcoinBatchKind
+}
 
 func validateLightRenewalOperation(r LightRenewalOperation) error {
-	if r.Kind != "" && r.Kind != SavingsSetupBatchKind ||
+	if r.Kind != "" && !isBitcoinBatch(r.Kind) ||
 		r.Kind == "" && r.AmountSats != 0 ||
-		r.Kind == SavingsSetupBatchKind && r.AmountSats != 500 && r.AmountSats != 1000 {
+		r.Kind == SavingsSetupBatchKind && r.AmountSats != 500 && r.AmountSats != 1000 ||
+		r.Kind == SpendingBitcoinBatchKind && (r.AmountSats < 330 || r.AmountSats > 21_000_000*100_000_000) {
 		return fmt.Errorf("invalid batch operation kind or amount")
 	}
-	if !canonicalRenewalHex(r.OperationID, 16) || !(r.Kind == "" && canonicalRenewalHex(r.VaultID, 32) || r.Kind == SavingsSetupBatchKind && ValidDelegationVaultID("vault-policy-v1", r.VaultID) && len(r.VaultID) <= 256) || !canonicalRenewalHex(r.InputTxid, 32) || !canonicalRenewalHex(r.PlanDigest, 32) || r.FeeSats < 0 || r.FeeSats > 5000 || len(r.Plan) == 0 || len(r.Plan) > 8192 || !json.Valid([]byte(r.Plan)) {
+	if !canonicalRenewalHex(r.OperationID, 16) || !(r.Kind == "" && canonicalRenewalHex(r.VaultID, 32) || isBitcoinBatch(r.Kind) && ValidDelegationVaultID("vault-policy-v1", r.VaultID) && len(r.VaultID) <= 256) || !canonicalRenewalHex(r.InputTxid, 32) || !canonicalRenewalHex(r.PlanDigest, 32) || r.FeeSats < 0 || r.FeeSats > 5000 || len(r.Plan) == 0 || len(r.Plan) > 8192 || !json.Valid([]byte(r.Plan)) {
 		return fmt.Errorf("invalid Light renewal reservation")
 	}
 	expiry, e1 := time.Parse(time.RFC3339, r.ExpiresAt)
@@ -259,7 +265,7 @@ func (l *Ledger) ReserveLightRenewal(ctx context.Context, r LightRenewalOperatio
 		}
 		// A client may clear an absent setup only after its signed expiry.
 		// Check under the ledger lock so a delayed prepare cannot race that read.
-		if r.Kind == SavingsSetupBatchKind {
+		if isBitcoinBatch(r.Kind) {
 			r.CreatedAt = l.NowUTC().Format(time.RFC3339)
 		}
 		if err := validateLightRenewalOperation(r); err != nil {
@@ -405,10 +411,10 @@ func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now
 		if err := require("register_dispatched"); err != nil {
 			return err
 		}
-		if events["final_authorized"].Phase != "" && (s.Operation.Kind != SavingsSetupBatchKind || now.Before(expiry.Add(15*time.Second)) || events["final_dispatched"].Phase != "") {
+		if events["final_authorized"].Phase != "" && (!isBitcoinBatch(s.Operation.Kind) || now.Before(expiry.Add(15*time.Second)) || events["final_dispatched"].Phase != "") {
 			return fmt.Errorf("Light renewal has a forfeit authorization")
 		}
-		if s.Operation.Kind == SavingsSetupBatchKind && now.Before(expiry.Add(15*time.Second)) {
+		if isBitcoinBatch(s.Operation.Kind) && now.Before(expiry.Add(15*time.Second)) {
 			return fmt.Errorf("Savings setup cancellation must wait for expiry")
 		}
 	case "delete_dispatched", "delete_result":
@@ -423,7 +429,7 @@ func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now
 			return fmt.Errorf("Light renewal deletion changed")
 		}
 	case "released":
-		if s.Operation.Kind == SavingsSetupBatchKind && events["delete_result"].Outcome != "released" {
+		if isBitcoinBatch(s.Operation.Kind) && events["delete_result"].Outcome != "released" {
 			return fmt.Errorf("Savings setup intent deletion is unconfirmed")
 		}
 		if events["register_dispatched"].Phase == "" || events["final_dispatched"].Phase != "" || now.Before(expiry.Add(15*time.Second)) || e.RequestDigest != events["register_dispatched"].RequestDigest {

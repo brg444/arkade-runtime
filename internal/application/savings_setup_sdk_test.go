@@ -18,18 +18,24 @@ import (
 // Produced by Wallet.makeRegisterIntentSignature in the wallet repository's
 // savingsSetupStore.test.ts. All keys and outpoints are public test fixtures.
 func TestSavingsSetupActualSDKIntent(t *testing.T) {
-	raw, err := os.ReadFile("testdata/savings-setup-sdk.json")
+	verifyBitcoinSDKVector(t, "testdata/savings-setup-sdk.json", false)
+}
+func TestSpendingBitcoinActualSDKIntent(t *testing.T) {
+	verifyBitcoinSDKVector(t, "testdata/spending-bitcoin-sdk.json", true)
+}
+func verifyBitcoinSDKVector(t *testing.T, path string, bitcoin bool) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var v struct {
-		Status       Status                     `json:"status"`
-		Context      spendingRenewalBinding     `json:"context"`
-		Prepared     savingsSetupPrepared       `json:"prepared"`
-		Prepare      savingsSetupPrepareRequest `json:"prepare"`
-		DeleteIntent lightDelegateIntent        `json:"deleteIntent"`
-		PSBT         string                     `json:"psbt"`
-		Message      string                     `json:"message"`
+		Status       Status                 `json:"status"`
+		Context      spendingRenewalBinding `json:"context"`
+		Prepared     bitcoinPaymentPrepared `json:"prepared"`
+		Prepare      json.RawMessage        `json:"prepare"`
+		DeleteIntent lightDelegateIntent    `json:"deleteIntent"`
+		PSBT         string                 `json:"psbt"`
+		Message      string                 `json:"message"`
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
 		t.Fatal(err)
@@ -64,7 +70,7 @@ func TestSavingsSetupActualSDKIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin := v.Status.ConnectorEnrollment
-	c := savingsSetupContext{
+	c := bitcoinPaymentContext{
 		spending: renewalContract{spendingRenewalContext: spendingRenewalContext{Binding: b, DescriptorHash: hash, Tree: tree, KeyScope: scope, vaultParams: &p}},
 		savings:  savings.FamilyInput{VaultID: b.VaultID, Network: b.Network, Phone: pub(v.Status.PhoneBIP340Pub), Hardware: pub(v.Status.ExternalOwnerWalletPub), PhoneDirectP256: mustDecodeRenewalHex(v.Status.PhoneDirectP256), VaultCosignerBase: pub(v.Status.VaultCosignerBasePub), ArkadeCosignerBase: pub(v.Status.ArkadeCosignerBasePub), TemplateVersion: v.Status.TemplateVersion, ServerFreeClawback: true, ProtectionTier: b.ProtectionTier, SpendingPolicy: b.SpendingPolicy},
 		origin:   connector.KeyOrigin{Type: connector.Kind(origin.ConnectorType), PublicKey: mustDecodeRenewalHex(origin.ConnectorPub), Fingerprint: origin.ConnectorFingerprint, Path: origin.ConnectorPath},
@@ -73,18 +79,34 @@ func TestSavingsSetupActualSDKIntent(t *testing.T) {
 	if err != nil || hex.EncodeToString(digest) != v.Prepared.PlanDigest {
 		t.Fatalf("SDK plan: %v", err)
 	}
-	prepareDigest, err := v.Prepare.digest()
+	var prepareDigest []byte
+	var signature string
+	if bitcoin {
+		var request spendingBitcoinPrepareRequest
+		if err := json.Unmarshal(v.Prepare, &request); err != nil {
+			t.Fatal(err)
+		}
+		prepareDigest, err = request.digest()
+		signature = request.OwnerSignature
+	} else {
+		var request savingsSetupPrepareRequest
+		if err := json.Unmarshal(v.Prepare, &request); err != nil {
+			t.Fatal(err)
+		}
+		prepareDigest, err = request.digest()
+		signature = request.OwnerSignature
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := schnorr.ParseSignature(mustDecodeRenewalHex(v.Prepare.OwnerSignature))
+	sig, err := schnorr.ParseSignature(mustDecodeRenewalHex(signature))
 	if err != nil || !sig.Verify(prepareDigest, pub(v.Status.PhoneBIP340Pub)) {
 		t.Fatal("SDK prepare signature")
 	}
 	if err := verifyRenewalDelete(v.DeleteIntent, v.Prepared.Plan.batchInput(), c.spending); err != nil {
 		t.Fatalf("stock SDK deletion: %v", err)
 	}
-	if _, err := verifySavingsSetupRegistration(v.PSBT, v.Message, v.Prepared.Plan, c); err != nil {
+	if _, err := verifyBitcoinPaymentRegistration(v.PSBT, v.Message, v.Prepared.Plan, c); err != nil {
 		t.Fatalf("stock SDK intent: %v", err)
 	}
 }

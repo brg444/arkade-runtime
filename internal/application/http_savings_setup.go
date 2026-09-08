@@ -6,12 +6,13 @@ import (
 )
 
 func attachSavingsSetupRoutes(mux *http.ServeMux, svc *Service, origin string) {
+	attachSpendingBitcoinRoutes(mux, svc, origin)
 	mux.HandleFunc("GET /v1/vtxo/savings-setup/info", func(w http.ResponseWriter, r *http.Request) {
-		if isNilInterface(svc.keys.savingsSetup) {
+		if isNilInterface(svc.keys.bitcoinPayment) {
 			writeJSON(w, nil, fmt.Errorf("Savings setup capability unavailable"))
 			return
 		}
-		c, err := svc.savingsSetupContext(r.URL.Query().Get("vaultId"))
+		c, err := svc.bitcoinPaymentContext(r.URL.Query().Get("vaultId"))
 		if err != nil {
 			writeJSON(w, nil, err)
 			return
@@ -31,40 +32,5 @@ func attachSavingsSetupRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		response, err := svc.prepareSavingsSetup(r.Context(), request)
 		writeJSON(w, response, err)
 	})
-	mux.HandleFunc("POST /v1/vtxo/savings-setup/register", func(w http.ResponseWriter, r *http.Request) {
-		var request lightRenewalRegisterRequest
-		if err := decodeMutation(r, &request, origin); err != nil {
-			writeMutationError(w, err)
-			return
-		}
-		response, err := svc.registerSavingsSetup(r.Context(), request)
-		writeJSON(w, response, err)
-	})
-	mux.HandleFunc("POST /v1/vtxo/savings-setup/final", func(w http.ResponseWriter, r *http.Request) {
-		var request lightRenewalFinalRequest
-		if err := decodeMutation(r, &request, origin); err != nil {
-			writeMutationError(w, err)
-			return
-		}
-		response, err := svc.finalizeSavingsSetup(r.Context(), request)
-		writeJSON(w, response, err)
-	})
-	mux.HandleFunc("POST /v1/vtxo/savings-setup/status", func(w http.ResponseWriter, r *http.Request) {
-		var request lightRenewalOperationRequest
-		if err := decodeMutation(r, &request, origin); err != nil {
-			writeMutationError(w, err)
-			return
-		}
-		response, err := svc.reconcileSavingsSetup(r.Context(), request)
-		writeJSON(w, response, err)
-	})
-	mux.HandleFunc("POST /v1/vtxo/savings-setup/release", func(w http.ResponseWriter, r *http.Request) {
-		var request savingsSetupReleaseRequest
-		if err := decodeMutation(r, &request, origin); err != nil {
-			writeMutationError(w, err)
-			return
-		}
-		response, err := svc.releaseSavingsSetup(r.Context(), request)
-		writeJSON(w, response, err)
-	})
+	attachBitcoinPaymentLifecycle(mux, svc, origin, "/v1/vtxo/savings-setup")
 }

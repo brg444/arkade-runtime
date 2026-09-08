@@ -39,10 +39,12 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 	}
 
 	types := map[string]reflect.Type{
-		"SavingsSetupReleaseRequest":      reflect.TypeOf(savingsSetupReleaseRequest{}),
+		"SpendingBitcoinPrepareRequest":   reflect.TypeOf(spendingBitcoinPrepareRequest{}),
+		"BitcoinPaymentOutput":            reflect.TypeOf(bitcoinPaymentOutput{}),
+		"SavingsSetupReleaseRequest":      reflect.TypeOf(bitcoinPaymentReleaseRequest{}),
 		"SavingsSetupPrepareRequest":      reflect.TypeOf(savingsSetupPrepareRequest{}),
-		"SavingsSetupPrepared":            reflect.TypeOf(savingsSetupPrepared{}),
-		"SavingsSetupPlan":                reflect.TypeOf(savingsSetupPlan{}),
+		"SavingsSetupPrepared":            reflect.TypeOf(bitcoinPaymentPrepared{}),
+		"SavingsSetupPlan":                reflect.TypeOf(bitcoinPaymentPlan{}),
 		"SpendingRenewalBinding":          reflect.TypeOf(spendingRenewalBinding{}),
 		"SpendingDelegationInput":         reflect.TypeOf(spendingDelegationInput{}),
 		"SpendingDelegationSetRequest":    reflect.TypeOf(spendingDelegationSetRequest{}),

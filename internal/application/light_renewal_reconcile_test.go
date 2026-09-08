@@ -46,6 +46,18 @@ func TestLightRenewalIndexerRejectsSubstitutedSettlement(t *testing.T) {
 			} else if ok {
 				t.Fatal("substituted settlement accepted")
 			}
+			// A payment must preserve its exact protected change, but is not a renewal.
+			// A fresh batch may have the same expiry as an input created moments earlier.
+			p.bitcoinPayment = true
+			ok, err = r.lightRenewalSettled(context.Background(), p, f, []byte{0x51})
+			if name == "valid" || name == "same expiry" {
+				if err != nil || !ok {
+					t.Fatalf("Bitcoin payment replacement: %v", err)
+				}
+			} else if ok {
+				t.Fatal("substituted Bitcoin payment settlement accepted")
+			}
+			p.bitcoinPayment = false
 		})
 	}
 }
