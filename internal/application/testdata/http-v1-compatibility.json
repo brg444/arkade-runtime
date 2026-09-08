@@ -312,6 +312,7 @@
     ],
     "LightRenewalResponse": [
       "state:string",
+      "reason:string,omitempty",
       "intentId:string,omitempty",
       "commitmentTxid:string,omitempty",
       "receiverTxid:string,omitempty",

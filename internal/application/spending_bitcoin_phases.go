@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
@@ -103,7 +104,8 @@ func (s *Service) registerBitcoinPayment(ctx context.Context, r lightRenewalRegi
 	if err != nil {
 		if isDefiniteVaultBoardRegisterRejection(err) {
 			if persistErr := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "register_result", RequestDigest: requestDigest, Outcome: "rejected"}); persistErr == nil {
-				return lightRenewalResponse{State: "rejected"}, nil
+				log.Printf("Bitcoin payment registration rejected: %s", err.Error())
+				return lightRenewalResponse{State: "rejected", Reason: err.Error()}, nil
 			}
 		}
 		return lightRenewalResponse{State: "uncertain"}, nil

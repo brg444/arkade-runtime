@@ -1,10 +1,12 @@
 package application
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +135,27 @@ func TestSpendingBitcoinRejectsUnsafeOutputsAndPolicyBypass(t *testing.T) {
 	raw, _ := json.Marshal(p)
 	if !strings.Contains(string(raw), `"outputs"`) {
 		t.Fatal("missing destination authority")
+	}
+}
+
+func TestSpendingBitcoinRejectedRegistrationReportsReasonAndReleasesAllowance(t *testing.T) {
+	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
+	session, _ := btcec.NewPrivateKey()
+	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	operator := &lightRenewalTestOperator{registerErr: vaultBoardOperatorRejection{status: http.StatusBadRequest, reason: "input already spent"}}
+	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+	result, err := e.svc.registerBitcoinPayment(t.Context(), request)
+	if err != nil || result.State != "rejected" || result.Reason != "input already spent" {
+		t.Fatalf("result %+v, %v", result, err)
+	}
+	used, err := e.ledger.SpentInPeriod(t.Context(), request.VaultID, "")
+	if err != nil || used != 0 {
+		t.Fatalf("rejected payment retained allowance: %d %v", used, err)
+	}
+	if _, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if operator.registers != 1 {
+		t.Fatal("rejected registration dispatched twice")
 	}
 }
