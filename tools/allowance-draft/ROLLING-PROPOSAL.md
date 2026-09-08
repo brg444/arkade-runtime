@@ -131,6 +131,17 @@ Concurrent workers and lost responses cannot trigger another call; the saved
 intent identity can be recovered without either signing service. Cleanup
 excludes new registration and replay, while uncertain dispatch remains fenced.
 
+The private finalization adapter verifies the complete signed successor graph
+and unsigned source forfeits before contacting the emulator. It submits the
+retained signed intent and rejects changed artifacts, missing or forged source
+signatures, and unexpected commitment signatures. Guardian then revalidates the
+response and retains the full graph before signing forfeits. Once
+`final_signed` is retained, its exact response survives service outages without
+new emulator or Guardian signatures. A retained `final_authorized` request
+still needs the Guardian and a valid signing window to produce its first
+signature. These transport checks use local HTTP fixtures; target-network
+qualification remains required.
+
 First registration authority, emulator approval, dispatch, every new signing-session stage, final authority
 and final-signature retention must occur within the registration validity
 window. The key backend also checks current time before generating fresh
@@ -193,8 +204,9 @@ event adapter and funded emergency exit still require qualification.
    nonzero fee policy must refuse admission until separately qualified.
 3. Adapt the existing delegation scheduler to the controller and all principal
    inputs. Bind actual Operator registration and tree-session events to the
-   retained nonce and signature capabilities. The private session and final
-   verifiers are implemented; the production event adapter remains absent.
+   retained nonce and signature capabilities. The private registration,
+   emulator finalization and session verifiers are implemented; the production
+   event adapter remains absent.
 4. Connect the cleanup capability to stale-dispatch protection, a qualified
    clock margin and a barrier for already accepted remote deletions. The basic
    registered-intent deletion passed regtest; qualification still requires lost responses,

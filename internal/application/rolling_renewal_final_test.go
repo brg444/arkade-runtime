@@ -261,7 +261,13 @@ func rollingFinalFixtureBuild(t *testing.T, mutate func(*arktree.TxTree), stages
 		t.Fatal(err)
 	}
 	evidence := rollingRenewalFinalEvidence{BatchID: "rolling-batch", BatchExpiry: pins.VtxoTreeExpirySeconds, CommitmentPSBT: commitmentRaw, VtxoTree: flat, Connectors: connectorFlat, ForfeitPSBTs: forfeits}
-	for _, phase := range []string{"emulator_authorized", "register_dispatched", "registered"} {
+	emulator := rollingEmulatorFixture(t, manager, func(req rollingRegistration) (string, error) {
+		return signRollingEmulatorFixture(t, manager, req), nil
+	})
+	if _, err = manager.prepareRegistration(t.Context(), id, emulator); err != nil {
+		t.Fatal(err)
+	}
+	for _, phase := range []string{"register_dispatched", "registered"} {
 		if _, err = e.ledger.AppendRollingEvent(t.Context(), policy.RollingEvent{OperationID: id, Phase: phase, Evidence: `{}`}); err != nil {
 			t.Fatal(err)
 		}

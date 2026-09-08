@@ -102,6 +102,12 @@ func verifyRollingRetainedBatch(c *rolling.Contract, record policy.RollingSnapsh
 }
 
 func verifyRollingRenewalFinal(c *rolling.Contract, record policy.RollingSnapshot, e rollingRenewalFinalEvidence) (verifiedRollingRenewalFinal, error) {
+	return verifyRollingRenewalFinalStage(c, record, e, true)
+}
+
+// The unsigned stage retains every recovery, source and destination check; it
+// permits no forfeit signatures before asking the pinned emulator to approve.
+func verifyRollingRenewalFinalStage(c *rolling.Contract, record policy.RollingSnapshot, e rollingRenewalFinalEvidence, emulatorSigned bool) (verifiedRollingRenewalFinal, error) {
 	fail := func(err error) (verifiedRollingRenewalFinal, error) { return verifiedRollingRenewalFinal{}, err }
 	created, err := time.Parse(time.RFC3339, record.Operation.CreatedAt)
 	if err != nil || record.Operation.Proposal.Kind != rolling.RenewalOperation || len(e.BatchID) == 0 || len(e.BatchID) > 256 {
@@ -223,7 +229,10 @@ func verifyRollingRenewalFinal(c *rolling.Contract, record policy.RollingSnapsho
 		return fail(fmt.Errorf("rolling renewal forfeit coverage"))
 	}
 	emu := arkade.ComputeArkadeScriptPublicKey(c.Keys.Emulator, arkade.ArkadeScriptHash(c.Programs.Renew))
-	expected := [][]byte{schnorr.SerializePubKey(emu)}
+	var expected [][]byte
+	if emulatorSigned {
+		expected = [][]byte{schnorr.SerializePubKey(emu)}
+	}
 	used := map[wire.OutPoint]bool{}
 	for i, raw := range e.ForfeitPSBTs {
 		p, err := parseCanonicalVaultBoardPSBT(raw, maxVaultBoardProofBytes)
