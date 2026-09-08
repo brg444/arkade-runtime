@@ -8,35 +8,35 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 )
 
-type savingsSetupAuthorization struct {
-	context             savingsSetupContext
-	plan                savingsSetupPlan
+type bitcoinPaymentAuthorization struct {
+	context             bitcoinPaymentContext
+	plan                bitcoinPaymentPlan
 	registrationPSBT    string
 	registrationMessage string
 	final               *lightRenewalFinalEvidence
 	deletion            *lightDelegateIntent
 }
-type savingsSetupAuthorizer interface {
-	authorizeSavingsSetup(context.Context, savingsSetupAuthorization) (string, error)
+type bitcoinPaymentAuthorizer interface {
+	authorizeBitcoinPayment(context.Context, bitcoinPaymentAuthorization) (string, error)
 }
 
-func (k KeyCapabilities) savingsSetupAuthorization(ctx context.Context, r savingsSetupAuthorization) (string, error) {
-	if isNilInterface(k.savingsSetup) {
+func (k KeyCapabilities) bitcoinPaymentAuthorization(ctx context.Context, r bitcoinPaymentAuthorization) (string, error) {
+	if isNilInterface(k.bitcoinPayment) {
 		return "", fmt.Errorf("Savings setup capability unavailable")
 	}
-	return k.savingsSetup.authorizeSavingsSetup(ctx, r)
+	return k.bitcoinPayment.authorizeBitcoinPayment(ctx, r)
 }
-func (k *fileBackedVaultKeys) authorizeSavingsSetup(ctx context.Context, r savingsSetupAuthorization) (string, error) {
+func (k *fileBackedVaultKeys) authorizeBitcoinPayment(ctx context.Context, r bitcoinPaymentAuthorization) (string, error) {
 	if r.final != nil && r.deletion != nil {
 		return "", fmt.Errorf("Savings setup signing phase conflict")
 	}
-	registration, err := verifySavingsSetupRegistration(r.registrationPSBT, r.registrationMessage, r.plan, r.context)
+	registration, err := verifyBitcoinPaymentRegistration(r.registrationPSBT, r.registrationMessage, r.plan, r.context)
 	if err != nil {
 		return "", err
 	}
 	raw, indexes, sighash := registration.CanonicalPSBT, []int{0, 1}, txscript.SigHashAll
 	if r.final != nil {
-		final, err := verifySavingsSetupFinal(*r.final, r.plan, r.context, registration)
+		final, err := verifyBitcoinPaymentFinal(*r.final, r.plan, r.context, registration)
 		if err != nil {
 			return "", err
 		}

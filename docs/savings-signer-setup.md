@@ -1,5 +1,8 @@
 # Funding the Savings signer from Spending
 
+New signer funding uses the canonical [Spending-to-Bitcoin payment](spending-bitcoin.md).
+The dedicated v1 routes below remain for existing signed attempts and older clients.
+
 The wallet can create the enrolled signer's approval outputs through a named
 Spending batch. Savings deposits remain ordinary Bitcoin receives; the signer
 setup is separate and may be funded before the first Savings withdrawal.
@@ -79,7 +82,7 @@ produced by the pinned wallet SDK, together with its public test enrollment and
 signed plan. `TestSavingsSetupActualSDKIntent` independently rebuilds the Go
 contracts and verifies the prepare signature, plan digest, complete intent and owner-signed cancellation.
 Regenerate a candidate from the wallet checkout with
-`VAULT_SETUP_SDK_VECTOR=/tmp/savings-setup-sdk.json pnpm exec vitest run src/lib/vault/savingsSetupStore.test.ts`,
+`VAULT_SETUP_SDK_VECTOR=/tmp/savings-setup-sdk.json pnpm exec vitest run src/lib/vault/spendingBitcoinStore.test.ts`,
 then inspect and copy the public fixture into the runtime testdata directory.
 This fixture verifies protocol compatibility without moving Bitcoin.
 

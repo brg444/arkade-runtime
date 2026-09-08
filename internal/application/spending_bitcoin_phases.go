@@ -9,23 +9,29 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) loadSavingsSetup(ctx context.Context, vault, id string) (*policy.LightRenewalSnapshot, savingsSetupPlan, savingsSetupContext, error) {
-	c, err := s.savingsSetupContext(vault)
+func (s *Service) loadBitcoinPayment(ctx context.Context, vault, id string) (*policy.LightRenewalSnapshot, bitcoinPaymentPlan, bitcoinPaymentContext, error) {
+	c, err := s.bitcoinPaymentContext(vault, true)
 	if err != nil {
-		return nil, savingsSetupPlan{}, c, err
+		return nil, bitcoinPaymentPlan{}, c, err
 	}
 	if _, err := canonicalVtxoOperationID(id); err != nil {
-		return nil, savingsSetupPlan{}, c, err
+		return nil, bitcoinPaymentPlan{}, c, err
 	}
 	snapshot, err := s.Stores.LightRenewal.GetLightRenewal(ctx, id)
 	if err != nil || snapshot == nil || snapshot.Operation.VaultID != vault {
-		return nil, savingsSetupPlan{}, c, fmt.Errorf("Savings setup operation unavailable")
+		return nil, bitcoinPaymentPlan{}, c, fmt.Errorf("Savings setup operation unavailable")
 	}
-	prepared, err := savingsSetupSnapshot(snapshot, c)
+	if snapshot.Operation.Kind == policy.SavingsSetupBatchKind {
+		c, err = s.bitcoinPaymentContext(vault)
+		if err != nil {
+			return nil, bitcoinPaymentPlan{}, c, err
+		}
+	}
+	prepared, err := bitcoinPaymentSnapshot(snapshot, c)
 	return snapshot, prepared.Plan, c, err
 }
-func (s *Service) registerSavingsSetup(ctx context.Context, r lightRenewalRegisterRequest) (lightRenewalResponse, error) {
-	snapshot, p, c, err := s.loadSavingsSetup(ctx, r.VaultID, r.OperationID)
+func (s *Service) registerBitcoinPayment(ctx context.Context, r lightRenewalRegisterRequest) (lightRenewalResponse, error) {
+	snapshot, p, c, err := s.loadBitcoinPayment(ctx, r.VaultID, r.OperationID)
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
@@ -33,7 +39,7 @@ func (s *Service) registerSavingsSetup(ctx context.Context, r lightRenewalRegist
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	verified, err := verifySavingsSetupRegistration(r.PSBT, r.Message, p, c)
+	verified, err := verifyBitcoinPaymentRegistration(r.PSBT, r.Message, p, c)
 	release()
 	if err != nil {
 		return lightRenewalResponse{}, err
@@ -57,7 +63,7 @@ func (s *Service) registerSavingsSetup(ctx context.Context, r lightRenewalRegist
 	if _, ok := snapshot.Events["register_dispatched"]; ok {
 		return lightRenewalResponse{State: "uncertain"}, nil
 	}
-	if err := s.requireFreshSavingsSetup(ctx, p, c); err != nil {
+	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	evidence, err := json.Marshal(lightRenewalRegistrationEvidence{verified.CanonicalPSBT, verified.Message})
@@ -71,7 +77,7 @@ func (s *Service) registerSavingsSetup(ctx context.Context, r lightRenewalRegist
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	signed, err := s.keys.savingsSetupAuthorization(ctx, savingsSetupAuthorization{context: c, plan: p, registrationPSBT: verified.CanonicalPSBT, registrationMessage: verified.Message})
+	signed, err := s.keys.bitcoinPaymentAuthorization(ctx, bitcoinPaymentAuthorization{context: c, plan: p, registrationPSBT: verified.CanonicalPSBT, registrationMessage: verified.Message})
 	release()
 	if err != nil {
 		return lightRenewalResponse{}, err
@@ -80,7 +86,7 @@ func (s *Service) registerSavingsSetup(ctx context.Context, r lightRenewalRegist
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	if err := s.requireFreshSavingsSetup(ctx, p, c); err != nil {
+	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	_, created, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "register_dispatched", RequestDigest: requestDigest}, nil, 0)
@@ -104,7 +110,7 @@ func (s *Service) registerSavingsSetup(ctx context.Context, r lightRenewalRegist
 	}
 	return lightRenewalResponse{State: "registered", IntentID: intent}, nil
 }
-func savingsSetupStoredRegistration(snapshot *policy.LightRenewalSnapshot, p savingsSetupPlan, c savingsSetupContext) (verifiedLightRenewalRegistration, error) {
+func bitcoinPaymentStoredRegistration(snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext) (verifiedLightRenewalRegistration, error) {
 	event, ok := snapshot.Events["register_authorized"]
 	if !ok {
 		return verifiedLightRenewalRegistration{}, fmt.Errorf("Savings setup registration missing")
@@ -113,14 +119,14 @@ func savingsSetupStoredRegistration(snapshot *policy.LightRenewalSnapshot, p sav
 	if err := json.Unmarshal([]byte(event.Evidence), &evidence); err != nil {
 		return verifiedLightRenewalRegistration{}, err
 	}
-	verified, err := verifySavingsSetupRegistration(evidence.PSBT, evidence.Message, p, c)
+	verified, err := verifyBitcoinPaymentRegistration(evidence.PSBT, evidence.Message, p, c)
 	if err != nil || hex.EncodeToString(verified.RequestDigest) != event.RequestDigest {
 		return verifiedLightRenewalRegistration{}, fmt.Errorf("Savings setup registration evidence changed")
 	}
 	return verified, nil
 }
-func (s *Service) finalizeSavingsSetup(ctx context.Context, r lightRenewalFinalRequest) (lightRenewalResponse, error) {
-	snapshot, p, c, err := s.loadSavingsSetup(ctx, r.VaultID, r.OperationID)
+func (s *Service) finalizeBitcoinPayment(ctx context.Context, r lightRenewalFinalRequest) (lightRenewalResponse, error) {
+	snapshot, p, c, err := s.loadBitcoinPayment(ctx, r.VaultID, r.OperationID)
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
@@ -128,12 +134,12 @@ func (s *Service) finalizeSavingsSetup(ctx context.Context, r lightRenewalFinalR
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	registration, err := savingsSetupStoredRegistration(snapshot, p, c)
+	registration, err := bitcoinPaymentStoredRegistration(snapshot, p, c)
 	if err != nil {
 		release()
 		return lightRenewalResponse{}, err
 	}
-	verified, err := verifySavingsSetupFinal(r.Evidence, p, c, registration)
+	verified, err := verifyBitcoinPaymentFinal(r.Evidence, p, c, registration)
 	release()
 	if err != nil {
 		return lightRenewalResponse{}, err
@@ -155,7 +161,7 @@ func (s *Service) finalizeSavingsSetup(ctx context.Context, r lightRenewalFinalR
 		response.State = "uncertain"
 		return response, nil
 	}
-	if err := s.requireFreshSavingsSetup(ctx, p, c); err != nil {
+	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	raw, err := json.Marshal(r.Evidence)
@@ -169,7 +175,7 @@ func (s *Service) finalizeSavingsSetup(ctx context.Context, r lightRenewalFinalR
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	signed, err := s.keys.savingsSetupAuthorization(ctx, savingsSetupAuthorization{context: c, plan: p, registrationPSBT: registration.CanonicalPSBT, registrationMessage: registration.Message, final: &r.Evidence})
+	signed, err := s.keys.bitcoinPaymentAuthorization(ctx, bitcoinPaymentAuthorization{context: c, plan: p, registrationPSBT: registration.CanonicalPSBT, registrationMessage: registration.Message, final: &r.Evidence})
 	release()
 	if err != nil {
 		return lightRenewalResponse{}, err
@@ -178,7 +184,7 @@ func (s *Service) finalizeSavingsSetup(ctx context.Context, r lightRenewalFinalR
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	if err := s.requireFreshSavingsSetup(ctx, p, c); err != nil {
+	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	_, created, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "final_dispatched", RequestDigest: digest}, nil, 0)

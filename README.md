@@ -77,6 +77,12 @@ for the service and tenant access boundaries.
 | `POST /v1/light/delegate/status` | Read operation state and verified replacement recovery paths. |
 | `POST /v1/light/delegate/list` | Discover this vault’s scheduled operations with owner authorization. |
 | `POST /v1/light/delegate/cancel` | Cancel an armed renewal before dispatch claims its input. |
+| `GET /v1/vtxo/bitcoin/info` | Read the Spending-to-Bitcoin capability. |
+| `POST /v1/vtxo/bitcoin/prepare` | Reserve an owner-bound Bitcoin output plan and fee. |
+| `POST /v1/vtxo/bitcoin/register` | Approve the exact Bitcoin payment and protected Spending change. |
+| `POST /v1/vtxo/bitcoin/final` | Verify recovery paths and submit the exact forfeit. |
+| `POST /v1/vtxo/bitcoin/status` | Reconcile payment submission and Bitcoin confirmation. |
+| `POST /v1/vtxo/bitcoin/release` | Release a safely cancelled Bitcoin payment. |
 | `GET /v1/vtxo/savings-setup/info` | Read signer setup capability for the enrolled vault. |
 | `POST /v1/vtxo/savings-setup/prepare` | Reserve the signer funding amount and Operator fee. |
 | `POST /v1/vtxo/savings-setup/register` | Authorize the exact signer funding batch. |

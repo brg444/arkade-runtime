@@ -234,6 +234,30 @@
     "/v1/vtxo/savings-setup/status": [
       "OPTIONS",
       "POST"
+    ],
+    "/v1/vtxo/bitcoin/final": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/bitcoin/info": [
+      "GET",
+      "OPTIONS"
+    ],
+    "/v1/vtxo/bitcoin/prepare": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/bitcoin/register": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/bitcoin/release": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/vtxo/bitcoin/status": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {
@@ -857,7 +881,8 @@
       "reserveCount:integer",
       "feeSats:integer",
       "feePolicyDigest:string",
-      "registerExpireAt:integer"
+      "registerExpireAt:integer",
+      "outputs:array<object>,omitempty"
     ],
     "SavingsSetupReleaseRequest": [
       "vaultId:string",
@@ -877,6 +902,19 @@
       "plan:object",
       "planDigest:string",
       "state:string"
+    ],
+    "SpendingBitcoinPrepareRequest": [
+      "vaultId:string",
+      "operationId:string",
+      "txid:string",
+      "vout:integer",
+      "outputs:array<object>",
+      "expiresAt:integer",
+      "ownerSignature:string,omitempty"
+    ],
+    "BitcoinPaymentOutput": [
+      "script:string",
+      "amountSats:integer"
     ]
   }
 }

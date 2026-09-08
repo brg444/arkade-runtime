@@ -12,10 +12,10 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) reconcileSavingsSetup(ctx context.Context, r lightRenewalOperationRequest) (lightRenewalResponse, error) {
+func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOperationRequest) (lightRenewalResponse, error) {
 	// An absent operation is useful only to a client holding an expired, signed
 	// prepare request. It never proves that a dispatched transaction failed.
-	if _, err := s.savingsSetupContext(r.VaultID); err != nil {
+	if _, err := s.bitcoinPaymentContext(r.VaultID, true); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	if _, err := canonicalVtxoOperationID(r.OperationID); err != nil {
@@ -28,7 +28,7 @@ func (s *Service) reconcileSavingsSetup(ctx context.Context, r lightRenewalOpera
 	if prior == nil {
 		return lightRenewalResponse{State: "not_found"}, nil
 	}
-	snapshot, p, c, err := s.loadSavingsSetup(ctx, r.VaultID, r.OperationID)
+	snapshot, p, c, err := s.loadBitcoinPayment(ctx, r.VaultID, r.OperationID)
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
@@ -39,7 +39,7 @@ func (s *Service) reconcileSavingsSetup(ctx context.Context, r lightRenewalOpera
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	registration, err := savingsSetupStoredRegistration(snapshot, p, c)
+	registration, err := bitcoinPaymentStoredRegistration(snapshot, p, c)
 	if err != nil {
 		release()
 		return lightRenewalResponse{}, err
@@ -49,7 +49,7 @@ func (s *Service) reconcileSavingsSetup(ctx context.Context, r lightRenewalOpera
 		release()
 		return lightRenewalResponse{}, err
 	}
-	final, err := verifySavingsSetupFinal(evidence, p, c, registration)
+	final, err := verifyBitcoinPaymentFinal(evidence, p, c, registration)
 	release()
 	if err != nil || hex.EncodeToString(final.RequestDigest) != snapshot.Events["final_dispatched"].RequestDigest {
 		return lightRenewalResponse{}, fmt.Errorf("Savings setup persisted final mismatch")
@@ -104,14 +104,14 @@ func (s *Service) reconcileSavingsSetup(ctx context.Context, r lightRenewalOpera
 	return response, nil
 }
 
-type savingsSetupReleaseRequest struct {
+type bitcoinPaymentReleaseRequest struct {
 	VaultID      string               `json:"vaultId"`
 	OperationID  string               `json:"operationId"`
 	DeleteIntent *lightDelegateIntent `json:"deleteIntent,omitempty"`
 }
 
-func (s *Service) releaseSavingsSetup(ctx context.Context, r savingsSetupReleaseRequest) (lightRenewalResponse, error) {
-	snapshot, p, c, err := s.loadSavingsSetup(ctx, r.VaultID, r.OperationID)
+func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentReleaseRequest) (lightRenewalResponse, error) {
+	snapshot, p, c, err := s.loadBitcoinPayment(ctx, r.VaultID, r.OperationID)
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
@@ -136,7 +136,7 @@ func (s *Service) releaseSavingsSetup(ctx context.Context, r savingsSetupRelease
 		}
 		// Registration expiry does not remove the Operator's queued intent.
 		// Keep the reservation until that exact owner-authorized intent is deleted.
-		cleared, err := s.deleteSavingsSetupIntent(ctx, snapshot, p, c, r.DeleteIntent)
+		cleared, err := s.deleteBitcoinPaymentIntent(ctx, snapshot, p, c, r.DeleteIntent)
 		if err != nil {
 			return lightRenewalResponse{}, err
 		}
@@ -164,7 +164,7 @@ func (s *Service) releaseSavingsSetup(ctx context.Context, r savingsSetupRelease
 // Cancellation is non-monetary and may be retried from its durable evidence.
 // No-match (including a lost successful delete response) remains ambiguous;
 // neither expiry nor an indexer view alone permits another funding attempt.
-func (s *Service) deleteSavingsSetupIntent(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p savingsSetupPlan, c savingsSetupContext, supplied *lightDelegateIntent) (bool, error) {
+func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, supplied *lightDelegateIntent) (bool, error) {
 	if _, ok := snapshot.Events["delete_result"]; ok {
 		return true, nil
 	}
@@ -172,7 +172,7 @@ func (s *Service) deleteSavingsSetupIntent(ctx context.Context, snapshot *policy
 	if err != nil {
 		return false, err
 	}
-	registration, err := savingsSetupStoredRegistration(snapshot, p, c)
+	registration, err := bitcoinPaymentStoredRegistration(snapshot, p, c)
 	if err != nil {
 		release()
 		return false, err
@@ -210,7 +210,7 @@ func (s *Service) deleteSavingsSetupIntent(ctx context.Context, snapshot *policy
 	if err != nil {
 		return false, err
 	}
-	signed, err := s.keys.savingsSetupAuthorization(ctx, savingsSetupAuthorization{context: c, plan: p, registrationPSBT: registration.CanonicalPSBT, registrationMessage: registration.Message, deletion: &deletion})
+	signed, err := s.keys.bitcoinPaymentAuthorization(ctx, bitcoinPaymentAuthorization{context: c, plan: p, registrationPSBT: registration.CanonicalPSBT, registrationMessage: registration.Message, deletion: &deletion})
 	release()
 	if err != nil {
 		return false, err

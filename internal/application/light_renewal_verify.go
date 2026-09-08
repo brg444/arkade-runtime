@@ -19,6 +19,8 @@ import (
 // Amounts and the fee policy are pinned from the indexer before this plan is
 // persisted. This verifier alone grants no signing capability or HTTP route.
 type lightRenewalPlan struct {
+	// Derived by the Bitcoin-payment adapter, never accepted from a signed request.
+	bitcoinPayment   bool   `json:"-"`
 	OperationID      string `json:"operationId"`
 	VaultID          string `json:"vaultId"`
 	DescriptorHash   string `json:"descriptorHash"`
