@@ -5,6 +5,7 @@ import (
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/asset"
 	"github.com/arkade-os/emulator/pkg/arkade"
+	"github.com/brg444/arkade-runtime/internal/vault/rolling"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/txscript"
 )
@@ -12,14 +13,7 @@ import (
 const maxMoney int64 = 2_100_000_000_000_000
 
 // Parameters are compile-time research inputs, never an HTTP policy surface.
-type Parameters struct {
-	ControllerID   asset.AssetId
-	Budget         int64
-	RecipientCap   int64
-	FeeCap         int64
-	DelegatePubkey []byte // compressed tree-cosigner key
-	RenewalWindow  int64
-}
+type Parameters = rolling.Parameters
 
 type Scripts struct{ Spend, Renew []byte }
 
@@ -135,6 +129,12 @@ func (b builder) stateField(input int, sequence bool, budget int64) {
 }
 
 func compileSpend(p Parameters) ([]byte, error) {
+	return compileSpendWithState(p, func(b builder) {
+		fixedSpendState(b, p)
+	})
+}
+
+func compileSpendWithState(p Parameters, state func(builder)) ([]byte, error) {
 	b := newBuilder()
 	b.header(3, 2, MaxMoneyInputs+1)
 	b.AddOp(arkade.OP_INSPECTNUMOUTPUTS)
@@ -191,6 +191,12 @@ func compileSpend(p Parameters) ([]byte, error) {
 	b.AddOp(arkade.OP_SUB)
 	b.bounded(0, p.FeeCap)
 	b.AddOp(arkade.OP_DROP)
+	state(b)
+	b.AddOp(arkade.OP_TRUE)
+	return b.Script()
+}
+
+func fixedSpendState(b builder, p Parameters) {
 	b.stateField(0, false, p.Budget)
 	b.AddOp(arkade.OP_SWAP).AddOp(arkade.OP_SUB)
 	b.bounded(0, p.Budget)
@@ -199,11 +205,22 @@ func compileSpend(p Parameters) ([]byte, error) {
 	b.stateField(0, true, p.Budget)
 	b.AddOp(arkade.OP_1ADD)
 	b.stateField(-1, true, p.Budget)
-	b.AddOp(arkade.OP_EQUALVERIFY).AddOp(arkade.OP_TRUE)
-	return b.Script()
+	b.AddOp(arkade.OP_EQUALVERIFY)
 }
 
 func compileRenew(p Parameters) ([]byte, error) {
+	return compileRenewWithState(p, func(b builder) {
+		b.stateField(1, false, p.Budget)
+		b.AddOp(arkade.OP_DROP)
+		b.stateField(1, true, p.Budget)
+		b.AddOp(arkade.OP_DROP)
+		b.statePacket(1)
+		b.statePacket(-1)
+		b.AddOp(arkade.OP_EQUALVERIFY)
+	})
+}
+
+func compileRenewWithState(p Parameters, state func(builder)) ([]byte, error) {
 	b := newBuilder()
 	b.header(2, 2, MaxMoneyInputs+2)
 	// Output count includes the extension; input zero is the intent message.
@@ -232,13 +249,8 @@ func compileRenew(p Parameters) ([]byte, error) {
 	b.inputValue(1)
 	b.eq(ControllerSats)
 	// Explicit controller-state preservation is independent of TUNNEL assets.
-	b.stateField(1, false, p.Budget)
-	b.AddOp(arkade.OP_DROP)
-	b.stateField(1, true, p.Budget)
-	b.AddOp(arkade.OP_DROP)
-	b.statePacket(1)
-	b.statePacket(-1)
-	b.AddOp(arkade.OP_EQUALVERIFY).AddOp(arkade.OP_ENDIF)
+	state(b)
+	b.AddOp(arkade.OP_ENDIF)
 	for i := 1; i <= MaxMoneyInputs+1; i++ {
 		b.AddOp(arkade.OP_INSPECTNUMINPUTS).AddInt64(int64(i)).AddOp(arkade.OP_GREATERTHAN).AddOp(arkade.OP_IF)
 		b.inputScript(i)

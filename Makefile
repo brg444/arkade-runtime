@@ -2,7 +2,7 @@ GO ?= go
 GOLANGCI_LINT_VERSION ?= v2.13.1
 GOVULNCHECK_VERSION ?= v1.7.0
 
-.PHONY: check race lint vuln images bench ci
+.PHONY: check race lint vuln images bench ci rolling-check
 
 check:
 	$(GO) mod verify
@@ -32,4 +32,12 @@ images:
 bench:
 	$(GO) test ./internal/policy -run '^$$' -bench . -benchmem
 
-ci: check race vuln lint images
+# The production module retains the Savings emulator dialect. Qualify rolling
+# bytecode separately against the upstream emulator pinned by this module.
+rolling-check:
+	$(GO) -C tools/allowance-draft mod verify
+	$(GO) -C tools/allowance-draft vet ./...
+	$(GO) -C tools/allowance-draft test -race ./... -count=1
+	$(GO) test ./fixture -run TestRollingPortableVectors -count=1
+
+ci: check race rolling-check vuln lint images

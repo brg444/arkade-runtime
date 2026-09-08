@@ -102,6 +102,19 @@ type RecoveryBackupStore interface {
 	PutRecoveryBackup(string, uint64, string) (*policy.RecoveryBackup, error)
 }
 
+// RollingAllowanceStore keeps controller history, shared allowance reservations
+// and credential counters in the same authenticated transaction boundary.
+// EnrollRolling is deliberately excluded: funded profile admission owns it.
+type RollingAllowanceStore interface {
+	BeginRollingCleanup(context.Context, string) (policy.RollingEvent, error)
+	NowUTC() time.Time
+	RollingOperations(context.Context, string) ([]policy.RollingSnapshot, error)
+	RollingHistory(context.Context, string) (policy.RollingHistory, error)
+	ReserveRolling(context.Context, policy.RollingOperation, int64) (*policy.RollingSnapshot, error)
+	AppendRollingEvent(context.Context, policy.RollingEvent) (policy.RollingEvent, error)
+	CommitRollingAuthorization(context.Context, policy.RollingEvent, []byte, uint32) (policy.RollingEvent, error)
+}
+
 // Stores is the complete persistence capability set compiled into the
 // arkade-vault-v1 profile.
 type Stores struct {
@@ -115,10 +128,13 @@ type Stores struct {
 	LightDelegation    LightDelegationStore
 	Connector          ConnectorStore
 	RecoveryBackup     RecoveryBackupStore
+	RollingAllowance   RollingAllowanceStore
 }
 
 func (s Stores) Validate() error {
 	switch {
+	case s.RollingAllowance == nil:
+		return fmt.Errorf("rolling allowance store required")
 	case s.Identity == nil:
 		return fmt.Errorf("arkade-vault-v1 identity store required")
 	case s.Allowance == nil:
@@ -142,7 +158,7 @@ func (s Stores) Validate() error {
 	}
 }
 
-// StoresFromLedger narrows one authenticated SQLite ledger into the five
+// StoresFromLedger narrows one authenticated SQLite ledger into the
 // profile capabilities. Every interface intentionally points at the same
 // object, preserving the physical database and transaction boundaries.
 func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
@@ -160,5 +176,6 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		LightDelegation:    ledger,
 		Connector:          ledger,
 		RecoveryBackup:     ledger,
+		RollingAllowance:   ledger,
 	}, nil
 }

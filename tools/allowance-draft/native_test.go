@@ -121,6 +121,11 @@ func newNativeFixture(t *testing.T) *nativeFixture {
 
 func signPacket(t *testing.T, p *psbt.Packet, keys ...*btcec.PrivateKey) {
 	t.Helper()
+	signPacketSkipping(t, p, nil, keys...)
+}
+
+func signPacketSkipping(t *testing.T, p *psbt.Packet, skip []*btcec.PublicKey, keys ...*btcec.PrivateKey) {
+	t.Helper()
 	fetch, err := txutils.GetPrevOutputFetcher(p)
 	check(t, err)
 	hashes := txscript.NewTxSigHashes(p.UnsignedTx, fetch)
@@ -137,7 +142,7 @@ func signPacket(t *testing.T, p *psbt.Packet, keys ...*btcec.PrivateKey) {
 			p.Inputs[i].TaprootScriptSpendSig = append(p.Inputs[i].TaprootScriptSpendSig, &psbt.TaprootScriptSpendSig{XOnlyPubKey: schnorr.SerializePubKey(key.PubKey()), LeafHash: leafHash[:], Signature: sig[:64], SigHash: input.SighashType})
 		}
 	}
-	verified, err := scriptlib.VerifyTapscriptSigs(p, fetch)
+	verified, err := scriptlib.VerifyTapscriptSigs(p, fetch, scriptlib.WithSkipPublicKeys(skip...))
 	check(t, err)
 	if len(verified) != len(p.Inputs) {
 		t.Fatal("not all fixture inputs verified")

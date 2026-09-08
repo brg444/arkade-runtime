@@ -1,0 +1,88 @@
+name: vaulted-rolling-20260908
+services:
+  bitcoin:
+    image: btcpayserver/bitcoin:31.0
+    command: [bitcoind, -regtest, -server, -printtoconsole, -rpcbind=0.0.0.0, -rpcallowip=0.0.0.0/0, -rpcuser=admin1, -rpcpassword=123, -txindex=1, -fallbackfee=0.00001]
+    ports: ["127.0.0.1:25443:18443"]
+    volumes: ["bitcoin-data:/data"]
+  electrs:
+    image: ghcr.io/vulpemventures/electrs:latest
+    entrypoint: /build/electrs
+    command: [-vvvv, --network, regtest, --daemon-dir, /config, --daemon-rpc-addr, "bitcoin:18443", --cookie, "admin1:123", --http-addr, "0.0.0.0:30000", --electrum-rpc-addr, "0.0.0.0:50000", --cors, "*", --jsonrpc-import]
+    depends_on: [bitcoin]
+    ports: ["127.0.0.1:26300:30000"]
+    restart: on-failure
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres"]
+      interval: 2s
+      retries: 30
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+  nbxplorer:
+    image: nicolasdorier/nbxplorer:2.6.7
+    environment:
+      NBXPLORER_NETWORK: regtest
+      NBXPLORER_CHAINS: btc
+      NBXPLORER_BTCRPCURL: http://bitcoin:18443
+      NBXPLORER_BTCNODEENDPOINT: bitcoin:18444
+      NBXPLORER_BTCRPCUSER: admin1
+      NBXPLORER_BTCRPCPASSWORD: "123"
+      NBXPLORER_BIND: 0.0.0.0:32838
+      NBXPLORER_POSTGRES: User ID=postgres;Host=postgres;Port=5432;Database=nbxplorer
+      NBXPLORER_NOAUTH: "1"
+      NBXPLORER_EXPOSERPC: "1"
+    depends_on:
+      postgres: {condition: service_healthy}
+      bitcoin: {condition: service_started}
+    restart: on-failure
+  wallet:
+    image: ghcr.io/arkade-os/arkd-wallet:v0.9.16
+    environment:
+      ARKD_WALLET_LOG_LEVEL: "4"
+      ARKD_WALLET_NBXPLORER_URL: http://nbxplorer:32838
+      ARKD_WALLET_NETWORK: regtest
+      ARKD_WALLET_SIGNER_KEY: "0404040404040404040404040404040404040404040404040404040404040404"
+    ports: ["127.0.0.1:26060:6060"]
+    depends_on: [nbxplorer]
+    volumes: ["wallet-data:/app/data"]
+    restart: on-failure
+  operator:
+    image: ghcr.io/arkade-os/arkd:v0.9.16
+    environment:
+      ARKD_LOG_LEVEL: "4"
+      ARKD_NO_MACAROONS: "true"
+      ARKD_VTXO_TREE_EXPIRY: "512"
+      ARKD_SCHEDULER_TYPE: block
+      ARKD_UNILATERAL_EXIT_DELAY: "512"
+      ARKD_BOARDING_EXIT_DELAY: "1024"
+      ARKD_CHECKPOINT_EXIT_DELAY: "512"
+      ARKD_WALLET_ADDR: wallet:6060
+      ARKD_ESPLORA_URL: http://electrs:30000
+      ARKD_ROUND_MIN_PARTICIPANTS_COUNT: "1"
+      ARKD_ROUND_MAX_PARTICIPANTS_COUNT: "128"
+      ARKD_VTXO_MIN_AMOUNT: "330"
+      ARKD_LIVE_STORE_TYPE: inmemory
+      ARKD_EVENT_DB_TYPE: badger
+      ARKD_DB_TYPE: sqlite
+      ARKD_SESSION_DURATION: "30"
+      ARKD_ROUND_REPORT_ENABLED: "true"
+    ports: ["127.0.0.1:27070:7070", "127.0.0.1:27071:7071"]
+    depends_on: [wallet, electrs]
+    volumes: ["operator-data:/app/data"]
+    restart: on-failure
+  emulator:
+    image: ghcr.io/arkade-os/emulator:v0.0.8-rc.0@sha256:3c1cb63011edd98c50ab2cb1e4a2e10fcb04d889d3b76ee53c7ac637410648fb
+    environment:
+      EMULATOR_SECRET_KEY: "0303030303030303030303030303030303030303030303030303030303030303"
+      EMULATOR_ARKD_URL: operator:7070
+    ports: ["127.0.0.1:27073:7073"]
+    depends_on: [operator]
+    restart: on-failure
+volumes:
+  bitcoin-data:
+  postgres-data:
+  wallet-data:
+  operator-data:

@@ -36,6 +36,20 @@ jobs:
         with:
           version: v2.13.1
 
+  rolling-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/allowance-draft/go.sum
+      - name: Qualify rolling allowance against the pinned upstream VM
+        run: make rolling-check
+
   images:
     runs-on: ubuntu-latest
     timeout-minutes: 20
