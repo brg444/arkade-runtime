@@ -131,10 +131,10 @@ func TestRollingGrantTamperAndAbsentCompatibility(t *testing.T) {
 }
 
 func TestRollingGrantAndTreeCommitsRejectExpiredClock(t *testing.T) {
-	for _, phase := range []string{"authorized", "tree_requested", "tree_prepared", "nonces_committed", "tree_signed"} {
+	for _, phase := range []string{"authorized", "emulator_authorized", "register_dispatched", "tree_requested", "tree_prepared", "nonces_committed", "tree_signed"} {
 		t.Run(phase, func(t *testing.T) {
 			l, now, op := rollingGrantFixture(t)
-			stages := []string{"authorized", "register_dispatched", "registered", "tree_requested", "tree_prepared", "nonces_committed", "tree_signed"}
+			stages := []string{"authorized", "emulator_authorized", "register_dispatched", "registered", "tree_requested", "tree_prepared", "nonces_committed", "tree_signed"}
 			for _, stage := range stages {
 				if stage == phase {
 					*now = now.Add(600 * time.Second)

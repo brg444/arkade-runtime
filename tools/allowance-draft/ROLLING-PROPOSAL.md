@@ -122,7 +122,16 @@ partial signatures commit before release. Concurrent requests can expose only
 one retained capsule and one peer challenge; retries recover the same partials.
 Final signing revalidates this complete transcript alongside the signed tree.
 
-First registration authority, every new signing-session stage, final authority
+The private registration adapter reads the retained Guardian authorization,
+calls the pinned emulator's intent endpoint and verifies the exact added
+emulator signatures before saving `emulator_authorized`. It rejects changes to
+transaction data, metadata, existing signatures or the registration message.
+A separate atomic dispatch claim permits one Operator registration call.
+Concurrent workers and lost responses cannot trigger another call; the saved
+intent identity can be recovered without either signing service. Cleanup
+excludes new registration and replay, while uncertain dispatch remains fenced.
+
+First registration authority, emulator approval, dispatch, every new signing-session stage, final authority
 and final-signature retention must occur within the registration validity
 window. The key backend also checks current time before generating fresh
 signatures. A clock crossing after final authority leaves the fence intact.

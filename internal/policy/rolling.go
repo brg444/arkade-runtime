@@ -427,6 +427,18 @@ func (l *Ledger) CommitRollingRenewalAuthorization(ctx context.Context, e Rollin
 }
 
 func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credentialID []byte, signCount uint32, automaticRenewal bool) (RollingEvent, error) {
+	return l.appendRollingEventClaim(ctx, e, credentialID, signCount, automaticRenewal, nil)
+}
+
+// ClaimRollingRegistration permits exactly one dispatcher to send a retained
+// intent. A restart or ambiguous response cannot claim the same operation again.
+func (l *Ledger) ClaimRollingRegistration(ctx context.Context, operationID string) (bool, error) {
+	claimed := false
+	_, err := l.appendRollingEventClaim(ctx, RollingEvent{OperationID: operationID, Phase: "register_dispatched", Evidence: `{}`}, nil, 0, false, &claimed)
+	return claimed && err == nil, err
+}
+
+func (l *Ledger) appendRollingEventClaim(ctx context.Context, e RollingEvent, credentialID []byte, signCount uint32, automaticRenewal bool, claimed *bool) (RollingEvent, error) {
 	e.CreatedAt = l.NowUTC().Format(time.RFC3339)
 	var result RollingEvent
 	err := l.withRollingTx(ctx, func(tx *sql.Conn, key []byte) error {
@@ -465,7 +477,7 @@ func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credent
 		if _, cleanup := s.Events["cleanup_pending"]; cleanup && !strings.HasPrefix(e.Phase, "cleanup_") {
 			return fmt.Errorf("rolling cleanup fenced later authority")
 		}
-		if s.Operation.Proposal.Kind == rolling.RenewalOperation && (e.Phase == "authorized" || e.Phase == "tree_requested" || e.Phase == "tree_prepared" || e.Phase == "nonces_committed" || e.Phase == "tree_signed" || e.Phase == "final_authorized" || e.Phase == "final_signed") {
+		if s.Operation.Proposal.Kind == rolling.RenewalOperation && (e.Phase == "authorized" || e.Phase == "emulator_authorized" || e.Phase == "register_dispatched" || e.Phase == "tree_requested" || e.Phase == "tree_prepared" || e.Phase == "nonces_committed" || e.Phase == "tree_signed" || e.Phase == "final_authorized" || e.Phase == "final_signed") {
 			if err = rolling.CheckRenewalTime(s.Operation.Proposal.Message, l.NowUTC().Unix()); err != nil {
 				return err
 			}
@@ -508,6 +520,9 @@ func (l *Ledger) appendRollingEvent(ctx context.Context, e RollingEvent, credent
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO rolling_event(operation_id,phase,payload,integrity_mac) VALUES(?,?,?,?)`, e.OperationID, e.Phase, string(payload), renewalMAC(key, rollingRecordDomain+"event", string(payload)))
 		result = e
+		if claimed != nil && err == nil {
+			*claimed = true
+		}
 		return err
 	})
 	return result, err

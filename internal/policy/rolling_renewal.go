@@ -12,7 +12,8 @@ import (
 // sign arbitrary caller-supplied trees or forfeits. The application verifies
 // each transcript before committing it and the key backend reads it again.
 var rollingRenewalPredecessors = map[string]string{
-	"register_dispatched": "authorized",
+	"emulator_authorized": "authorized",
+	"register_dispatched": "emulator_authorized",
 	"registered":          "register_dispatched",
 	"tree_requested":      "registered",
 	"tree_prepared":       "tree_requested",

@@ -15,7 +15,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 	}{
 		{
 			name: "rolling allowance", typ: reflect.TypeOf((*arkadevaultv1.RollingAllowanceStore)(nil)).Elem(),
-			want: []string{"AppendRollingEvent", "BeginRollingCleanup", "CommitRollingAuthorization", "CommitRollingRenewalAuthorization", "NowUTC", "ReserveRolling", "RollingHistory", "RollingOperations"},
+			want: []string{"AppendRollingEvent", "BeginRollingCleanup", "ClaimRollingRegistration", "CommitRollingAuthorization", "CommitRollingRenewalAuthorization", "NowUTC", "ReserveRolling", "RollingHistory", "RollingOperations"},
 		},
 		{
 			name: "identity", typ: reflect.TypeOf((*arkadevaultv1.IdentityStore)(nil)).Elem(),

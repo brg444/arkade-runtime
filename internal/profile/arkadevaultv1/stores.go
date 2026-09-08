@@ -106,6 +106,7 @@ type RecoveryBackupStore interface {
 // and credential counters in the same authenticated transaction boundary.
 // EnrollRolling is deliberately excluded: funded profile admission owns it.
 type RollingAllowanceStore interface {
+	ClaimRollingRegistration(context.Context, string) (bool, error)
 	BeginRollingCleanup(context.Context, string) (policy.RollingEvent, error)
 	NowUTC() time.Time
 	RollingOperations(context.Context, string) ([]policy.RollingSnapshot, error)
