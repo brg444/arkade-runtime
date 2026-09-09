@@ -100,3 +100,41 @@ func TestRecoverySessionMACCoversSignatureAndSighash(t *testing.T) {
 		t.Fatal("tampered sighash verified")
 	}
 }
+
+func TestRecoveryReplacementDoesNotCarryPreviousSignature(t *testing.T) {
+	led := openPolicyTestLedger(t, nil)
+	createPolicyTestVault(t, led, "vault-a", 0x72)
+	first := RecoverySession{
+		VaultID: "vault-a", Purpose: sessionPurposeInitiate,
+		InputTxid: "aa11", InputVout: 0, DestScript: "5120ab",
+		LastSighash: "11", Signature: []byte("original-signed-psbt"),
+	}
+	if _, _, err := led.ApplyRecoveryReplay(first); err != nil {
+		t.Fatal(err)
+	}
+	replacement := first
+	replacement.LastSighash = "22"
+	replacement.Signature = nil
+	for i := 0; i < 2; i++ {
+		action, stored, err := led.ApplyRecoveryReplay(replacement)
+		if err != nil || action != ReplayResign || stored == nil || len(stored.Signature) != 0 || stored.LastSighash != "22" {
+			t.Fatalf("replacement attempt %d: action=%s stored=%+v err=%v", i, action, stored, err)
+		}
+	}
+	// A late response from the old signer cannot overwrite a pending replacement.
+	if _, _, err := led.ApplyRecoveryReplay(first); !errors.Is(err, ErrRecoveryBusy) {
+		t.Fatalf("old signed candidate overwrote pending replacement: %v", err)
+	}
+	replacement.Signature = []byte("replacement-signed-psbt")
+	if _, _, err := led.ApplyRecoveryReplay(replacement); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := led.ApplyRecoveryReplay(first); !errors.Is(err, ErrRecoveryBusy) {
+		t.Fatalf("old signing completion overwrote the signed replacement: %v", err)
+	}
+	replacement.Signature = nil
+	action, stored, err := led.ApplyRecoveryReplay(replacement)
+	if err != nil || action != ReplayReplay || stored == nil || string(stored.Signature) != "replacement-signed-psbt" {
+		t.Fatalf("lost-response replay: action=%s stored=%+v err=%v", action, stored, err)
+	}
+}
