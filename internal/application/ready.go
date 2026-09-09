@@ -56,6 +56,10 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "ledger integrity unavailable"
 		return st
 	}
+	if s.LedgerSavingsEnabled && s.requireLedgerSavingsEnrollmentEnabled() != nil {
+		st.Error = "Ledger Savings capability unavailable"
+		return st
+	}
 	ver, err := s.Stores.Identity.SchemaVersion()
 	if err != nil {
 		st.Error = "schema unread"

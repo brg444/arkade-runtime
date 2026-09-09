@@ -27,9 +27,11 @@ const (
 // paths must already hold the claimant/guardian BIP340 signature instead —
 // those are the stolen-phone exits and cannot require Face ID.
 type TransitionRequest struct {
-	VaultID string `json:"vaultId"`
-	Purpose string `json:"purpose"`
-	PSBT    string `json:"psbt"`
+	LedgerSavings      *LedgerSavingsTransitionRequest  `json:"ledgerSavings,omitempty"`
+	PhoneAuthorization *LedgerSavingsPhoneAuthorization `json:"phoneAuthorization,omitempty"`
+	VaultID            string                           `json:"vaultId"`
+	Purpose            string                           `json:"purpose"`
+	PSBT               string                           `json:"psbt"`
 	SessionAssertionRequest
 }
 
@@ -56,6 +58,13 @@ func (s *Service) SignTransition(ctx context.Context, req TransitionRequest) (*T
 	}
 	if cred == nil || !knownTemplate(cred.TemplateVersion) {
 		return nil, fmt.Errorf("current vault template required")
+	}
+	if cred.TemplateVersion == savings.LedgerNativeTemplate {
+		req.Purpose = purpose
+		return s.signLedgerSavingsRecovery(ctx, req, cred)
+	}
+	if req.LedgerSavings != nil || req.PhoneAuthorization != nil {
+		return nil, fmt.Errorf("Ledger Savings fields require enrolled Ledger contract")
 	}
 	ptx, _, err := parseAndVerifyPrevout(req.PSBT)
 	if err != nil {

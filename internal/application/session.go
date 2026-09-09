@@ -73,8 +73,9 @@ type SessionAssertionRequest struct {
 }
 
 type RecoveryBindingRequest struct {
-	EnvelopeNonce      string `json:"envelopeNonce"`
-	EnvelopeCiphertext string `json:"envelopeCiphertext"`
+	LedgerSavings      *LedgerSavingsBackup `json:"ledgerSavings,omitempty"`
+	EnvelopeNonce      string               `json:"envelopeNonce"`
+	EnvelopeCiphertext string               `json:"envelopeCiphertext"`
 }
 
 type RecoveryBindingResponse struct {
@@ -97,62 +98,66 @@ type RecoverCredentialEnvelopeRequest struct {
 }
 
 type RecoverCredentialEnvelopeResponse struct {
-	Binding            string `json:"binding"`
-	BindingDigest      string `json:"bindingDigest"`
-	EnvelopeNonce      string `json:"envelopeNonce"`
-	EnvelopeCiphertext string `json:"envelopeCiphertext"`
-	BindingDirectSig   string `json:"bindingDirectSig"`
-	BindingPhoneSig    string `json:"bindingPhoneSig"`
+	LedgerSavings      *LedgerSavingsBackup `json:"ledgerSavings,omitempty"`
+	Binding            string               `json:"binding"`
+	BindingDigest      string               `json:"bindingDigest"`
+	EnvelopeNonce      string               `json:"envelopeNonce"`
+	EnvelopeCiphertext string               `json:"envelopeCiphertext"`
+	BindingDirectSig   string               `json:"bindingDirectSig"`
+	BindingPhoneSig    string               `json:"bindingPhoneSig"`
 }
 
 // recoveryBinding is the complete current descriptor plus the encrypted
 // phone-key envelope. The original device signs its exact JSON encoding;
 // a fresh device verifies those signatures before treating status as trusted.
 type recoveryBinding struct {
-	Version                   uint32  `json:"version"`
-	CredentialID              string  `json:"credentialId"`
-	WebAuthnP256              string  `json:"webauthnP256"`
-	PhoneDirectP256           string  `json:"phoneDirectP256"`
-	PhoneBIP340Pub            string  `json:"phoneBip340Pub"`
-	ExternalOwnerWalletPub    string  `json:"externalOwnerWalletPub"`
-	VaultCosignerBasePub      string  `json:"vaultCosignerBasePub"`
-	ArkadeCosignerBasePub     string  `json:"arkadeCosignerBasePub"`
-	ArkadeCosignerOrigin      string  `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion     string  `json:"arkadeCosignerVersion"`
-	ClientOrigin              string  `json:"clientOrigin"`
-	RPID                      string  `json:"rpId"`
-	Network                   string  `json:"network"`
-	VaultID                   string  `json:"vaultId"`
-	TemplateVersion           string  `json:"templateVersion"`
-	PolicyVersion             string  `json:"policyVersion"`
-	ProtectionTier            string  `json:"protectionTier"`
-	SavingsAddress            string  `json:"savingsAddress"`
-	SavingsScript             string  `json:"savingsScript"`
-	VtxoVaultCosignerPub      string  `json:"vtxoVaultCosignerPub"`
-	VtxoExitDelay             uint32  `json:"vtxoExitDelay"`
-	VtxoExitDelayUnit         string  `json:"vtxoExitDelayUnit"`
-	SpendingArkAddress        string  `json:"spendingArkAddress"`
-	SpendingArkScript         string  `json:"spendingArkScript"`
-	VtxoDelegatePub           string  `json:"vtxoDelegatePub"`
-	VtxoBoardingActive        bool    `json:"vtxoBoardingActive"`
-	VtxoBoardingProgram       string  `json:"vtxoBoardingProgram"`
-	VtxoBoardingAddress       string  `json:"vtxoBoardingAddress"`
-	VtxoBoardingScript        string  `json:"vtxoBoardingScript"`
-	VtxoBoardingExitDelay     uint32  `json:"vtxoBoardingExitDelay"`
-	VtxoBoardingExitDelayUnit string  `json:"vtxoBoardingExitDelayUnit"`
-	RecipientDustSats         int64   `json:"recipientDustSats"`
-	TxRecipientCapSats        int64   `json:"txRecipientCapSats"`
-	PeriodAllowanceSats       int64   `json:"periodAllowanceSats"`
-	AbsoluteFeeCapSats        int64   `json:"absoluteFeeCapSats"`
-	FeerateCapSatPerV         int64   `json:"feerateCapSatVb"`
-	EnvelopeNonce             string  `json:"envelopeNonce"`
-	EnvelopeCiphertext        string  `json:"envelopeCiphertext"`
-	ConnectorType             string  `json:"connectorType,omitempty"`
-	ConnectorPub              string  `json:"connectorPub,omitempty"`
-	ConnectorFingerprint      *uint32 `json:"connectorFingerprint,omitempty"`
-	ConnectorPath             string  `json:"connectorPath,omitempty"`
-	ConnectorEnrollmentDigest string  `json:"connectorEnrollmentDigest,omitempty"`
-	ConnectorDescriptorHash   string  `json:"connectorDescriptorHash,omitempty"`
+	Version                     uint32  `json:"version"`
+	CredentialID                string  `json:"credentialId"`
+	WebAuthnP256                string  `json:"webauthnP256"`
+	PhoneDirectP256             string  `json:"phoneDirectP256"`
+	PhoneBIP340Pub              string  `json:"phoneBip340Pub"`
+	ExternalOwnerWalletPub      string  `json:"externalOwnerWalletPub"`
+	VaultCosignerBasePub        string  `json:"vaultCosignerBasePub"`
+	ArkadeCosignerBasePub       string  `json:"arkadeCosignerBasePub"`
+	ArkadeCosignerOrigin        string  `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion       string  `json:"arkadeCosignerVersion"`
+	ClientOrigin                string  `json:"clientOrigin"`
+	RPID                        string  `json:"rpId"`
+	Network                     string  `json:"network"`
+	VaultID                     string  `json:"vaultId"`
+	TemplateVersion             string  `json:"templateVersion"`
+	PolicyVersion               string  `json:"policyVersion"`
+	ProtectionTier              string  `json:"protectionTier"`
+	SavingsAddress              string  `json:"savingsAddress"`
+	SavingsScript               string  `json:"savingsScript"`
+	VtxoVaultCosignerPub        string  `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay               uint32  `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit           string  `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress          string  `json:"spendingArkAddress"`
+	SpendingArkScript           string  `json:"spendingArkScript"`
+	VtxoDelegatePub             string  `json:"vtxoDelegatePub"`
+	VtxoBoardingActive          bool    `json:"vtxoBoardingActive"`
+	VtxoBoardingProgram         string  `json:"vtxoBoardingProgram"`
+	VtxoBoardingAddress         string  `json:"vtxoBoardingAddress"`
+	VtxoBoardingScript          string  `json:"vtxoBoardingScript"`
+	VtxoBoardingExitDelay       uint32  `json:"vtxoBoardingExitDelay"`
+	VtxoBoardingExitDelayUnit   string  `json:"vtxoBoardingExitDelayUnit"`
+	RecipientDustSats           int64   `json:"recipientDustSats"`
+	TxRecipientCapSats          int64   `json:"txRecipientCapSats"`
+	PeriodAllowanceSats         int64   `json:"periodAllowanceSats"`
+	AbsoluteFeeCapSats          int64   `json:"absoluteFeeCapSats"`
+	FeerateCapSatPerV           int64   `json:"feerateCapSatVb"`
+	EnvelopeNonce               string  `json:"envelopeNonce"`
+	EnvelopeCiphertext          string  `json:"envelopeCiphertext"`
+	ConnectorType               string  `json:"connectorType,omitempty"`
+	ConnectorPub                string  `json:"connectorPub,omitempty"`
+	ConnectorFingerprint        *uint32 `json:"connectorFingerprint,omitempty"`
+	ConnectorPath               string  `json:"connectorPath,omitempty"`
+	ConnectorEnrollmentDigest   string  `json:"connectorEnrollmentDigest,omitempty"`
+	ConnectorDescriptorHash     string  `json:"connectorDescriptorHash,omitempty"`
+	LedgerSavingsContextDigest  string  `json:"ledgerSavingsContextDigest,omitempty"`
+	LedgerSavingsDescriptorHash string  `json:"ledgerSavingsDescriptorHash,omitempty"`
+	LedgerSavingsBackup         string  `json:"ledgerSavingsBackup,omitempty"`
 }
 
 func (s *Service) sessionNow() time.Time {
@@ -413,7 +418,7 @@ func (s *Service) BuildRecoveryBindingFor(vaultID string, req RecoveryBindingReq
 	if err != nil {
 		return nil, err
 	}
-	binding, err := s.canonicalRecoveryBinding(cred, nonce, ciphertext)
+	binding, err := s.canonicalRecoveryBinding(cred, nonce, ciphertext, req.LedgerSavings)
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +426,7 @@ func (s *Service) BuildRecoveryBindingFor(vaultID string, req RecoveryBindingReq
 	return &RecoveryBindingResponse{Binding: binding, BindingDigest: hex.EncodeToString(digest)}, nil
 }
 
-func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphertext []byte) (string, error) {
+func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphertext []byte, ledgerBackups ...*LedgerSavingsBackup) (string, error) {
 	if cred == nil {
 		return "", fmt.Errorf("credential required")
 	}
@@ -527,9 +532,32 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		binding.ConnectorEnrollmentDigest = identity.EnrollmentDigest
 		binding.ConnectorDescriptorHash = identity.DescriptorHash
 	}
-	raw, err := json.Marshal(binding)
+	var backup *LedgerSavingsBackup
+	if len(ledgerBackups) > 1 {
+		return "", fmt.Errorf("one Ledger Savings backup required")
+	}
+	if len(ledgerBackups) == 1 {
+		backup = ledgerBackups[0]
+	}
+	backupJSON, contextDigest, descriptorHash, err := s.canonicalLedgerSavingsBackup(cred, backup)
 	if err != nil {
 		return "", err
+	}
+	if backupJSON != "" {
+		binding.Version = 6
+		binding.LedgerSavingsContextDigest = contextDigest
+		binding.LedgerSavingsDescriptorHash = descriptorHash
+		binding.LedgerSavingsBackup = backupJSON
+	}
+	raw, err := json.Marshal(binding)
+	if binding.Version == 6 {
+		raw, err = marshalLedgerSavingsJSON(binding)
+	}
+	if err != nil {
+		return "", err
+	}
+	if len(raw) > 16384 {
+		return "", fmt.Errorf("recovery binding exceeds16KiB")
 	}
 	return string(raw), nil
 }
@@ -541,6 +569,9 @@ func recoveryBindingDigest(binding string) []byte {
 	domain := recoveryBindingDomain
 	if json.Unmarshal([]byte(binding), &header) == nil && header.Version == 5 {
 		domain = "arkade-vault/recovery-binding/v5"
+	}
+	if header.Version == 6 {
+		domain = "arkade-vault/recovery-binding/v6"
 	}
 	return recoveryBindingDigestForDomain(domain, binding)
 }
@@ -570,7 +601,7 @@ func (s *Service) InstallCredentialEnvelope(ctx context.Context, req InstallCred
 	if err != nil {
 		return err
 	}
-	expectedBinding, err := s.canonicalRecoveryBinding(cred, nonce, ciphertext)
+	expectedBinding, err := s.canonicalRecoveryBinding(cred, nonce, ciphertext, req.LedgerSavings)
 	if err != nil {
 		return err
 	}
@@ -648,8 +679,13 @@ func (s *Service) RecoverCredentialEnvelope(ctx context.Context, req RecoverCred
 	if envelope == nil {
 		return nil, fmt.Errorf("passkey sign-in has not been enabled on the original device")
 	}
+	ledgerBackup, err := s.recoverLedgerSavingsBackup(cred, envelope.Binding)
+	if err != nil {
+		return nil, err
+	}
 	return &RecoverCredentialEnvelopeResponse{
-		Binding: envelope.Binding, BindingDigest: hex.EncodeToString(recoveryBindingDigest(envelope.Binding)),
+		LedgerSavings: ledgerBackup,
+		Binding:       envelope.Binding, BindingDigest: hex.EncodeToString(recoveryBindingDigest(envelope.Binding)),
 		EnvelopeNonce: hex.EncodeToString(envelope.Nonce), EnvelopeCiphertext: hex.EncodeToString(envelope.Ciphertext),
 		BindingDirectSig: hex.EncodeToString(envelope.DirectSig), BindingPhoneSig: hex.EncodeToString(envelope.PhoneSig),
 	}, nil

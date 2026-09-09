@@ -52,9 +52,14 @@ type RecoveryOperationStore interface {
 	ApplyRecoveryReplay(policy.RecoverySession) (policy.ReplayAction, *policy.RecoverySession, error)
 }
 
-// ConnectorStore is the authenticated enrollment origin and replay-safe
-// Savings connector withdrawal store. It exposes neither allowance mutation
-// nor generic storage.
+// LedgerSavingsStore owns authenticated Guardian-only enrollment and the
+// durable journal of named recovery signing reservations and completions.
+type LedgerSavingsStore interface {
+	GetLedgerSavingsEnrollment(string) (*policy.LedgerSavingsEnrollment, error)
+	ApplyLedgerSavingsRecovery(policy.LedgerSavingsRecovery) (policy.ReplayAction, *policy.LedgerSavingsRecovery, error)
+}
+
+// ConnectorStore is the authenticated connector enrollment and withdrawal store.
 type ConnectorStore interface {
 	GetConnectorEnrollment(string) (*policy.ConnectorEnrollment, error)
 	ApplyConnectorReplay(policy.ConnectorOperation) (policy.ConnectorReplayAction, *policy.ConnectorOperation, error)
@@ -106,6 +111,7 @@ type RecoveryBackupStore interface {
 // arkade-vault-v1 profile.
 type Stores struct {
 	Identity           IdentityStore
+	LedgerSavings      LedgerSavingsStore
 	Allowance          AllowanceStore
 	VtxoOperations     VtxoOperationStore
 	RecoveryOperations RecoveryOperationStore
@@ -142,7 +148,7 @@ func (s Stores) Validate() error {
 	}
 }
 
-// StoresFromLedger narrows one authenticated SQLite ledger into the five
+// StoresFromLedger narrows one authenticated SQLite ledger into the
 // profile capabilities. Every interface intentionally points at the same
 // object, preserving the physical database and transaction boundaries.
 func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
@@ -151,6 +157,7 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 	}
 	return Stores{
 		Identity:           ledger,
+		LedgerSavings:      ledger,
 		Allowance:          ledger,
 		VtxoOperations:     ledger,
 		RecoveryOperations: ledger,

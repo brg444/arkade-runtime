@@ -62,6 +62,9 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		if err := rows.Scan(&kind, &name, &table, &sqlText); err != nil {
 			t.Fatal(err)
 		}
+		if version < 9 && (table == "ledger_savings_enrollment" || table == "ledger_savings_recovery_event") {
+			continue
+		}
 		if version < 5 && (table == "light_delegation_operation" || table == "light_delegation_event") {
 			continue
 		}

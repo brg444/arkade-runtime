@@ -37,6 +37,7 @@ type Service struct {
 	Deployment             deployment.Config
 	LightDelegationEnabled bool
 	delegationRuntime      *lightDelegationRuntime
+	LedgerSavingsEnabled   bool
 	LightEnabled           bool // admits new Light wallets only; existing wallets remain usable
 	OpenEnrollment         bool // admission only; existing sessions retain their expiry
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
@@ -92,6 +93,7 @@ type Deps struct {
 	Stores                 arkadevaultv1.Stores
 	Deployment             deployment.Config
 	OpenEnrollment         bool
+	LedgerSavingsEnabled   bool
 	LightEnabled           bool
 	LightDelegationEnabled bool
 	IntegrityKey           []byte
@@ -111,6 +113,7 @@ func New(d Deps) *Service {
 		Deployment:             d.Deployment,
 		OpenEnrollment:         d.OpenEnrollment,
 		LightEnabled:           d.LightEnabled,
+		LedgerSavingsEnabled:   d.LedgerSavingsEnabled,
 		LightDelegationEnabled: d.LightDelegationEnabled,
 		CredentialIntegrityKey: d.IntegrityKey,
 		VaultCosignerPub:       d.VaultCosignerPub,
@@ -209,12 +212,13 @@ type publishedIndex struct {
 // and this process's pinned deployment keys/policy still rebuild the stored
 // descriptor.
 type RegisterRequest struct {
-	CredentialID           string `json:"credentialId"`
-	WebAuthnP256           string `json:"webauthnP256"`
-	PhoneDirectP256        string `json:"phoneDirectP256"`
-	PhoneBIP340Pub         string `json:"phoneBip340Pub"`
-	VtxoBoardingProgram    string `json:"vtxoBoardingProgram"`
-	VaultBoardingBIP340Pub string `json:"vaultBoardingBip340Pub"`
+	LedgerSavings          *LedgerSavingsEnrollmentRequest `json:"ledgerSavings,omitempty"`
+	CredentialID           string                          `json:"credentialId"`
+	WebAuthnP256           string                          `json:"webauthnP256"`
+	PhoneDirectP256        string                          `json:"phoneDirectP256"`
+	PhoneBIP340Pub         string                          `json:"phoneBip340Pub"`
+	VtxoBoardingProgram    string                          `json:"vtxoBoardingProgram"`
+	VaultBoardingBIP340Pub string                          `json:"vaultBoardingBip340Pub"`
 	// These BIP340 x-only keys are chosen exactly once for a fresh portable
 	// deployment. A configured deployment may precommit the same identities.
 	ExternalOwnerWalletXOnly string `json:"externalOwnerWalletXOnly,omitempty"`
@@ -297,6 +301,9 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	parsed, err = applyConnectorEnrollmentRequest(parsed, req, s.runtimeConfig().Network)
 	if err != nil {
 		return err
+	}
+	if req.LedgerSavings != nil {
+		return s.createLedgerSavingsTenantVault(vaultID, tokenHash, req, parsed, pending, childPub)
 	}
 	if parsed.connectorOrigin != nil {
 		return s.createConnectorTenantVault(vaultID, tokenHash, req, parsed, pending, childPub)
@@ -546,6 +553,9 @@ func (s *Service) rebuildFromCredential(cred *policy.Credential) (
 			ArkadeCosignerBase:  arkadeBase,
 		}
 		return phone, externalOwner, recovery, vaultBase, arkadeBase, sv, nil
+	}
+	if cred.TemplateVersion == savings.LedgerNativeTemplate {
+		return s.rebuildLedgerSavings(cred)
 	}
 	if cred.TemplateVersion != savings.Template {
 		return nil, nil, nil, nil, nil, nil, fmt.Errorf("unsupported vault template %q", cred.TemplateVersion)

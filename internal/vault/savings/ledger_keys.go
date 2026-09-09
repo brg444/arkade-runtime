@@ -307,3 +307,19 @@ func LedgerRecoveryInternalParent(in LedgerSavingsKeyContext, claimant, stage st
 	return hdkeychain.NewExtendedKey(params.HDPublicKeyID[:], numsPub().SerializeCompressed(),
 		taggedSHA256(ledgerDomain+"/recovery-internal", digest, ledgerFields(claimant, stage)), make([]byte, 4), 0, 0, false), nil
 }
+
+// LedgerSpendingExitKey derives the independently enrolled emergency Spending
+// authority. Stock Ledger signs Savings; /12/0 is restored offline from the
+// corresponding hardware/recovery seed for the existing Spending exit script.
+func LedgerSpendingExitKey(origin LedgerAccountOrigin, network string) (*hdkeychain.ExtendedKey, error) {
+	parent, err := LedgerAccountKey(origin, network)
+	if err != nil {
+		return nil, err
+	}
+	step, err := parent.Derive(12)
+	if err != nil {
+		return nil, err
+	}
+	defer step.Zero()
+	return step.Derive(0)
+}

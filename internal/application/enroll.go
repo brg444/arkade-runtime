@@ -197,6 +197,9 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	if err := requirePendingSpendingPolicy(s.runtimeConfig().Network, pending, req.SpendingPolicy, req.SpendingPolicyDigest); err != nil {
 		return nil, err
 	}
+	if req.LedgerSavings != nil {
+		return s.previewLedgerSavingsEnrollment(pending.VaultID, req.RegisterRequest)
+	}
 	if hasConnectorRequest(req.RegisterRequest) {
 		return s.previewConnectorEnrollmentDescriptor(pending.VaultID, req.RegisterRequest, connector.DualTemplate)
 	}
@@ -337,6 +340,12 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	}
 	parsed, err = applyConnectorEnrollmentRequest(parsed, req, s.runtimeConfig().Network)
 	if err != nil {
+		return nil, false
+	}
+	if req.LedgerSavings != nil {
+		return s.acceptLedgerSavingsDuplicate(vaultID, req, parsed, rec, cred)
+	}
+	if rec.TemplateVersion == "phone-ledger-guardian-savings-v1" {
 		return nil, false
 	}
 	if parsed.connectorOrigin != nil {

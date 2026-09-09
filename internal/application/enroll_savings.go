@@ -198,7 +198,7 @@ func applySavingsProgram(in *savings.FamilyInput, template string) {
 }
 
 func knownTemplate(template string) bool {
-	return template == savings.Template || connector.IsTemplate(template)
+	return template == savings.Template || template == savings.LedgerNativeTemplate || connector.IsTemplate(template)
 }
 
 func publicEnrollTemplate(*Service) string { return savings.Template }
