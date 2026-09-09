@@ -39,11 +39,12 @@ func lnurlRegistrar(origin, tokenFile string) (application.LNURLRegistrar, error
 		return nil, fmt.Errorf("invalid Lightning receiving bridge token")
 	}
 	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	return func(ctx context.Context, action string, binding application.LNURLBinding) (json.RawMessage, error) {
+	return func(ctx context.Context, action string, binding application.LNURLBinding, name string) (json.RawMessage, error) {
 		body, err := json.Marshal(struct {
+			Name    string                   `json:"name,omitempty"`
 			Action  string                   `json:"action"`
 			Binding application.LNURLBinding `json:"binding"`
-		}{action, binding})
+		}{name, action, binding})
 		if err != nil {
 			return nil, err
 		}

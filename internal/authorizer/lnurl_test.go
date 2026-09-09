@@ -27,10 +27,11 @@ func TestLNURLBridgeBindsRequestAndRejectsBadResponses(t *testing.T) {
 			t.Error("bridge request changed")
 		}
 		var body struct {
+			Name    string                   `json:"name"`
 			Action  string                   `json:"action"`
 			Binding application.LNURLBinding `json:"binding"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Action != "register" || body.Binding.VaultID != "enrolled-vault" {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name != "alex" || body.Action != "register" || body.Binding.VaultID != "enrolled-vault" {
 			t.Error("bridge binding changed")
 		}
 		switch mode {
@@ -55,7 +56,7 @@ func TestLNURLBridgeBindsRequestAndRejectsBadResponses(t *testing.T) {
 	for _, value := range []string{"ok", "redirect", "large", "invalid", "denied"} {
 		mode = value
 		before := calls
-		result, err := registrar(context.Background(), "register", application.LNURLBinding{VaultID: "enrolled-vault"})
+		result, err := registrar(context.Background(), "register", application.LNURLBinding{VaultID: "enrolled-vault"}, "alex")
 		if (err == nil) != (mode == "ok") {
 			t.Fatalf("%s: result=%s err=%v", mode, result, err)
 		}

@@ -14,9 +14,9 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
-func lnurlAssertion(t *testing.T, f lightEnrolledFixture, action string) LightBackupOpenRequest {
+func lnurlAssertion(t *testing.T, f lightEnrolledFixture, action, name string) LightBackupOpenRequest {
 	t.Helper()
-	c, err := f.env.svc.IssueLNURLChallenge(action)
+	c, err := f.env.svc.IssueLNURLChallenge(action, name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestLNURLRegistrationBindsEnrollmentAndConsumesAssertion(t *testing.T) {
 	f := enrolledBackupFixture(t)
 	s := f.env.svc
 	calls := 0
-	s.LNURLRegistrar = func(_ context.Context, action string, b LNURLBinding) (json.RawMessage, error) {
+	s.LNURLRegistrar = func(_ context.Context, action string, b LNURLBinding, _ string) (json.RawMessage, error) {
 		calls++
 		st, err := s.StatusFor(t.Context(), f.start.VaultID)
 		if err != nil {
@@ -51,11 +51,11 @@ func TestLNURLRegistrationBindsEnrollmentAndConsumesAssertion(t *testing.T) {
 		}
 		return json.RawMessage(`{"active":true}`), nil
 	}
-	req := lnurlAssertion(t, f, "register")
-	if _, err := s.ConfigureLNURL(t.Context(), "register", req); err != nil {
+	req := lnurlAssertion(t, f, "register", "")
+	if _, err := s.ConfigureLNURL(t.Context(), "register", "", req); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ConfigureLNURL(t.Context(), "register", req); err == nil {
+	if _, err := s.ConfigureLNURL(t.Context(), "register", "", req); err == nil {
 		t.Fatal("replayed registration")
 	}
 	if calls != 1 {
@@ -66,14 +66,14 @@ func TestLNURLRegistrationBindsEnrollmentAndConsumesAssertion(t *testing.T) {
 func TestLNURLCannotReuseBackupOrRevokeAuthority(t *testing.T) {
 	f := enrolledBackupFixture(t)
 	s := f.env.svc
-	s.LNURLRegistrar = func(context.Context, string, LNURLBinding) (json.RawMessage, error) {
+	s.LNURLRegistrar = func(context.Context, string, LNURLBinding, string) (json.RawMessage, error) {
 		t.Fatal("unauthorized bridge call")
 		return nil, nil
 	}
-	if _, err := s.ConfigureLNURL(t.Context(), "register", backupAssertion(t, f)); err == nil {
+	if _, err := s.ConfigureLNURL(t.Context(), "register", "", backupAssertion(t, f)); err == nil {
 		t.Fatal("accepted backup assertion")
 	}
-	if _, err := s.ConfigureLNURL(t.Context(), "revoke", lnurlAssertion(t, f, "register")); err == nil {
+	if _, err := s.ConfigureLNURL(t.Context(), "revoke", "", lnurlAssertion(t, f, "register", "")); err == nil {
 		t.Fatal("accepted registration on revoke")
 	}
 	for _, mutate := range []func(*LightBackupOpenRequest){
@@ -81,9 +81,9 @@ func TestLNURLCannotReuseBackupOrRevokeAuthority(t *testing.T) {
 		func(r *LightBackupOpenRequest) { r.DirectProof = strings.Repeat("00", 64) },
 		func(r *LightBackupOpenRequest) { r.Signature = "aaaa" },
 	} {
-		req := lnurlAssertion(t, f, "register")
+		req := lnurlAssertion(t, f, "register", "")
 		mutate(&req)
-		if _, err := s.ConfigureLNURL(t.Context(), "register", req); err == nil {
+		if _, err := s.ConfigureLNURL(t.Context(), "register", "", req); err == nil {
 			t.Fatal("accepted forged request")
 		}
 	}
@@ -114,7 +114,7 @@ func TestLNURLConnectorEnrollmentAfterGuardianRestart(t *testing.T) {
 			req = enrollConnectorVault(t, f.svc, vaultID, token, req)
 			f.reopen(t)
 			calls := 0
-			f.svc.LNURLRegistrar = func(_ context.Context, action string, b LNURLBinding) (json.RawMessage, error) {
+			f.svc.LNURLRegistrar = func(_ context.Context, action string, b LNURLBinding, _ string) (json.RawMessage, error) {
 				calls++
 				status, err := f.svc.StatusFor(t.Context(), vaultID)
 				if err != nil {
@@ -126,7 +126,7 @@ func TestLNURLConnectorEnrollmentAfterGuardianRestart(t *testing.T) {
 				return json.RawMessage(`{"active":true}`), nil
 			}
 			for _, action := range []string{"register", "revoke"} {
-				challenge, err := f.svc.IssueLNURLChallenge(action)
+				challenge, err := f.svc.IssueLNURLChallenge(action, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -141,7 +141,7 @@ func TestLNURLConnectorEnrollmentAfterGuardianRestart(t *testing.T) {
 					t.Fatal(err)
 				}
 				request := LightBackupOpenRequest{VaultID: vaultID, SessionAssertionRequest: SessionAssertionRequest{ChallengeID: challenge.ChallengeID, CredentialID: req.CredentialID, ClientDataJSON: hex.EncodeToString(assertion.ClientDataJSON), AuthenticatorData: hex.EncodeToString(assertion.AuthenticatorData), Signature: hex.EncodeToString(assertion.DERSignature), DirectProof: hex.EncodeToString(proof)}}
-				if _, err := f.svc.ConfigureLNURL(t.Context(), action, request); err != nil {
+				if _, err := f.svc.ConfigureLNURL(t.Context(), action, "", request); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -149,5 +149,41 @@ func TestLNURLConnectorEnrollmentAfterGuardianRestart(t *testing.T) {
 				t.Fatal("missing bridge operation")
 			}
 		})
+	}
+}
+
+func TestLNURLNameIsBoundToPasskeyChallenge(t *testing.T) {
+	f := enrolledBackupFixture(t)
+	calls := 0
+	f.env.svc.LNURLRegistrar = func(_ context.Context, action string, b LNURLBinding, name string) (json.RawMessage, error) {
+		calls++
+		if action != "register" || name != "alex" {
+			t.Fatal("changed authorized name")
+		}
+		return json.RawMessage(`{"name":"alex"}`), nil
+	}
+	req := lnurlAssertion(t, f, "register", "alex")
+	if _, err := f.env.svc.ConfigureLNURL(t.Context(), "register", "someone-else", req); err == nil {
+		t.Fatal("accepted name substitution")
+	}
+	if _, err := f.env.svc.ConfigureLNURL(t.Context(), "register", "", req); err == nil {
+		t.Fatal("accepted removal of approved name")
+	}
+	if _, err := f.env.svc.ConfigureLNURL(t.Context(), "register", "alex", req); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.env.svc.ConfigureLNURL(t.Context(), "register", "alex", req); err == nil {
+		t.Fatal("accepted replay")
+	}
+	if calls != 1 {
+		t.Fatal("incorrect bridge calls")
+	}
+	for _, name := range []string{"ab", "Alex", "../alex", "admin", "аlex", strings.Repeat("a", 33), "v" + strings.Repeat("ab", 8)} {
+		if _, err := f.env.svc.IssueLNURLChallenge("register", name); err == nil {
+			t.Fatalf("accepted invalid name %q", name)
+		}
+	}
+	if _, err := f.env.svc.IssueLNURLChallenge("revoke", "alex"); err == nil {
+		t.Fatal("revoke cannot edit names")
 	}
 }

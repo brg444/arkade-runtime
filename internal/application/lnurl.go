@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
@@ -29,31 +31,40 @@ type LNURLBinding struct {
 
 // LNURLRegistrar is a configured bridge to the separate receiving process. It
 // cannot select a transaction, spending destination, or signing operation.
-type LNURLRegistrar func(context.Context, string, LNURLBinding) (json.RawMessage, error)
+type LNURLRegistrar func(context.Context, string, LNURLBinding, string) (json.RawMessage, error)
 
-func lnurlPurpose(action string) (string, error) {
+var lnurlNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{2,31}$`)
+var lnurlGeneratedNamePattern = regexp.MustCompile(`^v[0-9a-f]{16}$`)
+
+func lnurlPurpose(action, name string) (string, error) {
 	if action != "register" && action != "revoke" {
 		return "", fmt.Errorf("invalid Lightning address action")
+	}
+	if name != "" {
+		if action != "register" || !lnurlNamePattern.MatchString(name) || lnurlGeneratedNamePattern.MatchString(name) || strings.Contains("|admin|support|security|abuse|postmaster|vaulted|root|system|api|www|lnurl|", "|"+name+"|") {
+			return "", fmt.Errorf("invalid Lightning address name")
+		}
+		return "lnurl-" + action + ":" + name, nil
 	}
 	return "lnurl-" + action, nil
 }
 
-func (s *Service) IssueLNURLChallenge(action string) (*PasskeyChallengeResponse, error) {
+func (s *Service) IssueLNURLChallenge(action, name string) (*PasskeyChallengeResponse, error) {
 	if s.LNURLRegistrar == nil {
 		return nil, fmt.Errorf("Lightning addresses are unavailable")
 	}
-	purpose, err := lnurlPurpose(action)
+	purpose, err := lnurlPurpose(action, name)
 	if err != nil {
 		return nil, err
 	}
 	return s.issuePasskeyChallenge("", purpose, "", nil)
 }
 
-func (s *Service) ConfigureLNURL(ctx context.Context, action string, req LightBackupOpenRequest) (json.RawMessage, error) {
+func (s *Service) ConfigureLNURL(ctx context.Context, action, name string, req LightBackupOpenRequest) (json.RawMessage, error) {
 	if s.LNURLRegistrar == nil {
 		return nil, fmt.Errorf("Lightning addresses are unavailable")
 	}
-	purpose, err := lnurlPurpose(action)
+	purpose, err := lnurlPurpose(action, name)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +90,7 @@ func (s *Service) ConfigureLNURL(ctx context.Context, action string, req LightBa
 		return nil, failPasskeyAuth("Lightning address assertion", nil)
 	}
 	proof, err := decodeFixedHex(req.DirectProof, 64, "Lightning address proof")
-	if err != nil || verifyDirectAuth(cred.PhoneDirectP256, passkeySessionProofDigest(purpose, record.Challenge, cred.ID), proof) != nil {
+	if err != nil || verifyDirectAuth(cred.PhoneDirectP256, passkeySessionProofDigest("lnurl-"+action, record.Challenge, cred.ID), proof) != nil {
 		return nil, failPasskeyAuth("Lightning address proof", nil)
 	}
 	if _, err = s.consumePasskeyChallenge(req.VaultID, req.ChallengeID, purpose); err != nil {
@@ -107,29 +118,33 @@ func (s *Service) ConfigureLNURL(ctx context.Context, action string, req LightBa
 		ProtectionTier: cred.ProtectionTier, PolicyVersion: cred.PolicyVersion, DescriptorHash: descriptorHash,
 		SpendingPolicyDigest: status.SpendingPolicyDigest, SpendingAddress: status.SpendingArkAddress,
 		SpendingScript: status.SpendingArkScript, ClaimPublicKey: hex.EncodeToString(cred.PhoneBIP340)}
-	return s.LNURLRegistrar(ctx, action, binding)
+	return s.LNURLRegistrar(ctx, action, binding, name)
 }
 
 func attachLNURLRoutes(mux *http.ServeMux, s *Service, origin string) {
 	mux.HandleFunc("POST /v1/lnurl/challenge", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Action string `json:"action"`
+			Name   string `json:"name"`
 		}
 		if err := decodeMutation(r, &req, origin); err != nil {
 			writeMutationError(w, err)
 			return
 		}
-		value, err := s.IssueLNURLChallenge(req.Action)
+		value, err := s.IssueLNURLChallenge(req.Action, req.Name)
 		writeJSON(w, value, err)
 	})
 	for _, action := range []string{"register", "revoke"} {
 		mux.HandleFunc("POST /v1/lnurl/"+action, func(w http.ResponseWriter, r *http.Request) {
-			var req LightBackupOpenRequest
+			var req struct {
+				LightBackupOpenRequest
+				Name string `json:"name"`
+			}
 			if err := decodeMutation(r, &req, origin); err != nil {
 				writeMutationError(w, err)
 				return
 			}
-			value, err := s.ConfigureLNURL(r.Context(), action, req)
+			value, err := s.ConfigureLNURL(r.Context(), action, req.Name, req.LightBackupOpenRequest)
 			writeJSON(w, value, err)
 		})
 	}
