@@ -50,6 +50,8 @@ func main() {
 	flag.Parse()
 
 	cfg := authorizer.Config{
+		LNURLOrigin:            os.Getenv("VAULT_LNURL_ORIGIN"),
+		LNURLTokenFile:         os.Getenv("VAULT_LNURL_TOKEN_FILE"),
 		Deployment:             deployment.Config{ClientOrigin: *origin, RPID: *rpID, Network: *network},
 		DatabasePath:           *dbPath,
 		PolicySequencePath:     *sequence,

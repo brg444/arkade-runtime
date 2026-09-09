@@ -63,6 +63,13 @@ func Definition() arkaderuntime.ProfileDefinition {
 
 func routes() []arkaderuntime.Route {
 	return []arkaderuntime.Route{
+		{Method: http.MethodPost, Path: "/v1/lnurl/challenge"},
+		{Method: http.MethodOptions, Path: "/v1/lnurl/challenge"},
+		{Method: http.MethodPost, Path: "/v1/lnurl/register"},
+		{Method: http.MethodOptions, Path: "/v1/lnurl/register"},
+		{Method: http.MethodPost, Path: "/v1/lnurl/revoke"},
+		{Method: http.MethodOptions, Path: "/v1/lnurl/revoke"},
+
 		{Method: http.MethodGet, Path: "/v1/vtxo/savings-setup/info"},
 		{Method: http.MethodGet, Path: "/v1/vtxo/bitcoin/info"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/info"},
