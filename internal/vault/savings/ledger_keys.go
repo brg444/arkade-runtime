@@ -219,3 +219,38 @@ func LedgerRecoveryProgramParent(in LedgerSavingsKeyContext, claimant, cosigner 
 		taggedSHA256(ledgerDomain+"/program", digest, ledgerFields(claimant, cosigner), arkade.ArkadeScriptHash(script)),
 		make([]byte, 4), 0, 0, false), nil
 }
+
+// LedgerRecoveryChild uses semantic, disjoint branches for recovery leaves.
+// Only index zero is enrolled. It is not a signing capability.
+func LedgerRecoveryChild(parent *hdkeychain.ExtendedKey, role string) (*hdkeychain.ExtendedKey, error) {
+	branches := map[string]uint32{"claim": 4, "clawback": 6, "cancel": 8, "quarantine": 10}
+	branch, ok := branches[role]
+	if parent == nil || !ok {
+		return nil, fmt.Errorf("unknown Ledger recovery key role")
+	}
+	step, err := parent.Derive(branch)
+	if err != nil {
+		return nil, err
+	}
+	return step.Derive(0)
+}
+
+func LedgerRecoveryInternalParent(in LedgerSavingsKeyContext, claimant, stage string) (*hdkeychain.ExtendedKey, error) {
+	digest, err := LedgerSavingsContextDigest(in)
+	if err != nil {
+		return nil, err
+	}
+	valid := false
+	for _, role := range familyClaimants(in.Recovery != nil) {
+		valid = valid || role == claimant
+	}
+	if !valid || (stage != "pending" && stage != "quarantine") {
+		return nil, fmt.Errorf("unenrolled recovery stage or claimant")
+	}
+	params, err := networkParams(in.Network)
+	if err != nil {
+		return nil, err
+	}
+	return hdkeychain.NewExtendedKey(params.HDPublicKeyID[:], numsPub().SerializeCompressed(),
+		taggedSHA256(ledgerDomain+"/recovery-internal", digest, ledgerFields(claimant, stage)), make([]byte, 4), 0, 0, false), nil
+}
