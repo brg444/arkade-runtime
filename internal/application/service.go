@@ -38,6 +38,7 @@ type Service struct {
 	LightDelegationEnabled bool
 	delegationRuntime      *lightDelegationRuntime
 	LedgerSavingsEnabled   bool
+	LightOnlyEnrollment    bool
 	LightEnabled           bool // admits new Light wallets only; existing wallets remain usable
 	OpenEnrollment         bool // admission only; existing sessions retain their expiry
 	// CredentialIntegrityKey authenticates the immutable descriptor stored in
@@ -94,6 +95,7 @@ type Deps struct {
 	Deployment             deployment.Config
 	OpenEnrollment         bool
 	LedgerSavingsEnabled   bool
+	LightOnlyEnrollment    bool
 	LightEnabled           bool
 	LightDelegationEnabled bool
 	IntegrityKey           []byte
@@ -112,6 +114,7 @@ func New(d Deps) *Service {
 		Stores:                 d.Stores,
 		Deployment:             d.Deployment,
 		OpenEnrollment:         d.OpenEnrollment,
+		LightOnlyEnrollment:    d.LightOnlyEnrollment,
 		LightEnabled:           d.LightEnabled,
 		LedgerSavingsEnabled:   d.LedgerSavingsEnabled,
 		LightDelegationEnabled: d.LightDelegationEnabled,

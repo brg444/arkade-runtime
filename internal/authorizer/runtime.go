@@ -45,6 +45,7 @@ type Config struct {
 	EnrollmentWindow       time.Duration
 	LightDelegationEnabled bool
 	LedgerSavingsEnabled   bool
+	LightOnlyEnrollment    bool
 	LightEnabled           bool // explicit opt-in until Light lifecycle qualification passes
 	OpenEnrollment         bool // false preserves invite-only admission
 	StorageIsolation       string
@@ -260,6 +261,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		Stores:                 stores,
 		Deployment:             cfg.Deployment,
 		OpenEnrollment:         cfg.OpenEnrollment,
+		LightOnlyEnrollment:    cfg.LightOnlyEnrollment,
 		LightEnabled:           cfg.LightEnabled,
 		LedgerSavingsEnabled:   cfg.LedgerSavingsEnabled,
 		LightDelegationEnabled: cfg.LightDelegationEnabled,

@@ -22,6 +22,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	lightOnlyDefault, err := parseLightEnabled(os.Getenv("VAULT_LIGHT_ONLY_ENROLLMENT"))
+	if err != nil {
+		log.Fatal("VAULT_LIGHT_ONLY_ENROLLMENT must be true or false")
+	}
 	lightEnabledDefault, err := parseLightEnabled(os.Getenv("VAULT_LIGHT_ENABLED"))
 	if err != nil {
 		log.Fatal(err)
@@ -35,6 +39,7 @@ func main() {
 		log.Fatal(err)
 	}
 	var (
+		lightOnlyEnrollment    = flag.Bool("light-only-enrollment", lightOnlyDefault, "temporarily admit only new Light wallets")
 		ledgerSavingsEnabled   = flag.Bool("ledger-savings-enabled", ledgerSavingsDefault, "allow qualified Guardian-only Ledger Savings enrollment")
 		lightDelegationEnabled = flag.Bool("light-delegation-enabled", delegationEnabledDefault, "enable qualified native Light delegated renewal")
 		lightEnabled           = flag.Bool("light-enabled", lightEnabledDefault, "allow new Light wallet enrollment after lifecycle qualification")
@@ -61,6 +66,7 @@ func main() {
 		VaultCosignerKeyFile:   *keyFile,
 		EnrollmentTokenFile:    *tokenFile,
 		OpenEnrollment:         !*inviteOnly,
+		LightOnlyEnrollment:    *lightOnlyEnrollment,
 		LightEnabled:           *lightEnabled,
 		LedgerSavingsEnabled:   *ledgerSavingsEnabled,
 		LightDelegationEnabled: *lightDelegationEnabled,

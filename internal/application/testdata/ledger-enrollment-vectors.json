@@ -14,12 +14,20 @@
           "phone": {
             "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
             "fingerprint": "2cee93bd",
-            "path": [2147483734, 2147483648, 2147483648]
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
           },
           "hardware": {
             "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
             "fingerprint": "2de67592",
-            "path": [2147483734, 2147483648, 2147483648]
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
           },
           "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
           "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
@@ -114,7 +122,11 @@
         "phoneOrigin": {
           "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
           "fingerprint": "2cee93bd",
-          "path": [2147483734, 2147483648, 2147483648]
+          "path": [
+            2147483734,
+            2147483648,
+            2147483648
+          ]
         },
         "salt": "b6bb3fc22d3f232579a3fe11cafda1b27faa4481e9756c4e051574cdc05ba8c6",
         "nonce": "094f61feaa7b38c79ea93919",
@@ -137,17 +149,29 @@
           "phone": {
             "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
             "fingerprint": "2cee93bd",
-            "path": [2147483734, 2147483648, 2147483648]
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
           },
           "hardware": {
             "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
             "fingerprint": "2de67592",
-            "path": [2147483734, 2147483648, 2147483648]
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
           },
           "recovery": {
             "xpub": "xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2",
             "fingerprint": "8bc48cf1",
-            "path": [2147483734, 2147483648, 2147483648]
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
           },
           "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
           "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
@@ -244,7 +268,11 @@
         "phoneOrigin": {
           "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
           "fingerprint": "2cee93bd",
-          "path": [2147483734, 2147483648, 2147483648]
+          "path": [
+            2147483734,
+            2147483648,
+            2147483648
+          ]
         },
         "salt": "6c8175dc5120c2b6393b5b5967c6c0dca47cf9981635297a4ba0f226d1ca023e",
         "nonce": "9ff9789b087591320e4e9cd0",
@@ -267,12 +295,20 @@
           "phone": {
             "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
             "fingerprint": "2cee93bd",
-            "path": [2147483734, 2147483649, 2147483648]
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
           },
           "hardware": {
             "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
             "fingerprint": "2de67592",
-            "path": [2147483734, 2147483649, 2147483648]
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
           },
           "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
           "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
@@ -367,7 +403,11 @@
         "phoneOrigin": {
           "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
           "fingerprint": "2cee93bd",
-          "path": [2147483734, 2147483649, 2147483648]
+          "path": [
+            2147483734,
+            2147483649,
+            2147483648
+          ]
         },
         "salt": "e7776b03a34ce07140878efc74cb3b9d44a7b935af4e852c12c30cd982024304",
         "nonce": "142c9291e69c4e2a069613f2",
@@ -390,17 +430,29 @@
           "phone": {
             "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
             "fingerprint": "2cee93bd",
-            "path": [2147483734, 2147483649, 2147483648]
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
           },
           "hardware": {
             "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
             "fingerprint": "2de67592",
-            "path": [2147483734, 2147483649, 2147483648]
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
           },
           "recovery": {
             "xpub": "tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk",
             "fingerprint": "8bc48cf1",
-            "path": [2147483734, 2147483649, 2147483648]
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
           },
           "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
           "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
@@ -497,7 +549,11 @@
         "phoneOrigin": {
           "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
           "fingerprint": "2cee93bd",
-          "path": [2147483734, 2147483649, 2147483648]
+          "path": [
+            2147483734,
+            2147483649,
+            2147483648
+          ]
         },
         "salt": "55409f5d70f1a77c072a29ab1a5182852791cc5e04cd612eb1bd9df5dc8e7351",
         "nonce": "83d014d90a5e31270c16d538",

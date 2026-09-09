@@ -81,6 +81,9 @@ func (s *Service) InviteStatus(token string) (InviteView, error) {
 
 // StartEnrollment assigns a vault id for an unused invite and does not consume it.
 func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*EnrollStartResponse, error) {
+	if s.LightOnlyEnrollment {
+		return nil, fmt.Errorf("Standard and Advanced setup is temporarily unavailable. Please choose Light.")
+	}
 	if err := s.runtimeConfig().Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -173,6 +176,9 @@ func requirePendingProtectionTier(pending *policy.PendingEnrollment, tier string
 // ProposeEnrollment returns the descriptor that Finish will persist. It does
 // not consume the invite or write a vault row.
 func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*ProposedEnrollment, error) {
+	if s.LightOnlyEnrollment {
+		return nil, fmt.Errorf("Standard and Advanced setup is temporarily unavailable. Please choose Light.")
+	}
 	hash, err := HashEnrollmentToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
@@ -208,6 +214,9 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 
 // FinishEnrollment verifies the create ceremony and CAS-consumes the invite.
 func (s *Service) FinishEnrollment(ctx context.Context, token string, req EnrollFinishRequest) (*Status, error) {
+	if s.LightOnlyEnrollment {
+		return nil, fmt.Errorf("Standard and Advanced setup is temporarily unavailable. Please choose Light.")
+	}
 	if err := s.requireLedgerIntegrity(); err != nil {
 		return nil, err
 	}
