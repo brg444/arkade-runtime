@@ -30,12 +30,12 @@ func applyLedgerSavingsMigration(db *sql.DB) error {
 	if _, err := tx.Exec(createLedgerSavingsSchema); err != nil {
 		return err
 	}
-	result, err := tx.Exec(`UPDATE schema_meta SET version=9 WHERE version=8`)
+	result, err := tx.Exec(`UPDATE schema_meta SET version=10 WHERE version=9`)
 	if err != nil {
 		return err
 	}
 	if n, err := result.RowsAffected(); err != nil || n != 1 {
-		return fmt.Errorf("Ledger Savings requires schema8")
+		return fmt.Errorf("Ledger Savings requires schema9")
 	}
 	return tx.Commit()
 }

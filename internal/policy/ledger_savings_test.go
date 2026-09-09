@@ -157,7 +157,7 @@ func TestLedgerSavingsRecoveryJournalAuthenticatesBeforeFiltering(t *testing.T) 
 		t.Fatal("hidden conflict was trusted", err)
 	}
 }
-func TestLedgerSavingsMigrationPreservesVersionEightRows(t *testing.T) {
+func TestLedgerSavingsMigrationPreservesVersionNineRows(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "migration.sqlite")
 	l, err := OpenLedger(path, nil)
 	if err != nil {
@@ -171,7 +171,7 @@ func TestLedgerSavingsMigrationPreservesVersionEightRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, statement := range []string{`DROP TABLE ledger_savings_recovery_event`, `DROP TABLE ledger_savings_enrollment`, `UPDATE schema_meta SET version=8`} {
+	for _, statement := range []string{`DROP TABLE ledger_savings_recovery_event`, `DROP TABLE ledger_savings_enrollment`, `UPDATE schema_meta SET version=9`} {
 		if _, err := l.db.Exec(statement); err != nil {
 			t.Fatal(err)
 		}
@@ -194,7 +194,7 @@ func TestLedgerSavingsMigrationPreservesVersionEightRows(t *testing.T) {
 	if !bytes.Equal(before.IntegrityMAC, after.IntegrityMAC) || VaultRecordsCanonicallyEqual(*before, *after) != nil {
 		t.Fatal("legacy vault changed during additive migration")
 	}
-	if version, err := migrated.SchemaVersion(); err != nil || version != 9 {
+	if version, err := migrated.SchemaVersion(); err != nil || version != 10 {
 		t.Fatal("migration version", version, err)
 	}
 }

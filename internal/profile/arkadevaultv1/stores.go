@@ -85,6 +85,7 @@ type VaultBoardStore interface {
 	AppendVaultBoardAuthorizationAndDispatch(context.Context, policy.VaultBoardAuthorization, policy.VaultBoardChainState) (*policy.VaultBoardAuthorization, *policy.VaultBoardDispatch, bool, error)
 	AppendVaultBoardDispatch(context.Context, policy.VaultBoardDispatch, policy.VaultBoardChainState) (*policy.VaultBoardDispatch, bool, error)
 	AppendVaultBoardSubmission(context.Context, policy.VaultBoardSubmission) (*policy.VaultBoardSubmission, bool, error)
+	AppendVaultBoardConflict(context.Context, policy.VaultBoardConflict, policy.VaultBoardChainState) error
 }
 
 // LightRenewalStore shares the ledger's atomic allowance and sequence boundary.

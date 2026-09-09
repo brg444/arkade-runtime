@@ -94,6 +94,9 @@ for the service and tenant access boundaries.
 | `POST /v1/vtxo/delegate/status` | Read a Spending renewal and its verified recovery paths. |
 | `POST /v1/vtxo/delegate/list` | Discover Spending renewals with owner authorization. |
 | `POST /v1/vtxo/delegate/cancel` | Cancel an armed Spending renewal before dispatch. |
+| `POST /v1/lnurl/challenge` | Issue a passkey challenge for a Lightning address action. |
+| `POST /v1/lnurl/register` | Bind a Lightning address to the enrolled Spending destination. |
+| `POST /v1/lnurl/revoke` | Stop new invoices while retaining pending payment recovery. |
 | `POST /v1/recovery-archive/challenge` | Issue a discoverable Savings archive passkey challenge. |
 | `POST /v1/recovery-archive/open` | Authenticate a Savings passkey and pin the enrolled descriptor for eight hours. |
 | `POST /v1/recovery-archive/read` | Read the authenticated encrypted archive of recovery data. |

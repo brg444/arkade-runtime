@@ -33,6 +33,7 @@ import (
 
 // Service is the trusted VaultCosigner authorization boundary.
 type Service struct {
+	LNURLRegistrar         LNURLRegistrar
 	Stores                 arkadevaultv1.Stores
 	Deployment             deployment.Config
 	LightDelegationEnabled bool
@@ -91,6 +92,7 @@ type Service struct {
 
 // Deps is the constructor input. Private keys stay behind scoped capabilities.
 type Deps struct {
+	LNURLRegistrar         LNURLRegistrar
 	Stores                 arkadevaultv1.Stores
 	Deployment             deployment.Config
 	OpenEnrollment         bool
@@ -111,6 +113,7 @@ type Deps struct {
 // generic signer.
 func New(d Deps) *Service {
 	s := &Service{
+		LNURLRegistrar:         d.LNURLRegistrar,
 		Stores:                 d.Stores,
 		Deployment:             d.Deployment,
 		OpenEnrollment:         d.OpenEnrollment,

@@ -109,7 +109,7 @@ func (s *Service) consumePasskeyChallenge(vaultID, id, purpose string) ([]byte, 
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	ticketVaultID := vaultID
-	if purpose == lightBackupPurpose || purpose == recoveryArchivePurpose {
+	if purpose == lightBackupPurpose || purpose == recoveryArchivePurpose || purpose == "lnurl-register" || strings.HasPrefix(purpose, "lnurl-register:") || purpose == "lnurl-revoke" {
 		ticketVaultID = ""
 	}
 	if vaultID == "" {

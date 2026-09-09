@@ -33,6 +33,11 @@ func classifyVaultBoardAttempt(snapshot *policy.VaultBoardAttemptSnapshot, now t
 		out.Reason = "final submission awaits exact VTXO evidence"
 		return out
 	}
+	if hasCurrentVaultBoardConflict(snapshot) {
+		out.State = vaultBoardReady
+		out.Attempt++
+		return out
+	}
 	if snapshot.FinalAuthorization != nil || snapshot.FinalDispatch != nil {
 		out.State = vaultBoardBlocked
 		out.Reason = "final authorization cannot be released"

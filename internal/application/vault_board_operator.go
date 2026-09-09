@@ -24,6 +24,7 @@ type vaultBoardOperator interface {
 	registerIntent(context.Context, string, string) (string, error)
 	deleteIntent(context.Context, string, string) error
 	submitCommitment(context.Context, string) error
+	requireUnendedCommitment(context.Context, string) error
 }
 
 type stockVaultBoardOperator struct {
@@ -137,6 +138,60 @@ func (o *stockVaultBoardOperator) submitCommitment(ctx context.Context, signedCo
 		SignedCommitmentTx string   `json:"signedCommitmentTx"`
 	}{SignedForfeitTxs: []string{}, SignedCommitmentTx: signedCommitment}
 	return o.post(ctx, "/v1/batch/submitForfeitTxs", request, nil)
+}
+
+// A failed batch is still indexed. Its signed recovery tree is not evidence
+// that the Operator can accept a late boarding signature for that batch.
+// Absence from the index is not proof of liveness; this check only rejects
+// known-ended batches and leaves all transaction verification in place.
+func (o *stockVaultBoardOperator) requireUnendedCommitment(ctx context.Context, txid string) error {
+	if o == nil || o.hc == nil || requireTxid(txid) != nil {
+		return fmt.Errorf("vault-board-v1 commitment status unavailable")
+	}
+	id, err := deployment.IdentityFor(o.network)
+	if err != nil || o.origin != id.OperatorOrigin || requireTxid(o.digest) != nil {
+		return fmt.Errorf("vault-board-v1 Operator is not release-pinned")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.origin+"/v1/indexer/commitmentTx/"+txid, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	res, err := o.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("vault-board-v1 commitment status unavailable")
+	}
+	if res == nil || res.Body == nil {
+		return fmt.Errorf("vault-board-v1 commitment status unavailable")
+	}
+	defer res.Body.Close()
+	raw, err := readBoundedResponse(res.Body, vaultBoardOperatorResponseLimit)
+	if err != nil {
+		return fmt.Errorf("vault-board-v1 commitment status unavailable")
+	}
+	defer zeroServiceBytes(raw)
+	mediaType, _, err := mime.ParseMediaType(res.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		return fmt.Errorf("vault-board-v1 commitment status unavailable")
+	}
+	if res.StatusCode == http.StatusNotFound {
+		var missing struct {
+			Code int `json:"code"`
+		}
+		if json.Unmarshal(raw, &missing) == nil && missing.Code == 5 {
+			return nil
+		}
+	}
+	var status struct {
+		EndedAt *int64 `json:"endedAt,string"`
+	}
+	if res.StatusCode != http.StatusOK || json.Unmarshal(raw, &status) != nil || status.EndedAt == nil || *status.EndedAt < 0 {
+		return fmt.Errorf("vault-board-v1 commitment status unavailable")
+	}
+	if *status.EndedAt != 0 {
+		return fmt.Errorf("vault-board-v1 batch already ended; wait for a new boarding attempt")
+	}
+	return nil
 }
 
 func (o *stockVaultBoardOperator) post(ctx context.Context, path string, payload, response any) error {

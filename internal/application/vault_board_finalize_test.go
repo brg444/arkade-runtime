@@ -46,7 +46,7 @@ func newVaultBoardFinalFixtureForNetwork(t *testing.T, proof vaultBoardProofFixt
 	return newVaultBoardFinalFixtureForPolicy(t, proof, id.CheckpointForfeitPubHex, id.VtxoTreeExpirySeconds, false)
 }
 
-func newVaultBoardFinalFixtureForPolicy(t *testing.T, proof vaultBoardProofFixture, forfeitHex string, batchExpiry uint32, extraReceiver bool) vaultBoardFinalFixture {
+func newVaultBoardFinalFixtureForPolicy(t *testing.T, proof vaultBoardProofFixture, forfeitHex string, batchExpiry uint32, extraReceiver bool, extraFunding ...bool) vaultBoardFinalFixture {
 	t.Helper()
 	forfeitBytes, err := hex.DecodeString(forfeitHex)
 	if err != nil {
@@ -92,13 +92,22 @@ func newVaultBoardFinalFixtureForPolicy(t *testing.T, proof vaultBoardProofFixtu
 	if err != nil {
 		t.Fatal(err)
 	}
+	inputs := []*wire.OutPoint{{Hash: *boardHash, Index: proof.operation.Vout}}
+	sequences := []uint32{wire.MaxTxInSequenceNum}
+	if len(extraFunding) > 0 && extraFunding[0] {
+		inputs = append(inputs, &wire.OutPoint{Hash: chainhash.Hash{0x99}, Index: 1})
+		sequences = append(sequences, wire.MaxTxInSequenceNum)
+	}
 	commitment, err := psbt.New(
-		[]*wire.OutPoint{{Hash: *boardHash, Index: proof.operation.Vout}},
+		inputs,
 		[]*wire.TxOut{{Value: batchAmount, PkScript: batchScript}}, 2, 0,
-		[]uint32{wire.MaxTxInSequenceNum},
+		sequences,
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(inputs) > 1 {
+		commitment.Inputs[1].WitnessUtxo = &wire.TxOut{Value: 500, PkScript: []byte{0x51}}
 	}
 	commitment.Inputs[0].WitnessUtxo = &wire.TxOut{Value: proof.operation.ValueSats, PkScript: bytes.Clone(proof.tree.PkScript)}
 	commitment.Inputs[0].SighashType = txscript.SigHashDefault

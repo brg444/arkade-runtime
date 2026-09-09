@@ -24,7 +24,7 @@ func TestArkadeVaultV1CompatibilityArtifacts(t *testing.T) {
 		"internal/contractpack/contract-pack.json":                    "8ff990fb1362ecaedcdbb67305f296c0416279d4df4151fd3c39f675bfd57926",
 		"contract-pack.mainnet.json":                                  "41d8933f587903eb023705829d214ad82a41b491221dfabba8f90903b8643089",
 		"internal/contractpack/contract-pack.mainnet.json":            "41d8933f587903eb023705829d214ad82a41b491221dfabba8f90903b8643089",
-		"internal/application/testdata/http-v1-compatibility.json":    "9b1e409df241b56155f044fa0bc4119f1f639835fdc71c9be50a74665409e595",
+		"internal/application/testdata/http-v1-compatibility.json":    "f0fe8cbde879580f07f614856e3707c0267ec1a68686436c63e5a336a46f6de5",
 		"internal/policy/testdata/hkdf-sha256-v1.json":                "0739edebb44f122e70aee6153e9aaf6875c73a01412469d8f16124a8f9186cde",
 		"internal/policy/testdata/vtxo-hkdf-sha256-v1.json":           "9b376662c2d33f51981d2e8b1aa1f0134ccb06b556aa2536c5f93ad2c48b1285",
 		"internal/policy/testdata/vault-policy-v1-tree.json":          "2774756345e8cc01aa43743f62afe831baa9cbba0f4f7117e7b9a2f38776e993",

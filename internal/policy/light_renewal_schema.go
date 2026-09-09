@@ -229,15 +229,36 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		if err := validateLightDelegationSchema(db); err != nil {
 			return err
 		}
-		if err := applyLedgerSavingsMigration(db); err != nil {
+		if err := applyVaultBoardConflictMigration(db); err != nil {
 			return err
 		}
 		version = 9
 	}
+	if version == 9 {
+		if err := validateConnectorBaseline(db, boardSchema, true, true, true); err != nil {
+			return err
+		}
+		if err := validateVaultBoardConflictSchema(db); err != nil {
+			return err
+		}
+		if err := validateRecoveryBackupSchema(db); err != nil {
+			return err
+		}
+		if err := validateLightDelegationSchema(db); err != nil {
+			return err
+		}
+		if err := applyLedgerSavingsMigration(db); err != nil {
+			return err
+		}
+		version = 10
+	}
 	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)
 	}
-	if err := validateConnectorBaseline(db, boardSchema, true, true, true); err != nil {
+	if err := validateConnectorBaseline(db, boardSchema, true, true, true, true); err != nil {
+		return err
+	}
+	if err := validateVaultBoardConflictSchema(db); err != nil {
 		return err
 	}
 	if err := validateRecoveryBackupSchema(db); err != nil {

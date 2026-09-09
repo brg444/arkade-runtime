@@ -258,6 +258,18 @@
     "/v1/vtxo/bitcoin/status": [
       "OPTIONS",
       "POST"
+    ],
+    "/v1/lnurl/challenge": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/lnurl/register": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/lnurl/revoke": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {

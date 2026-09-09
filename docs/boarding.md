@@ -18,7 +18,8 @@ The cooperative leaf requires three distinct keys:
 2. the tenant VaultBoardCosigner;
 3. the release-pinned Arkade Operator signer.
 
-The recovery leaf is the enrolled phone key behind a 604672-second CSV delay.
+The recovery leaf uses the enrolled phone key behind a CSV delay of 7,776,256
+seconds on mainnet and 604,672 seconds on Mutinynet.
 The wallet and service reconstruct the exact tree independently from the
 enrollment record and release pins. A changed key, role, delay, script, address,
 or destination fails before signing. Routine boarding does not use or unlock
@@ -48,8 +49,9 @@ remains ambiguous. The SDK retries by asking `prepare` again; the service may
 return the exact finalized commitment, require an acknowledged release, or
 keep the input blocked.
 
-Only stock public Operator routes are used: `registerIntent`, `deleteIntent`,
-and `submitForfeitTxs`. The service does not require a modified `arkd`, private
+Mutations use the stock public Operator routes `registerIntent`, `deleteIntent`,
+and `submitForfeitTxs`. Public indexer and pinned Bitcoin chain queries supply
+reconciliation evidence. The service does not require a modified `arkd`, private
 Operator state, a replay endpoint, or a Vault-specific Operator deployment.
 
 ## Network parameters
@@ -69,3 +71,28 @@ rollback detection.
 The cooperative path closes when the Bitcoin median-time-past threshold reaches
 the recovery delay. After that cutoff, the service refuses new cooperative
 authorization and the phone recovery leaf is the valid path. Tests exercise both sides of the cutoff.
+
+
+A failed final dispatch can be retried through `prepare` only when independent
+chain evidence rules out the old commitment on the observed Bitcoin chain.
+Guardian reads the original public commitment PSBT from the pinned Operator,
+checks its transaction hash against the authenticated final authorization, and
+requires a different transaction to spend another original commitment input
+with at least six confirmations. The boarding deposit must remain unspent.
+Batch failure, expiry, an indexer miss, and an unspent deposit alone cannot
+release final authority.
+
+Recovery appends an authenticated conflict record without changing the original
+authorization or dispatch. It advances the independent policy sequence and
+allocates a fresh registration with a new request digest and tree session key.
+Every later preparation, registration, and final dispatch rechecks the retained
+conflicts against the pinned chain service. A missing or reorganized conflict
+blocks further signing until a qualifying conflict is confirmed again. Six
+confirmations remain a finality assumption; signatures already dispatched
+cannot be revoked by a later deep reorganization.
+
+Schema 9 adds this conflict history while preserving existing authenticated rows.
+Deployment requires a stopped-service database and sequence backup and a
+schema-9-compatible Guardian for subsequent rollback. Funds whose original
+commitment inputs remain unspent still require Operator cooperation or the
+committed phone recovery delay; the client cannot force immediate boarding.

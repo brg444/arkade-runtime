@@ -188,6 +188,9 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/vtxo/delegate/status":       {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/delegate/list":         {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/delegate/cancel":       {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/lnurl/challenge":            {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/lnurl/register":             {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/lnurl/revoke":               {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/recovery-archive/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/recovery-archive/open":      {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/recovery-archive/read":      {http.MethodPost: {}, http.MethodOptions: {}},
@@ -271,6 +274,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	attachEnrollmentRoutes(mux, svc, origin)
 	attachLightEnrollmentRoutes(mux, svc, origin)
 	attachRecoveryArchiveRoutes(mux, svc, origin)
+	attachLNURLRoutes(mux, svc, origin)
 	attachLightRenewalRoutes(mux, svc, origin)
 	attachSavingsSetupRoutes(mux, svc, origin)
 	attachSpendingDelegationRoutes(mux, svc, origin)
