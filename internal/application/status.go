@@ -130,8 +130,12 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 		PolicyVersion:              program.PolicyVersion,
 		SpendingPolicyCapabilities: caps,
 	}
-	if s.LedgerSavingsEnabled && s.requireLedgerSavingsEnrollmentEnabled() == nil {
+	if !s.LightOnlyEnrollment && s.LedgerSavingsEnabled && s.requireLedgerSavingsEnrollmentEnabled() == nil {
 		st.LedgerSavingsCapability = &LedgerSavingsCapability{Version: 1, TemplateVersion: savings.LedgerNativeTemplate}
+	}
+	if s.LightOnlyEnrollment {
+		st.SupportedSetups = []string{}
+		st.ConnectorCapability = nil
 	}
 	if s.LightEnabled {
 		st.SupportedSetups = append([]string{"light"}, st.SupportedSetups...)
