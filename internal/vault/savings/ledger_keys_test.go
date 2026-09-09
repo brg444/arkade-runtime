@@ -5,10 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/arkade-os/emulator/pkg/arkade"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 )
@@ -17,19 +17,23 @@ type ledgerParentVector struct {
 	Xpub     string   `json:"xpub"`
 	Children []string `json:"children"`
 }
-type ledgerProgramVector struct {
-	ledgerParentVector
-	Claimant string `json:"claimant"`
-	Cosigner string `json:"cosigner"`
-	Program  string `json:"program"`
-}
 type ledgerKeyVector struct {
-	Input          LedgerSavingsKeyContext `json:"input"`
-	ContextDigest  string                  `json:"contextDigest"`
-	Internal       ledgerParentVector      `json:"internal"`
-	Accounts       map[string][]string     `json:"accounts"`
-	ProgramParents []ledgerProgramVector   `json:"programParents"`
-	Normal         struct {
+	Input         LedgerSavingsKeyContext `json:"input"`
+	ContextDigest string                  `json:"contextDigest"`
+	Internal      ledgerParentVector      `json:"internal"`
+	Accounts      map[string][]string     `json:"accounts"`
+	Guardian      struct {
+		Xpub     string `json:"xpub"`
+		Children []struct {
+			Kind     string `json:"kind"`
+			Claimant string `json:"claimant"`
+			Guardian string `json:"guardian"`
+			Change   uint32 `json:"change"`
+			Branch   uint32 `json:"branch"`
+			Pubkey   string `json:"pubkey"`
+		} `json:"children"`
+	} `json:"guardian"`
+	Normal struct {
 		WalletPolicy LedgerWalletPolicy `json:"walletPolicy"`
 		Receive      savingsVectorTree  `json:"receive"`
 		Change       savingsVectorTree  `json:"change"`
@@ -42,6 +46,11 @@ func ledgerVectors(t *testing.T) []ledgerKeyVector {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, forbidden := range []string{"arkadeCosignerBase", "programParents"} {
+		if bytes.Contains(raw, []byte(forbidden)) {
+			t.Fatalf("Guardian-only vector contains %s", forbidden)
+		}
+	}
 	var vectors []ledgerKeyVector
 	if err := json.Unmarshal(raw, &vectors); err != nil {
 		t.Fatal(err)
@@ -51,58 +60,54 @@ func ledgerVectors(t *testing.T) []ledgerKeyVector {
 	}
 	return vectors
 }
-
+func ledgerKeyHex(t *testing.T, key *hdkeychain.ExtendedKey) string {
+	t.Helper()
+	pub, err := key.ECPubKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(pub.SerializeCompressed())
+}
 func ledgerChildHex(t *testing.T, parent *hdkeychain.ExtendedKey, branch uint32) string {
 	t.Helper()
 	child, err := LedgerSavingsChild(parent, branch, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pub, err := child.ECPubKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return hex.EncodeToString(pub.SerializeCompressed())
+	return ledgerKeyHex(t, child)
 }
-
-func TestLedgerNativeKeyVectors(t *testing.T) {
-	for _, vector := range ledgerVectors(t) {
+func TestLedgerGuardianKeyVectors(t *testing.T) {
+	for _, v := range ledgerVectors(t) {
 		tier := "standard"
-		if vector.Input.Recovery != nil {
+		if v.Input.Recovery != nil {
 			tier = "advanced"
 		}
-		t.Run(vector.Input.Network+"/"+tier, func(t *testing.T) {
-			in := vector.Input
-			programs := map[string]string{}
-			for _, p := range vector.ProgramParents {
-				programs[p.Claimant] = p.Program
-			}
-			normal, err := BuildLedgerNativeSavings(in, programs)
+		t.Run(v.Input.Network+"/"+tier, func(t *testing.T) {
+			in := v.Input
+			normal, err := BuildLedgerNativeSavings(in)
 			if err != nil {
 				t.Fatal(err)
 			}
-			gotPolicy, _ := json.Marshal(normal.WalletPolicy)
-			wantPolicy, _ := json.Marshal(vector.Normal.WalletPolicy)
-			if !bytes.Equal(gotPolicy, wantPolicy) {
+			if !reflect.DeepEqual(normal.WalletPolicy, v.Normal.WalletPolicy) {
 				t.Fatal("Ledger policy differs from wallet")
 			}
-			assertVectorTree(t, "Ledger receive", normal.Receive, vector.Normal.Receive)
-			assertVectorTree(t, "Ledger change", normal.Change, vector.Normal.Change)
+			assertVectorTree(t, "Ledger receive", normal.Receive.Tree, v.Normal.Receive)
+			assertVectorTree(t, "Ledger change", normal.Change.Tree, v.Normal.Change)
 			digest, err := LedgerSavingsContextDigest(in)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if hex.EncodeToString(digest) != vector.ContextDigest {
+			if hex.EncodeToString(digest) != v.ContextDigest {
 				t.Fatal("context differs from wallet")
 			}
 			internal, err := LedgerSavingsInternalParent(in)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if internal.String() != vector.Internal.Xpub {
+			if internal.String() != v.Internal.Xpub {
 				t.Fatal("NUMS parent differs from wallet")
 			}
-			for i, expected := range vector.Internal.Children {
+			for i, expected := range v.Internal.Children {
 				if ledgerChildHex(t, internal, uint32(i)) != expected {
 					t.Fatal("NUMS child differs from wallet")
 				}
@@ -116,51 +121,69 @@ func TestLedgerNativeKeyVectors(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for i, expected := range vector.Accounts[role] {
+				for i, expected := range v.Accounts[role] {
 					if ledgerChildHex(t, key, uint32(i)) != expected {
 						t.Fatal("account child differs from wallet")
 					}
 				}
 			}
-			for _, expected := range vector.ProgramParents {
-				script, err := hex.DecodeString(expected.Program)
-				if err != nil {
-					t.Fatal(err)
-				}
-				parent, err := LedgerRecoveryProgramParent(in, expected.Claimant, expected.Cosigner, script)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if parent.String() != expected.Xpub {
-					t.Fatal("program parent differs from wallet")
-				}
-				// Private derivation stays in this public-fixture test. Production key
-				// backends still require the evaluated named-operation boundary.
-				scalar := make([]byte, 32)
-				scalar[31] = 14
-				if expected.Cosigner == "arkade" {
-					scalar[31] = 15
-				}
-				base, _ := btcec.PrivKeyFromBytes(scalar)
-				secret := arkade.ComputeArkadeScriptPrivateKey(base, arkade.ArkadeScriptHash(script))
-				params, _ := networkParams(in.Network)
-				private := hdkeychain.NewExtendedKey(params.HDPrivateKeyID[:], secret.Serialize(), parent.ChainCode(), make([]byte, 4), 0, 0, true)
-				for i, child := range expected.Children {
-					if ledgerChildHex(t, parent, uint32(i)) != child || ledgerChildHex(t, private, uint32(i)) != child {
-						t.Fatal("private/public child disagreement")
+			parent, err := LedgerSavingsGuardianParent(in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parent.String() != v.Guardian.Xpub {
+				t.Fatal("Guardian parent differs from wallet")
+			}
+			if ledgerKeyHex(t, parent) != in.VaultCosignerBase {
+				t.Fatal("Guardian parent must retain raw base point")
+			}
+			scalar := make([]byte, 32)
+			scalar[31] = 14
+			base, _ := btcec.PrivKeyFromBytes(scalar)
+			defer base.Zero()
+			params, _ := networkParams(in.Network)
+			private := hdkeychain.NewExtendedKey(params.HDPrivateKeyID[:], base.Serialize(), parent.ChainCode(), make([]byte, 4), 0, 0, true)
+			defer private.Zero()
+			count := 6
+			if in.Recovery != nil {
+				count = 12
+			}
+			if len(v.Guardian.Children) != count {
+				t.Fatal("incomplete Guardian coordinate vectors")
+			}
+			for _, expected := range v.Guardian.Children {
+				for _, p := range []*hdkeychain.ExtendedKey{parent, private} {
+					var child *hdkeychain.ExtendedKey
+					var branch uint32
+					switch expected.Kind {
+					case "initiate":
+						branch, err = LedgerGuardianInitiateBranch(in, expected.Claimant, expected.Change)
+						if err == nil {
+							child, err = LedgerGuardianInitiateChild(in, p, expected.Claimant, expected.Change)
+						}
+					case "clawback":
+						branch, err = LedgerGuardianClawbackBranch(in, expected.Claimant, expected.Guardian)
+						if err == nil {
+							child, err = LedgerGuardianClawbackChild(in, p, expected.Claimant, expected.Guardian)
+						}
+					default:
+						t.Fatalf("unknown vector kind %s", expected.Kind)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if branch != expected.Branch || ledgerKeyHex(t, child) != expected.Pubkey {
+						t.Fatal("Guardian private/public coordinate differs from wallet")
 					}
 				}
-				private.Zero()
-				secret.Zero()
-				base.Zero()
 			}
 		})
 	}
 }
 
-func TestLedgerNativeRejectsSubstitution(t *testing.T) {
-	in := ledgerVectors(t)[0].Input
-	origin := in.Hardware
+func TestLedgerGuardianRejectsSubstitution(t *testing.T) {
+	f := newLedgerGuardianFixture(t, false)
+	in, origin := f.context, f.context.Hardware
 	key, err := LedgerAccountKey(origin, in.Network)
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +197,7 @@ func TestLedgerNativeRejectsSubstitution(t *testing.T) {
 		t.Fatal("accepted wrong network")
 	}
 	for _, mutate := range []func(*LedgerAccountOrigin){
-		func(o *LedgerAccountOrigin) { o.Fingerprint = strings.ToUpper(o.Fingerprint) },
+		func(o *LedgerAccountOrigin) { o.Fingerprint = "AABBCCDD" },
 		func(o *LedgerAccountOrigin) {
 			o.Path = []uint32{hdkeychain.HardenedKeyStart + 84, hdkeychain.HardenedKeyStart + 1, hdkeychain.HardenedKeyStart}
 		},
@@ -191,23 +214,18 @@ func TestLedgerNativeRejectsSubstitution(t *testing.T) {
 	}
 	for _, mutate := range []func(*LedgerSavingsKeyContext){
 		func(c *LedgerSavingsKeyContext) { c.Phone = c.Hardware },
-		func(c *LedgerSavingsKeyContext) { c.ArkadeCosignerBase = c.VaultCosignerBase },
+		func(c *LedgerSavingsKeyContext) { c.VaultCosignerBase = ledgerKeyHex(t, key) },
 		func(c *LedgerSavingsKeyContext) { c.PolicyDigest = "" },
 		func(c *LedgerSavingsKeyContext) { c.VaultID = strings.ToUpper(c.VaultID) },
 		func(c *LedgerSavingsKeyContext) { c.PhoneDirectP256 = strings.Repeat("00", 33) },
 		func(c *LedgerSavingsKeyContext) { c.TemplateVersion = Template },
+		func(c *LedgerSavingsKeyContext) { c.TemplateVersion = "phone-ledger-recovery-savings-v1" },
 	} {
 		changed := in
 		mutate(&changed)
 		if _, err := LedgerSavingsContextDigest(changed); err == nil {
 			t.Fatal("accepted invalid context")
 		}
-	}
-	if _, err := LedgerRecoveryProgramParent(in, "recovery", "vault", []byte{0x51}); err == nil {
-		t.Fatal("accepted absent recovery key")
-	}
-	if _, err := LedgerRecoveryProgramParent(in, "phone", "vault", nil); err == nil {
-		t.Fatal("accepted empty program")
 	}
 	base, _ := LedgerSavingsContextDigest(in)
 	for _, mutate := range []func(*LedgerSavingsKeyContext){
@@ -223,6 +241,29 @@ func TestLedgerNativeRejectsSubstitution(t *testing.T) {
 		}
 		if bytes.Equal(base, digest) {
 			t.Fatal("context substitution not bound")
+		}
+		if _, err := LedgerGuardianInitiateChild(changed, f.guardian, "phone", 0); err == nil {
+			t.Fatal("accepted context-substituted Guardian parent")
+		}
+	}
+	for _, claimant := range []string{"", "recovery", "arkade", "vault"} {
+		if _, err := LedgerGuardianInitiateChild(in, f.guardian, claimant, 0); err == nil {
+			t.Fatal("accepted inapplicable claimant")
+		}
+	}
+	for _, change := range []uint32{2, 3, hdkeychain.HardenedKeyStart} {
+		if _, err := LedgerGuardianInitiateChild(in, f.guardian, "phone", change); err == nil {
+			t.Fatal("accepted unenrolled change")
+		}
+	}
+	for _, roles := range [][2]string{{"phone", "phone"}, {"phone", "recovery"}, {"recovery", "hardware"}, {"hardware", "guardian"}} {
+		if _, err := LedgerGuardianClawbackChild(in, f.guardian, roles[0], roles[1]); err == nil {
+			t.Fatal("accepted inapplicable clawback roles")
+		}
+	}
+	for _, parent := range []*hdkeychain.ExtendedKey{nil, key} {
+		if _, err := LedgerGuardianInitiateChild(in, parent, "phone", 0); err == nil {
+			t.Fatal("accepted substituted Guardian parent")
 		}
 	}
 }

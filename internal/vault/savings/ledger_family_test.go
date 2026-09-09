@@ -23,13 +23,11 @@ type ledgerFamilyVector struct {
 	Receive        ledgerFamilyVectorTree  `json:"receive"`
 	Change         ledgerFamilyVectorTree  `json:"change"`
 	Recovery       map[string]struct {
-		Claimant        string                 `json:"claimant"`
-		Guardians       []string               `json:"guardians"`
-		Delay           uint32                 `json:"delay"`
-		Pending         ledgerFamilyVectorTree `json:"pending"`
-		Quarantine      ledgerFamilyVectorTree `json:"quarantine"`
-		InitiateProgram string                 `json:"initiateProgram"`
-		ClawbackProgram string                 `json:"clawbackProgram"`
+		Claimant   string                 `json:"claimant"`
+		Guardians  []string               `json:"guardians"`
+		Delay      uint32                 `json:"delay"`
+		Pending    ledgerFamilyVectorTree `json:"pending"`
+		Quarantine ledgerFamilyVectorTree `json:"quarantine"`
 	} `json:"recovery"`
 }
 
@@ -65,7 +63,7 @@ func TestLedgerNativeRecoveryFamilyVectors(t *testing.T) {
 			for _, pair := range []struct {
 				got  Tree
 				want ledgerFamilyVectorTree
-			}{{family.Receive, v.Receive}, {family.Change, v.Change}} {
+			}{{family.Receive.Tree, v.Receive}, {family.Change.Tree, v.Change}} {
 				if pair.got.Address != pair.want.Address || hex.EncodeToString(pair.got.PkScript) != pair.want.Script {
 					t.Fatal("normal tree mismatch")
 				}
@@ -78,9 +76,7 @@ func TestLedgerNativeRecoveryFamilyVectors(t *testing.T) {
 				if got.Claimant != want.Claimant || got.Delay != want.Delay || !reflect.DeepEqual(got.Guardians, want.Guardians) {
 					t.Fatal("recovery authority mismatch")
 				}
-				if hex.EncodeToString(got.InitiateProgram) != want.InitiateProgram || hex.EncodeToString(got.ClawbackProgram) != want.ClawbackProgram {
-					t.Fatal("recovery program mismatch")
-				}
+
 				for _, pair := range []struct {
 					got  LedgerRecoveryTree
 					want ledgerFamilyVectorTree
@@ -126,5 +122,24 @@ func TestLedgerNativeFamilyRejectsChangedPolicy(t *testing.T) {
 	}
 	if _, err := LedgerRecoveryInternalParent(v.Input, "phone", "unknown"); err == nil {
 		t.Fatal("accepted unknown stage")
+	}
+}
+
+func TestLedgerGuardianFamilyValidatesFullPolicy(t *testing.T) {
+	f := newLedgerGuardianFixture(t, false)
+	for _, mutate := range []func(*program.SpendingPolicy){
+		func(p *program.SpendingPolicy) { p.Program = "unknown" },
+		func(p *program.SpendingPolicy) { p.Schema = "unknown" },
+		func(p *program.SpendingPolicy) { p.Period = "unknown" },
+		func(p *program.SpendingPolicy) { p.TxRecipientCapSats = 0 },
+		func(p *program.SpendingPolicy) { p.PeriodAllowanceSats = 0 },
+		func(p *program.SpendingPolicy) { p.AbsoluteFeeCapSats-- },
+		func(p *program.SpendingPolicy) { p.FeerateCapSatPerV-- },
+	} {
+		changed := f.policy
+		mutate(&changed)
+		if _, err := BuildLedgerNativeFamily(f.context, changed); err == nil {
+			t.Fatal("invalid full policy accepted")
+		}
 	}
 }

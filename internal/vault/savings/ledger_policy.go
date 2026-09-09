@@ -1,7 +1,6 @@
 package savings
 
 import (
-	"encoding/hex"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -16,94 +15,61 @@ type LedgerWalletPolicy struct {
 
 type LedgerNativeSavings struct {
 	WalletPolicy LedgerWalletPolicy `json:"walletPolicy"`
-	Receive      Tree
-	Change       Tree
+	Receive      LedgerRecoveryTree
+	Change       LedgerRecoveryTree
 }
 
-// BuildLedgerNativeSavings reuses native Savings scripts. Callers must supply
-// recovery programs from canonical family reconstruction, never an HTTP payload.
-func BuildLedgerNativeSavings(in LedgerSavingsKeyContext, programs map[string]string) (*LedgerNativeSavings, error) {
-	claimants := familyClaimants(in.Recovery != nil)
-	if len(programs) != len(claimants) {
-		return nil, fmt.Errorf("recovery programs must match claimants")
-	}
+// BuildLedgerNativeSavings constructs the isolated Guardian-only candidate.
+// Normal movement requires phone and hardware; each recovery initiation requires
+// the claimant and Guardian. No transaction restrictions are enforced by these
+// two-signature leaves: the Guardian's named signing capability must enforce them.
+func BuildLedgerNativeSavings(in LedgerSavingsKeyContext) (*LedgerNativeSavings, error) {
 	internal, err := LedgerSavingsInternalParent(in)
 	if err != nil {
 		return nil, err
 	}
-	phone, err := LedgerAccountKey(in.Phone, in.Network)
+	guardian, err := LedgerSavingsGuardianParent(in)
 	if err != nil {
 		return nil, err
 	}
-	hardware, err := LedgerAccountKey(in.Hardware, in.Network)
-	if err != nil {
-		return nil, err
-	}
-	var recovery *hdkeychain.ExtendedKey
+	claimants := familyClaimants(in.Recovery != nil)
+	origins := map[string]LedgerAccountOrigin{"phone": in.Phone, "hardware": in.Hardware}
 	if in.Recovery != nil {
-		recovery, err = LedgerAccountKey(*in.Recovery, in.Network)
-		if err != nil {
-			return nil, err
-		}
+		origins["recovery"] = *in.Recovery
 	}
-	phoneExpr, _ := ledgerAccountExpression(in.Phone, in.Network)
-	hardwareExpr, _ := ledgerAccountExpression(in.Hardware, in.Network)
-	keys := []string{internal.String(), phoneExpr, hardwareExpr}
-	type pair struct{ vault, arkade *hdkeychain.ExtendedKey }
-	parents := map[string]pair{}
-	indices := map[string]int{}
+	accounts := map[string]*hdkeychain.ExtendedKey{}
+	expressions := map[string]string{}
 	for _, claimant := range claimants {
-		raw, ok := programs[claimant]
-		script, err := hex.DecodeString(raw)
-		if !ok || err != nil || len(script) == 0 || hex.EncodeToString(script) != raw {
-			return nil, fmt.Errorf("canonical recovery program required")
-		}
-		vault, err := LedgerRecoveryProgramParent(in, claimant, "vault", script)
+		accounts[claimant], err = LedgerAccountKey(origins[claimant], in.Network)
 		if err != nil {
 			return nil, err
 		}
-		ark, err := LedgerRecoveryProgramParent(in, claimant, "arkade", script)
+		expressions[claimant], err = ledgerAccountExpression(origins[claimant], in.Network)
 		if err != nil {
 			return nil, err
 		}
-		indices[claimant] = len(keys)
-		keys = append(keys, vault.String(), ark.String())
-		parents[claimant] = pair{vault, ark}
 	}
-	recoveryIndex := len(keys)
+	keys := []string{internal.String(), expressions["phone"], expressions["hardware"], guardian.String()}
 	if in.Recovery != nil {
-		expression, _ := ledgerAccountExpression(*in.Recovery, in.Network)
-		keys = append(keys, expression)
+		keys = append(keys, expressions["recovery"])
 	}
-	and := func(keys ...string) string {
-		result := ""
-		for i := len(keys) - 1; i >= 0; i-- {
-			if result == "" {
-				result = "pk(" + keys[i] + ")"
-			} else {
-				result = "and_v(v:pk(" + keys[i] + ")," + result + ")"
-			}
-		}
-		return result
-	}
-	leaves := []string{and("@1/**", "@2/**")}
+	leaves := []string{ledgerAnd("@1/**", "@2/**")}
 	for _, claimant := range claimants {
 		user := "@1/<2;3>/*"
 		if claimant == "hardware" {
 			user = "@2/<2;3>/*"
 		} else if claimant == "recovery" {
-			user = fmt.Sprintf("@%d/**", recoveryIndex)
+			user = "@4/**"
 		}
-		i := indices[claimant]
-		leaves = append(leaves, and(user, fmt.Sprintf("@%d/**", i), fmt.Sprintf("@%d/**", i+1)))
+		branch, err := LedgerGuardianInitiateBranch(in, claimant, 0)
+		if err != nil {
+			return nil, err
+		}
+		leaves = append(leaves, ledgerAnd(user, fmt.Sprintf("@3/<%d;%d>/*", branch, branch+1)))
 	}
-	tree := fmt.Sprintf("{{%s,%s},%s}", leaves[0], leaves[1], leaves[2])
-	if in.Recovery != nil {
-		tree = fmt.Sprintf("{{%s,%s},{%s,%s}}", leaves[0], leaves[1], leaves[2], leaves[3])
-	}
-	policy := LedgerWalletPolicy{Name: "Vaulted Savings", DescriptorTemplate: "tr(@0/**," + tree + ")", KeysInfo: keys}
-	if len(keys) > 15 || len(policy.DescriptorTemplate) > 512 {
-		return nil, fmt.Errorf("Ledger wallet policy exceeds device limits")
+	policy, err := ledgerRecoveryPolicy("Vaulted Savings", leaves, keys)
+	if err != nil {
+		return nil, err
 	}
 	pub := func(parent *hdkeychain.ExtendedKey, branch uint32) (*btcec.PublicKey, error) {
 		child, err := LedgerSavingsChild(parent, branch, 0)
@@ -112,59 +78,57 @@ func BuildLedgerNativeSavings(in LedgerSavingsKeyContext, programs map[string]st
 		}
 		return child.ECPubKey()
 	}
-	build := func(change uint32) (Tree, error) {
-		p, err := pub(phone, change)
+	build := func(change uint32) (LedgerRecoveryTree, error) {
+		phone, err := pub(accounts["phone"], change)
 		if err != nil {
-			return Tree{}, err
+			return LedgerRecoveryTree{}, err
 		}
-		h, err := pub(hardware, change)
+		hardware, err := pub(accounts["hardware"], change)
 		if err != nil {
-			return Tree{}, err
-		}
-		var r *btcec.PublicKey
-		if recovery != nil {
-			r, err = pub(recovery, change)
-			if err != nil {
-				return Tree{}, err
-			}
+			return LedgerRecoveryTree{}, err
 		}
 		internalPub, err := pub(internal, change)
 		if err != nil {
-			return Tree{}, err
+			return LedgerRecoveryTree{}, err
 		}
-		tweaks := map[string]TweakPair{}
-		users := map[string]*btcec.PublicKey{}
-		all := []*btcec.PublicKey{p, h}
+		admin, err := checksig(phone, hardware)
+		if err != nil {
+			return LedgerRecoveryTree{}, err
+		}
+		scripts := [][]byte{admin}
+		all := []*btcec.PublicKey{phone, hardware}
 		for _, claimant := range claimants {
-			parent := parents[claimant]
-			v, err := pub(parent.vault, change)
-			if err != nil {
-				return Tree{}, err
-			}
-			a, err := pub(parent.arkade, change)
-			if err != nil {
-				return Tree{}, err
-			}
-			tweaks[claimant] = TweakPair{Vault: v, Arkade: a}
-			userParent, branch := phone, 2+change
-			if claimant == "hardware" {
-				userParent = hardware
-			} else if claimant == "recovery" {
-				userParent = recovery
+			branch := 2 + change
+			if claimant == "recovery" {
 				branch = change
 			}
-			u, err := pub(userParent, branch)
+			user, err := pub(accounts[claimant], branch)
 			if err != nil {
-				return Tree{}, err
+				return LedgerRecoveryTree{}, err
 			}
-			users[claimant] = u
-			all = append(all, u, v, a)
+			gChild, err := LedgerGuardianInitiateChild(in, guardian, claimant, change)
+			if err != nil {
+				return LedgerRecoveryTree{}, err
+			}
+			g, err := gChild.ECPubKey()
+			if err != nil {
+				return LedgerRecoveryTree{}, err
+			}
+			leaf, err := checksig(user, g)
+			if err != nil {
+				return LedgerRecoveryTree{}, err
+			}
+			scripts = append(scripts, leaf)
+			all = append(all, user, g)
 		}
-		if err := requireDistinctRoleSet(all, "Ledger native Savings"); err != nil {
-			return Tree{}, err
+		if err := requireDistinctRoleSet(all, "Guardian-only Ledger Savings"); err != nil {
+			return LedgerRecoveryTree{}, err
 		}
-		address, script, err := buildSavingsWithKeys(internalPub, in.Network, p, h, r, tweaks, users)
-		return Tree{Address: address, PkScript: script}, err
+		address, script, err := taprootFromScripts(internalPub, scripts, in.Network)
+		if err != nil {
+			return LedgerRecoveryTree{}, err
+		}
+		return LedgerRecoveryTree{Tree: Tree{Address: address, PkScript: script}, WalletPolicy: policy, Scripts: scripts, Internal: internalPub}, nil
 	}
 	receive, err := build(0)
 	if err != nil {

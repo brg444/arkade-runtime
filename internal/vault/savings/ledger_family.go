@@ -1,7 +1,6 @@
 package savings
 
 import (
-	"encoding/hex"
 	"fmt"
 
 	"github.com/brg444/arkade-runtime/internal/program"
@@ -18,17 +17,14 @@ type LedgerRecoveryTree struct {
 	Internal     *btcec.PublicKey
 }
 type LedgerRecoveryFamily struct {
-	Claimant        string
-	Guardians       []string
-	Delay           uint32
-	Pending         LedgerRecoveryTree
-	Quarantine      LedgerRecoveryTree
-	ClawbackProgram []byte
-	InitiateProgram []byte
+	Claimant   string
+	Guardians  []string
+	Delay      uint32
+	Pending    LedgerRecoveryTree
+	Quarantine LedgerRecoveryTree
 }
 type LedgerNativeFamily struct {
 	*LedgerNativeSavings
-	Programs       map[string]string
 	Recovery       map[string]LedgerRecoveryFamily
 	SpendingPolicy program.SpendingPolicy
 }
@@ -75,8 +71,8 @@ func ledgerRecoveryTree(parent *hdkeychain.ExtendedKey, scripts [][]byte, networ
 	return LedgerRecoveryTree{Tree: Tree{Address: address, PkScript: script}, WalletPolicy: policy, Scripts: scripts, Internal: pub}, err
 }
 
-// BuildLedgerNativeFamily reconstructs every recovery destination and program
-// from the enrolled identity and policy. It accepts no caller-supplied programs.
+// BuildLedgerNativeFamily reconstructs each Guardian-only recovery destination
+// from the enrolled identity and full network-validated Spending policy.
 func BuildLedgerNativeFamily(in LedgerSavingsKeyContext, policy program.SpendingPolicy) (*LedgerNativeFamily, error) {
 	digest, err := program.SpendingPolicyDigestHexFor(in.Network, policy)
 	if err != nil {
@@ -125,7 +121,11 @@ func BuildLedgerNativeFamily(in LedgerSavingsKeyContext, policy program.Spending
 		}
 		return pubs, nil
 	}
-	fam := &LedgerNativeFamily{Programs: map[string]string{}, Recovery: map[string]LedgerRecoveryFamily{}, SpendingPolicy: policy}
+	guardianParent, err := LedgerSavingsGuardianParent(in)
+	if err != nil {
+		return nil, err
+	}
+	fam := &LedgerNativeFamily{Recovery: map[string]LedgerRecoveryFamily{}, SpendingPolicy: policy}
 	for _, claimant := range claimants {
 		guardians := quarantineGuardians(claimant, in.Recovery != nil)
 		qInternal, err := LedgerRecoveryInternalParent(in, claimant, "quarantine")
@@ -154,18 +154,6 @@ func BuildLedgerNativeFamily(in LedgerSavingsKeyContext, policy program.Spending
 		if err != nil {
 			return nil, err
 		}
-		clawback, err := BuildTransitionScript(quarantine.PkScript, nil, WitnessBytes399, policy.AbsoluteFeeCapSats, policy.FeerateCapSatPerV)
-		if err != nil {
-			return nil, err
-		}
-		vParent, err := LedgerRecoveryProgramParent(in, claimant, "vault", clawback)
-		if err != nil {
-			return nil, err
-		}
-		aParent, err := LedgerRecoveryProgramParent(in, claimant, "arkade", clawback)
-		if err != nil {
-			return nil, err
-		}
 		pInternal, err := LedgerRecoveryInternalParent(in, claimant, "pending")
 		if err != nil {
 			return nil, err
@@ -184,32 +172,36 @@ func BuildLedgerNativeFamily(in LedgerSavingsKeyContext, policy program.Spending
 		for _, r := range claimants {
 			pKeys = append(pKeys, expressions[r])
 		}
-		vi, ai := len(pKeys), len(pKeys)+1
-		pKeys = append(pKeys, vParent.String(), aParent.String())
+		gi := len(pKeys)
+		pKeys = append(pKeys, guardianParent.String())
 		cancelExpr := []string{}
-		for i, g := range guardians {
-			guardian, err := user(g, "clawback")
+		for _, g := range guardians {
+			remainingUser, err := user(g, "clawback")
 			if err != nil {
 				return nil, err
 			}
-			pubs := []*btcec.PublicKey{guardian}
-			for _, parent := range []*hdkeychain.ExtendedKey{vParent, aParent} {
-				child, err := LedgerSavingsChild(parent, uint32(i*2), 0)
-				if err != nil {
-					return nil, err
-				}
-				pub, err := child.ECPubKey()
-				if err != nil {
-					return nil, err
-				}
-				pubs = append(pubs, pub)
+			child, err := LedgerGuardianClawbackChild(in, guardianParent, claimant, g)
+			if err != nil {
+				return nil, err
+			}
+			guardianPub, err := child.ECPubKey()
+			if err != nil {
+				return nil, err
+			}
+			pubs := []*btcec.PublicKey{remainingUser, guardianPub}
+			if err := requireDistinctRoleSet(pubs, "Ledger cooperative cancellation"); err != nil {
+				return nil, err
 			}
 			script, err := checksig(pubs...)
 			if err != nil {
 				return nil, err
 			}
 			scripts = append(scripts, script)
-			leaves = append(leaves, ledgerAnd(fmt.Sprintf("@%d/<6;7>/*", indices[g]), fmt.Sprintf("@%d/<%d;%d>/*", vi, i*2, i*2+1), fmt.Sprintf("@%d/<%d;%d>/*", ai, i*2, i*2+1)))
+			branch, err := LedgerGuardianClawbackBranch(in, claimant, g)
+			if err != nil {
+				return nil, err
+			}
+			leaves = append(leaves, ledgerAnd(fmt.Sprintf("@%d/<6;7>/*", indices[g]), fmt.Sprintf("@%d/<%d;%d>/*", gi, branch, branch+1)))
 			cancelExpr = append(cancelExpr, fmt.Sprintf("@%d/<8;9>/*", indices[g]))
 		}
 		cancelPubs, err := allUsers(guardians, "cancel")
@@ -230,21 +222,9 @@ func BuildLedgerNativeFamily(in LedgerSavingsKeyContext, policy program.Spending
 		if err != nil {
 			return nil, err
 		}
-		var phoneDirect []byte
-		if claimant == "phone" {
-			phoneDirect, err = hex.DecodeString(in.PhoneDirectP256)
-			if err != nil {
-				return nil, err
-			}
-		}
-		initiate, err := BuildTransitionScript(pending.PkScript, phoneDirect, InitiateWitnessBytes(claimant, in.Recovery != nil), policy.AbsoluteFeeCapSats, policy.FeerateCapSatPerV)
-		if err != nil {
-			return nil, err
-		}
-		fam.Recovery[claimant] = LedgerRecoveryFamily{Claimant: claimant, Guardians: guardians, Delay: pendingDelay(claimant), Pending: pending, Quarantine: quarantine, ClawbackProgram: clawback, InitiateProgram: initiate}
-		fam.Programs[claimant] = hex.EncodeToString(initiate)
+		fam.Recovery[claimant] = LedgerRecoveryFamily{Claimant: claimant, Guardians: guardians, Delay: pendingDelay(claimant), Pending: pending, Quarantine: quarantine}
 	}
-	fam.LedgerNativeSavings, err = BuildLedgerNativeSavings(in, fam.Programs)
+	fam.LedgerNativeSavings, err = BuildLedgerNativeSavings(in)
 	if err != nil {
 		return nil, err
 	}

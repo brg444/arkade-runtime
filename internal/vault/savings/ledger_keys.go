@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/arkade-os/emulator/pkg/arkade"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 )
 
 // LedgerNativeTemplate is a new contract, not enabled by the live registry.
-const LedgerNativeTemplate = "phone-ledger-recovery-savings-v1"
-const ledgerDomain = "vaulted/ledger-native-savings-v1"
+const LedgerNativeTemplate = "phone-ledger-guardian-savings-v1"
+const ledgerDomain = "vaulted/ledger-guardian-savings-v1"
 
 type LedgerAccountOrigin struct {
 	Xpub        string   `json:"xpub"`
@@ -21,16 +20,15 @@ type LedgerAccountOrigin struct {
 }
 
 type LedgerSavingsKeyContext struct {
-	TemplateVersion    string               `json:"templateVersion"`
-	Network            string               `json:"network"`
-	VaultID            string               `json:"vaultId"`
-	PolicyDigest       string               `json:"policyDigest"`
-	Phone              LedgerAccountOrigin  `json:"phone"`
-	Hardware           LedgerAccountOrigin  `json:"hardware"`
-	Recovery           *LedgerAccountOrigin `json:"recovery,omitempty"`
-	PhoneDirectP256    string               `json:"phoneDirectP256"`
-	VaultCosignerBase  string               `json:"vaultCosignerBase"`
-	ArkadeCosignerBase string               `json:"arkadeCosignerBase"`
+	TemplateVersion   string               `json:"templateVersion"`
+	Network           string               `json:"network"`
+	VaultID           string               `json:"vaultId"`
+	PolicyDigest      string               `json:"policyDigest"`
+	Phone             LedgerAccountOrigin  `json:"phone"`
+	Hardware          LedgerAccountOrigin  `json:"hardware"`
+	Recovery          *LedgerAccountOrigin `json:"recovery,omitempty"`
+	PhoneDirectP256   string               `json:"phoneDirectP256"`
+	VaultCosignerBase string               `json:"vaultCosignerBase"`
 }
 
 func ledgerHex(value string, size int) ([]byte, error) {
@@ -135,7 +133,7 @@ func LedgerSavingsContextDigest(in LedgerSavingsKeyContext) ([]byte, error) {
 		}
 		fields = append(fields, expression)
 	}
-	for _, base := range []string{in.VaultCosignerBase, in.ArkadeCosignerBase} {
+	for _, base := range []string{in.VaultCosignerBase} {
 		if _, err := ledgerHex(base, 33); err != nil {
 			return nil, err
 		}
@@ -149,7 +147,7 @@ func LedgerSavingsContextDigest(in LedgerSavingsKeyContext) ([]byte, error) {
 		}
 		seen[string(x)] = true
 	}
-	fields = append(fields, in.PhoneDirectP256, in.VaultCosignerBase, in.ArkadeCosignerBase)
+	fields = append(fields, in.PhoneDirectP256, in.VaultCosignerBase)
 	return taggedSHA256(ledgerDomain+"/context", ledgerFields(fields...)), nil
 }
 
@@ -162,6 +160,7 @@ func LedgerSavingsChild(parent *hdkeychain.ExtendedKey, branch, index uint32) (*
 	if err != nil {
 		return nil, err
 	}
+	defer step.Zero()
 	return step.Derive(index)
 }
 
@@ -178,36 +177,14 @@ func LedgerSavingsInternalParent(in LedgerSavingsKeyContext) (*hdkeychain.Extend
 		taggedSHA256(ledgerDomain+"/internal", digest), make([]byte, 4), 0, 0, false), nil
 }
 
-// LedgerRecoveryProgramParent only constructs public keys. An authorizer must
-// reconstruct and evaluate its named program before deriving the matching secret.
-func LedgerRecoveryProgramParent(in LedgerSavingsKeyContext, claimant, cosigner string, script []byte) (*hdkeychain.ExtendedKey, error) {
+// LedgerSavingsGuardianParent constructs the public Guardian account for this
+// immutable contract. The raw Guardian base is not an Emulator program tweak.
+func LedgerSavingsGuardianParent(in LedgerSavingsKeyContext) (*hdkeychain.ExtendedKey, error) {
 	digest, err := LedgerSavingsContextDigest(in)
 	if err != nil {
 		return nil, err
 	}
-	validClaimant := false
-	for _, c := range familyClaimants(in.Recovery != nil) {
-		if c == claimant {
-			validClaimant = true
-		}
-	}
-	if !validClaimant {
-		return nil, fmt.Errorf("unenrolled recovery claimant")
-	}
-	base := in.VaultCosignerBase
-	if cosigner == "arkade" {
-		base = in.ArkadeCosignerBase
-	} else if cosigner != "vault" {
-		return nil, fmt.Errorf("unknown recovery cosigner")
-	}
-	if len(script) == 0 {
-		return nil, fmt.Errorf("recovery program required")
-	}
-	pub, err := parseCompressed(base)
-	if err != nil {
-		return nil, err
-	}
-	tweaked, err := tweakByArkScript(pub, script)
+	pub, err := parseCompressed(in.VaultCosignerBase)
 	if err != nil {
 		return nil, err
 	}
@@ -215,9 +192,84 @@ func LedgerRecoveryProgramParent(in LedgerSavingsKeyContext, claimant, cosigner 
 	if err != nil {
 		return nil, err
 	}
-	return hdkeychain.NewExtendedKey(params.HDPublicKeyID[:], tweaked.SerializeCompressed(),
-		taggedSHA256(ledgerDomain+"/program", digest, ledgerFields(claimant, cosigner), arkade.ArkadeScriptHash(script)),
-		make([]byte, 4), 0, 0, false), nil
+	return hdkeychain.NewExtendedKey(params.HDPublicKeyID[:], pub.SerializeCompressed(),
+		taggedSHA256(ledgerDomain+"/guardian", digest), make([]byte, 4), 0, 0, false), nil
+}
+
+func ledgerClaimant(in LedgerSavingsKeyContext, claimant string) bool {
+	for _, role := range familyClaimants(in.Recovery != nil) {
+		if claimant == role {
+			return true
+		}
+	}
+	return false
+}
+
+// LedgerGuardianInitiateBranch identifies an enrolled receive/change recovery
+// initiation key. Every Guardian branch uses child index zero.
+func LedgerGuardianInitiateBranch(in LedgerSavingsKeyContext, claimant string, change uint32) (uint32, error) {
+	if _, err := LedgerSavingsContextDigest(in); err != nil {
+		return 0, err
+	}
+	if !ledgerClaimant(in, claimant) || change > 1 {
+		return 0, fmt.Errorf("unenrolled Guardian initiation coordinate")
+	}
+	return map[string]uint32{"phone": 0, "hardware": 2, "recovery": 4}[claimant] + change, nil
+}
+
+// LedgerGuardianClawbackBranch assigns a disjoint branch to each pending
+// claimant and remaining user. Odd paired policy branches are not enrolled.
+func LedgerGuardianClawbackBranch(in LedgerSavingsKeyContext, claimant, remainingUser string) (uint32, error) {
+	if _, err := LedgerSavingsContextDigest(in); err != nil {
+		return 0, err
+	}
+	if !ledgerClaimant(in, claimant) || !ledgerClaimant(in, remainingUser) || claimant == remainingUser {
+		return 0, fmt.Errorf("unenrolled Guardian clawback roles")
+	}
+	return map[string]uint32{"phone/hardware": 6, "phone/recovery": 8, "hardware/phone": 10,
+		"hardware/recovery": 12, "recovery/phone": 14, "recovery/hardware": 16}[claimant+"/"+remainingUser], nil
+}
+
+func ledgerGuardianChild(in LedgerSavingsKeyContext, parent *hdkeychain.ExtendedKey, branch uint32) (*hdkeychain.ExtendedKey, error) {
+	expected, err := LedgerSavingsGuardianParent(in)
+	if err != nil {
+		return nil, err
+	}
+	if parent == nil {
+		return nil, fmt.Errorf("Guardian parent required")
+	}
+	public, err := parent.Neuter()
+	if err != nil {
+		return nil, err
+	}
+	if public.String() != expected.String() {
+		return nil, fmt.Errorf("Guardian parent mismatch")
+	}
+	step, err := parent.Derive(branch)
+	if err != nil {
+		return nil, err
+	}
+	defer step.Zero()
+	return step.Derive(0)
+}
+
+// LedgerGuardianInitiateChild derives only a semantic enrolled initiation key.
+// Secret parents remain internal to a separately validated signing capability.
+func LedgerGuardianInitiateChild(in LedgerSavingsKeyContext, parent *hdkeychain.ExtendedKey, claimant string, change uint32) (*hdkeychain.ExtendedKey, error) {
+	branch, err := LedgerGuardianInitiateBranch(in, claimant, change)
+	if err != nil {
+		return nil, err
+	}
+	return ledgerGuardianChild(in, parent, branch)
+}
+
+// LedgerGuardianClawbackChild derives only an enrolled cooperative cancellation key.
+func LedgerGuardianClawbackChild(in LedgerSavingsKeyContext, parent *hdkeychain.ExtendedKey, claimant, remainingUser string) (*hdkeychain.ExtendedKey, error) {
+	branch, err := LedgerGuardianClawbackBranch(in, claimant, remainingUser)
+	if err != nil {
+		return nil, err
+	}
+	return ledgerGuardianChild(in, parent, branch)
 }
 
 // LedgerRecoveryChild uses semantic, disjoint branches for recovery leaves.
@@ -232,6 +284,7 @@ func LedgerRecoveryChild(parent *hdkeychain.ExtendedKey, role string) (*hdkeycha
 	if err != nil {
 		return nil, err
 	}
+	defer step.Zero()
 	return step.Derive(0)
 }
 
