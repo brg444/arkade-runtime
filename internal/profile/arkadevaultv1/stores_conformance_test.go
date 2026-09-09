@@ -49,7 +49,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 		{
 			name: "Vault Board", typ: reflect.TypeOf((*arkadevaultv1.VaultBoardStore)(nil)).Elem(),
 			want: []string{
-				"AppendVaultBoardAuthorizationAndDispatch", "AppendVaultBoardDispatch",
+				"AppendVaultBoardAuthorizationAndDispatch", "AppendVaultBoardConflict", "AppendVaultBoardDispatch",
 				"AppendVaultBoardSubmission", "BeginVaultBoardAttempt", "CreateVaultWithBoard",
 				"GetCurrentVaultBoardAttempt", "GetVaultBoardEnrollment",
 			},

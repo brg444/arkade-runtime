@@ -10,7 +10,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/program"
 )
 
-const schemaVersion = 8
+const schemaVersion = 9
 const connectorSchemaVersion = 3
 const recoveryBackupSchemaVersion = 4
 const legacySchemaVersion = 1
@@ -367,6 +367,9 @@ func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector, backup bool
 	}
 	if len(delegation) > 0 && delegation[0] {
 		want = append(want, "table:light_delegation_operation", "table:light_delegation_event")
+	}
+	if len(delegation) > 1 && delegation[1] {
+		want = append(want, "table:vault_board_conflict")
 	}
 	if connector {
 		want = append(want,

@@ -51,7 +51,8 @@ Schema 8 prevents older readers from opening this changed lifecycle. The
 migration changes only the schema version, preserving authenticated rows and
 the independent policy sequence. Install the compatible Guardian before the
 wallet deployment, preserve a stopped-service backup of both stores, and use
-only schema-8-compatible binaries for subsequent rollback. Never clear the
+only binaries compatible with the current database schema for subsequent rollback.
+Boarding conflict recovery adds schema 9 and its own authenticated conflict history. Never clear the
 pending record or rewind the policy sequence manually.
 
 Tests cover canonical and legacy payments, persisted final evidence across a

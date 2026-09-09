@@ -60,8 +60,9 @@ type VaultBoardEnrollment struct {
 }
 
 // VaultBoardOperation binds one immutable confirmed boarding outpoint to
-// exactly one vault-policy-v1 receiver. Attempts rotate only after a definite
-// rejection or proven release; they never rebind these economic facts.
+// exactly one vault-policy-v1 receiver. Attempts rotate after a definite
+// rejection, proven release, or confirmed commitment conflict; these economic
+// facts remain immutable.
 type VaultBoardOperation struct {
 	OperationID    string
 	VaultID        string
@@ -83,6 +84,8 @@ type VaultBoardOperation struct {
 // in the next block would be evaluated under BIP68.
 type VaultBoardChainState struct {
 	TipMTP int64
+	// MACs of retained conflict records revalidated against the current chain.
+	ConflictChecks [][]byte
 }
 
 // VaultBoardAuthorization is one replay-safe phase decision. Signed proofs
@@ -159,6 +162,7 @@ type VaultBoardAttemptSnapshot struct {
 	FinalAuthorization  *VaultBoardAuthorization
 	FinalDispatch       *VaultBoardDispatch
 	FinalSubmission     *VaultBoardSubmission
+	Conflicts           []VaultBoardConflict
 }
 
 func SealVaultBoardEnrollment(rec *VaultBoardEnrollment, key []byte) error {
@@ -521,6 +525,11 @@ func (l *Ledger) GetCurrentVaultBoardAttempt(ctx context.Context, operationID st
 			return nil, fmt.Errorf("vault-board-v1 %s dispatch digest mismatch", phase)
 		}
 	}
+	conflicts, err := loadVaultBoardConflicts(ctx, l.db, key, operationID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.Conflicts = conflicts
 	return snapshot, nil
 }
 
@@ -585,6 +594,9 @@ func (l *Ledger) BeginVaultBoardAttempt(ctx context.Context, operation VaultBoar
 		return nil, nil, false, err
 	}
 	if err := l.requireVaultBoardCooperativeWindow(stored, chain); err != nil {
+		return nil, nil, false, err
+	}
+	if err := l.requireVaultBoardConflictChecks(ctx, conn, key, operationID, chain); err != nil {
 		return nil, nil, false, err
 	}
 
@@ -684,6 +696,9 @@ func (l *Ledger) AppendVaultBoardAuthorizationAndDispatch(ctx context.Context, a
 		return nil, nil, false, err
 	}
 	if err := l.requireVaultBoardCooperativeWindow(operation, chain); err != nil {
+		return nil, nil, false, err
+	}
+	if err := l.requireVaultBoardConflictChecks(ctx, conn, key, auth.OperationID, chain); err != nil {
 		return nil, nil, false, err
 	}
 	latest, err := loadLatestVaultBoardRegister(ctx, conn, auth.OperationID)
@@ -813,6 +828,15 @@ func requireVaultBoardAttemptCanRotate(ctx context.Context, q queryContext, key 
 	if finalAuth, err := loadVaultBoardAuthorization(ctx, q, operationID, attempt, VaultBoardPhaseFinalize); err == nil {
 		if err := VerifyVaultBoardAuthorization(&finalAuth, key); err != nil {
 			return err
+		}
+		conflicts, err := loadVaultBoardConflicts(ctx, q, key, operationID)
+		if err != nil {
+			return err
+		}
+		for _, conflict := range conflicts {
+			if conflict.Attempt == attempt && bytes.Equal(conflict.RequestDigest, finalAuth.RequestDigest) && conflict.Evidence.CommitmentTxid == finalAuth.CommitmentTxid {
+				return nil
+			}
 		}
 		return fmt.Errorf("finalized vault-board-v1 attempt cannot rotate")
 	} else if err != sql.ErrNoRows {
@@ -1008,6 +1032,9 @@ func (l *Ledger) AppendVaultBoardDispatch(ctx context.Context, rec VaultBoardDis
 	if err := l.requireVaultBoardCooperativeWindow(operation, chain); err != nil {
 		return nil, false, err
 	}
+	if err := l.requireVaultBoardConflictChecks(ctx, conn, key, rec.OperationID, chain); err != nil {
+		return nil, false, err
+	}
 	if existing, err := loadVaultBoardDispatch(ctx, conn, rec.OperationID, rec.Attempt, rec.Phase); err == nil {
 		if err := VerifyVaultBoardDispatch(&existing, key); err != nil {
 			return nil, false, err
@@ -1096,6 +1123,10 @@ func (l *Ledger) AppendVaultBoardSubmission(ctx context.Context, rec VaultBoardS
 		return nil, false, err
 	}
 	defer zeroBytes(key)
+	if err := l.observeEconomicOutflowsLocked(conn); err != nil {
+		return nil, false, err
+	}
+
 	if current, err := loadVaultBoardSubmission(ctx, conn, rec.OperationID, rec.Attempt, rec.Phase); err == nil {
 		if err := VerifyVaultBoardSubmission(&current, key); err != nil {
 			return nil, false, err
@@ -1121,6 +1152,17 @@ func (l *Ledger) AppendVaultBoardSubmission(ctx context.Context, rec VaultBoardS
 	}
 	if !bytes.Equal(auth.RequestDigest, rec.RequestDigest) {
 		return nil, false, fmt.Errorf("vault-board-v1 request changed")
+	}
+	if rec.Phase == VaultBoardPhaseFinalize {
+		conflicts, err := loadVaultBoardConflicts(ctx, conn, key, rec.OperationID)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, conflict := range conflicts {
+			if conflict.Attempt == rec.Attempt {
+				return nil, false, fmt.Errorf("vault-board-v1 commitment was invalidated by a confirmed conflict")
+			}
+		}
 	}
 	dispatch, err := loadVaultBoardDispatch(ctx, conn, rec.OperationID, rec.Attempt, rec.Phase)
 	if err != nil {

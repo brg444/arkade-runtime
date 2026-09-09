@@ -187,6 +187,17 @@ func (s *Service) prepareVaultBoard(ctx context.Context, req vaultBoardPrepareRe
 	if err != nil {
 		return vaultBoardPrepareResult{}, err
 	}
+	if recovered, err := s.reconcileVaultBoardConflict(ctx, runtime, snapshot, ctxState.chain); err != nil {
+		return vaultBoardPrepareResult{}, err
+	} else if recovered {
+		snapshot, err = s.Stores.VaultBoard.GetCurrentVaultBoardAttempt(ctx, operationID)
+		if err != nil {
+			return vaultBoardPrepareResult{}, err
+		}
+	}
+	if _, err := s.requireVaultBoardConflictChecks(ctx, runtime, snapshot, ctxState.chain); err != nil {
+		return vaultBoardPrepareResult{}, err
+	}
 	now := s.vtxoNow()
 	preparation := classifyVaultBoardAttempt(snapshot, now)
 	nowUnix := now.Unix()
