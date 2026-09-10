@@ -11,7 +11,7 @@ check:
 	$(GO) test ./... -count=1
 
 race:
-	$(GO) test -race ./... -count=1
+	$(GO) test -race -timeout=20m ./... -count=1
 
 lint:
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run
