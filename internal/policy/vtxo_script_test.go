@@ -261,3 +261,45 @@ func mustHexBytes(t *testing.T, s string) []byte {
 	}
 	return raw
 }
+
+func TestSharedSpendingDeviceRecovery(t *testing.T) {
+	g := loadVaultPolicyV1Golden(t)
+	p := twoGuardianParams(t, g)
+	protected, err := BuildVaultPolicyV1Tree(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ExitMode = "device"
+	p.ExitHardwarePub = nil
+	p.ExitDevicePub = p.UserPub
+	tree, err := BuildVaultPolicyV1Tree(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(tree.SpendScript, protected.SpendScript) || !bytes.Equal(tree.DelegateScript, protected.DelegateScript) {
+		t.Fatal("Spending-only must retain the shared cooperative and delegation leaves")
+	}
+	closure := &arkscript.CSVMultisigClosure{}
+	valid, err := closure.Decode(tree.ExitScript)
+	if err != nil || !valid || len(closure.PubKeys) != 1 || !bytes.Equal(schnorr.SerializePubKey(closure.PubKeys[0]), p.UserPub) {
+		t.Fatal("Spending-only exit must require the enrolled owner")
+	}
+	if len(tree.RevealedScripts) != 3 || bytes.Equal(tree.PkScript, protected.PkScript) {
+		t.Fatal("recovery configuration must bind a distinct three-leaf contract")
+	}
+	for name, mutate := range map[string]func(*VaultPolicyV1Params){
+		"missing explicit mode":   func(p *VaultPolicyV1Params) { p.ExitMode = "" },
+		"unknown mode":            func(p *VaultPolicyV1Params) { p.ExitMode = "fallback" },
+		"hardware in device mode": func(p *VaultPolicyV1Params) { p.ExitHardwarePub = goldenXOnly(t, g, "exitHardwarePub") },
+		"recovery in device mode": func(p *VaultPolicyV1Params) { p.ExitRecoveryPub = goldenXOnly(t, g, "exitRecoveryPub") },
+		"substituted owner":       func(p *VaultPolicyV1Params) { p.ExitDevicePub = goldenXOnly(t, g, "exitHardwarePub") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			altered := p
+			mutate(&altered)
+			if _, err := BuildVaultPolicyV1Tree(altered); err == nil {
+				t.Fatal("invalid recovery configuration accepted")
+			}
+		})
+	}
+}

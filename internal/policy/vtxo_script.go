@@ -22,6 +22,7 @@ type VaultPolicyV1Params struct {
 	VtxoVaultCosignerPub []byte
 	ArkdServerPub        []byte
 	DelegatePub          []byte
+	ExitMode             string // empty/hardware preserves protected Spending; device is explicit Spending-only recovery
 	ExitDevicePub        []byte
 	ExitHardwarePub      []byte
 	ExitRecoveryPub      []byte // optional; when set, exit is hardware+recovery
@@ -102,17 +103,28 @@ func BuildVaultPolicyV1Tree(p VaultPolicyV1Params) (*VaultPolicyV1Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	hardware, err := parsePolicyPub(p.ExitHardwarePub, "exitHardwarePub")
-	if err != nil {
-		return nil, err
-	}
-	exitPubs := []*btcec.PublicKey{device, hardware}
-	if len(p.ExitRecoveryPub) > 0 {
-		recovery, err := parsePolicyPub(p.ExitRecoveryPub, "exitRecoveryPub")
+	var exitPubs []*btcec.PublicKey
+	switch p.ExitMode {
+	case "device":
+		if len(p.ExitHardwarePub) != 0 || len(p.ExitRecoveryPub) != 0 || !bytes.Equal(schnorr.SerializePubKey(device), schnorr.SerializePubKey(user)) {
+			return nil, fmt.Errorf("device recovery requires only the enrolled Spending owner")
+		}
+		exitPubs = []*btcec.PublicKey{device}
+	case "", "hardware":
+		hardware, err := parsePolicyPub(p.ExitHardwarePub, "exitHardwarePub")
 		if err != nil {
 			return nil, err
 		}
-		exitPubs = []*btcec.PublicKey{hardware, recovery}
+		exitPubs = []*btcec.PublicKey{device, hardware}
+		if len(p.ExitRecoveryPub) > 0 {
+			recovery, err := parsePolicyPub(p.ExitRecoveryPub, "exitRecoveryPub")
+			if err != nil {
+				return nil, err
+			}
+			exitPubs = []*btcec.PublicKey{hardware, recovery}
+		}
+	default:
+		return nil, fmt.Errorf("unsupported Spending recovery mode %q", p.ExitMode)
 	}
 	exitDelay := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: pins.PolicyExitDelay}
 	spend := &arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{user, vtxoVault, arkd}}

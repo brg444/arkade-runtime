@@ -68,7 +68,17 @@ func (s *Service) savingsFamilyInput(vaultID string, parsed parsedRegisterReques
 	}, nil
 }
 
-func (s *Service) mintSavingsCredential(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey) (policy.Credential, *savingsSnapshot, error) {
+func (s *Service) mintEnrollmentCredential(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey) (policy.Credential, *savingsSnapshot, error) {
+	if parsed.protectionTier == program.ProtectionTierLight {
+		if parsed.externalOwner != nil || parsed.recovery != nil || parsed.connectorOrigin != nil {
+			return policy.Credential{}, nil, fmt.Errorf("Spending-only enrollment contains Savings keys")
+		}
+		cred := s.enrollmentCredential(vaultID, parsed, vaultBase)
+		cred.TemplateVersion = program.SpendingOnlyTemplate
+		cred.ExternalOwnerWallet, cred.ArkadeCosignerBase, cred.SavingsScript = []byte{}, []byte{}, []byte{}
+		return cred, nil, nil
+	}
+
 	in, err := s.savingsFamilyInput(vaultID, parsed, vaultBase, s.ArkadeCosignerPub)
 	if err != nil {
 		return policy.Credential{}, nil, err
@@ -79,33 +89,13 @@ func (s *Service) mintSavingsCredential(vaultID string, parsed parsedRegisterReq
 	if err != nil {
 		return policy.Credential{}, nil, err
 	}
-	cfg := s.runtimeConfig()
-	cred := policy.Credential{
-		ID:                    append([]byte(nil), parsed.id...),
-		WebAuthnP256:          append([]byte(nil), parsed.webauthnP256...),
-		PhoneDirectP256:       append([]byte(nil), parsed.phoneDirectP256...),
-		PhoneBIP340:           parsed.phone.SerializeCompressed(),
-		ExternalOwnerWallet:   parsed.externalOwner.SerializeCompressed(),
-		RecoveryKey:           nil,
-		RPID:                  cfg.RPID,
-		Origin:                cfg.ClientOrigin,
-		VaultCosignerBase:     vaultBase.SerializeCompressed(),
-		ArkadeCosignerBase:    s.ArkadeCosignerPub.SerializeCompressed(),
-		ArkadeCosignerOrigin:  origin,
-		ArkadeCosignerVersion: version,
-		TemplateVersion:       savings.Template,
-		PolicyVersion:         program.PolicyVersion,
-		ProtectionTier:        parsed.protectionTier,
-		Network:               cfg.Network,
-		VaultID:               vaultID,
-		SavingsAddress:        fam.Savings.Address,
-		SavingsScript:         append([]byte(nil), fam.Savings.PkScript...),
-		RecipientDustSats:     program.DustSats,
-		TxRecipientCapSats:    parsed.spendingPolicy.TxRecipientCapSats,
-		PeriodAllowanceSats:   parsed.spendingPolicy.PeriodAllowanceSats,
-		AbsoluteFeeCapSats:    parsed.spendingPolicy.AbsoluteFeeCapSats,
-		FeerateCapSatPerV:     parsed.spendingPolicy.FeerateCapSatPerV,
-	}
+	cred := s.enrollmentCredential(vaultID, parsed, vaultBase)
+	cred.ExternalOwnerWallet = parsed.externalOwner.SerializeCompressed()
+	cred.ArkadeCosignerBase = s.ArkadeCosignerPub.SerializeCompressed()
+	cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion = origin, version
+	cred.TemplateVersion = savings.Template
+	cred.SavingsAddress = fam.Savings.Address
+	cred.SavingsScript = append([]byte(nil), fam.Savings.PkScript...)
 	if parsed.recovery != nil {
 		cred.RecoveryKey = parsed.recovery.SerializeCompressed()
 	}
@@ -198,7 +188,31 @@ func applySavingsProgram(in *savings.FamilyInput, template string) {
 }
 
 func knownTemplate(template string) bool {
-	return template == savings.Template || template == savings.LedgerNativeTemplate || connector.IsTemplate(template)
+	return template == program.SpendingOnlyTemplate || template == savings.Template || template == savings.LedgerNativeTemplate || connector.IsTemplate(template)
 }
 
 func publicEnrollTemplate(*Service) string { return savings.Template }
+
+// enrollmentCredential constructs the identity and Spending policy shared by enrollment configurations.
+func (s *Service) enrollmentCredential(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey) policy.Credential {
+	cfg := s.runtimeConfig()
+	return policy.Credential{
+		ID:                  append([]byte(nil), parsed.id...),
+		WebAuthnP256:        append([]byte(nil), parsed.webauthnP256...),
+		PhoneDirectP256:     append([]byte(nil), parsed.phoneDirectP256...),
+		PhoneBIP340:         parsed.phone.SerializeCompressed(),
+		RecoveryKey:         nil,
+		RPID:                cfg.RPID,
+		Origin:              cfg.ClientOrigin,
+		VaultCosignerBase:   vaultBase.SerializeCompressed(),
+		PolicyVersion:       program.PolicyVersion,
+		ProtectionTier:      parsed.protectionTier,
+		Network:             cfg.Network,
+		VaultID:             vaultID,
+		RecipientDustSats:   program.DustSats,
+		TxRecipientCapSats:  parsed.spendingPolicy.TxRecipientCapSats,
+		PeriodAllowanceSats: parsed.spendingPolicy.PeriodAllowanceSats,
+		AbsoluteFeeCapSats:  parsed.spendingPolicy.AbsoluteFeeCapSats,
+		FeerateCapSatPerV:   parsed.spendingPolicy.FeerateCapSatPerV,
+	}
+}

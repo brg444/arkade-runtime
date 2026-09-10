@@ -454,6 +454,7 @@ func (s *Service) canonicalRecoveryBinding(cred *policy.Credential, nonce, ciphe
 		return "", fmt.Errorf("recovery binding boarding exit: %w", err)
 	}
 	snap := s.snapshot(cred.VaultID)
+	snap.ProtectionTier = cred.ProtectionTier
 	snap.PhoneBIP340 = phone
 	snap.ExternalOwnerWallet = externalOwner
 	snap.RecoveryKey = recovery

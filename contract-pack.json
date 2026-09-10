@@ -6,6 +6,19 @@
     "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
     "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
   ],
+  "databaseSchemaVersion": 11,
+  "enrollmentProfiles": {
+    "vaulted-spending-v1": {
+      "schema": "arkade-vault/spending-enrollment-v1",
+      "protectionTier": "light",
+      "spending": "vault-policy-v1",
+      "boarding": "vault-board-v1",
+      "exitMode": "device",
+      "hardwareKey": "forbidden",
+      "recoveryKey": "forbidden",
+      "savings": "watch-only"
+    }
+  },
   "programs": {
     "savings-recovery-v1": {
       "status": "live",
@@ -135,6 +148,7 @@
       "template": "vault-policy-v1-collaborative-3key",
       "policy": "vault-spending-policy-v1",
       "protectionTiers": {
+        "light": { "recoveryKey": "forbidden", "hardwareKey": "forbidden", "exitMode": "device" },
         "standard": { "recoveryKey": "forbidden" },
         "advanced": { "recoveryKey": "required" }
       },
@@ -175,6 +189,8 @@
         "arkdMinimum": "2048",
         "bip68SecondsMod": "512",
         "reason": "Product-chosen BIP68 seconds (9*512). Meets arkd Validate (CSV >= GetInfo.unilateralExitDelay 2048) and the 144-block floor at Mutinynet ~30s/block (4320s). Not the live 2048s hatch.",
+        "device": "enrolled-device-after-exitDelay",
+        "defaultMode": "hardware",
         "twoGuardian": "device-and-hardware-after-exitDelay",
         "threeGuardian": "hardware-and-recovery-after-exitDelay"
       },

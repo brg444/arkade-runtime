@@ -182,6 +182,7 @@ func TestVaultBoardConflictMigrationPreservesV8AndRestartEvidence(t *testing.T) 
 	if _, err := l.db.Exec(`DROP TABLE ledger_savings_recovery_event; DROP TABLE ledger_savings_enrollment; DROP TABLE vault_board_conflict`); err != nil {
 		t.Fatal(err)
 	}
+	restoreSchemaTenConstraints(t, l)
 	if _, err := l.db.Exec(`UPDATE schema_meta SET version=8`); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +211,7 @@ func TestVaultBoardConflictMigrationPreservesV8AndRestartEvidence(t *testing.T) 
 	if !bytes.Equal(beforeJSON, afterJSON) {
 		t.Fatal("migration changed authenticated history")
 	}
-	if version, err := l.SchemaVersion(); err != nil || version != 10 {
+	if version, err := l.SchemaVersion(); err != nil || version != schemaVersion {
 		t.Fatalf("schema %d %v", version, err)
 	}
 	if got, _ := economicOutflowCount(l.db); got != count {
@@ -345,6 +346,7 @@ func TestLedgerMigrationPreservesDeployedBoardingConflictAndSequence(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	restoreSchemaTenConstraints(t, l)
 	if _, err := l.db.Exec(`DROP TABLE ledger_savings_recovery_event; DROP TABLE ledger_savings_enrollment; UPDATE schema_meta SET version=9`); err != nil {
 		t.Fatal(err)
 	}

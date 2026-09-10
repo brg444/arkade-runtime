@@ -14,7 +14,7 @@ import (
 // Opt-in qualification against a SQLite backup of the deployed database.
 // The supplied backup is read only; migration runs on a disposable copy.
 // No signing key is required and no wallet rows are logged.
-func TestDeployedSchemaNineMigrationSnapshot(t *testing.T) {
+func TestDeployedEnrollmentMigrationSnapshot(t *testing.T) {
 	source := os.Getenv("VAULT_MIGRATION_SNAPSHOT")
 	if source == "" {
 		t.Skip("set VAULT_MIGRATION_SNAPSHOT to a consistent SQLite backup")
@@ -32,8 +32,8 @@ func TestDeployedSchemaNineMigrationSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || version != 9 {
-		t.Fatal("expected deployed schema9", err)
+	if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || (version != 9 && version != 10) {
+		t.Fatal("expected deployed schema9 or schema10", err)
 	}
 	before := migrationFingerprints(t, db)
 	count, err := economicOutflowCount(db)
@@ -47,19 +47,26 @@ func TestDeployedSchemaNineMigrationSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version, err := ledger.SchemaVersion(); err != nil || version != 10 {
-		t.Fatal("expected schema10", err)
+	if version, err := ledger.SchemaVersion(); err != nil || version != schemaVersion {
+		t.Fatal("expected current schema", err)
 	}
 	after := migrationFingerprints(t, ledger.db)
 	for name, expected := range before {
-		if after[name] != expected {
+		if name != "vault" && name != "pending_enrollment" && after[name] != expected {
 			t.Fatalf("migration changed pre-existing table %s", name)
 		}
 	}
-	if len(after) != len(before)+2 {
+	expectedAdded := 0
+	if version == 9 {
+		expectedAdded = 4
+	}
+	if len(after) != len(before)+expectedAdded {
 		t.Fatal("unexpected table additions")
 	}
 	for _, table := range []string{"ledger_savings_enrollment", "ledger_savings_recovery_event"} {
+		if version != 9 {
+			continue
+		}
 		var rows int
 		if err := ledger.db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&rows); err != nil || rows != 0 {
 			t.Fatal("new table is not empty", err)
@@ -79,7 +86,7 @@ func TestDeployedSchemaNineMigrationSnapshot(t *testing.T) {
 	if !reflect.DeepEqual(after, migrationFingerprints(t, ledger.db)) {
 		t.Fatal("reopen changed tables")
 	}
-	t.Log("deployed schema9 backup migrates to schema10; existing DDL, rows and economic count preserved; reopen succeeds")
+	t.Logf("deployed schema%d backup migrates to the current schema; authenticated rows and economic count preserved; reopen succeeds", version)
 }
 
 func migrationFingerprints(t *testing.T, db *sql.DB) map[string][32]byte {
@@ -146,6 +153,11 @@ func migrationFingerprints(t *testing.T, db *sql.DB) map[string][32]byte {
 			t.Fatal(err)
 		}
 		result[name] = sha256.Sum256(encoded)
+		rowBytes, err := json.Marshal([]any{cols, records})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result[name+":rows"] = sha256.Sum256(rowBytes)
 	}
 	return result
 }
@@ -181,7 +193,7 @@ func TestSchemaNineMigrationRejectsUnrecognizedBaselineBeforeWriting(t *testing.
 			}
 			defer db.Close()
 			var version int
-			if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || version != 9 {
+			if err := db.QueryRow(`SELECT version FROM schema_meta`).Scan(&version); err != nil || (version != 9 && version != 10) {
 				t.Fatal("failed migration changed version", err)
 			}
 			if !reflect.DeepEqual(before, migrationFingerprints(t, db)) {
@@ -191,12 +203,13 @@ func TestSchemaNineMigrationRejectsUnrecognizedBaselineBeforeWriting(t *testing.
 	}
 }
 
-func TestDeployedSchemaNineMigrationSnapshotFixture(t *testing.T) {
+func TestDeployedEnrollmentMigrationSnapshotFixture(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "source.sqlite")
 	l, err := OpenLedgerForNetwork(path, nil, "mainnet")
 	if err != nil {
 		t.Fatal(err)
 	}
+	restoreSchemaTenConstraints(t, l)
 	if _, err := l.db.Exec(`DROP TABLE ledger_savings_recovery_event; DROP TABLE ledger_savings_enrollment; UPDATE schema_meta SET version=9`); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +221,7 @@ func TestDeployedSchemaNineMigrationSnapshotFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("VAULT_MIGRATION_SNAPSHOT", path)
-	TestDeployedSchemaNineMigrationSnapshot(t)
+	TestDeployedEnrollmentMigrationSnapshot(t)
 	after, err := os.ReadFile(path)
 	if err != nil || sha256.Sum256(before) != sha256.Sum256(after) {
 		t.Fatal("source backup changed", err)

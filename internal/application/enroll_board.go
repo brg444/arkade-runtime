@@ -38,6 +38,22 @@ type vaultBoardCompositeDescriptor struct {
 }
 
 func (s *Service) previewVaultBoardEnrollmentDescriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
+	if req.ProtectionTier == program.ProtectionTierLight {
+		parsed, err := s.parseRegisterRequestIndependent(req)
+		if err != nil {
+			return nil, err
+		}
+		parsed, err = s.applyVaultBoardEnrollmentRequest(parsed, req)
+		if err != nil {
+			return nil, err
+		}
+		desc, hash, err := s.spendingEnrollmentDescriptor(vaultID, parsed)
+		if err != nil {
+			return nil, err
+		}
+		return &ProposedEnrollment{VaultID: vaultID, Descriptor: desc, DescriptorHash: hash}, nil
+	}
+
 	base, err := s.previewSavingsDescriptor(vaultID, req)
 	if err != nil {
 		return nil, err

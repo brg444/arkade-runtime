@@ -81,7 +81,7 @@ func (s *Service) InviteStatus(token string) (InviteView, error) {
 
 // StartEnrollment assigns a vault id for an unused invite and does not consume it.
 func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*EnrollStartResponse, error) {
-	if s.LightOnlyEnrollment {
+	if s.LightOnlyEnrollment && request.ProtectionTier != program.ProtectionTierLight {
 		return nil, fmt.Errorf("Standard and Advanced setup is temporarily unavailable. Please choose Light.")
 	}
 	if err := s.runtimeConfig().Validate(); err != nil {
@@ -90,6 +90,9 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 	hash, err := HashEnrollmentToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("invite not available")
+	}
+	if request.ProtectionTier == program.ProtectionTierLight && !s.LightEnabled {
+		return nil, fmt.Errorf("Light enrollment unavailable")
 	}
 	if err := program.ValidateProtectionTier(request.ProtectionTier); err != nil {
 		return nil, err
@@ -176,7 +179,7 @@ func requirePendingProtectionTier(pending *policy.PendingEnrollment, tier string
 // ProposeEnrollment returns the descriptor that Finish will persist. It does
 // not consume the invite or write a vault row.
 func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*ProposedEnrollment, error) {
-	if s.LightOnlyEnrollment {
+	if s.LightOnlyEnrollment && req.ProtectionTier != program.ProtectionTierLight {
 		return nil, fmt.Errorf("Standard and Advanced setup is temporarily unavailable. Please choose Light.")
 	}
 	hash, err := HashEnrollmentToken(token)
@@ -214,7 +217,7 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 
 // FinishEnrollment verifies the create ceremony and CAS-consumes the invite.
 func (s *Service) FinishEnrollment(ctx context.Context, token string, req EnrollFinishRequest) (*Status, error) {
-	if s.LightOnlyEnrollment {
+	if s.LightOnlyEnrollment && req.ProtectionTier != program.ProtectionTierLight {
 		return nil, fmt.Errorf("Standard and Advanced setup is temporarily unavailable. Please choose Light.")
 	}
 	if err := s.requireLedgerIntegrity(); err != nil {
@@ -250,7 +253,7 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 	if err := s.validateEnrollmentCreate(pending, req); err != nil {
 		return nil, err
 	}
-	if req.ExternalOwnerWalletXOnly == "" {
+	if req.ExternalOwnerWalletXOnly == "" && req.ProtectionTier != program.ProtectionTierLight {
 		return nil, fmt.Errorf("tenant owner pub required")
 	}
 	if s.afterLoadPending != nil {
@@ -371,7 +374,7 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	if err != nil {
 		return nil, false
 	}
-	descriptor, _, err := s.mintSavingsCredential(vaultID, parsed, childPub)
+	descriptor, _, err := s.mintEnrollmentCredential(vaultID, parsed, childPub)
 	if err != nil {
 		return nil, false
 	}

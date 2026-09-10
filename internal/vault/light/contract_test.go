@@ -124,8 +124,8 @@ func TestRejectCrossProfileAndNetworkSubstitution(t *testing.T) {
 	if program.ValidateSpendingPolicyFor(original.Network, program.SpendingPolicy(original.SpendingPolicy)) == nil {
 		t.Fatal("accepted Light policy in Standard")
 	}
-	if program.ValidateProtectionTier("light") == nil {
-		t.Fatal("candidate Light must not activate existing enrollment")
+	if program.ValidateProtectionTierRecovery(program.ProtectionTierLight, true) == nil {
+		t.Fatal("Light must not accept a protected recovery key")
 	}
 }
 

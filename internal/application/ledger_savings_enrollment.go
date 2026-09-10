@@ -178,7 +178,7 @@ func (s *Service) mintLedgerSavingsCredential(vaultID string, req RegisterReques
 	if req.DescriptorHash == "" || req.DescriptorHash != hash {
 		return policy.Credential{}, nil, nil, fmt.Errorf("Ledger Savings descriptor hash mismatch")
 	}
-	cred, snapshot, err := s.mintSavingsCredential(vaultID, parsed, legacy)
+	cred, snapshot, err := s.mintEnrollmentCredential(vaultID, parsed, legacy)
 	if err != nil {
 		return policy.Credential{}, nil, nil, err
 	}
@@ -237,7 +237,7 @@ func (s *Service) createLedgerSavingsTenantVault(vaultID string, token []byte, r
 	if err != nil || boardReadback == nil || !bytes.Equal(boardReadback.IntegrityMAC, board.IntegrityMAC) {
 		return fmt.Errorf("Ledger Savings boarding readback failed")
 	}
-	s.publishEnrollmentAt(vaultID, cred.ID, parsed.phone, snapshot, boardSnap)
+	s.publishEnrollmentAt(vaultID, cred.ID, parsed.phone, snapshot, cred.ProtectionTier, boardSnap)
 	return nil
 }
 func (s *Service) verifiedLedgerSavings(cred *policy.Credential) (LedgerSavingsStatus, *savings.LedgerNativeFamily, error) {

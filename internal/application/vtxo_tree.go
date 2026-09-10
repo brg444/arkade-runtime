@@ -17,6 +17,7 @@ import (
 )
 
 type vtxoPolicyTree struct {
+	params          *policy.VaultPolicyV1Params
 	CosignerPub     *btcec.PublicKey
 	DelegatePub     *btcec.PublicKey
 	ArkdPub         *btcec.PublicKey
@@ -61,7 +62,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 	if snap.Light != nil {
 		return s.buildLightPolicyTree(*snap.Light)
 	}
-	if snap.PhoneBIP340 == nil || snap.ExternalOwnerWallet == nil {
+	if snap.PhoneBIP340 == nil || (snap.ExternalOwnerWallet == nil && snap.ProtectionTier != program.ProtectionTierLight) {
 		return nil, fmt.Errorf("enrolled keys required")
 	}
 	keyContext, err := s.vtxoKeyContext(vaultID)
@@ -91,8 +92,12 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		ArkdServerPub:        schnorr.SerializePubKey(arkd),
 		DelegatePub:          schnorr.SerializePubKey(delegate),
 		ExitDevicePub:        schnorr.SerializePubKey(snap.PhoneBIP340),
-		ExitHardwarePub:      schnorr.SerializePubKey(snap.ExternalOwnerWallet),
 		Network:              s.runtimeConfig().Network,
+	}
+	if snap.ProtectionTier == program.ProtectionTierLight {
+		params.ExitMode = "device"
+	} else {
+		params.ExitHardwarePub = schnorr.SerializePubKey(snap.ExternalOwnerWallet)
 	}
 	if snap.RecoveryKey != nil {
 		params.ExitRecoveryPub = schnorr.SerializePubKey(snap.RecoveryKey)
@@ -119,7 +124,7 @@ func (s *Service) buildVtxoPolicyTree(vaultID string, snap enrolledSnapshot) (*v
 		return nil, err
 	}
 	return &vtxoPolicyTree{
-		CosignerPub:     cosigner,
+		params: &params, CosignerPub: cosigner,
 		DelegatePub:     delegate,
 		ArkdPub:         arkd,
 		TapKey:          tapKey,

@@ -36,6 +36,9 @@ type RecoveryArchiveOpenResponse struct {
 }
 
 func recoveryArchiveCredentialAllowed(cred *policy.Credential) bool {
+	if cred != nil && cred.TemplateVersion == program.SpendingOnlyTemplate {
+		return cred.ProtectionTier == program.ProtectionTierLight
+	}
 	return cred != nil && (cred.TemplateVersion == savings.Template || cred.TemplateVersion == savings.LedgerNativeTemplate || connector.IsTemplate(cred.TemplateVersion)) &&
 		(cred.ProtectionTier == program.ProtectionTierStandard || cred.ProtectionTier == program.ProtectionTierAdvanced)
 }
@@ -55,7 +58,12 @@ func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchi
 		return RecoveryArchiveBinding{}, err
 	}
 	var hash string
-	if cred.TemplateVersion == savings.LedgerNativeTemplate {
+	if cred.TemplateVersion == program.SpendingOnlyTemplate {
+		_, hash, err = s.storedSpendingEnrollmentDescriptor(cred, snap)
+		if err != nil {
+			return RecoveryArchiveBinding{}, err
+		}
+	} else if cred.TemplateVersion == savings.LedgerNativeTemplate {
 		enrolled, _, e := s.verifiedLedgerSavings(cred)
 		if e != nil {
 			return RecoveryArchiveBinding{}, e

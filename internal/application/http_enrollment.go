@@ -38,6 +38,16 @@ func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			writeJSON(w, nil, loadErr)
 			return
 		}
+		if cred.TemplateVersion == program.SpendingOnlyTemplate {
+			desc, hash, descErr := svc.storedSpendingEnrollmentDescriptor(cred, snap)
+			writeJSON(w, struct {
+				Status
+				SpendingDescriptor         spendingEnrollmentDescriptor `json:"spendingDescriptor"`
+				VtxoBoardingDescriptor     vaultBoardPublicDescriptor   `json:"vtxoBoardingDescriptor"`
+				VtxoBoardingDescriptorHash string                       `json:"vtxoBoardingDescriptorHash"`
+			}{status, desc, desc.Boarding, hash}, descErr)
+			return
+		}
 		if cred.TemplateVersion == savings.LedgerNativeTemplate {
 			enrolled, _, verifiedErr := svc.verifiedLedgerSavings(cred)
 			if verifiedErr != nil {

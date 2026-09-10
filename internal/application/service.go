@@ -177,6 +177,7 @@ var ErrVerificationBusy = errors.New("crypto verification capacity exhausted")
 
 // enrolledSnapshot is one immutable published enrollment for a single vault.
 type enrolledSnapshot struct {
+	ProtectionTier      string
 	Light               *light.Descriptor
 	VaultID             string
 	CredentialID        []byte
@@ -289,7 +290,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if vaultID == "" {
 		return fmt.Errorf("tenant vault id required")
 	}
-	if req.ExternalOwnerWalletXOnly == "" {
+	if req.ExternalOwnerWalletXOnly == "" && req.ProtectionTier != program.ProtectionTierLight {
 		return fmt.Errorf("tenant owner pub required")
 	}
 	childPub, err := s.keys.enrollmentPublic(vaultID)
@@ -321,7 +322,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if req.DescriptorHash == "" || req.DescriptorHash != proposed.DescriptorHash {
 		return fmt.Errorf("enrollment descriptor hash does not match the proposed vault")
 	}
-	descriptor, sv, err := s.mintSavingsCredential(vaultID, parsed, childPub)
+	descriptor, sv, err := s.mintEnrollmentCredential(vaultID, parsed, childPub)
 	if err != nil {
 		return err
 	}
@@ -355,7 +356,7 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err != nil || stored == nil || !bytes.Equal(stored.IntegrityMAC, boardRec.IntegrityMAC) {
 		return fmt.Errorf("vault-board-v1 enrollment readback failed")
 	}
-	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv, boardSnap)
+	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv, descriptor.ProtectionTier, boardSnap)
 	return nil
 }
 
@@ -443,9 +444,18 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 	if err != nil {
 		return parsed, err
 	}
-	parsed.externalOwner, err = s.parseOnboardingKey("externalOwnerWalletXOnly", req.ExternalOwnerWalletXOnly)
-	if err != nil {
-		return parsed, err
+	if req.ProtectionTier == program.ProtectionTierLight {
+		if !s.LightEnabled {
+			return parsed, fmt.Errorf("Light enrollment unavailable")
+		}
+		if req.ExternalOwnerWalletXOnly != "" || recoveryField(req) != "" || req.LedgerSavings != nil || hasConnectorRequest(req) {
+			return parsed, fmt.Errorf("Spending-only enrollment must not contain protected Savings keys")
+		}
+	} else {
+		parsed.externalOwner, err = s.parseOnboardingKey("externalOwnerWalletXOnly", req.ExternalOwnerWalletXOnly)
+		if err != nil {
+			return parsed, err
+		}
 	}
 	if rec := recoveryField(req); rec != "" {
 		parsed.recovery, err = s.parseOnboardingKey("recoveryXOnly", rec)
@@ -530,7 +540,7 @@ func (s *Service) publishStoredEnrollment(cred *policy.Credential) error {
 		!rebuilt.CosignerPub.IsEqual(board.CosignerPub) || !rebuilt.OperatorPub.IsEqual(board.OperatorPub) {
 		return fmt.Errorf("rebuilt vault-board-v1 does not match stored enrollment")
 	}
-	s.publishEnrollmentAt(cred.VaultID, cred.ID, phone, sv, board)
+	s.publishEnrollmentAt(cred.VaultID, cred.ID, phone, sv, cred.ProtectionTier, board)
 	return nil
 }
 
@@ -540,6 +550,10 @@ func (s *Service) rebuildFromCredential(cred *policy.Credential) (
 ) {
 	if err = s.requireCompatible(cred); err != nil {
 		return nil, nil, nil, nil, nil, nil, err
+	}
+	if cred.TemplateVersion == program.SpendingOnlyTemplate {
+		phone, err = btcec.ParsePubKey(cred.PhoneBIP340)
+		return
 	}
 	if isConnectorCredential(cred) {
 		fam, ferr := s.rebuildConnectorFamily(cred)
@@ -597,6 +611,15 @@ func (s *Service) requireCompatible(cred *policy.Credential) error {
 	}
 	if err := program.ValidateSpendingPolicyFor(cfg.Network, spendingPolicyFromCredential(cred)); err != nil {
 		return fmt.Errorf("stored economic policy: %w", err)
+	}
+	if cred.TemplateVersion == program.SpendingOnlyTemplate {
+		if cred.ProtectionTier != program.ProtectionTierLight || len(cred.ExternalOwnerWallet) != 0 || len(cred.RecoveryKey) != 0 || len(cred.SavingsScript) != 0 || cred.SavingsAddress != "" || len(cred.ArkadeCosignerBase) != 0 || cred.ArkadeCosignerOrigin != "" || cred.ArkadeCosignerVersion != "" {
+			return fmt.Errorf("invalid Spending-only enrollment")
+		}
+		return nil
+	}
+	if cred.ProtectionTier == program.ProtectionTierLight {
+		return fmt.Errorf("Light requires the Spending-only template")
 	}
 	wantOrigin, wantVersion := s.arkadeIdentity()
 	if cred.ArkadeCosignerOrigin != wantOrigin {
@@ -675,11 +698,12 @@ func knownFixtureXOnly(xonly []byte) bool {
 	return false
 }
 
-func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phone *btcec.PublicKey, sv *savingsSnapshot, board ...*vaultBoardSnapshot) {
+func (s *Service) publishEnrollmentAt(vaultID string, credID []byte, phone *btcec.PublicKey, sv *savingsSnapshot, tier string, board ...*vaultBoardSnapshot) {
 	snap := &enrolledSnapshot{
-		VaultID:      vaultID,
-		CredentialID: append([]byte(nil), credID...),
-		PhoneBIP340:  phone, Savings: sv,
+		VaultID:        vaultID,
+		ProtectionTier: tier,
+		CredentialID:   append([]byte(nil), credID...),
+		PhoneBIP340:    phone, Savings: sv,
 	}
 	if len(board) == 1 {
 		snap.Board = board[0]
@@ -768,7 +792,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, err
 	}
 	snap := s.snapshot(id)
-	if snap.Savings == nil && snap.Light == nil {
+	if snap.Savings == nil && snap.Light == nil && snap.ProtectionTier != program.ProtectionTierLight {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
 	if s.Stores.Identity == nil {

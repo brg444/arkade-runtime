@@ -53,7 +53,7 @@ func seedV1Connector(t *testing.T, f *connectorFixture, id string, token []byte,
 	if err = f.led.CreateVaultWithBoard(policy.CreateVaultInput{Record: record, Credential: credential, TokenHash: token, Connector: &origin}, *board); err != nil {
 		t.Fatal(err)
 	}
-	f.svc.publishEnrollmentAt(id, descriptor.ID, parsed.phone, snapshot, boardSnapshot)
+	f.svc.publishEnrollmentAt(id, descriptor.ID, parsed.phone, snapshot, descriptor.ProtectionTier, boardSnapshot)
 	preview, err := f.svc.previewConnectorEnrollmentDescriptor(id, req, connector.Template)
 	if err != nil {
 		t.Fatal(err)
