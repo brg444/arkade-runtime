@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -40,15 +42,30 @@ func TestLightDelegationSchemaGolden(t *testing.T) {
 }
 
 func testSchemaGolden(t *testing.T, version int, want string) {
-	ledger, err := OpenLedger(filepath.Join(t.TempDir(), "vault.sqlite"), nil)
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "vault.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ledger.Close()
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	// Build the frozen historical DDL directly. SQLite ALTER TABLE rewrites
+	// quoted names, so relabeling or rebuilding today's schema is not a golden.
+	boardSchema, err := vaultBoardSchemaForNetwork("mutinynet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ddl := range []string{createMultiTenantSchema, createVtxoSchema, boardSchema, createLightRenewalSchema, createConnectorSchema, createRecoveryBackupSchema, createLightDelegationSchema, createVaultBoardConflictSchema, createLedgerSavingsSchema} {
+		if _, err := db.Exec(strings.TrimSpace(ddl)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO schema_meta(version) VALUES(10)`); err != nil {
+		t.Fatal(err)
+	}
 
 	var canonical bytes.Buffer
 	fmt.Fprintf(&canonical, "schema_meta=%d\n", version)
-	rows, err := ledger.db.Query(`
+	rows, err := db.Query(`
 SELECT type, name, tbl_name, IFNULL(sql, '')
   FROM sqlite_schema
  WHERE name NOT LIKE 'sqlite_%'
@@ -61,6 +78,12 @@ SELECT type, name, tbl_name, IFNULL(sql, '')
 		var kind, name, table, sqlText string
 		if err := rows.Scan(&kind, &name, &table, &sqlText); err != nil {
 			t.Fatal(err)
+		}
+		if version < 10 && (table == "ledger_savings_enrollment" || table == "ledger_savings_recovery_event") {
+			continue
+		}
+		if version < 9 && table == "vault_board_conflict" {
+			continue
 		}
 		if version < 5 && (table == "light_delegation_operation" || table == "light_delegation_event") {
 			continue

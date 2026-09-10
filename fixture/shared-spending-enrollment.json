@@ -1,0 +1,44 @@
+{
+  "descriptor": {
+    "schema": "arkade-vault/spending-enrollment-v1",
+    "template": "vaulted-spending-v1",
+    "vaultId": "abababababababababababababababab",
+    "network": "mutinynet",
+    "protectionTier": "light",
+    "phonePub": "02989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
+    "phoneDirectP256": "036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+    "cosignerPub": "02b2164e680255133f74eda57b356ece583e1f24f016f6ae53e9b3398a6e5778a0",
+    "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+    "delegatePub": "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a",
+    "exitMode": "device",
+    "exitDelay": 4608,
+    "exitDelayUnit": "seconds",
+    "spendingPolicy": {
+      "program": "vault-policy-v1",
+      "schema": "vault-spending-policy-v1",
+      "period": "rolling-24h",
+      "periodAllowanceSats": 100000,
+      "txRecipientCapSats": 50000,
+      "absoluteFeeCapSats": 5000,
+      "feerateCapSatPerV": 10
+    },
+    "spendingPolicyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+    "script": "5120727a54da4e56b3ca02077ffa36ac8a4760f6d9baeac8524f9fa1b2510be8ffb3",
+    "address": "tark1qqcpq7yq3e8hhsx6ml3fud93m7827qggaurtzu3zwsr4a0qs0gf85un62ndyu44negpqwll6x6kg53mq7mvm46kg2f8elgdj2y973lanmnp33y",
+    "boarding": {
+      "schema": "arkade-vault/board-v1",
+      "program": "vault-board-v1",
+      "template": "vault-board-v1-boarding-vault-and-operator",
+      "network": "mutinynet",
+      "boardingPub": "0256b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967",
+      "recoveryPhonePub": "02989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
+      "vaultBoardCosignerPub": "0232790a431a323ad797ff7990261d6ef47b97fe26b9e11c8339f3541f13955cbb",
+      "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+      "exitDelay": 604672,
+      "exitDelayUnit": "seconds",
+      "script": "51201da958d4500f881c990de476eac4c819d728bc07238a777d518b9d24f730ea56",
+      "address": "tb1prk5434zsp7ypexgdu3mw43xgr8tj30q8yw98wl233wwjfaesaftqmafmk2"
+    }
+  },
+  "hash": "5cac63de9b68d34406a3c0dc67dc9a268f76a0c964f3ed8440f28ab7f3ae2ef8"
+}

@@ -250,7 +250,7 @@ func (s *Service) createConnectorTenantVault(vaultID string, tokenHash []byte, r
 	if err != nil || storedConnector == nil || !bytes.Equal(storedConnector.IntegrityMAC, sealed.IntegrityMAC) {
 		return fmt.Errorf("connector enrollment readback failed")
 	}
-	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv, boardSnap)
+	s.publishEnrollmentAt(vaultID, descriptor.ID, parsed.phone, sv, descriptor.ProtectionTier, boardSnap)
 	return nil
 }
 

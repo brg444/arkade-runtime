@@ -14,6 +14,7 @@ const (
 	ProfileID = "arkade-vault-v1"
 	ModuleID  = "arkade-vault-v1"
 
+	LedgerSavingsProgram        = "phone-ledger-guardian-savings-v1"
 	SavingsRecoveryProgram      = "savings-recovery-v1"
 	SavingsConnectorProgram     = "savings-connector-v1"
 	SavingsConnectorDualProgram = "savings-connector-dual-v2"
@@ -29,6 +30,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 			ID: ModuleID,
 			Programs: []string{
 				SavingsRecoveryProgram,
+				LedgerSavingsProgram,
 				SavingsConnectorProgram,
 				SavingsConnectorDualProgram,
 				program.VaultBoardV1,
@@ -40,6 +42,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"allowance-store",
 				"vtxo-operation-store",
 				"recovery-operation-store",
+				"ledger-savings-store",
 				"map-store",
 				"vault-board-store",
 				"connector-store",
@@ -49,6 +52,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 			KeyScopes: []string{
 				"enrollment-derivation",
 				"savings-recovery-authorization",
+				"ledger-savings-recovery-authorization",
 				"savings-connector-authorization",
 				"vtxo-transaction-authorization",
 				"vtxo-checkpoint-authorization",
@@ -63,6 +67,13 @@ func Definition() arkaderuntime.ProfileDefinition {
 
 func routes() []arkaderuntime.Route {
 	return []arkaderuntime.Route{
+		{Method: http.MethodPost, Path: "/v1/lnurl/challenge"},
+		{Method: http.MethodOptions, Path: "/v1/lnurl/challenge"},
+		{Method: http.MethodPost, Path: "/v1/lnurl/register"},
+		{Method: http.MethodOptions, Path: "/v1/lnurl/register"},
+		{Method: http.MethodPost, Path: "/v1/lnurl/revoke"},
+		{Method: http.MethodOptions, Path: "/v1/lnurl/revoke"},
+
 		{Method: http.MethodGet, Path: "/v1/vtxo/savings-setup/info"},
 		{Method: http.MethodGet, Path: "/v1/vtxo/bitcoin/info"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/info"},

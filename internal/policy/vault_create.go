@@ -23,7 +23,8 @@ type CreateVaultInput struct {
 	// Connector, when set, stages the sealed hardware origin row in the same
 	// transaction. A connector credential without its origin row (or vice
 	// versa) never commits. Nil for legacy vaults.
-	Connector *ConnectorEnrollment
+	Connector     *ConnectorEnrollment
+	LedgerSavings *LedgerSavingsEnrollment
 }
 
 // CreateVault inserts vault, credential, and envelope and consumes the invite
@@ -84,6 +85,16 @@ func (l *Ledger) createVault(in CreateVaultInput, board *VaultBoardEnrollment) e
 		if err := putConnectorEnrollmentTx(tx, *in.Connector); err != nil {
 			return fmt.Errorf("create vault connector: %w", err)
 		}
+	}
+	if in.LedgerSavings != nil {
+		if in.LedgerSavings.VaultID != in.Record.VaultID || in.Record.TemplateVersion != "phone-ledger-guardian-savings-v1" || in.Connector != nil {
+			return fmt.Errorf("Ledger Savings enrollment identity mismatch")
+		}
+		if err := putLedgerSavingsEnrollmentTx(tx, *in.LedgerSavings); err != nil {
+			return err
+		}
+	} else if in.Record.TemplateVersion == "phone-ledger-guardian-savings-v1" {
+		return fmt.Errorf("Ledger Savings enrollment required")
 	}
 	res, err := tx.Exec(`
 UPDATE invite SET consumed_vault_id = ?

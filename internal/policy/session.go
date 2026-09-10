@@ -38,8 +38,9 @@ const (
 	ReplayResign ReplayAction = "resign"
 )
 
-// ErrRecoveryBusy rejects a pending retry whose exact transition sighash does
-// not match the write-ahead session. An identical retry may safely re-sign.
+// ErrRecoveryBusy rejects a conflicting pending retry or a signing completion
+// whose sighash no longer matches the current reservation. An identical pending
+// retry may safely re-sign.
 var ErrRecoveryBusy = errors.New("recovery session already in progress")
 
 func requireSessionPurpose(purpose string) error {
@@ -105,7 +106,8 @@ func verifySession(rec *RecoverySession, integrityKey []byte) error {
 	return fmt.Errorf("recovery session MAC mismatch")
 }
 
-// DecideReplay matches the wallet oracle: same dest may fee-bump; second dest or input set is refused.
+// DecideReplay permits an unsigned replacement for the same destination, while
+// signed completions must match the reserved sighash and exact retries replay.
 func DecideReplay(existing *RecoverySession, next RecoverySession) (ReplayAction, error) {
 	if err := requireSessionPurpose(next.Purpose); err != nil {
 		return "", err
@@ -132,6 +134,12 @@ func DecideReplay(existing *RecoverySession, next RecoverySession) (ReplayAction
 	}
 	if next.LastSighash != "" && existing.LastSighash == next.LastSighash && len(existing.Signature) > 0 {
 		return ReplayReplay, nil
+	}
+	// A signing completion may only finalize the currently reserved sighash.
+	// A late completion of an earlier attempt cannot replace a newer signed
+	// transaction. New candidates enter through the unsigned reservation step.
+	if len(next.Signature) != 0 {
+		return "", ErrRecoveryBusy
 	}
 	return ReplayResign, nil
 }
@@ -202,11 +210,14 @@ func (l *Ledger) ApplyRecoveryReplay(next RecoverySession) (ReplayAction, *Recov
 	}
 	if existing != nil {
 		next.CreatedAt = existing.CreatedAt
-		if next.Signature == nil {
-			next.Signature = existing.Signature
-		}
 		if next.LastSighash == "" {
 			next.LastSighash = existing.LastSighash
+		}
+		// A stored PSBT belongs only to its own sighash. A replacement must
+		// remain unsigned until that exact candidate has been signed; carrying
+		// the old PSBT forward makes a retry replay the wrong transaction.
+		if next.Signature == nil && next.LastSighash == existing.LastSighash {
+			next.Signature = existing.Signature
 		}
 	}
 	if err := l.PutRecoverySession(next); err != nil {

@@ -62,10 +62,18 @@ func (s *Service) registerVaultBoard(ctx context.Context, req vaultBoardRegister
 	if _, err := s.requireVaultBoardFee(ctx, ctxState.record, operation.ValueSats, verified.ReceiverSats, operation.ReceiverScript); err != nil {
 		return vaultBoardRegisterResponse{}, err
 	}
+	prior, err := s.Stores.VaultBoard.GetCurrentVaultBoardAttempt(ctx, operation.OperationID)
+	if err != nil {
+		return vaultBoardRegisterResponse{}, err
+	}
+	conflictChecks, err := s.requireVaultBoardConflictChecks(ctx, runtime, prior, ctxState.chain)
+	if err != nil {
+		return vaultBoardRegisterResponse{}, err
+	}
 	storedOperation, auth, _, err := s.Stores.VaultBoard.BeginVaultBoardAttempt(ctx, operation, policy.VaultBoardRegisterRequest{
 		RequestDigest: verified.RequestDigest, TreeSessionPub: verified.TreeSession,
 		ReceiverSats: verified.ReceiverSats, FeeSats: verified.FeeSats, ExpireAt: verified.ExpireAt,
-	}, vaultBoardChainPolicy(ctxState.chain))
+	}, conflictChecks)
 	if err != nil {
 		return vaultBoardRegisterResponse{}, err
 	}
@@ -103,13 +111,17 @@ func (s *Service) registerVaultBoard(ctx context.Context, req vaultBoardRegister
 	if err != nil {
 		return vaultBoardRegisterResponse{Status: vaultBoardDefinitelyNotSubmitted}, nil
 	}
+	conflictChecks, err = s.requireVaultBoardConflictChecks(ctx, runtime, prior, chain)
+	if err != nil {
+		return vaultBoardRegisterResponse{}, err
+	}
 	if claims.RegisterExpireAt-s.vtxoNow().Unix() < int64(vaultBoardDispatchMargin/time.Second) {
 		return vaultBoardRegisterResponse{Status: vaultBoardDefinitelyNotSubmitted}, nil
 	}
 	if _, created, err := s.Stores.VaultBoard.AppendVaultBoardDispatch(ctx, policy.VaultBoardDispatch{
 		OperationID: auth.OperationID, Attempt: auth.Attempt, Phase: policy.VaultBoardPhaseRegister,
 		RequestDigest: bytes.Clone(auth.RequestDigest),
-	}, vaultBoardChainPolicy(chain)); err != nil {
+	}, conflictChecks); err != nil {
 		return vaultBoardRegisterResponse{Status: vaultBoardDefinitelyNotSubmitted}, nil
 	} else if !created {
 		return vaultBoardRegisterResponse{Status: vaultBoardRegisterAmbiguous}, nil
@@ -239,10 +251,14 @@ func (s *Service) releaseVaultBoard(ctx context.Context, req vaultBoardDeletePha
 	if err != nil {
 		return vaultBoardReleaseAmbiguous, nil
 	}
+	conflictChecks, err := s.requireVaultBoardConflictChecks(ctx, runtime, snapshot, chain)
+	if err != nil {
+		return "", err
+	}
 	if claims.DeleteExpireAt-s.vtxoNow().Unix() < int64(vaultBoardDispatchMargin/time.Second) {
 		return "", fmt.Errorf("vault-board-v1 release proof expires too soon")
 	}
-	auth, _, created, err := s.Stores.VaultBoard.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, vaultBoardChainPolicy(chain))
+	auth, _, created, err := s.Stores.VaultBoard.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, conflictChecks)
 	if err != nil || !created {
 		return vaultBoardReleaseAmbiguous, nil
 	}
@@ -314,6 +330,13 @@ func (s *Service) submitVaultBoardCommitment(ctx context.Context, req vaultBoard
 	if snapshot.FinalDispatch != nil {
 		return vaultBoardCommitmentAmbiguous, nil
 	}
+	operator, err := runtime.operatorDial(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err := operator.requireUnendedCommitment(ctx, verified.CommitmentTxid); err != nil {
+		return "", err
+	}
 	keyContext, err := newVaultBoardKeyContext(ctxState.vaultID, s.runtimeConfig().Network, ctxState.boardTree.OperatorPub.SerializeCompressed())
 	if err != nil {
 		return "", err
@@ -338,11 +361,16 @@ func (s *Service) submitVaultBoardCommitment(ctx context.Context, req vaultBoard
 	if err != nil || chain.Spent || requireSameVaultBoardChainFacts(operation, chain, operation.ReceiverScript) != nil || requireVaultBoardMTP(chain, s.boardExitDelay()) != nil {
 		return vaultBoardCommitmentAmbiguous, nil
 	}
-	operator, err := runtime.operatorDial(ctx)
+	conflictChecks, err := s.requireVaultBoardConflictChecks(ctx, runtime, snapshot, chain)
 	if err != nil {
-		return vaultBoardCommitmentAmbiguous, nil
+		return "", err
 	}
-	auth, _, created, err := s.Stores.VaultBoard.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, vaultBoardChainPolicy(chain))
+	// Signing and chain checks may outlast the batch; reject a known-ended
+	// batch again at the last point before final authority becomes durable.
+	if err := operator.requireUnendedCommitment(ctx, verified.CommitmentTxid); err != nil {
+		return "", err
+	}
+	auth, _, created, err := s.Stores.VaultBoard.AppendVaultBoardAuthorizationAndDispatch(ctx, authRequest, conflictChecks)
 	if err != nil || !created {
 		return vaultBoardCommitmentAmbiguous, nil
 	}

@@ -56,13 +56,18 @@ func (c *vaultBoardTestChain) revalidateOutpoint(ctx context.Context, prior vaul
 }
 
 type vaultBoardTestOperator struct {
-	registerErr        error
-	deleteErr          error
-	finalErr           error
-	registers          int
-	deletes            int
-	finals             int
-	beforeDeleteReturn func()
+	commitmentStatusErr error
+	registerErr         error
+	deleteErr           error
+	finalErr            error
+	registers           int
+	deletes             int
+	finals              int
+	beforeDeleteReturn  func()
+}
+
+func (o *vaultBoardTestOperator) requireUnendedCommitment(context.Context, string) error {
+	return o.commitmentStatusErr
 }
 
 func (o *vaultBoardTestOperator) registerIntent(context.Context, string, string) (string, error) {
@@ -916,6 +921,9 @@ func TestVaultBoardServiceRegistersAndFinalizesOnEachNetwork(t *testing.T) {
 						finals++
 						return jsonResponse(200, `{}`), nil
 					default:
+						if strings.HasPrefix(req.URL.Path, "/v1/indexer/commitmentTx/") {
+							return jsonResponse(200, `{"endedAt":"0"}`), nil
+						}
 						t.Fatalf("unexpected request: %s", req.URL)
 						return nil, nil
 					}

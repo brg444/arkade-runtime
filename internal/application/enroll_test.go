@@ -760,8 +760,8 @@ func TestProposeMintsSavingsWithoutRecovery(t *testing.T) {
 
 func TestCredentialCannotOperateAnotherVault(t *testing.T) {
 	svc := &Service{}
-	svc.publishEnrollmentAt("vault-a", []byte("cred-a"), nil, nil)
-	svc.publishEnrollmentAt("vault-b", []byte("cred-b"), nil, nil)
+	svc.publishEnrollmentAt("vault-a", []byte("cred-a"), nil, nil, "standard")
+	svc.publishEnrollmentAt("vault-b", []byte("cred-b"), nil, nil, "standard")
 	if err := svc.rejectCrossVaultCredential("vault-b", []byte("cred-a")); err == nil {
 		t.Fatal("credential A operated vault B")
 	}

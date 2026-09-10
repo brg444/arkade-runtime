@@ -318,6 +318,20 @@ func economicOutflowCount(q queryContext) (uint64, error) {
 	if delegationTables == 2 {
 		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM light_delegation_operation) + (SELECT COUNT(*) FROM light_delegation_event)`
 	}
+	var ledgerSavingsTable int
+	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ledger_savings_recovery_event'`).Scan(&ledgerSavingsTable); err != nil {
+		return 0, err
+	}
+	if ledgerSavingsTable == 1 {
+		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM ledger_savings_recovery_event)`
+	}
+	var conflictTable int
+	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vault_board_conflict'`).Scan(&conflictTable); err != nil {
+		return 0, err
+	}
+	if conflictTable == 1 {
+		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM vault_board_conflict)`
+	}
 	if err := q.QueryRowContext(context.Background(), query).Scan(&n); err != nil {
 		return 0, err
 	}

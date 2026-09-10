@@ -6,6 +6,19 @@
     "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
     "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
   ],
+  "databaseSchemaVersion": 11,
+  "enrollmentProfiles": {
+    "vaulted-spending-v1": {
+      "schema": "arkade-vault/spending-enrollment-v1",
+      "protectionTier": "light",
+      "spending": "vault-policy-v1",
+      "boarding": "vault-board-v1",
+      "exitMode": "device",
+      "hardwareKey": "forbidden",
+      "recoveryKey": "forbidden",
+      "savings": "watch-only"
+    }
+  },
   "programs": {
     "savings-recovery-v1": {
       "status": "live",
@@ -69,6 +82,65 @@
       "recovery": "savings-recovery-v1",
       "trust": "The online cosigners enforce the enrolled signer approvals and transaction policy. Phone and both online signing keys together can bypass that policy."
     },
+    "phone-ledger-guardian-savings-v1": {
+      "status": "rc",
+      "enrollable": true,
+      "admissionCapability": "ledgerSavingsCapability/v1",
+      "admissionDefault": false,
+      "schema": "arkade-vault/ledger-savings-enrollment-v1",
+      "template": "phone-ledger-guardian-savings-v1",
+      "policy": "vault-spending-policy-v1",
+      "normalSigners": [
+        "phone",
+        "hardware"
+      ],
+      "normalSighash": "DEFAULT",
+      "normalOutputOrder": [
+        "recipient",
+        "optional-savings-change"
+      ],
+      "anchorSats": 0,
+      "reserveSats": 0,
+      "recoverySigners": [
+        "claimant",
+        "guardian"
+      ],
+      "recoveryInputCount": 1,
+      "recoveryOutputCount": 1,
+      "csv": {
+        "hardware": 6,
+        "phone": 144,
+        "recovery": 288
+      },
+      "csvBegins": "pending-confirmation",
+      "spendingEmergency": {
+        "program": "vault-policy-v1",
+        "newHardwareAccountBranch": [
+          12,
+          0
+        ],
+        "newRecoveryAccountBranch": [
+          12,
+          0
+        ],
+        "standard": [
+          "phone",
+          "hardware"
+        ],
+        "advanced": [
+          "hardware",
+          "recovery"
+        ],
+        "signer": "offline-seed-recovery"
+      },
+      "formats": {
+        "runtimeSchema": 9,
+        "recoveryBinding": 6,
+        "recoveryKit": 4,
+        "recoveryHeader": 2
+      },
+      "trust": "The Guardian cannot spend alone. A compromised claimant key and Guardian key together can bypass the recovery destination and delay."
+    },
     "vault-policy-v1": {
       "status": "listed",
       "module": "vtxo",
@@ -76,6 +148,7 @@
       "template": "vault-policy-v1-collaborative-3key",
       "policy": "vault-spending-policy-v1",
       "protectionTiers": {
+        "light": { "recoveryKey": "forbidden", "hardwareKey": "forbidden", "exitMode": "device" },
         "standard": { "recoveryKey": "forbidden" },
         "advanced": { "recoveryKey": "required" }
       },
@@ -116,6 +189,8 @@
         "arkdMinimum": "2048",
         "bip68SecondsMod": "512",
         "reason": "Product-chosen BIP68 seconds (9*512). Meets arkd Validate (CSV >= GetInfo.unilateralExitDelay 2048) and the 144-block floor at Mutinynet ~30s/block (4320s). Not the live 2048s hatch.",
+        "device": "enrolled-device-after-exitDelay",
+        "defaultMode": "hardware",
         "twoGuardian": "device-and-hardware-after-exitDelay",
         "threeGuardian": "hardware-and-recovery-after-exitDelay"
       },
@@ -154,6 +229,9 @@
     "recoveryBinding": "arkade-vault/recovery-binding/v4",
     "connectorRecoveryBinding": "arkade-vault/recovery-binding/v5",
     "passkeyProof": "arkade-2fa-vault/passkey-proof/v1",
+    "ledgerSavings": "vaulted/ledger-guardian-savings-v1",
+    "ledgerRecoveryBinding": "arkade-vault/recovery-binding/v6",
+    "ledgerPhoneSeedEncryption": "vaulted-ledger-savings/phone-seed-encryption/v1",
     "vtxoReserve": "arkade-vault/vtxo-reserve/v1"
   },
   "formats": { "recoveryKit": 3, "mapBackup": 3, "connectorEnrollmentKit": 1 }

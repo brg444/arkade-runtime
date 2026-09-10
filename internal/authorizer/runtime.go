@@ -37,6 +37,8 @@ import (
 // VaultCosigner key and each operator-provisioned enrollment token are file-backed secrets; they
 // cannot be supplied through environment text or a network signer.
 type Config struct {
+	LNURLOrigin            string
+	LNURLTokenFile         string
 	Deployment             deployment.Config
 	DatabasePath           string
 	PolicySequencePath     string
@@ -44,6 +46,8 @@ type Config struct {
 	EnrollmentTokenFile    string
 	EnrollmentWindow       time.Duration
 	LightDelegationEnabled bool
+	LedgerSavingsEnabled   bool
+	LightOnlyEnrollment    bool
 	LightEnabled           bool // explicit opt-in until Light lifecycle qualification passes
 	OpenEnrollment         bool // false preserves invite-only admission
 	StorageIsolation       string
@@ -255,11 +259,18 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
+	registrar, err := lnurlRegistrar(cfg.LNURLOrigin, cfg.LNURLTokenFile)
+	if err != nil {
+		return nil, err
+	}
 	deps := application.Deps{
+		LNURLRegistrar:         registrar,
 		Stores:                 stores,
 		Deployment:             cfg.Deployment,
 		OpenEnrollment:         cfg.OpenEnrollment,
+		LightOnlyEnrollment:    cfg.LightOnlyEnrollment,
 		LightEnabled:           cfg.LightEnabled,
+		LedgerSavingsEnabled:   cfg.LedgerSavingsEnabled,
 		LightDelegationEnabled: cfg.LightDelegationEnabled,
 		IntegrityKey:           credentialIntegrityKey,
 		Keys:                   keys,

@@ -24,6 +24,11 @@ type enrollmentDerivation interface {
 	vaultCosignerPublic(string) (*btcec.PublicKey, error)
 }
 
+type ledgerSavingsAuthorizer interface {
+	guardianPublic(string, string) (*btcec.PublicKey, error)
+	authorizeTransition(context.Context, ledgerSavingsTransitionAuthorization) (string, error)
+}
+
 type savingsRecoveryAuthorizer interface {
 	authorizeSavingsRecovery(context.Context, savingsRecoveryAuthorization) (string, error)
 }
@@ -66,6 +71,7 @@ type keyLifecycle interface {
 // complete set, but cannot obtain a raw or derived scalar or a generic signer.
 type KeyCapabilities struct {
 	enrollment          enrollmentDerivation
+	ledgerSavings       ledgerSavingsAuthorizer
 	savingsRecovery     savingsRecoveryAuthorizer
 	connectorWithdrawal connectorWithdrawalAuthorizer
 	vtxoTransaction     vtxoTransactionAuthorizer
@@ -209,6 +215,7 @@ func NewFileBackedKeyCapabilities(master *btcec.PrivateKey, emulator Signer) (Ke
 	connector := &fileBackedConnectorWithdrawalAuthorizer{keys: keys}
 	capabilities := KeyCapabilities{
 		enrollment: keys, savingsRecovery: savings, connectorWithdrawal: connector,
+		ledgerSavings:   &fileBackedLedgerSavingsAuthorizer{keys: keys},
 		vtxoTransaction: keys, vtxoCheckpoint: keys,
 		vaultBoard: keys, lightRenewal: keys, bitcoinPayment: keys, lightDelegation: keys, publicEmulator: public, lifecycle: keys,
 	}

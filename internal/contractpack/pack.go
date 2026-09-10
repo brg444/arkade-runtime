@@ -10,10 +10,10 @@ import (
 
 // SHA256 is the Mutinynet release-pinned digest of contract-pack.json.
 // Updating the pack requires an explicit binary release with a reviewed pin.
-const SHA256 = "a9ccccb8505a2da22fbb0ca39ca9903d839317389c56a95176093099f6f88aa6"
+const SHA256 = "11b343eb38f9e706b72ff693d8f151b39b0b08d52f43ab872f53738ceb2c6c49"
 
 // MainnetSHA256 is the mainnet release-pinned digest of contract-pack.mainnet.json.
-const MainnetSHA256 = "804f535d54afd67eb3bdb8cb0241612222ff76917e8ad1e8dfa3400546b605f0"
+const MainnetSHA256 = "06a4fcf1087eb4c7b159d7fe7fca3822434ae83bde1478a756918ac76e0f9137"
 
 // JSON is the exact Mutinynet contract-pack.json committed at the repo root.
 //

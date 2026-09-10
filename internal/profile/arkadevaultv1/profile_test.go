@@ -17,18 +17,19 @@ func TestArkadeVaultV1IsOneComposedProfile(t *testing.T) {
 		t.Fatalf("profile composition = %+v", definition)
 	}
 	module := definition.Modules[0]
-	if want := []string{SavingsRecoveryProgram, SavingsConnectorProgram, SavingsConnectorDualProgram, program.VaultBoardV1, program.VaultPolicyV1}; !reflect.DeepEqual(module.Programs, want) {
+	if want := []string{SavingsRecoveryProgram, LedgerSavingsProgram, SavingsConnectorProgram, SavingsConnectorDualProgram, program.VaultBoardV1, program.VaultPolicyV1}; !reflect.DeepEqual(module.Programs, want) {
 		t.Fatalf("programs = %v, want %v", module.Programs, want)
 	}
 	if !reflect.DeepEqual(module.Policies, []string{SpendingPolicy}) {
 		t.Fatalf("policies = %v", module.Policies)
 	}
-	if want := []string{"identity-store", "allowance-store", "vtxo-operation-store", "recovery-operation-store", "map-store", "vault-board-store", "connector-store", "recovery-archive-store", "vtxo-delegation-store"}; !reflect.DeepEqual(module.Stores, want) {
+	if want := []string{"identity-store", "allowance-store", "vtxo-operation-store", "recovery-operation-store", "ledger-savings-store", "map-store", "vault-board-store", "connector-store", "recovery-archive-store", "vtxo-delegation-store"}; !reflect.DeepEqual(module.Stores, want) {
 		t.Fatalf("stores = %v, want %v", module.Stores, want)
 	}
 	if want := []string{
 		"enrollment-derivation",
 		"savings-recovery-authorization",
+		"ledger-savings-recovery-authorization",
 		"savings-connector-authorization",
 		"vtxo-transaction-authorization",
 		"vtxo-checkpoint-authorization",

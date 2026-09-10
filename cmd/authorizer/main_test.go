@@ -63,3 +63,19 @@ func TestParseLightDelegationEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestParseLedgerSavingsEnabled(t *testing.T) {
+	for _, value := range []string{"", "false"} {
+		if enabled, err := parseLedgerSavingsEnabled(value); err != nil || enabled {
+			t.Fatal(value, enabled, err)
+		}
+	}
+	if enabled, err := parseLedgerSavingsEnabled("true"); err != nil || !enabled {
+		t.Fatal(enabled, err)
+	}
+	for _, value := range []string{"1", "TRUE", " false ", "yes"} {
+		if _, err := parseLedgerSavingsEnabled(value); err == nil {
+			t.Fatal(value)
+		}
+	}
+}

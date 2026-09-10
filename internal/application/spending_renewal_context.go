@@ -59,7 +59,7 @@ func (b spendingRenewalBinding) digest() (string, error) {
 		}
 		err = light.ValidatePolicy(b.Network, light.Policy(b.SpendingPolicy))
 	case program.VaultPolicyV1:
-		if b.ProtectionTier != "standard" && b.ProtectionTier != "advanced" {
+		if b.ProtectionTier != program.ProtectionTierLight && b.ProtectionTier != "standard" && b.ProtectionTier != "advanced" {
 			return "", fmt.Errorf("renewal Vault tier")
 		}
 		err = program.ValidateSpendingPolicyFor(b.Network, b.SpendingPolicy)
@@ -131,6 +131,9 @@ func (c spendingRenewalContext) validateTree() error {
 			return fmt.Errorf("renewal Vault authority")
 		}
 		p := *c.vaultParams
+		if (b.ProtectionTier == program.ProtectionTierLight) != (p.ExitMode == "device") {
+			return fmt.Errorf("renewal exit mode does not match protection tier")
+		}
 		if p.Network != b.Network || hex.EncodeToString(p.UserPub) != b.OwnerPub || hex.EncodeToString(p.VtxoVaultCosignerPub) != b.CosignerPub || hex.EncodeToString(p.ArkdServerPub) != b.OperatorPub {
 			return fmt.Errorf("renewal Vault parameters")
 		}
@@ -191,14 +194,10 @@ func (s *Service) spendingRenewalContext(vaultID string) (spendingRenewalContext
 		binding.SpendingPolicy = program.SpendingPolicy(d.SpendingPolicy)
 		out.lightDescriptor = &d
 	} else {
-		pins, err := program.PinsFor(binding.Network)
-		if err != nil {
-			return out, err
+		if tree.params == nil {
+			return out, fmt.Errorf("shared Spending parameters unavailable")
 		}
-		p := policy.VaultPolicyV1Params{Network: binding.Network, UserPub: mustDecodeRenewalHex(binding.OwnerPub), VtxoVaultCosignerPub: mustDecodeRenewalHex(binding.CosignerPub), ArkdServerPub: mustDecodeRenewalHex(binding.OperatorPub), DelegatePub: mustDecodeRenewalHex(pins.DelegatePub)[1:], ExitDevicePub: mustDecodeRenewalHex(binding.OwnerPub), ExitHardwarePub: schnorr.SerializePubKey(snapshot.ExternalOwnerWallet)}
-		if snapshot.RecoveryKey != nil {
-			p.ExitRecoveryPub = schnorr.SerializePubKey(snapshot.RecoveryKey)
-		}
+		p := *tree.params
 		out.vaultParams = &p
 	}
 	digest, err := binding.digest()

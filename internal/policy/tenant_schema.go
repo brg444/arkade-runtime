@@ -166,7 +166,7 @@ func requireForeignKeysEnabled(db *sql.DB) error {
 	return nil
 }
 
-func requireForeignKeyCheckClean(db *sql.DB) error {
+func requireForeignKeyCheckClean(db schemaQuerier) error {
 	rows, err := db.Query(`PRAGMA foreign_key_check`)
 	if err != nil {
 		return fmt.Errorf("foreign_key_check: %w", err)

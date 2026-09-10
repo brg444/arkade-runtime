@@ -15,9 +15,15 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
+type LedgerSavingsCapability struct {
+	Version         int    `json:"version"`
+	TemplateVersion string `json:"templateVersion"`
+}
+
 // PublicStatus is the unauthenticated authorizer identity. It is not a
 // tenant descriptor and must not be treated as enrolled.
 type PublicStatus struct {
+	LedgerSavingsCapability    *LedgerSavingsCapability           `json:"ledgerSavingsCapability,omitempty"`
 	ConnectorCapability        *ConnectorCapability               `json:"connectorCapability,omitempty"`
 	SupportedSetups            []string                           `json:"supportedSetups"`
 	Network                    string                             `json:"network"`
@@ -32,6 +38,7 @@ type PublicStatus struct {
 
 // Status is the UI snapshot.
 type Status struct {
+	LedgerSavings             *LedgerSavingsStatus       `json:"ledgerSavings,omitempty"`
 	ConnectorEnrollment       *ConnectorEnrollmentStatus `json:"connectorEnrollment,omitempty"`
 	LightDescriptor           *light.Descriptor          `json:"lightDescriptor,omitempty"`
 	LightDescriptorHash       string                     `json:"lightDescriptorHash,omitempty"`
@@ -122,6 +129,13 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 		TemplateVersion:            publicEnrollTemplate(s),
 		PolicyVersion:              program.PolicyVersion,
 		SpendingPolicyCapabilities: caps,
+	}
+	if !s.LightOnlyEnrollment && s.LedgerSavingsEnabled && s.requireLedgerSavingsEnrollmentEnabled() == nil {
+		st.LedgerSavingsCapability = &LedgerSavingsCapability{Version: 1, TemplateVersion: savings.LedgerNativeTemplate}
+	}
+	if s.LightOnlyEnrollment {
+		st.SupportedSetups = []string{}
+		st.ConnectorCapability = nil
 	}
 	if s.LightEnabled {
 		st.SupportedSetups = append([]string{"light"}, st.SupportedSetups...)
@@ -258,6 +272,13 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		if err != nil {
 			return Status{}, err
 		}
+	}
+	if cred.TemplateVersion == savings.LedgerNativeTemplate {
+		identity, _, loadErr := s.verifiedLedgerSavings(cred)
+		if loadErr != nil {
+			return Status{}, loadErr
+		}
+		st.LedgerSavings = &identity
 	}
 	s.fillVtxoStatus(&st, vaultID, snap)
 	return st, nil

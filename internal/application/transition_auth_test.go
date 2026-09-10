@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/extension"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -26,6 +29,76 @@ type unavailableSigner struct{}
 
 func (unavailableSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
 	return nil, errors.New("signer unavailable")
+}
+
+type delayedFirstRecoverySigner struct {
+	inner   Signer
+	entered chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (s *delayedFirstRecoverySigner) Sign(ctx context.Context, packet *psbt.Packet) (*psbt.Packet, error) {
+	if s.calls.Add(1) == 1 {
+		close(s.entered)
+		select {
+		case <-s.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return s.inner.Sign(ctx, packet)
+}
+
+func TestRecoveryLateSignerCannotOverwriteCompletedReplacement(t *testing.T) {
+	e := newEnv(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	gate := &delayedFirstRecoverySigner{inner: LocalSigner{Priv: e.operator}, entered: make(chan struct{}), release: make(chan struct{})}
+	e.svc.keys = testKeys(t, e.master, gate)
+	var release sync.Once
+	t.Cleanup(func() { release.Do(func() { close(gate.release) }) })
+	base := mustHardwareTransitionPacket(t, e)
+	encode := func(fee int64) string {
+		t.Helper()
+		packet := transitionWithFee(t, base, e.externalOwner, fee)
+		encoded, err := packet.B64Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+	original := TransitionRequest{VaultID: fixture.VaultID, Purpose: "initiate", PSBT: encode(500)}
+	late := make(chan error, 1)
+	go func() {
+		_, err := e.svc.SignTransition(ctx, original)
+		late <- err
+	}()
+	select {
+	case <-gate.entered:
+	case err := <-late:
+		t.Fatalf("original did not reach signer: %v", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	// An identical retry finishes while the first external signing call stalls.
+	if _, err := e.svc.SignTransition(ctx, original); err != nil {
+		t.Fatal(err)
+	}
+	replacement := original
+	replacement.PSBT = encode(1_000)
+	completed, err := e.svc.SignTransition(ctx, replacement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release.Do(func() { close(gate.release) })
+	if err := <-late; err == nil {
+		t.Fatal("late old signing completion was accepted")
+	}
+	replay, err := e.svc.SignTransition(ctx, replacement)
+	if err != nil || !replay.Replay || replay.SignedPSBT != completed.SignedPSBT {
+		t.Fatalf("late signer rolled back the cached replacement: %+v %v", replay, err)
+	}
 }
 
 func TestSignTransitionRequiresClaimantSignature(t *testing.T) {
@@ -183,6 +256,71 @@ func transitionPrevTxID(t *testing.T, encoded string) string {
 		t.Fatal(err)
 	}
 	return packet.UnsignedTx.TxIn[0].PreviousOutPoint.Hash.String()
+}
+
+func TestRecoveryFeeReplacementSurvivesSigningFailureAndRestart(t *testing.T) {
+	e := newEnv(t)
+	base := mustHardwareTransitionPacket(t, e)
+	encode := func(fee int64) string {
+		t.Helper()
+		packet := transitionWithFee(t, base, e.externalOwner, fee)
+		encoded, err := packet.B64Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+	original := TransitionRequest{VaultID: fixture.VaultID, Purpose: "initiate", PSBT: encode(500)}
+	first, err := e.svc.SignTransition(context.Background(), original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := original
+	replacement.PSBT = encode(1_000)
+	e.svc.keys = testKeys(t, e.master, unavailableSigner{})
+	if _, err := e.svc.SignTransition(context.Background(), replacement); err == nil || !strings.Contains(err.Error(), "signer unavailable") {
+		t.Fatalf("replacement did not reach the unavailable signer: %v", err)
+	}
+	if err := e.ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := policy.OpenLedger(e.dbPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	if err := ledger.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
+		t.Fatal(err)
+	}
+	restarted := New(Deps{
+		Stores: testStores(t, ledger), Deployment: e.svc.Deployment,
+		IntegrityKey:     append([]byte(nil), testCredentialIntegrityKey...),
+		Keys:             testKeys(t, e.master, LocalSigner{Priv: e.operator}),
+		VaultCosignerPub: e.master.PubKey(), ArkadeCosignerPub: e.operator.PubKey(),
+		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
+		ArkResolver: e.svc.ArkResolver,
+	})
+	if err := restarted.LoadVaults(); err != nil {
+		t.Fatal(err)
+	}
+	response, err := restarted.SignTransition(context.Background(), replacement)
+	if err != nil {
+		t.Fatalf("resume fee replacement after restart: %v", err)
+	}
+	if response.Replay || response.SignedPSBT == first.SignedPSBT {
+		t.Fatalf("replacement returned the previous signed transaction: %+v", response)
+	}
+	packet, err := parsePSBT(replacement.PSBT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sameUnsignedTransition([]byte(response.SignedPSBT), packet); err != nil {
+		t.Fatal(err)
+	}
+	replay, err := restarted.SignTransition(context.Background(), replacement)
+	if err != nil || !replay.Replay || replay.SignedPSBT != response.SignedPSBT {
+		t.Fatalf("lost replacement response was not replayed exactly: %+v %v", replay, err)
+	}
 }
 
 func hardwareInitiatePSBT(t *testing.T, svc *Service, owner *btcec.PrivateKey) string {

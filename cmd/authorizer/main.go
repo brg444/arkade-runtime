@@ -22,6 +22,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	lightOnlyDefault, err := parseLightEnabled(os.Getenv("VAULT_LIGHT_ONLY_ENROLLMENT"))
+	if err != nil {
+		log.Fatal("VAULT_LIGHT_ONLY_ENROLLMENT must be true or false")
+	}
 	lightEnabledDefault, err := parseLightEnabled(os.Getenv("VAULT_LIGHT_ENABLED"))
 	if err != nil {
 		log.Fatal(err)
@@ -30,7 +34,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	ledgerSavingsDefault, err := parseLedgerSavingsEnabled(os.Getenv("VAULT_LEDGER_SAVINGS_ENABLED"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	var (
+		lightOnlyEnrollment    = flag.Bool("light-only-enrollment", lightOnlyDefault, "temporarily admit only new Light wallets")
+		ledgerSavingsEnabled   = flag.Bool("ledger-savings-enabled", ledgerSavingsDefault, "allow qualified Guardian-only Ledger Savings enrollment")
 		lightDelegationEnabled = flag.Bool("light-delegation-enabled", delegationEnabledDefault, "enable qualified native Light delegated renewal")
 		lightEnabled           = flag.Bool("light-enabled", lightEnabledDefault, "allow new Light wallet enrollment after lifecycle qualification")
 		inviteOnly             = flag.Bool("invite-only", inviteOnlyDefault, "require operator-issued invitations for new enrollment")
@@ -50,13 +60,17 @@ func main() {
 	flag.Parse()
 
 	cfg := authorizer.Config{
+		LNURLOrigin:            os.Getenv("VAULT_LNURL_ORIGIN"),
+		LNURLTokenFile:         os.Getenv("VAULT_LNURL_TOKEN_FILE"),
 		Deployment:             deployment.Config{ClientOrigin: *origin, RPID: *rpID, Network: *network},
 		DatabasePath:           *dbPath,
 		PolicySequencePath:     *sequence,
 		VaultCosignerKeyFile:   *keyFile,
 		EnrollmentTokenFile:    *tokenFile,
 		OpenEnrollment:         !*inviteOnly,
+		LightOnlyEnrollment:    *lightOnlyEnrollment,
 		LightEnabled:           *lightEnabled,
+		LedgerSavingsEnabled:   *ledgerSavingsEnabled,
 		LightDelegationEnabled: *lightDelegationEnabled,
 		StorageIsolation:       *storageIsolation,
 		EdgeRateLimit:          *edgeRateLimit,
@@ -141,5 +155,16 @@ func parseLightDelegationEnabled(value string) (bool, error) {
 		return true, nil
 	default:
 		return false, fmt.Errorf("VAULT_LIGHT_DELEGATION_ENABLED must be true or false")
+	}
+}
+
+func parseLedgerSavingsEnabled(value string) (bool, error) {
+	switch value {
+	case "", "false":
+		return false, nil
+	case "true":
+		return true, nil
+	default:
+		return false, fmt.Errorf("VAULT_LEDGER_SAVINGS_ENABLED must be true or false")
 	}
 }

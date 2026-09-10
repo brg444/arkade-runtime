@@ -1,0 +1,564 @@
+[
+  {
+    "network": "mainnet",
+    "advanced": false,
+    "descriptor": {
+      "schema": "arkade-vault/ledger-savings-enrollment-v1",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "savings": {
+        "context": {
+          "templateVersion": "phone-ledger-guardian-savings-v1",
+          "network": "mainnet",
+          "vaultId": "aabbccddeeff00112233445566778899",
+          "policyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "phone": {
+            "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+            "fingerprint": "2cee93bd",
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
+          },
+          "hardware": {
+            "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+            "fingerprint": "2de67592",
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
+          },
+          "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+          "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+        },
+        "spendingPolicy": {
+          "program": "vault-policy-v1",
+          "schema": "vault-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 20000,
+          "feerateCapSatPerV": 25
+        }
+      },
+      "spendingAuthorities": {
+        "phoneBip340Pub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "externalOwnerWalletPub": "02424728cbae41dbe323998e4325e082fb55e142cd1fd5cf115c3158e1fbfff404",
+        "recoveryKeyPub": "",
+        "vaultCosignerBasePub": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBasePub": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e",
+        "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+        "vtxoVaultCosignerPub": "025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "vtxoDelegatePub": "026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6",
+        "vtxoExitDelay": 605184,
+        "vtxoExitDelayUnit": "seconds",
+        "spendingArkAddress": "ark1qzpq904am6clw3pgqwyh4p02708fy4xs0hcpwt7rwfdttuxsjamec9x7qj59fz794gkf6t043k7yatv9h3ek4meeq2rqpx2kmyf9v3mdxa9feg",
+        "spendingArkScript": "512014de04a8548bc5aa2c9d2df58dbc4ead85bc736aef390286009956d91256476d"
+      },
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "0201a2ced54301903ebadeb841b6aaf90a3078c5b664514496609ec96f33cc00d6",
+        "recoveryPhonePub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "vaultBoardCosignerPub": "024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "51201ff23d3359388e1c8417d6f4dea64c70f5d6f87cb29fe7a03a585686dee00952",
+        "address": "bc1prler6v6e8z8pepqh6m6dafjvwr6ad7ruk2070gp6tptgdhhqp9fq7dfxuv"
+      }
+    },
+    "descriptorHash": "b213a722a8ad84ebedc53156ac91d87313c1992302eece3152c643dbfb303abb",
+    "registration": {
+      "name": "vaulted-ledger-registration",
+      "version": 1,
+      "contextDigest": "b58ad570f05121c4876098eb87cc704889a56860f74c84a4839b1aebc8ba3321",
+      "walletId": "72ad4b697c484bef4fc1875c7b55d8795e973e7c10b680a2f7eea967d10c6b48",
+      "walletHmac": "abababababababababababababababababababababababababababababababab",
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})",
+        "keysInfo": [
+          "xpub661MyMwAqRbcFn5mmX9xM1wXt3YhL3B3pXS8r5CB2ddPZfrfTrB3WgjtiJzfb1Qba3UxuEkkr4xCxxiVhexkwAeZzgB5njJGV3guNeN6soa",
+          "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+          "xpub661MyMwAqRbcGQJaVd1HikeQ2Ky4nF2pt4orTKcLH41GXA6thPMebkfF7gn72gLpddKRpFNfAURnYddWE677KXShA5XFZ5dLdK4Z1XBYHKk"
+        ]
+      },
+      "receiveAddress": "bc1pnktfhaxgh37q8s5ec72y4wp5jzt4ca834f43adxn0ath7268ms5stukz6e",
+      "changeAddress": "bc1pn3t2zncy2vtaln4d3e74h26sm9kah53r4dkup03esq8myufh3y0qaheft0"
+    },
+    "recoveryBinding": "{\"version\":6,\"credentialId\":\"abababababababababababababababababababababababababababababababab\",\"webauthnP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneDirectP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneBip340Pub\":\"02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"externalOwnerWalletPub\":\"02424728cbae41dbe323998e4325e082fb55e142cd1fd5cf115c3158e1fbfff404\",\"vaultCosignerBasePub\":\"03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4\",\"arkadeCosignerBasePub\":\"02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e\",\"arkadeCosignerOrigin\":\"https://operator.example\",\"arkadeCosignerVersion\":\"savings-v1-fixture\",\"clientOrigin\":\"https://vault.example\",\"rpId\":\"vault.example\",\"network\":\"mainnet\",\"vaultId\":\"aabbccddeeff00112233445566778899\",\"templateVersion\":\"phone-ledger-guardian-savings-v1\",\"policyVersion\":\"vault-spending-policy-v1\",\"protectionTier\":\"standard\",\"savingsAddress\":\"bc1pnktfhaxgh37q8s5ec72y4wp5jzt4ca834f43adxn0ath7268ms5stukz6e\",\"savingsScript\":\"51209d969bf4c8bc7c03c299c7944ab83490975c74f1aa6b1eb4d37f577f2b47dc29\",\"vtxoVaultCosignerPub\":\"025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc\",\"vtxoExitDelay\":605184,\"vtxoExitDelayUnit\":\"seconds\",\"spendingArkAddress\":\"ark1qzpq904am6clw3pgqwyh4p02708fy4xs0hcpwt7rwfdttuxsjamec9x7qj59fz794gkf6t043k7yatv9h3ek4meeq2rqpx2kmyf9v3mdxa9feg\",\"spendingArkScript\":\"512014de04a8548bc5aa2c9d2df58dbc4ead85bc736aef390286009956d91256476d\",\"vtxoDelegatePub\":\"026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6\",\"vtxoBoardingActive\":true,\"vtxoBoardingProgram\":\"vault-board-v1\",\"vtxoBoardingAddress\":\"bc1prler6v6e8z8pepqh6m6dafjvwr6ad7ruk2070gp6tptgdhhqp9fq7dfxuv\",\"vtxoBoardingScript\":\"51201ff23d3359388e1c8417d6f4dea64c70f5d6f87cb29fe7a03a585686dee00952\",\"vtxoBoardingExitDelay\":7776256,\"vtxoBoardingExitDelayUnit\":\"seconds\",\"recipientDustSats\":330,\"txRecipientCapSats\":50000,\"periodAllowanceSats\":100000,\"absoluteFeeCapSats\":20000,\"feerateCapSatVb\":25,\"envelopeNonce\":\"d0d3bd654ab2720b30cbb384\",\"envelopeCiphertext\":\"a59eca38d5378e0853539bf91e5e5290073e533a88380dd75acf8cb0bbd5cf94d99dda782e94124b5bb574656fddd651\",\"ledgerSavingsContextDigest\":\"b58ad570f05121c4876098eb87cc704889a56860f74c84a4839b1aebc8ba3321\",\"ledgerSavingsDescriptorHash\":\"b213a722a8ad84ebedc53156ac91d87313c1992302eece3152c643dbfb303abb\",\"ledgerSavingsBackup\":\"{\\\"registration\\\":{\\\"name\\\":\\\"vaulted-ledger-registration\\\",\\\"version\\\":1,\\\"contextDigest\\\":\\\"b58ad570f05121c4876098eb87cc704889a56860f74c84a4839b1aebc8ba3321\\\",\\\"walletId\\\":\\\"72ad4b697c484bef4fc1875c7b55d8795e973e7c10b680a2f7eea967d10c6b48\\\",\\\"walletHmac\\\":\\\"abababababababababababababababababababababababababababababababab\\\",\\\"walletPolicy\\\":{\\\"name\\\":\\\"Vaulted Savings\\\",\\\"descriptorTemplate\\\":\\\"tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})\\\",\\\"keysInfo\\\":[\\\"xpub661MyMwAqRbcFn5mmX9xM1wXt3YhL3B3pXS8r5CB2ddPZfrfTrB3WgjtiJzfb1Qba3UxuEkkr4xCxxiVhexkwAeZzgB5njJGV3guNeN6soa\\\",\\\"[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK\\\",\\\"[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF\\\",\\\"xpub661MyMwAqRbcGQJaVd1HikeQ2Ky4nF2pt4orTKcLH41GXA6thPMebkfF7gn72gLpddKRpFNfAURnYddWE677KXShA5XFZ5dLdK4Z1XBYHKk\\\"]},\\\"receiveAddress\\\":\\\"bc1pnktfhaxgh37q8s5ec72y4wp5jzt4ca834f43adxn0ath7268ms5stukz6e\\\",\\\"changeAddress\\\":\\\"bc1pn3t2zncy2vtaln4d3e74h26sm9kah53r4dkup03esq8myufh3y0qaheft0\\\"},\\\"phoneSeedBackup\\\":{\\\"name\\\":\\\"vaulted-ledger-savings-phone-seed\\\",\\\"version\\\":1,\\\"purpose\\\":\\\"passkey-prf\\\",\\\"contextDigest\\\":\\\"b58ad570f05121c4876098eb87cc704889a56860f74c84a4839b1aebc8ba3321\\\",\\\"phoneOrigin\\\":{\\\"xpub\\\":\\\"xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK\\\",\\\"fingerprint\\\":\\\"2cee93bd\\\",\\\"path\\\":[2147483734,2147483648,2147483648]},\\\"salt\\\":\\\"b6bb3fc22d3f232579a3fe11cafda1b27faa4481e9756c4e051574cdc05ba8c6\\\",\\\"nonce\\\":\\\"094f61feaa7b38c79ea93919\\\",\\\"ciphertext\\\":\\\"dca4400a2b6c0ecb8d1562448930a4eeebdf166782b389de51ac1d6aa5e254cc1f57466e649ea5bf3a98a04e6883bf94\\\"}}\"}",
+    "recoveryBindingDigest": "f8bb375fb1be22c1192e0f29e44f6915a18bb90135e99d96560fd4546a257d7b",
+    "ledgerSavings": {
+      "registration": {
+        "name": "vaulted-ledger-registration",
+        "version": 1,
+        "contextDigest": "b58ad570f05121c4876098eb87cc704889a56860f74c84a4839b1aebc8ba3321",
+        "walletId": "72ad4b697c484bef4fc1875c7b55d8795e973e7c10b680a2f7eea967d10c6b48",
+        "walletHmac": "abababababababababababababababababababababababababababababababab",
+        "walletPolicy": {
+          "name": "Vaulted Savings",
+          "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})",
+          "keysInfo": [
+            "xpub661MyMwAqRbcFn5mmX9xM1wXt3YhL3B3pXS8r5CB2ddPZfrfTrB3WgjtiJzfb1Qba3UxuEkkr4xCxxiVhexkwAeZzgB5njJGV3guNeN6soa",
+            "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+            "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+            "xpub661MyMwAqRbcGQJaVd1HikeQ2Ky4nF2pt4orTKcLH41GXA6thPMebkfF7gn72gLpddKRpFNfAURnYddWE677KXShA5XFZ5dLdK4Z1XBYHKk"
+          ]
+        },
+        "receiveAddress": "bc1pnktfhaxgh37q8s5ec72y4wp5jzt4ca834f43adxn0ath7268ms5stukz6e",
+        "changeAddress": "bc1pn3t2zncy2vtaln4d3e74h26sm9kah53r4dkup03esq8myufh3y0qaheft0"
+      },
+      "phoneSeedBackup": {
+        "name": "vaulted-ledger-savings-phone-seed",
+        "version": 1,
+        "purpose": "passkey-prf",
+        "contextDigest": "b58ad570f05121c4876098eb87cc704889a56860f74c84a4839b1aebc8ba3321",
+        "phoneOrigin": {
+          "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "fingerprint": "2cee93bd",
+          "path": [
+            2147483734,
+            2147483648,
+            2147483648
+          ]
+        },
+        "salt": "b6bb3fc22d3f232579a3fe11cafda1b27faa4481e9756c4e051574cdc05ba8c6",
+        "nonce": "094f61feaa7b38c79ea93919",
+        "ciphertext": "dca4400a2b6c0ecb8d1562448930a4eeebdf166782b389de51ac1d6aa5e254cc1f57466e649ea5bf3a98a04e6883bf94"
+      }
+    }
+  },
+  {
+    "network": "mainnet",
+    "advanced": true,
+    "descriptor": {
+      "schema": "arkade-vault/ledger-savings-enrollment-v1",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "savings": {
+        "context": {
+          "templateVersion": "phone-ledger-guardian-savings-v1",
+          "network": "mainnet",
+          "vaultId": "aabbccddeeff00112233445566778899",
+          "policyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+          "phone": {
+            "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+            "fingerprint": "2cee93bd",
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
+          },
+          "hardware": {
+            "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+            "fingerprint": "2de67592",
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
+          },
+          "recovery": {
+            "xpub": "xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2",
+            "fingerprint": "8bc48cf1",
+            "path": [
+              2147483734,
+              2147483648,
+              2147483648
+            ]
+          },
+          "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+          "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+        },
+        "spendingPolicy": {
+          "program": "vault-policy-v1",
+          "schema": "vault-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 20000,
+          "feerateCapSatPerV": 25
+        }
+      },
+      "spendingAuthorities": {
+        "phoneBip340Pub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "externalOwnerWalletPub": "02424728cbae41dbe323998e4325e082fb55e142cd1fd5cf115c3158e1fbfff404",
+        "recoveryKeyPub": "02a6671f9c54df99e1152cea6578eac0cb84f076644d748b4c0f1a9bfe4225672a",
+        "vaultCosignerBasePub": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBasePub": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e",
+        "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+        "vtxoVaultCosignerPub": "025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "vtxoDelegatePub": "026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6",
+        "vtxoExitDelay": 605184,
+        "vtxoExitDelayUnit": "seconds",
+        "spendingArkAddress": "ark1qzpq904am6clw3pgqwyh4p02708fy4xs0hcpwt7rwfdttuxsjamee55p85k89vnmkgexg58ffvas4s6qdaptc792cn2qq38rxj5vxd4d3x5w2f",
+        "spendingArkScript": "5120d2813d2c72b27bb2326450e94b3b0ac3406f42bc78aac4d40044e334a8c336ad"
+      },
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mainnet",
+        "boardingPub": "0201a2ced54301903ebadeb841b6aaf90a3078c5b664514496609ec96f33cc00d6",
+        "recoveryPhonePub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "vaultBoardCosignerPub": "024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97",
+        "operatorPub": "038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c",
+        "exitDelay": 7776256,
+        "exitDelayUnit": "seconds",
+        "script": "51201ff23d3359388e1c8417d6f4dea64c70f5d6f87cb29fe7a03a585686dee00952",
+        "address": "bc1prler6v6e8z8pepqh6m6dafjvwr6ad7ruk2070gp6tptgdhhqp9fq7dfxuv"
+      }
+    },
+    "descriptorHash": "0cb477fe8f34b9ec74821529ade9607ec98031b82c7de128cc242abc8b83d948",
+    "registration": {
+      "name": "vaulted-ledger-registration",
+      "version": 1,
+      "contextDigest": "2eb4d8903240741974439dd9eea43dd93ad46ff87487fb358a534221708ed5b6",
+      "walletId": "f2a90ae2a6d106d19ed5496c190fad3b1d7aaf5bdbb99e264fc10b0dbf812b3d",
+      "walletHmac": "abababababababababababababababababababababababababababababababab",
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})",
+        "keysInfo": [
+          "xpub661MyMwAqRbcFLtKrQ384zFhXUWE4g6tWtE6pUWfzycXX7sRYE1uR9FxcUbqiKkS6swqHNR8hau949mZcRGRx6Ty1JVwwgy6rtwFMtBzG6V",
+          "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+          "xpub661MyMwAqRbcGWe3iuLcMPbEL7bEwFVmj4NmovJoKoUdeqHJsSRFGpS7yq8yxFnkLoSeZWSJQyiauvSB7Mz4JMBN96DT4qphsT6F7y5kr5J",
+          "[8bc48cf1/86'/0'/0']xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2"
+        ]
+      },
+      "receiveAddress": "bc1prc7ks4ra9t7cd60eplr0mr4y25r5sdnp308hueet44m3tn89s6hscf3a42",
+      "changeAddress": "bc1peluuv0kskg5gg0urvlmy7uzsq3muzjnl89c0h074z9072zzzpcpscw69uh"
+    },
+    "recoveryBinding": "{\"version\":6,\"credentialId\":\"abababababababababababababababababababababababababababababababab\",\"webauthnP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneDirectP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneBip340Pub\":\"02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"externalOwnerWalletPub\":\"02424728cbae41dbe323998e4325e082fb55e142cd1fd5cf115c3158e1fbfff404\",\"vaultCosignerBasePub\":\"03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4\",\"arkadeCosignerBasePub\":\"02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e\",\"arkadeCosignerOrigin\":\"https://operator.example\",\"arkadeCosignerVersion\":\"savings-v1-fixture\",\"clientOrigin\":\"https://vault.example\",\"rpId\":\"vault.example\",\"network\":\"mainnet\",\"vaultId\":\"aabbccddeeff00112233445566778899\",\"templateVersion\":\"phone-ledger-guardian-savings-v1\",\"policyVersion\":\"vault-spending-policy-v1\",\"protectionTier\":\"advanced\",\"savingsAddress\":\"bc1prc7ks4ra9t7cd60eplr0mr4y25r5sdnp308hueet44m3tn89s6hscf3a42\",\"savingsScript\":\"51201e3d68547d2afd86e9f90fc6fd8ea455074836618bcf7e672bad7715cce586af\",\"vtxoVaultCosignerPub\":\"025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc\",\"vtxoExitDelay\":605184,\"vtxoExitDelayUnit\":\"seconds\",\"spendingArkAddress\":\"ark1qzpq904am6clw3pgqwyh4p02708fy4xs0hcpwt7rwfdttuxsjamee55p85k89vnmkgexg58ffvas4s6qdaptc792cn2qq38rxj5vxd4d3x5w2f\",\"spendingArkScript\":\"5120d2813d2c72b27bb2326450e94b3b0ac3406f42bc78aac4d40044e334a8c336ad\",\"vtxoDelegatePub\":\"026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6\",\"vtxoBoardingActive\":true,\"vtxoBoardingProgram\":\"vault-board-v1\",\"vtxoBoardingAddress\":\"bc1prler6v6e8z8pepqh6m6dafjvwr6ad7ruk2070gp6tptgdhhqp9fq7dfxuv\",\"vtxoBoardingScript\":\"51201ff23d3359388e1c8417d6f4dea64c70f5d6f87cb29fe7a03a585686dee00952\",\"vtxoBoardingExitDelay\":7776256,\"vtxoBoardingExitDelayUnit\":\"seconds\",\"recipientDustSats\":330,\"txRecipientCapSats\":50000,\"periodAllowanceSats\":100000,\"absoluteFeeCapSats\":20000,\"feerateCapSatVb\":25,\"envelopeNonce\":\"df9427a88b4c320b13b75453\",\"envelopeCiphertext\":\"5cd1c8c073e09fb3d2b38eee8769635ddbc98e8a1e6c8388b862858401b65a2de346e862851ed5417bcf15f0f403c29b\",\"ledgerSavingsContextDigest\":\"2eb4d8903240741974439dd9eea43dd93ad46ff87487fb358a534221708ed5b6\",\"ledgerSavingsDescriptorHash\":\"0cb477fe8f34b9ec74821529ade9607ec98031b82c7de128cc242abc8b83d948\",\"ledgerSavingsBackup\":\"{\\\"registration\\\":{\\\"name\\\":\\\"vaulted-ledger-registration\\\",\\\"version\\\":1,\\\"contextDigest\\\":\\\"2eb4d8903240741974439dd9eea43dd93ad46ff87487fb358a534221708ed5b6\\\",\\\"walletId\\\":\\\"f2a90ae2a6d106d19ed5496c190fad3b1d7aaf5bdbb99e264fc10b0dbf812b3d\\\",\\\"walletHmac\\\":\\\"abababababababababababababababababababababababababababababababab\\\",\\\"walletPolicy\\\":{\\\"name\\\":\\\"Vaulted Savings\\\",\\\"descriptorTemplate\\\":\\\"tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})\\\",\\\"keysInfo\\\":[\\\"xpub661MyMwAqRbcFLtKrQ384zFhXUWE4g6tWtE6pUWfzycXX7sRYE1uR9FxcUbqiKkS6swqHNR8hau949mZcRGRx6Ty1JVwwgy6rtwFMtBzG6V\\\",\\\"[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK\\\",\\\"[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF\\\",\\\"xpub661MyMwAqRbcGWe3iuLcMPbEL7bEwFVmj4NmovJoKoUdeqHJsSRFGpS7yq8yxFnkLoSeZWSJQyiauvSB7Mz4JMBN96DT4qphsT6F7y5kr5J\\\",\\\"[8bc48cf1/86'/0'/0']xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2\\\"]},\\\"receiveAddress\\\":\\\"bc1prc7ks4ra9t7cd60eplr0mr4y25r5sdnp308hueet44m3tn89s6hscf3a42\\\",\\\"changeAddress\\\":\\\"bc1peluuv0kskg5gg0urvlmy7uzsq3muzjnl89c0h074z9072zzzpcpscw69uh\\\"},\\\"phoneSeedBackup\\\":{\\\"name\\\":\\\"vaulted-ledger-savings-phone-seed\\\",\\\"version\\\":1,\\\"purpose\\\":\\\"passkey-prf\\\",\\\"contextDigest\\\":\\\"2eb4d8903240741974439dd9eea43dd93ad46ff87487fb358a534221708ed5b6\\\",\\\"phoneOrigin\\\":{\\\"xpub\\\":\\\"xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK\\\",\\\"fingerprint\\\":\\\"2cee93bd\\\",\\\"path\\\":[2147483734,2147483648,2147483648]},\\\"salt\\\":\\\"6c8175dc5120c2b6393b5b5967c6c0dca47cf9981635297a4ba0f226d1ca023e\\\",\\\"nonce\\\":\\\"9ff9789b087591320e4e9cd0\\\",\\\"ciphertext\\\":\\\"f2f7f4f0bf1d1ff566fcc92d2ae57d028561a8a172d421c79c32289d80067c6466308ce544123cf773720395283c32d8\\\"}}\"}",
+    "recoveryBindingDigest": "37b197c5b57de0e042f617a4ad765b2bc0046783eb77ef06fa8a1149a8a89899",
+    "ledgerSavings": {
+      "registration": {
+        "name": "vaulted-ledger-registration",
+        "version": 1,
+        "contextDigest": "2eb4d8903240741974439dd9eea43dd93ad46ff87487fb358a534221708ed5b6",
+        "walletId": "f2a90ae2a6d106d19ed5496c190fad3b1d7aaf5bdbb99e264fc10b0dbf812b3d",
+        "walletHmac": "abababababababababababababababababababababababababababababababab",
+        "walletPolicy": {
+          "name": "Vaulted Savings",
+          "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})",
+          "keysInfo": [
+            "xpub661MyMwAqRbcFLtKrQ384zFhXUWE4g6tWtE6pUWfzycXX7sRYE1uR9FxcUbqiKkS6swqHNR8hau949mZcRGRx6Ty1JVwwgy6rtwFMtBzG6V",
+            "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+            "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+            "xpub661MyMwAqRbcGWe3iuLcMPbEL7bEwFVmj4NmovJoKoUdeqHJsSRFGpS7yq8yxFnkLoSeZWSJQyiauvSB7Mz4JMBN96DT4qphsT6F7y5kr5J",
+            "[8bc48cf1/86'/0'/0']xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2"
+          ]
+        },
+        "receiveAddress": "bc1prc7ks4ra9t7cd60eplr0mr4y25r5sdnp308hueet44m3tn89s6hscf3a42",
+        "changeAddress": "bc1peluuv0kskg5gg0urvlmy7uzsq3muzjnl89c0h074z9072zzzpcpscw69uh"
+      },
+      "phoneSeedBackup": {
+        "name": "vaulted-ledger-savings-phone-seed",
+        "version": 1,
+        "purpose": "passkey-prf",
+        "contextDigest": "2eb4d8903240741974439dd9eea43dd93ad46ff87487fb358a534221708ed5b6",
+        "phoneOrigin": {
+          "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "fingerprint": "2cee93bd",
+          "path": [
+            2147483734,
+            2147483648,
+            2147483648
+          ]
+        },
+        "salt": "6c8175dc5120c2b6393b5b5967c6c0dca47cf9981635297a4ba0f226d1ca023e",
+        "nonce": "9ff9789b087591320e4e9cd0",
+        "ciphertext": "f2f7f4f0bf1d1ff566fcc92d2ae57d028561a8a172d421c79c32289d80067c6466308ce544123cf773720395283c32d8"
+      }
+    }
+  },
+  {
+    "network": "mutinynet",
+    "advanced": false,
+    "descriptor": {
+      "schema": "arkade-vault/ledger-savings-enrollment-v1",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "savings": {
+        "context": {
+          "templateVersion": "phone-ledger-guardian-savings-v1",
+          "network": "mutinynet",
+          "vaultId": "aabbccddeeff00112233445566778899",
+          "policyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "phone": {
+            "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+            "fingerprint": "2cee93bd",
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
+          },
+          "hardware": {
+            "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+            "fingerprint": "2de67592",
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
+          },
+          "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+          "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+        },
+        "spendingPolicy": {
+          "program": "vault-policy-v1",
+          "schema": "vault-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 5000,
+          "feerateCapSatPerV": 10
+        }
+      },
+      "spendingAuthorities": {
+        "phoneBip340Pub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "externalOwnerWalletPub": "02cd68a95e8dd5f373a96380cb63053f33af2f9f1cfb0e014ffbd4425f58319f41",
+        "recoveryKeyPub": "",
+        "vaultCosignerBasePub": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBasePub": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e",
+        "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+        "vtxoVaultCosignerPub": "025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "vtxoDelegatePub": "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a",
+        "vtxoExitDelay": 4608,
+        "vtxoExitDelayUnit": "seconds",
+        "spendingArkAddress": "tark1qqcpq7yq3e8hhsx6ml3fud93m7827qggaurtzu3zwsr4a0qs0gf85zgt935g6ajx6nnd0mqtn5t6k77q2uuk8qx4ua2upla8f3sva87d6x3s0r",
+        "spendingArkScript": "5120090b2c688d7646d4e6d7ec0b9d17ab7bc057396380d5e755c0ffa74c60ce9fcd"
+      },
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "02bd5f0f9bbaa6b53a6aacd9858ca665e102ac190aeadc8561643338e3441c1797",
+        "recoveryPhonePub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "vaultBoardCosignerPub": "024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "512071d77dd7e54d4ab62c79b10b805c6c937d87db83f66dfd7d4d8ef405b68313c3",
+        "address": "tb1pw8thm4l9f49tvtreky9cqhrvjd7c0kur7ekl6l2d3m6qtd5rz0psa57ydw"
+      }
+    },
+    "descriptorHash": "fdb2530c3caca403a7a35dffc8378cdd3e767ff20b894d7b686383f99d19fe08",
+    "registration": {
+      "name": "vaulted-ledger-registration",
+      "version": 1,
+      "contextDigest": "a0331028e84108d971fe1a5d9738edc7b72316e4d6c3a71ec882a7f642f38b9e",
+      "walletId": "e2d69269c4799d3bd8d2fc76292af9da35f954b658853e221909dceda6bb1b84",
+      "walletHmac": "abababababababababababababababababababababababababababababababab",
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})",
+        "keysInfo": [
+          "tpubD6NzVbkrYhZ4XSySUwJ89SjaCD5yHtNmVpuNN9SgZEqpWpzHirCifpCi7PEHr9kGN8LsUgZhUP3n7Ve533Ua7TLE4zYVqLXrnexG6KLcaJT",
+          "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+          "tpubD6NzVbkrYhZ4Yo48CBTARNfRTD9jEAYyRAw8Yg45gVRRfj2RCbfY3oNNDQcXfiTJvhibN65shRNTMcfTNqCeam5WXDkv8MojxHZ1Nds5bpB"
+        ]
+      },
+      "receiveAddress": "tb1ps0hdvwga8zfyjqw56zau5gaevzvuv5h6ygpqrldzs6u2lwwgsytsdaq6ld",
+      "changeAddress": "tb1pucajxdk45rm3rzumpx8t7ud7vwvkjufskh390g84ur2ruda3qgnq6f964w"
+    },
+    "recoveryBinding": "{\"version\":6,\"credentialId\":\"abababababababababababababababababababababababababababababababab\",\"webauthnP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneDirectP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneBip340Pub\":\"02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"externalOwnerWalletPub\":\"02cd68a95e8dd5f373a96380cb63053f33af2f9f1cfb0e014ffbd4425f58319f41\",\"vaultCosignerBasePub\":\"03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4\",\"arkadeCosignerBasePub\":\"02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e\",\"arkadeCosignerOrigin\":\"https://operator.example\",\"arkadeCosignerVersion\":\"savings-v1-fixture\",\"clientOrigin\":\"https://vault.example\",\"rpId\":\"vault.example\",\"network\":\"mutinynet\",\"vaultId\":\"aabbccddeeff00112233445566778899\",\"templateVersion\":\"phone-ledger-guardian-savings-v1\",\"policyVersion\":\"vault-spending-policy-v1\",\"protectionTier\":\"standard\",\"savingsAddress\":\"tb1ps0hdvwga8zfyjqw56zau5gaevzvuv5h6ygpqrldzs6u2lwwgsytsdaq6ld\",\"savingsScript\":\"512083eed6391d38924901d4d0bbca23b96099c652fa220201fda286b8afb9c88117\",\"vtxoVaultCosignerPub\":\"025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc\",\"vtxoExitDelay\":4608,\"vtxoExitDelayUnit\":\"seconds\",\"spendingArkAddress\":\"tark1qqcpq7yq3e8hhsx6ml3fud93m7827qggaurtzu3zwsr4a0qs0gf85zgt935g6ajx6nnd0mqtn5t6k77q2uuk8qx4ua2upla8f3sva87d6x3s0r\",\"spendingArkScript\":\"5120090b2c688d7646d4e6d7ec0b9d17ab7bc057396380d5e755c0ffa74c60ce9fcd\",\"vtxoDelegatePub\":\"032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a\",\"vtxoBoardingActive\":true,\"vtxoBoardingProgram\":\"vault-board-v1\",\"vtxoBoardingAddress\":\"tb1pw8thm4l9f49tvtreky9cqhrvjd7c0kur7ekl6l2d3m6qtd5rz0psa57ydw\",\"vtxoBoardingScript\":\"512071d77dd7e54d4ab62c79b10b805c6c937d87db83f66dfd7d4d8ef405b68313c3\",\"vtxoBoardingExitDelay\":604672,\"vtxoBoardingExitDelayUnit\":\"seconds\",\"recipientDustSats\":330,\"txRecipientCapSats\":50000,\"periodAllowanceSats\":100000,\"absoluteFeeCapSats\":5000,\"feerateCapSatVb\":10,\"envelopeNonce\":\"ee9b998ecbfefcd18c33db74\",\"envelopeCiphertext\":\"ddb663bcfb6dbc23d3e4ef9b6eb57fe15da23b12f0231dbf7679e597e7f1cbaeff4757a9417847c11b71927fa570df8d\",\"ledgerSavingsContextDigest\":\"a0331028e84108d971fe1a5d9738edc7b72316e4d6c3a71ec882a7f642f38b9e\",\"ledgerSavingsDescriptorHash\":\"fdb2530c3caca403a7a35dffc8378cdd3e767ff20b894d7b686383f99d19fe08\",\"ledgerSavingsBackup\":\"{\\\"registration\\\":{\\\"name\\\":\\\"vaulted-ledger-registration\\\",\\\"version\\\":1,\\\"contextDigest\\\":\\\"a0331028e84108d971fe1a5d9738edc7b72316e4d6c3a71ec882a7f642f38b9e\\\",\\\"walletId\\\":\\\"e2d69269c4799d3bd8d2fc76292af9da35f954b658853e221909dceda6bb1b84\\\",\\\"walletHmac\\\":\\\"abababababababababababababababababababababababababababababababab\\\",\\\"walletPolicy\\\":{\\\"name\\\":\\\"Vaulted Savings\\\",\\\"descriptorTemplate\\\":\\\"tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})\\\",\\\"keysInfo\\\":[\\\"tpubD6NzVbkrYhZ4XSySUwJ89SjaCD5yHtNmVpuNN9SgZEqpWpzHirCifpCi7PEHr9kGN8LsUgZhUP3n7Ve533Ua7TLE4zYVqLXrnexG6KLcaJT\\\",\\\"[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ\\\",\\\"[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9\\\",\\\"tpubD6NzVbkrYhZ4Yo48CBTARNfRTD9jEAYyRAw8Yg45gVRRfj2RCbfY3oNNDQcXfiTJvhibN65shRNTMcfTNqCeam5WXDkv8MojxHZ1Nds5bpB\\\"]},\\\"receiveAddress\\\":\\\"tb1ps0hdvwga8zfyjqw56zau5gaevzvuv5h6ygpqrldzs6u2lwwgsytsdaq6ld\\\",\\\"changeAddress\\\":\\\"tb1pucajxdk45rm3rzumpx8t7ud7vwvkjufskh390g84ur2ruda3qgnq6f964w\\\"},\\\"phoneSeedBackup\\\":{\\\"name\\\":\\\"vaulted-ledger-savings-phone-seed\\\",\\\"version\\\":1,\\\"purpose\\\":\\\"passkey-prf\\\",\\\"contextDigest\\\":\\\"a0331028e84108d971fe1a5d9738edc7b72316e4d6c3a71ec882a7f642f38b9e\\\",\\\"phoneOrigin\\\":{\\\"xpub\\\":\\\"tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ\\\",\\\"fingerprint\\\":\\\"2cee93bd\\\",\\\"path\\\":[2147483734,2147483649,2147483648]},\\\"salt\\\":\\\"e7776b03a34ce07140878efc74cb3b9d44a7b935af4e852c12c30cd982024304\\\",\\\"nonce\\\":\\\"142c9291e69c4e2a069613f2\\\",\\\"ciphertext\\\":\\\"1a2055b13f58bc77ced2459f749e9d620693889e8104ee64d728b7a6ba476678c39ec9509e52a342b8e6fbd104e30efc\\\"}}\"}",
+    "recoveryBindingDigest": "2c31c116136fb029ad45b01691db91f7ff9841a730c9bc7a94d5d2197c88d2d1",
+    "ledgerSavings": {
+      "registration": {
+        "name": "vaulted-ledger-registration",
+        "version": 1,
+        "contextDigest": "a0331028e84108d971fe1a5d9738edc7b72316e4d6c3a71ec882a7f642f38b9e",
+        "walletId": "e2d69269c4799d3bd8d2fc76292af9da35f954b658853e221909dceda6bb1b84",
+        "walletHmac": "abababababababababababababababababababababababababababababababab",
+        "walletPolicy": {
+          "name": "Vaulted Savings",
+          "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})",
+          "keysInfo": [
+            "tpubD6NzVbkrYhZ4XSySUwJ89SjaCD5yHtNmVpuNN9SgZEqpWpzHirCifpCi7PEHr9kGN8LsUgZhUP3n7Ve533Ua7TLE4zYVqLXrnexG6KLcaJT",
+            "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+            "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+            "tpubD6NzVbkrYhZ4Yo48CBTARNfRTD9jEAYyRAw8Yg45gVRRfj2RCbfY3oNNDQcXfiTJvhibN65shRNTMcfTNqCeam5WXDkv8MojxHZ1Nds5bpB"
+          ]
+        },
+        "receiveAddress": "tb1ps0hdvwga8zfyjqw56zau5gaevzvuv5h6ygpqrldzs6u2lwwgsytsdaq6ld",
+        "changeAddress": "tb1pucajxdk45rm3rzumpx8t7ud7vwvkjufskh390g84ur2ruda3qgnq6f964w"
+      },
+      "phoneSeedBackup": {
+        "name": "vaulted-ledger-savings-phone-seed",
+        "version": 1,
+        "purpose": "passkey-prf",
+        "contextDigest": "a0331028e84108d971fe1a5d9738edc7b72316e4d6c3a71ec882a7f642f38b9e",
+        "phoneOrigin": {
+          "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "fingerprint": "2cee93bd",
+          "path": [
+            2147483734,
+            2147483649,
+            2147483648
+          ]
+        },
+        "salt": "e7776b03a34ce07140878efc74cb3b9d44a7b935af4e852c12c30cd982024304",
+        "nonce": "142c9291e69c4e2a069613f2",
+        "ciphertext": "1a2055b13f58bc77ced2459f749e9d620693889e8104ee64d728b7a6ba476678c39ec9509e52a342b8e6fbd104e30efc"
+      }
+    }
+  },
+  {
+    "network": "mutinynet",
+    "advanced": true,
+    "descriptor": {
+      "schema": "arkade-vault/ledger-savings-enrollment-v1",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "savings": {
+        "context": {
+          "templateVersion": "phone-ledger-guardian-savings-v1",
+          "network": "mutinynet",
+          "vaultId": "aabbccddeeff00112233445566778899",
+          "policyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+          "phone": {
+            "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+            "fingerprint": "2cee93bd",
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
+          },
+          "hardware": {
+            "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+            "fingerprint": "2de67592",
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
+          },
+          "recovery": {
+            "xpub": "tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk",
+            "fingerprint": "8bc48cf1",
+            "path": [
+              2147483734,
+              2147483649,
+              2147483648
+            ]
+          },
+          "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+          "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+        },
+        "spendingPolicy": {
+          "program": "vault-policy-v1",
+          "schema": "vault-spending-policy-v1",
+          "period": "rolling-24h",
+          "periodAllowanceSats": 100000,
+          "txRecipientCapSats": 50000,
+          "absoluteFeeCapSats": 5000,
+          "feerateCapSatPerV": 10
+        }
+      },
+      "spendingAuthorities": {
+        "phoneBip340Pub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "externalOwnerWalletPub": "02cd68a95e8dd5f373a96380cb63053f33af2f9f1cfb0e014ffbd4425f58319f41",
+        "recoveryKeyPub": "02686d6bbc407a48d424a0187000edb2bf0098f0d431f04aebc3621cf3b5615bf9",
+        "vaultCosignerBasePub": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4",
+        "arkadeCosignerBasePub": "02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e",
+        "phoneDirectP256": "02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42",
+        "vtxoVaultCosignerPub": "025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "vtxoDelegatePub": "032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a",
+        "vtxoExitDelay": 4608,
+        "vtxoExitDelayUnit": "seconds",
+        "spendingArkAddress": "tark1qqcpq7yq3e8hhsx6ml3fud93m7827qggaurtzu3zwsr4a0qs0gf85uy0xwxyj05mhue539efcr6sd8mg4p4umjnjs4n4njn36m6p2q8ca2dq54",
+        "spendingArkScript": "5120708f338c493e9bbf33489729c0f5069f68a86bcdca72856759ca71d6f41500f8"
+      },
+      "boarding": {
+        "schema": "arkade-vault/board-v1",
+        "program": "vault-board-v1",
+        "template": "vault-board-v1-boarding-vault-and-operator",
+        "network": "mutinynet",
+        "boardingPub": "02bd5f0f9bbaa6b53a6aacd9858ca665e102ac190aeadc8561643338e3441c1797",
+        "recoveryPhonePub": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "vaultBoardCosignerPub": "024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97",
+        "operatorPub": "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a",
+        "exitDelay": 604672,
+        "exitDelayUnit": "seconds",
+        "script": "512071d77dd7e54d4ab62c79b10b805c6c937d87db83f66dfd7d4d8ef405b68313c3",
+        "address": "tb1pw8thm4l9f49tvtreky9cqhrvjd7c0kur7ekl6l2d3m6qtd5rz0psa57ydw"
+      }
+    },
+    "descriptorHash": "14994d7e01194f0fda0b3369112b4c4b786a71c02171d948c9e3ec845ed2c464",
+    "registration": {
+      "name": "vaulted-ledger-registration",
+      "version": 1,
+      "contextDigest": "06b04b4c997de0bc4c8d16d4a003f8a2a4c2e7e7a49757f70e5651e4c8d4028e",
+      "walletId": "73330946208ded4dff0c060266283380253103dd714b429bb860bfa432a8a754",
+      "walletHmac": "abababababababababababababababababababababababababababababababab",
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})",
+        "keysInfo": [
+          "tpubD6NzVbkrYhZ4XAcmnTLxQdUi29bUmjr4TrrQRW1LkZM8pWanVwMo5cZQYZuyadiJ3ZqjnRopFPXEFbuWhPZCd7czi7iesNkK9hhQYAjDobZ",
+          "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+          "tpubD6NzVbkrYhZ4YWEbStijUkvYFAs3EhVXirfJj8vYKWjhZxjVNs4kNE96gg7kovDA48uzvGThghLe1h1TKoKyPGEQwHduyDWXvbJV5cxdZhv",
+          "[8bc48cf1/86'/1'/0']tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk"
+        ]
+      },
+      "receiveAddress": "tb1pk07qzxapucthz9wxuey29prlwy27l4jgzzcjt4d8t3xuxz9j7hls66fnea",
+      "changeAddress": "tb1pfqtcp4k8fhvtyksxltnjcfugepl5v995ltkstys7wa8qfgywcnes3s8aww"
+    },
+    "recoveryBinding": "{\"version\":6,\"credentialId\":\"abababababababababababababababababababababababababababababababab\",\"webauthnP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneDirectP256\":\"02e0de4d6ee9afbccee55ea525ac8ce034a3dfa9163d9a52be27e1e91b45587d42\",\"phoneBip340Pub\":\"02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"externalOwnerWalletPub\":\"02cd68a95e8dd5f373a96380cb63053f33af2f9f1cfb0e014ffbd4425f58319f41\",\"vaultCosignerBasePub\":\"03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4\",\"arkadeCosignerBasePub\":\"02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e\",\"arkadeCosignerOrigin\":\"https://operator.example\",\"arkadeCosignerVersion\":\"savings-v1-fixture\",\"clientOrigin\":\"https://vault.example\",\"rpId\":\"vault.example\",\"network\":\"mutinynet\",\"vaultId\":\"aabbccddeeff00112233445566778899\",\"templateVersion\":\"phone-ledger-guardian-savings-v1\",\"policyVersion\":\"vault-spending-policy-v1\",\"protectionTier\":\"advanced\",\"savingsAddress\":\"tb1pk07qzxapucthz9wxuey29prlwy27l4jgzzcjt4d8t3xuxz9j7hls66fnea\",\"savingsScript\":\"5120b3fc011ba1e6177115c6e648a2847f7115efd64810b125d5a75c4dc308b2f5ff\",\"vtxoVaultCosignerPub\":\"025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc\",\"vtxoExitDelay\":4608,\"vtxoExitDelayUnit\":\"seconds\",\"spendingArkAddress\":\"tark1qqcpq7yq3e8hhsx6ml3fud93m7827qggaurtzu3zwsr4a0qs0gf85uy0xwxyj05mhue539efcr6sd8mg4p4umjnjs4n4njn36m6p2q8ca2dq54\",\"spendingArkScript\":\"5120708f338c493e9bbf33489729c0f5069f68a86bcdca72856759ca71d6f41500f8\",\"vtxoDelegatePub\":\"032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a\",\"vtxoBoardingActive\":true,\"vtxoBoardingProgram\":\"vault-board-v1\",\"vtxoBoardingAddress\":\"tb1pw8thm4l9f49tvtreky9cqhrvjd7c0kur7ekl6l2d3m6qtd5rz0psa57ydw\",\"vtxoBoardingScript\":\"512071d77dd7e54d4ab62c79b10b805c6c937d87db83f66dfd7d4d8ef405b68313c3\",\"vtxoBoardingExitDelay\":604672,\"vtxoBoardingExitDelayUnit\":\"seconds\",\"recipientDustSats\":330,\"txRecipientCapSats\":50000,\"periodAllowanceSats\":100000,\"absoluteFeeCapSats\":5000,\"feerateCapSatVb\":10,\"envelopeNonce\":\"b951985089f087eb7d91e5ef\",\"envelopeCiphertext\":\"86d278171cd244c926060886fbdd5d633c95ada0bce8d7f5c123d05c7680aa188cc167188d5069d61c77bb4371b242a8\",\"ledgerSavingsContextDigest\":\"06b04b4c997de0bc4c8d16d4a003f8a2a4c2e7e7a49757f70e5651e4c8d4028e\",\"ledgerSavingsDescriptorHash\":\"14994d7e01194f0fda0b3369112b4c4b786a71c02171d948c9e3ec845ed2c464\",\"ledgerSavingsBackup\":\"{\\\"registration\\\":{\\\"name\\\":\\\"vaulted-ledger-registration\\\",\\\"version\\\":1,\\\"contextDigest\\\":\\\"06b04b4c997de0bc4c8d16d4a003f8a2a4c2e7e7a49757f70e5651e4c8d4028e\\\",\\\"walletId\\\":\\\"73330946208ded4dff0c060266283380253103dd714b429bb860bfa432a8a754\\\",\\\"walletHmac\\\":\\\"abababababababababababababababababababababababababababababababab\\\",\\\"walletPolicy\\\":{\\\"name\\\":\\\"Vaulted Savings\\\",\\\"descriptorTemplate\\\":\\\"tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})\\\",\\\"keysInfo\\\":[\\\"tpubD6NzVbkrYhZ4XAcmnTLxQdUi29bUmjr4TrrQRW1LkZM8pWanVwMo5cZQYZuyadiJ3ZqjnRopFPXEFbuWhPZCd7czi7iesNkK9hhQYAjDobZ\\\",\\\"[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ\\\",\\\"[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9\\\",\\\"tpubD6NzVbkrYhZ4YWEbStijUkvYFAs3EhVXirfJj8vYKWjhZxjVNs4kNE96gg7kovDA48uzvGThghLe1h1TKoKyPGEQwHduyDWXvbJV5cxdZhv\\\",\\\"[8bc48cf1/86'/1'/0']tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk\\\"]},\\\"receiveAddress\\\":\\\"tb1pk07qzxapucthz9wxuey29prlwy27l4jgzzcjt4d8t3xuxz9j7hls66fnea\\\",\\\"changeAddress\\\":\\\"tb1pfqtcp4k8fhvtyksxltnjcfugepl5v995ltkstys7wa8qfgywcnes3s8aww\\\"},\\\"phoneSeedBackup\\\":{\\\"name\\\":\\\"vaulted-ledger-savings-phone-seed\\\",\\\"version\\\":1,\\\"purpose\\\":\\\"passkey-prf\\\",\\\"contextDigest\\\":\\\"06b04b4c997de0bc4c8d16d4a003f8a2a4c2e7e7a49757f70e5651e4c8d4028e\\\",\\\"phoneOrigin\\\":{\\\"xpub\\\":\\\"tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ\\\",\\\"fingerprint\\\":\\\"2cee93bd\\\",\\\"path\\\":[2147483734,2147483649,2147483648]},\\\"salt\\\":\\\"55409f5d70f1a77c072a29ab1a5182852791cc5e04cd612eb1bd9df5dc8e7351\\\",\\\"nonce\\\":\\\"83d014d90a5e31270c16d538\\\",\\\"ciphertext\\\":\\\"58c0bd83b543a4d64816300549d387362a1e0b12a8fdbc764639acc6d6e38d592359aff405c23db621f54ba48d396e6c\\\"}}\"}",
+    "recoveryBindingDigest": "75750886f8a3b55ae909b47524d07204e8e8327240c6a51044b66fdc46797bea",
+    "ledgerSavings": {
+      "registration": {
+        "name": "vaulted-ledger-registration",
+        "version": 1,
+        "contextDigest": "06b04b4c997de0bc4c8d16d4a003f8a2a4c2e7e7a49757f70e5651e4c8d4028e",
+        "walletId": "73330946208ded4dff0c060266283380253103dd714b429bb860bfa432a8a754",
+        "walletHmac": "abababababababababababababababababababababababababababababababab",
+        "walletPolicy": {
+          "name": "Vaulted Savings",
+          "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})",
+          "keysInfo": [
+            "tpubD6NzVbkrYhZ4XAcmnTLxQdUi29bUmjr4TrrQRW1LkZM8pWanVwMo5cZQYZuyadiJ3ZqjnRopFPXEFbuWhPZCd7czi7iesNkK9hhQYAjDobZ",
+            "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+            "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+            "tpubD6NzVbkrYhZ4YWEbStijUkvYFAs3EhVXirfJj8vYKWjhZxjVNs4kNE96gg7kovDA48uzvGThghLe1h1TKoKyPGEQwHduyDWXvbJV5cxdZhv",
+            "[8bc48cf1/86'/1'/0']tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk"
+          ]
+        },
+        "receiveAddress": "tb1pk07qzxapucthz9wxuey29prlwy27l4jgzzcjt4d8t3xuxz9j7hls66fnea",
+        "changeAddress": "tb1pfqtcp4k8fhvtyksxltnjcfugepl5v995ltkstys7wa8qfgywcnes3s8aww"
+      },
+      "phoneSeedBackup": {
+        "name": "vaulted-ledger-savings-phone-seed",
+        "version": 1,
+        "purpose": "passkey-prf",
+        "contextDigest": "06b04b4c997de0bc4c8d16d4a003f8a2a4c2e7e7a49757f70e5651e4c8d4028e",
+        "phoneOrigin": {
+          "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "fingerprint": "2cee93bd",
+          "path": [
+            2147483734,
+            2147483649,
+            2147483648
+          ]
+        },
+        "salt": "55409f5d70f1a77c072a29ab1a5182852791cc5e04cd612eb1bd9df5dc8e7351",
+        "nonce": "83d014d90a5e31270c16d538",
+        "ciphertext": "58c0bd83b543a4d64816300549d387362a1e0b12a8fdbc764639acc6d6e38d592359aff405c23db621f54ba48d396e6c"
+      }
+    }
+  }
+]

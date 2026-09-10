@@ -258,6 +258,18 @@
     "/v1/vtxo/bitcoin/status": [
       "OPTIONS",
       "POST"
+    ],
+    "/v1/lnurl/challenge": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/lnurl/register": [
+      "OPTIONS",
+      "POST"
+    ],
+    "/v1/lnurl/revoke": [
+      "OPTIONS",
+      "POST"
     ]
   },
   "shapes": {
@@ -351,6 +363,7 @@
       "error:string,omitempty"
     ],
     "PublicStatus": [
+      "ledgerSavingsCapability:object|null,omitempty",
       "connectorCapability:object|null,omitempty",
       "supportedSetups:array<string>",
       "network:string",
@@ -363,6 +376,7 @@
       "spendingPolicyCapabilities:object"
     ],
     "Status": [
+      "ledgerSavings:object|null,omitempty",
       "connectorEnrollment:object|null,omitempty",
       "lightDescriptor:object|null,omitempty",
       "lightDescriptorHash:string,omitempty",
@@ -441,6 +455,7 @@
       "clientDataJSON:string",
       "authenticatorData:string",
       "attestationObject:string,omitempty",
+      "ledgerSavings:object|null,omitempty",
       "credentialId:string",
       "webauthnP256:string",
       "phoneDirectP256:string",
@@ -466,6 +481,8 @@
       "descriptor:any"
     ],
     "TransitionRequest": [
+      "ledgerSavings:object|null,omitempty",
+      "phoneAuthorization:object|null,omitempty",
       "vaultId:string",
       "purpose:string",
       "psbt:string",
@@ -516,6 +533,7 @@
     ],
     "RecoveryBindingRouteRequest": [
       "vaultId:string",
+      "ledgerSavings:object|null,omitempty",
       "envelopeNonce:string",
       "envelopeCiphertext:string"
     ],
@@ -531,6 +549,7 @@
       "authenticatorData:string",
       "signature:string",
       "directProof:string",
+      "ledgerSavings:object|null,omitempty",
       "envelopeNonce:string",
       "envelopeCiphertext:string",
       "binding:string",
@@ -547,6 +566,7 @@
       "directProof:string"
     ],
     "RecoverCredentialEnvelopeResponse": [
+      "ledgerSavings:object|null,omitempty",
       "binding:string",
       "bindingDigest:string",
       "envelopeNonce:string",
@@ -916,6 +936,58 @@
     "BitcoinPaymentOutput": [
       "script:string",
       "amountSats:integer"
+    ],
+    "LedgerSavingsBackup": [
+      "registration:object",
+      "phoneSeedBackup:object"
+    ],
+    "LedgerSavingsCapability": [
+      "version:integer",
+      "templateVersion:string"
+    ],
+    "LedgerSavingsContract": [
+      "context:object",
+      "spendingPolicy:object"
+    ],
+    "LedgerSavingsEnrollmentRequest": [
+      "templateVersion:string",
+      "phone:object",
+      "hardware:object",
+      "recovery:object|null,omitempty"
+    ],
+    "LedgerSavingsPhoneAuthorization": [
+      "digest:string",
+      "signature:string"
+    ],
+    "LedgerSavingsPhoneSeedBackup": [
+      "name:string",
+      "version:integer",
+      "purpose:string",
+      "contextDigest:string",
+      "phoneOrigin:object",
+      "salt:string",
+      "nonce:string",
+      "ciphertext:string"
+    ],
+    "LedgerSavingsRegistration": [
+      "name:string",
+      "version:integer",
+      "contextDigest:string",
+      "walletId:string",
+      "walletHmac:string",
+      "walletPolicy:object",
+      "receiveAddress:string",
+      "changeAddress:string"
+    ],
+    "LedgerSavingsStatus": [
+      "context:object",
+      "spendingPolicy:object",
+      "descriptorHash:string"
+    ],
+    "LedgerSavingsTransitionRequest": [
+      "claimant:string",
+      "remainingUser:string,omitempty",
+      "change:integer|null"
     ]
   }
 }

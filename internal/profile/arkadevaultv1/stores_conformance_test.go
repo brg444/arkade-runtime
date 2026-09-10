@@ -34,6 +34,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 			name: "recovery operation", typ: reflect.TypeOf((*arkadevaultv1.RecoveryOperationStore)(nil)).Elem(),
 			want: []string{"ApplyRecoveryReplay"},
 		},
+		{name: "Ledger Savings", typ: reflect.TypeOf((*arkadevaultv1.LedgerSavingsStore)(nil)).Elem(), want: []string{"ApplyLedgerSavingsRecovery", "GetLedgerSavingsEnrollment"}},
 		{name: "Recovery backup", typ: reflect.TypeOf((*arkadevaultv1.RecoveryBackupStore)(nil)).Elem(), want: []string{"GetRecoveryBackup", "PutRecoveryBackup"}},
 		{
 			name: "map", typ: reflect.TypeOf((*arkadevaultv1.MapStore)(nil)).Elem(),
@@ -49,7 +50,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 		{
 			name: "Vault Board", typ: reflect.TypeOf((*arkadevaultv1.VaultBoardStore)(nil)).Elem(),
 			want: []string{
-				"AppendVaultBoardAuthorizationAndDispatch", "AppendVaultBoardDispatch",
+				"AppendVaultBoardAuthorizationAndDispatch", "AppendVaultBoardConflict", "AppendVaultBoardDispatch",
 				"AppendVaultBoardSubmission", "BeginVaultBoardAttempt", "CreateVaultWithBoard",
 				"GetCurrentVaultBoardAttempt", "GetVaultBoardEnrollment",
 			},
@@ -75,9 +76,9 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 	}
 }
 
-func TestStoresBundleContainsExactlyTenNarrowPorts(t *testing.T) {
+func TestStoresBundleContainsExactlyElevenNarrowPorts(t *testing.T) {
 	typ := reflect.TypeOf(arkadevaultv1.Stores{})
-	want := []string{"Identity", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "LightDelegation", "Connector", "RecoveryBackup"}
+	want := []string{"Identity", "LedgerSavings", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "LightDelegation", "Connector", "RecoveryBackup"}
 	got := make([]string, typ.NumField())
 	for i := range got {
 		got[i] = typ.Field(i).Name

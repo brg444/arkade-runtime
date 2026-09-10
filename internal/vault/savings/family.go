@@ -79,6 +79,10 @@ func BuildSavings(vaultID, network, template string, phone, hardware, recovery *
 	if err != nil {
 		return "", nil, err
 	}
+	return buildSavingsWithKeys(internal, network, phone, hardware, recovery, initiate, nil)
+}
+
+func buildSavingsWithKeys(internal *btcec.PublicKey, network string, phone, hardware, recovery *btcec.PublicKey, initiate map[string]TweakPair, initiateUsers map[string]*btcec.PublicKey) (string, []byte, error) {
 	admin, err := checksig(phone, hardware)
 	if err != nil {
 		return "", nil, err
@@ -95,6 +99,12 @@ func BuildSavings(vaultID, network, template string, phone, hardware, recovery *
 			claimantPub = hardware
 		case "recovery":
 			claimantPub = recovery
+		}
+		if initiateUsers != nil {
+			claimantPub = initiateUsers[claimant]
+			if claimantPub == nil {
+				return "", nil, fmt.Errorf("missing derived claimant %s", claimant)
+			}
 		}
 		script, err := checksig(claimantPub, pair.Vault, pair.Arkade)
 		if err != nil {

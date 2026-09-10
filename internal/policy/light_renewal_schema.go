@@ -97,7 +97,7 @@ func validateConnectorBaseline(db *sql.DB, boardSchema string, backup bool, dele
 		validateObjects = validateVaultSchemaObjectsV4
 	}
 	if len(delegation) > 0 && delegation[0] {
-		validateObjects = func(db *sql.DB) error { return validateVaultSchemaObjectsInner(db, true, true, true, true) }
+		validateObjects = func(db *sql.DB) error { return validateVaultSchemaObjectsInner(db, true, true, true, delegation...) }
 	}
 	if err := validateObjects(db); err != nil {
 		return err
@@ -219,14 +219,74 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		}
 		version = 8
 	}
+	if version == 8 {
+		if err := validateConnectorBaseline(db, boardSchema, true, true); err != nil {
+			return err
+		}
+		if err := validateRecoveryBackupSchema(db); err != nil {
+			return err
+		}
+		if err := validateLightDelegationSchema(db); err != nil {
+			return err
+		}
+		if err := applyVaultBoardConflictMigration(db); err != nil {
+			return err
+		}
+		version = 9
+	}
+	if version == 9 {
+		if err := validateConnectorBaseline(db, boardSchema, true, true, true); err != nil {
+			return err
+		}
+		if err := validateVaultBoardConflictSchema(db); err != nil {
+			return err
+		}
+		if err := validateRecoveryBackupSchema(db); err != nil {
+			return err
+		}
+		if err := validateLightDelegationSchema(db); err != nil {
+			return err
+		}
+		if err := applyLedgerSavingsMigration(db); err != nil {
+			return err
+		}
+		version = 10
+	}
+	if version == 10 {
+		if err := validateConnectorBaseline(db, boardSchema, true, true, true, true); err != nil {
+			return err
+		}
+		if err := validateVaultBoardConflictSchema(db); err != nil {
+			return err
+		}
+		if err := validateRecoveryBackupSchema(db); err != nil {
+			return err
+		}
+		if err := validateLightDelegationSchema(db); err != nil {
+			return err
+		}
+		if err := validateLedgerSavingsSchema(db); err != nil {
+			return err
+		}
+		if err := applySpendingEnrollmentMigration(db); err != nil {
+			return err
+		}
+		version = 11
+	}
 	if version != schemaVersion {
 		return fmt.Errorf("unsupported vault schema version %d", version)
 	}
-	if err := validateConnectorBaseline(db, boardSchema, true, true); err != nil {
+	if err := validateConnectorBaseline(db, boardSchema, true, true, true, true); err != nil {
+		return err
+	}
+	if err := validateVaultBoardConflictSchema(db); err != nil {
 		return err
 	}
 	if err := validateRecoveryBackupSchema(db); err != nil {
 		return err
 	}
-	return validateLightDelegationSchema(db)
+	if err := validateLightDelegationSchema(db); err != nil {
+		return err
+	}
+	return validateLedgerSavingsSchema(db)
 }

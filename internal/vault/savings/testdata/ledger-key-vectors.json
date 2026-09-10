@@ -1,0 +1,546 @@
+[
+  {
+    "input": {
+      "templateVersion": "phone-ledger-guardian-savings-v1",
+      "network": "mutinynet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+      "phone": {
+        "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "hardware": {
+        "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+    },
+    "contextDigest": "a8d2a13f73c62cc3d40f160438608f76a06d2393c5c906b53572385e6fca696f",
+    "internal": {
+      "xpub": "tpubD6NzVbkrYhZ4WZCm4S7p3ZQQemxa3eYN8N4s6D2r2YeqpMxEZQY5pHJiGUFK5s2nq77wEffoy6DnqxuEZBvWLK7k3C8XRrPVrLJX1rupm4u",
+      "children": [
+        "02eb9dfa2d9dbfb02801b8c7345a413ccc8344a050f598d6294b73b08309e672e6",
+        "033276f989ffe0aa9b91922fca03560b68844edb3f729cfe59b3ec24d2fff7d8a5"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "0361d8a06b88b71e3f177b175d6d4069ee65d81d8a7d5b35d8f287eb27474a8733",
+        "0270ef6156160d1cad79aef29022cda11677b829544a25265bab90425e5b156b35",
+        "02cf26bc71a918853a5e2713236fba928b44e7a5f59ac0b7101ed981ed9eefe082",
+        "032eac321e5144e7bf1a8c857ebfee67de308a1f40a0b8993b9c98a62de2105852"
+      ],
+      "hardware": [
+        "037e9f7821caecda39dd872f8387962bccc2c3951744d926609aadd90b694c0fac",
+        "02ac823451d16dd02025661dd3a2add2deae527b30a3c5cea264bef927a9478ed7",
+        "02d42b2ef494f3721f098399a035167e950808ca77fe7bb050f5b392673a05d549",
+        "034b52e0ef875f1f6bd6dc1375be7951ac6ec102c90041d3f19d26c9cfe84b0d1e"
+      ]
+    },
+    "guardian": {
+      "xpub": "tpubD6NzVbkrYhZ4YhqvBJaCMzNAkRZmjEZZhAXdbZ1xVuGpdRtNN5HwNGPKaTvYaZPJnqv2xkme4rw7Yc4iYxsSw6wZokBHjYq9Hnks41ZfX6h",
+      "children": [
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 0,
+          "branch": 0,
+          "pubkey": "023304a76a90400dd1622469cade31651e783cffea9ea0fe2abc4f41e625642f69"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 1,
+          "branch": 1,
+          "pubkey": "030b84bb841dbb3e6985c2882e4cd2c1157c6c492c950bd30335f09923ceb343f0"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "phone",
+          "guardian": "hardware",
+          "branch": 6,
+          "pubkey": "039e011ecee7ec4a9551d2c89cfcfb67a81a6dc4ff3514f7c1880097060c59199b"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 0,
+          "branch": 2,
+          "pubkey": "03270eb261ae984d839c81d7fa229269c8a8a4ece200243bb0e7723610749ed6a8"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 1,
+          "branch": 3,
+          "pubkey": "02958cb46753cc95be398080e2f460b913f6dcf66394fdcc13c5afb1597837475a"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "hardware",
+          "guardian": "phone",
+          "branch": 10,
+          "pubkey": "028892fe891783269fc405492acc15534a5c66e1f7e27dcd8d7276add04c50eee4"
+        }
+      ]
+    },
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})",
+        "keysInfo": [
+          "tpubD6NzVbkrYhZ4WZCm4S7p3ZQQemxa3eYN8N4s6D2r2YeqpMxEZQY5pHJiGUFK5s2nq77wEffoy6DnqxuEZBvWLK7k3C8XRrPVrLJX1rupm4u",
+          "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+          "tpubD6NzVbkrYhZ4YhqvBJaCMzNAkRZmjEZZhAXdbZ1xVuGpdRtNN5HwNGPKaTvYaZPJnqv2xkme4rw7Yc4iYxsSw6wZokBHjYq9Hnks41ZfX6h"
+        ]
+      },
+      "receive": {
+        "address": "tb1p72lnjhlt26sfrluf33qqwuhqmmuvpvnh5kg87q67ug4xeazleq9qdanktv",
+        "script": "5120f2bf395feb56a091ff898c400772e0def8c0b277a5907f035ee22a6cf45fc80a"
+      },
+      "change": {
+        "address": "tb1psufjgkz6pvkcwnuh8puf438248dhzz75d5497wf3ykrxzfsud43q8fhrkk",
+        "script": "5120871324585a0b2d874f9738789ac4eaa9db710bd46d2a5f3931258661261c6d62"
+      }
+    }
+  },
+  {
+    "input": {
+      "templateVersion": "phone-ledger-guardian-savings-v1",
+      "network": "mutinynet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912",
+      "phone": {
+        "xpub": "tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "hardware": {
+        "xpub": "tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "recovery": {
+        "xpub": "tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk",
+        "fingerprint": "8bc48cf1",
+        "path": [2147483734, 2147483649, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+    },
+    "contextDigest": "5d8feb5f16a6feed453834ebfef8edf37d21d83277021c45d8d5ee05b4bfd096",
+    "internal": {
+      "xpub": "tpubD6NzVbkrYhZ4X22FitKH29RzvYYv6L3K4fLJbhx4Sg5dW4Gsk9kLt5oLGSYimrJyvxBpF6AbUrHJvNoTc9zz9tAYvn2HAYB6Z3rRkxFK2iN",
+      "children": [
+        "02fddba61e3c3185aa9a237e2fed8d848c351c0b7b98f76feef204a20dbfb329c5",
+        "028bb053db8356da22095f1970b2d38120a28cede668911944f5c29cdf076b1e79"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "0361d8a06b88b71e3f177b175d6d4069ee65d81d8a7d5b35d8f287eb27474a8733",
+        "0270ef6156160d1cad79aef29022cda11677b829544a25265bab90425e5b156b35",
+        "02cf26bc71a918853a5e2713236fba928b44e7a5f59ac0b7101ed981ed9eefe082",
+        "032eac321e5144e7bf1a8c857ebfee67de308a1f40a0b8993b9c98a62de2105852"
+      ],
+      "hardware": [
+        "037e9f7821caecda39dd872f8387962bccc2c3951744d926609aadd90b694c0fac",
+        "02ac823451d16dd02025661dd3a2add2deae527b30a3c5cea264bef927a9478ed7",
+        "02d42b2ef494f3721f098399a035167e950808ca77fe7bb050f5b392673a05d549",
+        "034b52e0ef875f1f6bd6dc1375be7951ac6ec102c90041d3f19d26c9cfe84b0d1e"
+      ],
+      "recovery": [
+        "03a3b1d80d735c6dccd4da38217487265e392745e54864aa0f43f6545c0560bc07",
+        "034e0f01cc7e9e4fe44380bf410cf9ee134e9d8c49f9ec17cf076f09ad3730b54c",
+        "03a80e7e87fce6d251c54d57e15e32918e260c2d73c9bd70c1d70da8b76b486157",
+        "030e77e9ea9202824f60edcb8885a67efae399ee6901ccde9fba9dfe3de05c1e3d"
+      ]
+    },
+    "guardian": {
+      "xpub": "tpubD6NzVbkrYhZ4WUJxf9uonNr5VEixysJ5PHQKBYgpPgaucZRgVaTeuXudeRbVdtRJmkWaHb6aDqeQSUHbGFmgp2SSiKiwyUApVQLR3QxrJhG",
+      "children": [
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 0,
+          "branch": 0,
+          "pubkey": "02d35e6564947c0e5ca6b57425006f9fbeb4a4951c1ce7a004f8e1916dc189b15b"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 1,
+          "branch": 1,
+          "pubkey": "0370f02826efbc3249471d16586ee934557e5f6e11521e19f3d0f312c75f450c3f"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "phone",
+          "guardian": "hardware",
+          "branch": 6,
+          "pubkey": "03e91adc0df3af8863e13792906d65972ffaea23bd57f51f95f86ed745387f4be9"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "phone",
+          "guardian": "recovery",
+          "branch": 8,
+          "pubkey": "039db9a08435e6a4e60e74518726b3e55ef2eb82af9d47ada5eb2a4e69d9fc07a6"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 0,
+          "branch": 2,
+          "pubkey": "03df667852c9aa6239a5a6db11de63b437bf13fe4f8586ac2b13e45cf5d20cacf1"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 1,
+          "branch": 3,
+          "pubkey": "03a0737c80f57908f99d9053b152309f7fff77500ed92050db212a6e1202c8c250"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "hardware",
+          "guardian": "phone",
+          "branch": 10,
+          "pubkey": "034d64add7a0c100cd5de4787934c762ee80f5000aa12841e06c9a3727477c219e"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "hardware",
+          "guardian": "recovery",
+          "branch": 12,
+          "pubkey": "0272973c541c5656ed8df2c7b94c8ea9558396e26693238e3596efa70554e0e8f0"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "recovery",
+          "change": 0,
+          "branch": 4,
+          "pubkey": "03ac409cf5aacc59be34f73c43ad04a299d7727282ab30b2cd044b2a2bd94098d9"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "recovery",
+          "change": 1,
+          "branch": 5,
+          "pubkey": "02d2940c4786c2ef6821470a15c4b12044f652c8b8c4dd170fd2b82339d7735ac6"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "recovery",
+          "guardian": "phone",
+          "branch": 14,
+          "pubkey": "0287a585ec19bdc84095d4abefb928fca1d4ffaa5c26e7be54106d9218ac2cf8de"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "recovery",
+          "guardian": "hardware",
+          "branch": 16,
+          "pubkey": "0362c9d701e4366f58996dec69481a66d272e4efce9135c3426b0aad3215fc61c2"
+        }
+      ]
+    },
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})",
+        "keysInfo": [
+          "tpubD6NzVbkrYhZ4X22FitKH29RzvYYv6L3K4fLJbhx4Sg5dW4Gsk9kLt5oLGSYimrJyvxBpF6AbUrHJvNoTc9zz9tAYvn2HAYB6Z3rRkxFK2iN",
+          "[2cee93bd/86'/1'/0']tpubDCTFBBxwHN52YUjjnZgvXAFhR9NsS4Ry2LBSTBf4YNjiuyosPp5MCEuuFZXLwvn3PmAt7E6gFM3UsPH8LJ7HmdNvzSBYwd1vLzYpjCH1BbZ",
+          "[2de67592/86'/1'/0']tpubDCw78awAFWkfwr6X2xYbyq8zUXSBya8Zbuvy9CHpgs6XLs6Ur4ZvWQvT9zpEMm2QQRG8QjcyAnkvCe3qqZoGgC2jZzTXQyJJT3myWS3rMu9",
+          "tpubD6NzVbkrYhZ4WUJxf9uonNr5VEixysJ5PHQKBYgpPgaucZRgVaTeuXudeRbVdtRJmkWaHb6aDqeQSUHbGFmgp2SSiKiwyUApVQLR3QxrJhG",
+          "[8bc48cf1/86'/1'/0']tpubDDTHqfwm4Bx8WyxfyJFFPNKuza1UVBJfRTXu8eJfTYUWyxpyPv91gE4HLtCLKTT7a2QpJXrtYaNppGGPBhMYLtXddBVi7NNKeEFLQRskKYk"
+        ]
+      },
+      "receive": {
+        "address": "tb1pgpws7z4nqyxsqejg3vxp06r8r3mfk4ssunvt673v7cvn8a7r4jjswh584y",
+        "script": "5120405d0f0ab3010d0066488b0c17e8671c769b5610e4d8bd7a2cf61933f7c3aca5"
+      },
+      "change": {
+        "address": "tb1phuv2aksj5nx7npt49hvjl4nvtf3vn9emn79avsktx8pgju470hvs9k5ap6",
+        "script": "5120bf18aeda12a4cde985752dd92fd66c5a62c9973b9f8bd642cb31c28972be7dd9"
+      }
+    }
+  },
+  {
+    "input": {
+      "templateVersion": "phone-ledger-guardian-savings-v1",
+      "network": "mainnet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+      "phone": {
+        "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "hardware": {
+        "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+    },
+    "contextDigest": "5822b233887d1e49eef9b5ab2dd6f301522c848e88b6ed9a80b92807d9810dc5",
+    "internal": {
+      "xpub": "xpub661MyMwAqRbcG5HnHqKUTJu8kcuErmyrrEyDC8f3dgzRNCxkbqRQA5N1D8gmyeQKZ3639mDHgv6MjDyDUUyzJRwcWQepzrLy6PRL9m8RakV",
+      "children": [
+        "02d782d450d88825333c317e78c24035d0c3a4601e977d2d45e963557cb289490e",
+        "02d6ec2a0010fd0872363bd6c69f581d1e883c5db9dd17b2173dfb6a1a4c776b0b"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "03acb7874dfe4edf8b9e65bf22c41d60d4b21d49ef0c768587bf5fcd6d4906d510",
+        "03668bab71e824edb20314552bf6d380a8787d330896f4b7240a6ba4e44266d07c",
+        "03d9dc86adcf86af8a7ec0fb3d697ca31f106e7cde98c72885d3eff7ae41138b2a",
+        "030d36b6ce43d85035b31d0233fc43d01bd77705061ab8f432029b63892b29dfb1"
+      ],
+      "hardware": [
+        "0341c397b8d911d527fc48f9de9253d915f997162bdc2f72ea3e0e1a81191ed48c",
+        "0310adc7152ffe123b2193e78f7ac33cea5096ca9840680fa90ba0bf9e0bd63f59",
+        "0214a7e269fcd142e6ee78b8d767d466b4f0b7bcdbecf33dc50fc4a1bf7daf5359",
+        "03e3440f2fcd27118e53e6084e76eb269d9be9277bdd2ee3072302e1a5bbedbcf6"
+      ]
+    },
+    "guardian": {
+      "xpub": "xpub661MyMwAqRbcFdZqaFJ45HHehVuLQQDHDyZfvnFj3Dmyf8cgGMVrETdEFc7xT9zqj4Yidq5S6JjfQU9xsnrinhK5orhdafS8Gb3YSoXzHq9",
+      "children": [
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 0,
+          "branch": 0,
+          "pubkey": "03470576fa283df407ba475ef05da35f5063108effdd895fe5676ab7ccb03d3ba9"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 1,
+          "branch": 1,
+          "pubkey": "03373c435bc5a1724ffd0f3001d4b40183956e5e7a170739b181a9af495678c2a1"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "phone",
+          "guardian": "hardware",
+          "branch": 6,
+          "pubkey": "0224e6c298b2017776beccff2e220017fcc99ab063552b0fc710974d8f1cf2a512"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 0,
+          "branch": 2,
+          "pubkey": "03ae330fb5309a87b32f19ac5291d986f78f09012c77d53643316bdf8db6d01fd2"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 1,
+          "branch": 3,
+          "pubkey": "0230bb15e08d971aeb9ab5e8238ad450aec728fbf276b213226023addac9f237b3"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "hardware",
+          "guardian": "phone",
+          "branch": 10,
+          "pubkey": "03f269dbba81401ab1b9cb04bbb64af382faa76015d84906f41da815e47d4c813b"
+        }
+      ]
+    },
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*))})",
+        "keysInfo": [
+          "xpub661MyMwAqRbcG5HnHqKUTJu8kcuErmyrrEyDC8f3dgzRNCxkbqRQA5N1D8gmyeQKZ3639mDHgv6MjDyDUUyzJRwcWQepzrLy6PRL9m8RakV",
+          "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+          "xpub661MyMwAqRbcFdZqaFJ45HHehVuLQQDHDyZfvnFj3Dmyf8cgGMVrETdEFc7xT9zqj4Yidq5S6JjfQU9xsnrinhK5orhdafS8Gb3YSoXzHq9"
+        ]
+      },
+      "receive": {
+        "address": "bc1plrqkg5gjlelfrpr5g5xvj6r4y80d2sjy6cncf9t4vyft22aryq7sphv3vc",
+        "script": "5120f8c1645112fe7e918474450cc9687521ded54244d6278495756112b52ba3203d"
+      },
+      "change": {
+        "address": "bc1pcs0aecvu7tgrx3ergyc74m9m5vg0gf02q9ht92jgcm9cnyeua63s8az3gw",
+        "script": "5120c41fdce19cf2d03347234131eaecbba310f425ea016eb2aa48c6cb89933ceea3"
+      }
+    }
+  },
+  {
+    "input": {
+      "templateVersion": "phone-ledger-guardian-savings-v1",
+      "network": "mainnet",
+      "vaultId": "aabbccddeeff00112233445566778899",
+      "policyDigest": "594c0d10546d13b6260be6080c71de354f35a62b103cf9d243b217ce40d1dbe0",
+      "phone": {
+        "xpub": "xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+        "fingerprint": "2cee93bd",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "hardware": {
+        "xpub": "xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+        "fingerprint": "2de67592",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "recovery": {
+        "xpub": "xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2",
+        "fingerprint": "8bc48cf1",
+        "path": [2147483734, 2147483648, 2147483648]
+      },
+      "phoneDirectP256": "02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+      "vaultCosignerBase": "03499fdf9e895e719cfd64e67f07d38e3226aa7b63678949e6e49b241a60e823e4"
+    },
+    "contextDigest": "04323898706418ac1e3a91d3e26a6002290e4a353419a9ad4fa763e9f6ba4d0f",
+    "internal": {
+      "xpub": "xpub661MyMwAqRbcGhWEN7Gee9MbPkp3BWoWT96prEyeBy14kdXRTxEgh5d599zvr2pZ8pb2kRNjePKJPQJZHcw4p8VNSGebzrNB8WetCujt83B",
+      "children": [
+        "021a9d02ffc4195046fd5e1909faf336903f849d41531a93018ae8a5ed7ec00d6a",
+        "03b9edf42ef8aab501aa4220c3e5fe7aee59b55f4de2fc3a7e1343196566a45a18"
+      ]
+    },
+    "accounts": {
+      "phone": [
+        "03acb7874dfe4edf8b9e65bf22c41d60d4b21d49ef0c768587bf5fcd6d4906d510",
+        "03668bab71e824edb20314552bf6d380a8787d330896f4b7240a6ba4e44266d07c",
+        "03d9dc86adcf86af8a7ec0fb3d697ca31f106e7cde98c72885d3eff7ae41138b2a",
+        "030d36b6ce43d85035b31d0233fc43d01bd77705061ab8f432029b63892b29dfb1"
+      ],
+      "hardware": [
+        "0341c397b8d911d527fc48f9de9253d915f997162bdc2f72ea3e0e1a81191ed48c",
+        "0310adc7152ffe123b2193e78f7ac33cea5096ca9840680fa90ba0bf9e0bd63f59",
+        "0214a7e269fcd142e6ee78b8d767d466b4f0b7bcdbecf33dc50fc4a1bf7daf5359",
+        "03e3440f2fcd27118e53e6084e76eb269d9be9277bdd2ee3072302e1a5bbedbcf6"
+      ],
+      "recovery": [
+        "029fee2ea1079fad1c4fcdbcd53ac4ef30839222bc57b8eed9eaa0e42304e105cc",
+        "032801a497836fe7d4b5202e5cae53197bfea0d495c521755c16cd2e730466e86e",
+        "0253072b77e18d9a8fe44d4dc5a60198b73e16d31e4827e4bb0c8f4fbedea42dd1",
+        "031413e729cb3026ca8175b3899d0c96ed9e9fcf38ad9cfa24571b10bd32d2d6f6"
+      ]
+    },
+    "guardian": {
+      "xpub": "xpub661MyMwAqRbcF2GR8MznvpdkJnpuQqWTNpCaVR8zydRKvoLG9UDHgH9brnzYArc1LCCsNFzqmn7SGoRaUDFJVvFCXdDU64iAjYKcwqDC7NN",
+      "children": [
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 0,
+          "branch": 0,
+          "pubkey": "03c2cd0cd124a5efec34726eddcb8564f7e7dabc2467ece7869f42c3f1201c4917"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "phone",
+          "change": 1,
+          "branch": 1,
+          "pubkey": "036f52f2633f8e514b0dfe15ce838ea2d906fca2ef4d38cb4b7a4ea0a5b66c7bce"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "phone",
+          "guardian": "hardware",
+          "branch": 6,
+          "pubkey": "0271794cd77f0e867f30f48440013278f88200822a7ab40d03f444760ea3188023"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "phone",
+          "guardian": "recovery",
+          "branch": 8,
+          "pubkey": "03a177e6716e43cec359211a6417fbdff7ea76bd9ffa9ebe5f88f9d95eaac21bf7"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 0,
+          "branch": 2,
+          "pubkey": "02fc8d9df4b3662f651b02b620e7de5df3648b0e5ede52c7f99409da3724d88063"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "hardware",
+          "change": 1,
+          "branch": 3,
+          "pubkey": "03bc925d4560c67f4f7525217a7a60e5282f3e12573c3d8f411a0c3872596cca63"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "hardware",
+          "guardian": "phone",
+          "branch": 10,
+          "pubkey": "023d79ae0d8826062a9a4131e4906edc9ddfab568a85b36b3809373003078bf791"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "hardware",
+          "guardian": "recovery",
+          "branch": 12,
+          "pubkey": "030f235d3c83d8e103fa0692056f3e08682741d7ac2fb602854d240742e9fe16d7"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "recovery",
+          "change": 0,
+          "branch": 4,
+          "pubkey": "038f01e092e5c20f999c71e7f4c3d7985bd29fe952b04ba80d58ba5237a8a2b8e1"
+        },
+        {
+          "kind": "initiate",
+          "claimant": "recovery",
+          "change": 1,
+          "branch": 5,
+          "pubkey": "025b5a7a74c9992b4ab575d22c8d759091d1cda8caa05894982bad484c5064931e"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "recovery",
+          "guardian": "phone",
+          "branch": 14,
+          "pubkey": "02714a3a19d159864815c71f445e84cf1e11c60bb19656c5f6c35359e7a14568c1"
+        },
+        {
+          "kind": "clawback",
+          "claimant": "recovery",
+          "guardian": "hardware",
+          "branch": 16,
+          "pubkey": "02297b783c00988ca42627d11df04cd6c7b5a70d3ba0ce5636ddac42caf9a19c03"
+        }
+      ]
+    },
+    "normal": {
+      "walletPolicy": {
+        "name": "Vaulted Savings",
+        "descriptorTemplate": "tr(@0/**,{{and_v(v:pk(@1/**),pk(@2/**)),and_v(v:pk(@1/<2;3>/*),pk(@3/<0;1>/*))},{and_v(v:pk(@2/<2;3>/*),pk(@3/<2;3>/*)),and_v(v:pk(@4/**),pk(@3/<4;5>/*))}})",
+        "keysInfo": [
+          "xpub661MyMwAqRbcGhWEN7Gee9MbPkp3BWoWT96prEyeBy14kdXRTxEgh5d599zvr2pZ8pb2kRNjePKJPQJZHcw4p8VNSGebzrNB8WetCujt83B",
+          "[2cee93bd/86'/0'/0']xpub6DFupVsnESYA5rzTeLhGPwgnqawuL8Dhd6aSb9pLCwM2zYjs64ri2x81jsZdcKZ7fnfzZuJCdELwiBXjxXEdH9ESXbdGDHfU6HYVsshR5EK",
+          "[2de67592/86'/0'/0']xpub6DPFJgAztiNy9mbc7ssvnfZ6pA4oNdhHaRyUWQqbBuDerTjxfhrR8EwSwtomH274yAgy8rW5jeBX4shnBBxhe1YTWEzL3ba5mcmtc2geJjF",
+          "xpub661MyMwAqRbcF2GR8MznvpdkJnpuQqWTNpCaVR8zydRKvoLG9UDHgH9brnzYArc1LCCsNFzqmn7SGoRaUDFJVvFCXdDU64iAjYKcwqDC7NN",
+          "[8bc48cf1/86'/0'/0']xpub6BnQe3kSeEDkGtsSAWewU4YtGqy2fwN4KEisnyUmSfG5CpUvuzAsQLQEAB65EqWqakSncMVmqW4JPP9tMRhGBZdPpchTSKX5rGnZDwR8Yz2"
+        ]
+      },
+      "receive": {
+        "address": "bc1pq6acp7kw7lctl6l5fh2n7u0fuycvwpsru62lfjff2lhkrrrxm67ssrygra",
+        "script": "512006bb80facef7f0bfebf44dd53f71e9e130c70603e695f4c92957ef618c66debd"
+      },
+      "change": {
+        "address": "bc1pecz7u3ta7nlhdawz7cje3yyf6ve350nyza5maqtpdz57wa6ay4vq0pzy6g",
+        "script": "5120ce05ee457df4ff76f5c2f625989089d3331a3e641769be816168a9e7775d2558"
+      }
+    }
+  }
+]

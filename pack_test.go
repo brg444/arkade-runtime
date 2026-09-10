@@ -172,9 +172,14 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 		t.Fatalf("vault-policy-v1 exposure presets: %+v", presets)
 	}
 	tiers, ok := listed["protectionTiers"].(map[string]any)
-	if !ok || len(tiers) != 2 {
+	if !ok || len(tiers) != 3 {
 		t.Fatalf("vault-policy-v1 protection tiers: %+v", listed["protectionTiers"])
 	}
+	light, ok := tiers["light"].(map[string]any)
+	if !ok || light["exitMode"] != "device" || light["hardwareKey"] != "forbidden" || light["recoveryKey"] != "forbidden" {
+		t.Fatalf("Light must use the shared Spending program with explicit device exit: %+v", light)
+	}
+
 }
 
 func TestEmbeddedContractPackMatchesRootFile(t *testing.T) {

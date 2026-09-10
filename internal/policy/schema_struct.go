@@ -246,7 +246,14 @@ func canonicalChecksByTable() map[string][]string {
 }
 
 func matchCheckConstraints(q schemaQuerier, table string) error {
+	version, rows, err := schemaMetaState(q)
+	if err != nil || rows != 1 {
+		return fmt.Errorf("schema metadata required before constraint validation")
+	}
 	want := canonicalChecksByTable()[table]
+	if version == 11 {
+		want = extractChecksByTable(sharedSpendingTenantSchema() + createVtxoSchema)[table]
+	}
 	if want == nil {
 		want = []string{}
 	}

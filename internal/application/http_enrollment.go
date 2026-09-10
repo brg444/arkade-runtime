@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
 func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
@@ -35,6 +36,30 @@ func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
 				loadErr = fmt.Errorf("vault-board-v1 enrollment descriptor unavailable")
 			}
 			writeJSON(w, nil, loadErr)
+			return
+		}
+		if cred.TemplateVersion == program.SpendingOnlyTemplate {
+			desc, hash, descErr := svc.storedSpendingEnrollmentDescriptor(cred, snap)
+			writeJSON(w, struct {
+				Status
+				SpendingDescriptor         spendingEnrollmentDescriptor `json:"spendingDescriptor"`
+				VtxoBoardingDescriptor     vaultBoardPublicDescriptor   `json:"vtxoBoardingDescriptor"`
+				VtxoBoardingDescriptorHash string                       `json:"vtxoBoardingDescriptorHash"`
+			}{status, desc, desc.Boarding, hash}, descErr)
+			return
+		}
+		if cred.TemplateVersion == savings.LedgerNativeTemplate {
+			enrolled, _, verifiedErr := svc.verifiedLedgerSavings(cred)
+			if verifiedErr != nil {
+				writeJSON(w, nil, verifiedErr)
+				return
+			}
+			board, _, boardErr := svc.buildVaultBoardEnrollment(vaultID, parsedRegisterRequest{phone: snap.PhoneBIP340, boardPub: snap.Board.BoardingPub, boardingProgram: program.VaultBoardV1})
+			writeJSON(w, struct {
+				Status
+				VtxoBoardingDescriptor     vaultBoardPublicDescriptor `json:"vtxoBoardingDescriptor"`
+				VtxoBoardingDescriptorHash string                     `json:"vtxoBoardingDescriptorHash"`
+			}{status, board, enrolled.DescriptorHash}, boardErr)
 			return
 		}
 		desc, hash, descErr := svc.statusVaultBoardDescriptor(cred, snap)
