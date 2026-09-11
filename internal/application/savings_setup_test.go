@@ -470,9 +470,16 @@ func TestSpendingBitcoinExpiredAbsentIntentReleasesOnlyUndispatchedFinal(t *test
 				if used, err := ledger.SpentInPeriod(t.Context(), request.VaultID, ""); err != nil || used == 0 {
 					t.Fatalf("missing input released allowance: %d %v", used, err)
 				}
+				if result, err := e.svc.reconcileBitcoinPayment(t.Context(), lightRenewalOperationRequest{VaultID: r.VaultID, OperationID: r.OperationID}); err != nil || result.State != "uncertain" {
+					t.Fatalf("status confused intent deletion with fund release: %+v %v", result, err)
+				}
 				e.svc.ArkResolver = original
 			}
-			result, err := e.svc.releaseBitcoinPayment(t.Context(), r)
+			// Polling must finish the input check after a lost release response.
+			result, err := e.svc.reconcileBitcoinPayment(t.Context(), lightRenewalOperationRequest{VaultID: r.VaultID, OperationID: r.OperationID})
+			if dispatched {
+				result, err = e.svc.releaseBitcoinPayment(t.Context(), r)
+			}
 			want := "released"
 			if dispatched {
 				want = "uncertain"

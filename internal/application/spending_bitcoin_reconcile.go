@@ -36,6 +36,12 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 		return lightRenewalResponse{State: "released"}, nil
 	}
 	if _, ok := snapshot.Events["final_dispatched"]; !ok {
+		// delete_result means the queue was cleared; its "released" outcome
+		// does not mean the input/allowance release was committed. Complete the
+		// live-input check and durable release before exposing that state.
+		if _, deleted := snapshot.Events["delete_result"]; deleted {
+			return s.releaseBitcoinPayment(ctx, bitcoinPaymentReleaseRequest{VaultID: r.VaultID, OperationID: r.OperationID})
+		}
 		return lightRenewalResponse{State: lightRenewalState(snapshot), IntentID: snapshot.Events["register_result"].OperatorRef}, nil
 	}
 	release, err := s.acquireVerification(ctx)
