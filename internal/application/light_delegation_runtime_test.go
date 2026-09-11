@@ -19,8 +19,9 @@ import (
 type delegatedTestOperator struct {
 	f                                                            delegatedFixture
 	channel                                                      chan lightDelegationEvent
-	deleteError, registerError, errorFinal                       error
+	deleteError, registerError, errorFinal, commitmentError      error
 	deletes, registers, finals, acks, nonceCalls, signatureCalls int
+	commitmentChecks                                             int
 	submitted                                                    []string
 	coordinator                                                  arktree.CoordinatorSession
 	peer                                                         arktree.SignerSession
@@ -158,6 +159,10 @@ func (o *delegatedTestOperator) submitLightForfeit(ctx context.Context, raw stri
 	o.channel <- lightDelegationEvent{BatchFinalized: &delegationBatchFinalized{o.f.tree.BatchID, "ignored-untrusted-id"}}
 	return nil
 }
+func (o *delegatedTestOperator) requireUnendedCommitment(context.Context, string) error {
+	o.commitmentChecks++
+	return o.commitmentError
+}
 func setupDelegatedRuntime(t *testing.T) (delegatedFixture, *delegatedTestOperator, *policy.LightDelegationSnapshot) {
 	t.Helper()
 	f := newDelegatedFixture(t)
@@ -193,7 +198,7 @@ func TestLightDelegationNativeExecutorSettlesWithCompleteRecovery(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.State() != "confirmed" || op.registers != 1 || op.finals != 1 || op.signatureCalls != 1 || op.acks != 1 {
+	if saved.State() != "confirmed" || op.registers != 1 || op.finals != 1 || op.signatureCalls != 1 || op.acks != 1 || op.commitmentChecks != 1 {
 		t.Fatal(saved.State(), op)
 	}
 	response, err := f.f.env.svc.delegationResponse(saved, f.f.descriptor, true)
@@ -208,6 +213,23 @@ func TestLightDelegationNativeExecutorSettlesWithCompleteRecovery(t *testing.T) 
 	raw, err := json.Marshal(response)
 	if err != nil || strings.Contains(string(raw), `"Txid"`) || strings.Contains(string(raw), `"capsule"`) {
 		t.Fatal("unsafe or wrong recovery wire", err)
+	}
+}
+
+func TestLightDelegationRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
+	f, op, saved := setupDelegatedRuntime(t)
+	op.commitmentError = fmt.Errorf("batch already ended")
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	if err := f.f.env.svc.executeLightDelegation(ctx, saved); err == nil || !strings.Contains(err.Error(), "batch already ended") {
+		t.Fatalf("lost ended batch failure: %v", err)
+	}
+	saved, err := f.f.env.svc.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.State() != "final_authorized" || op.commitmentChecks != 1 || op.finals != 0 {
+		t.Fatal(saved.State(), op)
 	}
 }
 func TestLightDelegationLostRegistrationNeverRedispatches(t *testing.T) {

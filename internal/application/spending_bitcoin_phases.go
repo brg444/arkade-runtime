@@ -172,6 +172,15 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r lightRenewalFina
 	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return lightRenewalResponse{}, err
 	}
+	operator, err := s.dialLightRenewalOperator(ctx)
+	if err != nil {
+		return lightRenewalResponse{}, err
+	}
+	// Final evidence can arrive after the Operator has already closed a failed
+	// batch. Fence that case before signing or persisting dispatch authority.
+	if err := operator.requireUnendedCommitment(ctx, verified.CommitmentTxid); err != nil {
+		return lightRenewalResponse{}, err
+	}
 	raw, err := json.Marshal(r.Evidence)
 	if err != nil {
 		return lightRenewalResponse{}, err
@@ -188,11 +197,12 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r lightRenewalFina
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	operator, err := s.dialLightRenewalOperator(ctx)
-	if err != nil {
+	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return lightRenewalResponse{}, err
 	}
-	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
+	// Signing and the live-input check may outlast the batch. Recheck at the
+	// final boundary so an ended batch cannot create a durable reservation.
+	if err := operator.requireUnendedCommitment(ctx, verified.CommitmentTxid); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	_, created, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "final_dispatched", RequestDigest: digest}, nil, 0)

@@ -80,7 +80,14 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 		return response, err
 	}
 	if !settled {
-		released, err := s.releaseConflictedBitcoinPayment(ctx, snapshot, p, c, evidence, final)
+		released, err := s.releaseEndedBitcoinPayment(ctx, snapshot, p, c, final)
+		if err != nil {
+			return response, err
+		}
+		if released {
+			return lightRenewalResponse{State: "released"}, nil
+		}
+		released, err = s.releaseConflictedBitcoinPayment(ctx, snapshot, p, c, evidence, final)
 		if err != nil {
 			return response, err
 		}

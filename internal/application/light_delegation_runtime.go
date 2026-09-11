@@ -563,7 +563,13 @@ func (s *Service) dispatchDelegationFinal(ctx context.Context, op lightDelegatio
 	if err := json.Unmarshal([]byte(saved.Events["final_authorized"].Evidence), &proof); err != nil {
 		return nil, err
 	}
-	var err error
+	packet, err := parsePSBT(proof.Evidence.CommitmentPSBT)
+	if err != nil {
+		return nil, err
+	}
+	if err := op.requireUnendedCommitment(ctx, packet.UnsignedTx.TxHash().String()); err != nil {
+		return nil, err
+	}
 	saved, err = s.persistDelegation(saved.Operation.OperationID, "final_dispatched", struct{}{})
 	if err != nil {
 		return nil, err

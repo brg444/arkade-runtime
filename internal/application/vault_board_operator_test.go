@@ -197,6 +197,43 @@ func TestVaultBoardOperatorRejectsResponseShapeDrift(t *testing.T) {
 	}
 }
 
+func TestVaultBoardOperatorDistinguishesMissingLiveAndEndedCommitments(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		status    int
+		body      string
+		endedAt   int64
+		ended     bool
+		wantError bool
+	}{
+		{name: "not indexed", status: http.StatusNotFound, body: `{"code":5}`, endedAt: 0},
+		{name: "live", status: http.StatusOK, body: `{"endedAt":"0"}`, endedAt: 0},
+		{name: "ended", status: http.StatusOK, body: `{"endedAt":"1789111622"}`, endedAt: 1789111622, ended: true},
+		{name: "ambiguous", status: http.StatusInternalServerError, body: `{"code":13}`, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/v1/indexer/commitmentTx/"+strings.Repeat("11", 32) || req.Header.Get("Accept") != "application/json" {
+					t.Fatalf("unexpected request %s", req.URL.String())
+				}
+				return jsonResponse(test.status, test.body), nil
+			})
+			operator := &stockVaultBoardOperator{origin: deployment.MutinynetArkIndexerOrigin, network: deployment.NetworkMutinynet, digest: vaultBoardTestOperatorDigest, hc: doer}
+			endedAt, err := operator.endedCommitmentAt(t.Context(), strings.Repeat("11", 32))
+			if (err != nil) != test.wantError || endedAt != test.endedAt {
+				t.Fatalf("ended status %d %v", endedAt, err)
+			}
+			if test.wantError {
+				return
+			}
+			err = operator.requireUnendedCommitment(t.Context(), strings.Repeat("11", 32))
+			if (err != nil) != test.ended {
+				t.Fatalf("unended fence %v", err)
+			}
+		})
+	}
+}
+
 func TestVaultBoardOperatorClassifiesOnlyStockPreAcceptanceRejections(t *testing.T) {
 	for _, test := range []struct {
 		name     string

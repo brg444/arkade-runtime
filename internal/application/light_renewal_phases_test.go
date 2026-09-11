@@ -19,9 +19,11 @@ import (
 )
 
 type lightRenewalTestOperator struct {
-	registers, finals        int
-	registerErr, finalErr    error
-	signedProof, signedFinal string
+	registers, finals, commitmentChecks, endedQueries  int
+	registerErr, finalErr, commitmentError, endedError error
+	commitmentErrorAt                                  int
+	endedAt                                            int64
+	signedProof, signedFinal                           string
 }
 
 func (o *lightRenewalTestOperator) registerIntent(_ context.Context, proof, _ string) (string, error) {
@@ -33,6 +35,17 @@ func (o *lightRenewalTestOperator) submitLightForfeit(_ context.Context, raw str
 	o.finals++
 	o.signedFinal = raw
 	return o.finalErr
+}
+func (o *lightRenewalTestOperator) requireUnendedCommitment(context.Context, string) error {
+	o.commitmentChecks++
+	if o.commitmentErrorAt > 0 && o.commitmentChecks < o.commitmentErrorAt {
+		return nil
+	}
+	return o.commitmentError
+}
+func (o *lightRenewalTestOperator) endedCommitmentAt(context.Context, string) (int64, error) {
+	o.endedQueries++
+	return o.endedAt, o.endedError
 }
 
 func setupLightRenewalPhases(t *testing.T, f lightRenewalProofFixture) (*Service, *lightRenewalTestOperator, lightRenewalRegisterRequest) {
@@ -101,8 +114,8 @@ func TestLightRenewalFinalLostResponseDoesNotRedispatch(t *testing.T) {
 	operator.finalErr = fmt.Errorf("response lost after forfeit accepted")
 	final := lightRenewalFinalRequest{VaultID: f.plan.VaultID, OperationID: f.plan.OperationID, Evidence: evidence}
 	result, err := s.finalizeLightRenewal(context.Background(), final)
-	if err != nil || result.State != "uncertain" || operator.finals != 1 {
-		t.Fatalf("final: %+v %v count=%d", result, err, operator.finals)
+	if err != nil || result.State != "uncertain" || operator.finals != 1 || operator.commitmentChecks != 2 {
+		t.Fatalf("final: %+v %v count=%d checks=%d", result, err, operator.finals, operator.commitmentChecks)
 	}
 	packet, err := parsePSBT(operator.signedFinal)
 	if err != nil {
@@ -116,6 +129,25 @@ func TestLightRenewalFinalLostResponseDoesNotRedispatch(t *testing.T) {
 	}
 	if _, err := s.finalizeLightRenewal(context.Background(), final); err != nil || operator.finals != 1 {
 		t.Fatalf("final replay: %v count=%d", err, operator.finals)
+	}
+}
+func TestLightRenewalRejectsEndedBatchBeforeFinalAuthority(t *testing.T) {
+	f, _, evidence := newLightRenewalFinalFixture(t)
+	s, operator, request := setupLightRenewalPhases(t, f)
+	if result, err := s.registerLightRenewal(context.Background(), request); err != nil || result.State != "registered" {
+		t.Fatalf("register: %+v %v", result, err)
+	}
+	operator.commitmentError = fmt.Errorf("batch already ended")
+	final := lightRenewalFinalRequest{VaultID: f.plan.VaultID, OperationID: f.plan.OperationID, Evidence: evidence}
+	if _, err := s.finalizeLightRenewal(context.Background(), final); err == nil || !strings.Contains(err.Error(), "batch already ended") {
+		t.Fatalf("lost ended batch failure: %v", err)
+	}
+	saved, err := s.Stores.LightRenewal.GetLightRenewal(context.Background(), f.plan.OperationID)
+	if err != nil || saved == nil {
+		t.Fatal(err)
+	}
+	if operator.commitmentChecks != 1 || operator.finals != 0 || saved.Events["final_authorized"].Phase != "" || saved.Events["final_dispatched"].Phase != "" {
+		t.Fatalf("ended batch crossed final boundary: checks=%d finals=%d events=%+v", operator.commitmentChecks, operator.finals, saved.Events)
 	}
 }
 func TestLightRenewalKeyCapabilityRejectsSubstitution(t *testing.T) {

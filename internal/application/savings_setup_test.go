@@ -277,8 +277,8 @@ func TestSavingsSetupLostFinalCannotReleaseOrSubmitTwice(t *testing.T) {
 			t.Fatalf("final: %+v %v", result, err)
 		}
 	}
-	if operator.finals != 1 {
-		t.Fatalf("dispatched %d times", operator.finals)
+	if operator.finals != 1 || operator.commitmentChecks != 2 {
+		t.Fatalf("dispatched %d times after %d batch checks", operator.finals, operator.commitmentChecks)
 	}
 	result, err = e.svc.releaseBitcoinPayment(t.Context(), bitcoinPaymentReleaseRequest{VaultID: request.VaultID, OperationID: request.OperationID})
 	if err != nil || result.State != "uncertain" {
@@ -287,6 +287,49 @@ func TestSavingsSetupLostFinalCannotReleaseOrSubmitTwice(t *testing.T) {
 	used, err := e.ledger.SpentInPeriod(t.Context(), request.VaultID, "")
 	if err != nil || used != 1000+prepared.Plan.FeeSats {
 		t.Fatalf("lost final allowance: %d %v", used, err)
+	}
+}
+
+func TestSavingsSetupRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
+	for _, failAt := range []int{1, 2} {
+		t.Run(fmt.Sprintf("check-%d", failAt), func(t *testing.T) {
+			e, c, prepared, _ := setupFundingFixture(t, "mainnet", "standard")
+			session, _ := btcec.NewPrivateKey()
+			operatorSession, _ := btcec.NewPrivateKey()
+			request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+			operator := &lightRenewalTestOperator{
+				commitmentError:   fmt.Errorf("batch already ended"),
+				commitmentErrorAt: failAt,
+			}
+			e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+			if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
+				t.Fatalf("register: %+v %v", result, err)
+			}
+			registration, err := verifyBitcoinPaymentRegistration(request.PSBT, request.Message, prepared.Plan, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fixture := lightRenewalProofFixture{
+				env: e, plan: prepared.Plan.batchInput(),
+				descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}},
+				tree:       c.spending.Tree, owner: e.hot,
+			}
+			_, _, evidence := buildSpendingBatchEvidenceFixture(t, fixture, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
+			_, err = e.svc.finalizeBitcoinPayment(t.Context(), lightRenewalFinalRequest{
+				VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence,
+			})
+			if err == nil || !strings.Contains(err.Error(), "batch already ended") {
+				t.Fatalf("lost ended batch failure: %v", err)
+			}
+			saved, err := e.ledger.GetLightRenewal(t.Context(), request.OperationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, authorized := saved.Events["final_authorized"]
+			if operator.finals != 0 || operator.commitmentChecks != failAt || saved.Events["final_dispatched"].Phase != "" || authorized != (failAt == 2) {
+				t.Fatalf("ended batch crossed final boundary: checks=%d finals=%d events=%+v", operator.commitmentChecks, operator.finals, saved.Events)
+			}
+		})
 	}
 }
 

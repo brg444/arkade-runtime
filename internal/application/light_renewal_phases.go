@@ -14,6 +14,7 @@ import (
 type lightRenewalOperator interface {
 	registerIntent(context.Context, string, string) (string, error)
 	submitLightForfeit(context.Context, string) error
+	requireUnendedCommitment(context.Context, string) error
 }
 
 func (o *stockVaultBoardOperator) submitLightForfeit(ctx context.Context, signed string) error {
@@ -218,6 +219,13 @@ func (s *Service) finalizeLightRenewal(ctx context.Context, r lightRenewalFinalR
 	if err := s.requireFreshLightRenewal(ctx, p, d, tree); err != nil {
 		return lightRenewalResponse{}, err
 	}
+	operator, err := s.dialLightRenewalOperator(ctx)
+	if err != nil {
+		return lightRenewalResponse{}, err
+	}
+	if err := operator.requireUnendedCommitment(ctx, verified.CommitmentTxid); err != nil {
+		return lightRenewalResponse{}, err
+	}
 	raw, err := json.Marshal(r.Evidence)
 	if err != nil {
 		return lightRenewalResponse{}, err
@@ -234,11 +242,10 @@ func (s *Service) finalizeLightRenewal(ctx context.Context, r lightRenewalFinalR
 	if err != nil {
 		return lightRenewalResponse{}, err
 	}
-	operator, err := s.dialLightRenewalOperator(ctx)
-	if err != nil {
+	if err := s.requireFreshLightRenewal(ctx, p, d, tree); err != nil {
 		return lightRenewalResponse{}, err
 	}
-	if err := s.requireFreshLightRenewal(ctx, p, d, tree); err != nil {
+	if err := operator.requireUnendedCommitment(ctx, verified.CommitmentTxid); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	_, created, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "final_dispatched", RequestDigest: digest}, nil, 0)
