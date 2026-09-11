@@ -459,6 +459,19 @@ func TestSpendingBitcoinExpiredAbsentIntentReleasesOnlyUndispatchedFinal(t *test
 			e.svc.Stores = testStores(t, ledger)
 			deletion := delegatedDeleteFixture(t, f)
 			r := bitcoinPaymentReleaseRequest{VaultID: request.VaultID, OperationID: request.OperationID, DeleteIntent: &deletion}
+			if !dispatched {
+				original := e.svc.ArkResolver.(stubArkResolver)
+				missing := original
+				missing.vtxos = nil
+				e.svc.ArkResolver = missing
+				if result, err := e.svc.releaseBitcoinPayment(t.Context(), r); err != nil || result.State != "uncertain" {
+					t.Fatalf("absent intent with missing input: %+v %v", result, err)
+				}
+				if used, err := ledger.SpentInPeriod(t.Context(), request.VaultID, ""); err != nil || used == 0 {
+					t.Fatalf("missing input released allowance: %d %v", used, err)
+				}
+				e.svc.ArkResolver = original
+			}
 			result, err := e.svc.releaseBitcoinPayment(t.Context(), r)
 			want := "released"
 			if dispatched {
