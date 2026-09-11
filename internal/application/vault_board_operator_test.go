@@ -15,6 +15,50 @@ import (
 
 const vaultBoardTestOperatorDigest = "2e14a884689aba877ecdf423a61862f01b9627927e65cccf119c2aee48fdf4d9"
 
+func TestStockOperatorIntentAbsenceIsExactAndDeleteOnly(t *testing.T) {
+	raw := `{"code":3,"message":"` + stockOperatorIntentAbsentMessage + `","details":[{"@type":"type.googleapis.com/ark.v1.ErrorDetails","code":23,"name":"INVALID_INTENT_PROOF","message":"` + stockOperatorIntentAbsentMessage + `","metadata":{}}]}`
+	for _, tc := range []struct {
+		name, body, contentType, path string
+		status                        int
+		absent                        bool
+	}{
+		{"exact deletion", raw, "application/json", "/v1/batch/deleteIntent", 400, true},
+		{"stock zero metadata", strings.Replace(raw, `"metadata":{}`, `"metadata":{"proof":"","message":""}`, 1), "application/json", "/v1/batch/deleteIntent", 400, true},
+		{"registration", raw, "application/json", "/v1/batch/registerIntent", 400, false},
+		{"finalization", raw, "application/json", "/v1/batch/submitForfeitTxs", 400, false},
+		{"server failure", raw, "application/json", "/v1/batch/deleteIntent", 500, false},
+		{"wrong content type", raw, "text/plain", "/v1/batch/deleteIntent", 400, false},
+		{"invalid signature", strings.ReplaceAll(raw, "no matching intents found for intent proof", "invalid intent proof: invalid signature"), "application/json", "/v1/batch/deleteIntent", 400, false},
+		{"text only", `{"code":3,"message":"` + stockOperatorIntentAbsentMessage + `"}`, "application/json", "/v1/batch/deleteIntent", 400, false},
+		{"wrong grpc code", strings.Replace(raw, `"code":3`, `"code":13`, 1), "application/json", "/v1/batch/deleteIntent", 400, false},
+		{"wrong detail code", strings.Replace(raw, `"code":23`, `"code":22`, 1), "application/json", "/v1/batch/deleteIntent", 400, false},
+		{"wrong detail type", strings.Replace(raw, "ark.v1.ErrorDetails", "other.ErrorDetails", 1), "application/json", "/v1/batch/deleteIntent", 400, false},
+		{"extra error context", strings.Replace(raw, `"metadata":{}`, `"metadata":{"cause":"unknown"}`, 1), "application/json", "/v1/batch/deleteIntent", 400, false},
+		{"truncated", raw[:len(raw)-1], "application/json", "/v1/batch/deleteIntent", 400, false},
+		{"oversized", raw + strings.Repeat(" ", vaultBoardOperatorErrorLimit), "application/json", "/v1/batch/deleteIntent", 400, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doer := rpcDoerFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path == "/v1/info" {
+					return jsonResponse(200, vaultBoardOperatorInfoJSON(vaultBoardTestOperatorDigest)), nil
+				}
+				response := jsonResponse(tc.status, tc.body)
+				response.Header.Set("Content-Type", tc.contentType)
+				return response, nil
+			})
+			operator, err := dialVaultBoardOperatorWithClient(t.Context(), deployment.MutinynetArkIndexerOrigin, deployment.NetworkMutinynet, doer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = operator.(*stockVaultBoardOperator).post(t.Context(), tc.path, struct{}{}, nil)
+			_, absent := err.(stockOperatorIntentAbsent)
+			if absent != tc.absent || err == nil {
+				t.Fatalf("absent=%v: %v", absent, err)
+			}
+		})
+	}
+}
+
 func vaultBoardOperatorInfoJSON(digest string) string {
 	return vaultBoardOperatorInfoForNetworkJSON(deployment.NetworkMutinynet, digest)
 }

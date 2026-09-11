@@ -65,6 +65,40 @@ type vaultBoardOperatorNotSent struct{ err error }
 func (e vaultBoardOperatorNotSent) Error() string { return e.err.Error() }
 func (e vaultBoardOperatorNotSent) Unwrap() error { return e.err }
 
+// An absent queued intent does not establish a batch outcome. Only callers
+// that independently fence final signing may use this response for release.
+type stockOperatorIntentAbsent struct{}
+
+func (stockOperatorIntentAbsent) Error() string { return "Operator has no matching queued intent" }
+
+const stockOperatorIntentAbsentMessage = "INVALID_INTENT_PROOF (23): no matching intents found for intent proof"
+
+func isStockOperatorIntentAbsent(raw []byte) bool {
+	var response struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Details []struct {
+			Type     string            `json:"@type"`
+			Code     int               `json:"code"`
+			Name     string            `json:"name"`
+			Message  string            `json:"message"`
+			Metadata map[string]string `json:"metadata"`
+		} `json:"details"`
+	}
+	if decodeVaultBoardOperatorJSON(raw, &response) != nil || response.Code != 3 || response.Message != stockOperatorIntentAbsentMessage || len(response.Details) != 1 {
+		return false
+	}
+	detail := response.Details[0]
+	// Stock arkd serializes the zero-value proof metadata as two empty fields.
+	for key, value := range detail.Metadata {
+		if (key != "proof" && key != "message") || value != "" {
+			return false
+		}
+	}
+	return detail.Type == "type.googleapis.com/ark.v1.ErrorDetails" && detail.Code == 23 &&
+		detail.Name == "INVALID_INTENT_PROOF" && detail.Message == stockOperatorIntentAbsentMessage
+}
+
 func dialVaultBoardOperator(ctx context.Context, network string) (vaultBoardOperator, error) {
 	id, err := deployment.IdentityFor(network)
 	if err != nil {
@@ -223,8 +257,13 @@ func (o *stockVaultBoardOperator) post(ctx context.Context, path string, payload
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		raw, _ := readBoundedResponse(res.Body, vaultBoardOperatorErrorLimit)
+		raw, readErr := readBoundedResponse(res.Body, vaultBoardOperatorErrorLimit)
 		defer zeroServiceBytes(raw)
+		mediaType, _, mediaErr := mime.ParseMediaType(res.Header.Get("Content-Type"))
+		if path == "/v1/batch/deleteIntent" && res.StatusCode == http.StatusBadRequest &&
+			readErr == nil && mediaErr == nil && mediaType == "application/json" && isStockOperatorIntentAbsent(raw) {
+			return stockOperatorIntentAbsent{}
+		}
 		if isStockOperatorPreAcceptanceRejection(res.StatusCode) {
 			return vaultBoardOperatorRejection{status: res.StatusCode, reason: operatorRejectionReason(raw)}
 		}
