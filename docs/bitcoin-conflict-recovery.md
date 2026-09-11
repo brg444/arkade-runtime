@@ -21,6 +21,17 @@ shallow confirmation, malformed transaction bytes, or changing chain responses
 preserve the reservation. Expiry, a failed batch, and an unspent input alone
 remain insufficient.
 
+There is one separate proof for a final request delayed past the Operator's
+batch deadline. Guardian checks the exact commitment before signing and again
+before the durable final-dispatch event. Reconciliation may release a dispatch
+with no final result when the release-pinned Operator reports that commitment's
+ended time, the authenticated dispatch time is strictly later, and the exact
+original input is still live with its original script, value, expiry, and
+commitment ancestry. Equal timestamps preserve the reservation because the
+Operator endpoint has one-second resolution. This proof establishes that the
+first dispatch happened after the exact batch became irreversibly unavailable;
+it does not infer failure from elapsed time or a generic batch error.
+
 ## Chain authority and finality
 
 The release-pinned HTTPS Esplora service remains the chain authority. The
@@ -39,8 +50,9 @@ proof across arbitrary future reorganizations.
 
 ## Durable state and compatibility
 
-Recovery appends one authenticated `released` event containing the conflicting
-transaction, funding outpoint, block, tip, and original final-request digest.
+Recovery appends one authenticated `released` event containing either the
+confirmed conflict proof or the exact ended-before-dispatch proof, plus the
+original final-request digest.
 The original signed evidence remains intact. The existing ledger mutex and
 independent sequence serialize release against confirmation and late callbacks;
 only one terminal transition can win. Status and final replay return `released`
@@ -56,6 +68,7 @@ Boarding conflict recovery adds schema 9 and its own authenticated conflict hist
 pending record or rewind the policy sequence manually.
 
 Tests cover canonical and legacy payments, persisted final evidence across a
-ledger restart, missing original inputs, shallow or changing confirmations,
-raw transaction substitution, terminal races, replay, allowance release, and
-preservation of existing authenticated records.
+ledger restart, missing original inputs, ended-batch ordering, equal timestamp
+ambiguity, shallow or changing confirmations, raw transaction substitution,
+terminal races, replay, allowance release, and preservation of existing
+authenticated records.

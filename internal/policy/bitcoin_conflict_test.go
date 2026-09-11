@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func dispatchedBitcoinConflictFixture(t *testing.T, kind string) (*Ledger, LightRenewalOperation, LightRenewalEvent) {
@@ -146,5 +147,73 @@ func TestBitcoinConflictReleaseRacesConfirmation(t *testing.T) {
 	}
 	if successes != 1 {
 		t.Fatalf("terminal transitions succeeded %d times", successes)
+	}
+}
+
+func TestEndedOperatorBatchReleaseBindsDispatchAndLiveInput(t *testing.T) {
+	for _, kind := range []string{SavingsSetupBatchKind, SpendingBitcoinBatchKind} {
+		t.Run(kind, func(t *testing.T) {
+			l, op, event := dispatchedBitcoinConflictFixture(t, kind)
+			snapshot, err := l.GetLightRenewal(t.Context(), op.OperationID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dispatchedAt, err := time.Parse(time.RFC3339, snapshot.Events["final_dispatched"].CreatedAt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expiresAt, err := time.Parse(time.RFC3339, op.ExpiresAt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			proof := BitcoinEndedBatchEvidence{
+				Kind:                 BitcoinEndedBatchKind,
+				CommitmentTxid:       strings.Repeat("11", 32),
+				BatchEndedAt:         dispatchedAt.Unix() - 1,
+				FinalDispatchedAt:    snapshot.Events["final_dispatched"].CreatedAt,
+				InputTxid:            op.InputTxid,
+				InputVout:            op.InputVout,
+				InputValueSats:       uint64(op.AmountSats + op.FeeSats),
+				InputExpiresAt:       expiresAt.Unix(),
+				InputCommitmentTxids: []string{strings.Repeat("22", 32)},
+			}
+			raw, _ := json.Marshal(proof)
+			event.Evidence = string(raw)
+			if _, created, err := l.AppendLightRenewalEvent(t.Context(), event, nil, 0); err != nil || !created {
+				t.Fatalf("ended batch release %v %v", created, err)
+			}
+			if used, err := l.SpentInPeriod(t.Context(), op.VaultID, ""); err != nil || used != 0 {
+				t.Fatalf("allowance %d %v", used, err)
+			}
+		})
+	}
+}
+
+func TestEndedOperatorBatchReleaseRejectsAmbiguousOrdering(t *testing.T) {
+	l, op, event := dispatchedBitcoinConflictFixture(t, SpendingBitcoinBatchKind)
+	snapshot, err := l.GetLightRenewal(t.Context(), op.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dispatchedAt, _ := time.Parse(time.RFC3339, snapshot.Events["final_dispatched"].CreatedAt)
+	expiresAt, _ := time.Parse(time.RFC3339, op.ExpiresAt)
+	proof := BitcoinEndedBatchEvidence{
+		Kind:                 BitcoinEndedBatchKind,
+		CommitmentTxid:       strings.Repeat("11", 32),
+		BatchEndedAt:         dispatchedAt.Unix(),
+		FinalDispatchedAt:    snapshot.Events["final_dispatched"].CreatedAt,
+		InputTxid:            op.InputTxid,
+		InputVout:            op.InputVout,
+		InputValueSats:       uint64(op.AmountSats + op.FeeSats),
+		InputExpiresAt:       expiresAt.Unix(),
+		InputCommitmentTxids: []string{strings.Repeat("22", 32)},
+	}
+	raw, _ := json.Marshal(proof)
+	event.Evidence = string(raw)
+	if _, _, err := l.AppendLightRenewalEvent(t.Context(), event, nil, 0); err == nil {
+		t.Fatal("equal second-resolution timestamps proved dispatch ordering")
+	}
+	if used, err := l.SpentInPeriod(t.Context(), op.VaultID, ""); err != nil || used == 0 {
+		t.Fatalf("ambiguous dispatch released allowance %d %v", used, err)
 	}
 }

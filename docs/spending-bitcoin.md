@@ -52,7 +52,13 @@ prepare request; changing displayed destinations and recomputing a plan hash
 cannot change that authority.
 
 A lost final response remains uncertain. Expiry, an ended batch, or an unspent
-input alone cannot release a potentially escaped signature. A separate conflict recovery path can release the reservation after the
+input alone cannot release a potentially escaped signature. Guardian checks the
+exact commitment before signing and again before recording final dispatch. If a
+crash or delayed request crosses that boundary after the Operator has already
+ended the batch, reconciliation releases the reservation only when the retained
+dispatch time is strictly later than the Operator's ended time and the exact
+original input remains live. Equal second-resolution timestamps remain
+uncertain. A separate conflict recovery path can release the reservation after
 Guardian verifies that another Bitcoin transaction has spent an input of the
 exact retained commitment, with at least six confirmations. See
 [Bitcoin conflict recovery](bitcoin-conflict-recovery.md) for its proof and
@@ -66,8 +72,8 @@ snapshot cannot make the new change spendable by discarding its journal.
 ## Qualification and rollout
 
 Tests cover destination and amount substitution, duplicate outputs, protected
-change, limits, owner-request replay, lost final responses, legacy record
-preservation, and an actual SDK intent checked by the Go verifier. Browser
+change, limits, owner-request replay, lost final responses, ended-before-dispatch
+ordering, legacy record preservation, and an actual SDK intent checked by the Go verifier. Browser
 coverage exercises the shared review and pending presentation without moving
 mainnet funds.
 
