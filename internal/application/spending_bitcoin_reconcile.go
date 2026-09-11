@@ -36,6 +36,12 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 		return lightRenewalResponse{State: "released"}, nil
 	}
 	if _, ok := snapshot.Events["final_dispatched"]; !ok {
+		// delete_result means the queue was cleared; its "released" outcome
+		// does not mean the input/allowance release was committed. Complete the
+		// live-input check and durable release before exposing that state.
+		if _, deleted := snapshot.Events["delete_result"]; deleted {
+			return s.releaseBitcoinPayment(ctx, bitcoinPaymentReleaseRequest{VaultID: r.VaultID, OperationID: r.OperationID})
+		}
 		return lightRenewalResponse{State: lightRenewalState(snapshot), IntentID: snapshot.Events["register_result"].OperatorRef}, nil
 	}
 	release, err := s.acquireVerification(ctx)
@@ -145,7 +151,7 @@ func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentRel
 			return lightRenewalResponse{State: "waiting_expiry"}, nil
 		}
 		// Registration expiry does not remove the Operator's queued intent.
-		// Keep the reservation until that exact owner-authorized intent is deleted.
+		// Require deletion or an exact, verified absence response for the owner proof.
 		cleared, err := s.deleteBitcoinPaymentIntent(ctx, snapshot, p, c, r.DeleteIntent)
 		if err != nil {
 			return lightRenewalResponse{}, err
@@ -172,8 +178,10 @@ func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentRel
 }
 
 // Cancellation is non-monetary and may be retried from its durable evidence.
-// No-match (including a lost successful delete response) remains ambiguous;
-// neither expiry nor an indexer view alone permits another funding attempt.
+// An exact stock no-match response proves queue absence, not batch failure.
+// For this path only, expiry and the durable no-final-dispatch fence prevent
+// the old batch from acquiring its missing forfeit cosignature. The caller
+// additionally checks that the original input is still live before release.
 func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, supplied *lightDelegateIntent) (bool, error) {
 	if _, ok := snapshot.Events["delete_result"]; ok {
 		return true, nil
@@ -239,7 +247,9 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 		return false, err
 	}
 	if err := deleter.deleteIntent(ctx, signed, deletion.Message); err != nil {
-		return false, nil
+		if _, absent := err.(stockOperatorIntentAbsent); !absent {
+			return false, nil
+		}
 	}
 	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "delete_result", RequestDigest: digest, Outcome: "released"}); err != nil {
 		return false, err

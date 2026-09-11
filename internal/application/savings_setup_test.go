@@ -417,6 +417,103 @@ func TestSavingsSetupDeleteCapabilityRejectsOtherMessagesAndOutputs(t *testing.T
 	}
 }
 
+func TestSpendingBitcoinExpiredAbsentIntentReleasesOnlyUndispatchedFinal(t *testing.T) {
+	for _, dispatched := range []bool{false, true} {
+		t.Run(fmt.Sprintf("final-dispatched=%t", dispatched), func(t *testing.T) {
+			e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
+			session, _ := btcec.NewPrivateKey()
+			operatorSession, _ := btcec.NewPrivateKey()
+			request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+			operator := &savingsSetupDeleteOperator{deleteErr: stockOperatorIntentAbsent{}}
+			operator.finalErr = fmt.Errorf("final response lost")
+			e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+			if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
+				t.Fatalf("register: %+v %v", result, err)
+			}
+			registration, err := verifyBitcoinPaymentRegistration(request.PSBT, request.Message, prepared.Plan, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+			_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
+			final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
+			if dispatched {
+				if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {
+					t.Fatalf("lost final: %+v %v", result, err)
+				}
+			}
+			now := time.Unix(prepared.Plan.RegisterExpireAt+16, 0)
+			e.svc.SessionNow = func() time.Time { return now }
+			if err := e.ledger.Close(); err != nil {
+				t.Fatal(err)
+			}
+			ledger, err := policy.OpenLedgerForNetwork(e.dbPath, func() time.Time { return now }, "mainnet")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ledger.Close() })
+			if err := ledger.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
+				t.Fatal(err)
+			}
+			e.ledger = ledger
+			e.svc.Stores = testStores(t, ledger)
+			deletion := delegatedDeleteFixture(t, f)
+			r := bitcoinPaymentReleaseRequest{VaultID: request.VaultID, OperationID: request.OperationID, DeleteIntent: &deletion}
+			if !dispatched {
+				original := e.svc.ArkResolver.(stubArkResolver)
+				missing := original
+				missing.vtxos = nil
+				e.svc.ArkResolver = missing
+				if result, err := e.svc.releaseBitcoinPayment(t.Context(), r); err != nil || result.State != "uncertain" {
+					t.Fatalf("absent intent with missing input: %+v %v", result, err)
+				}
+				if used, err := ledger.SpentInPeriod(t.Context(), request.VaultID, ""); err != nil || used == 0 {
+					t.Fatalf("missing input released allowance: %d %v", used, err)
+				}
+				if result, err := e.svc.reconcileBitcoinPayment(t.Context(), lightRenewalOperationRequest{VaultID: r.VaultID, OperationID: r.OperationID}); err != nil || result.State != "uncertain" {
+					t.Fatalf("status confused intent deletion with fund release: %+v %v", result, err)
+				}
+				e.svc.ArkResolver = original
+			}
+			// Polling must finish the input check after a lost release response.
+			result, err := e.svc.reconcileBitcoinPayment(t.Context(), lightRenewalOperationRequest{VaultID: r.VaultID, OperationID: r.OperationID})
+			if dispatched {
+				result, err = e.svc.releaseBitcoinPayment(t.Context(), r)
+			}
+			want := "released"
+			if dispatched {
+				want = "uncertain"
+			}
+			if err != nil || result.State != want {
+				t.Fatalf("release: %+v %v", result, err)
+			}
+			used, err := ledger.SpentInPeriod(t.Context(), request.VaultID, "")
+			if err != nil || (used == 0) == dispatched {
+				t.Fatalf("allowance %d: %v", used, err)
+			}
+			if dispatched {
+				if operator.deletes != 0 {
+					t.Fatal("deleted after forfeit dispatch")
+				}
+				return
+			}
+			snapshot, err := ledger.GetLightRenewal(t.Context(), r.OperationID)
+			if err != nil || snapshot.Events["delete_result"].Outcome != "released" {
+				t.Fatalf("absence not retained: %v", err)
+			}
+			// Even a clock rollback cannot admit the old forfeit after release.
+			now = now.Add(-time.Minute)
+			if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "released" || operator.finals != 0 {
+				t.Fatalf("released batch reopened: %+v %v", result, err)
+			}
+			r.DeleteIntent = nil
+			if result, err := e.svc.releaseBitcoinPayment(t.Context(), r); err != nil || result.State != "released" || operator.deletes != 1 {
+				t.Fatalf("release retry: %+v %v", result, err)
+			}
+		})
+	}
+}
+
 func TestSpendingBitcoinLostFinalCannotReleaseOrSubmitTwice(t *testing.T) {
 	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
 	session, _ := btcec.NewPrivateKey()
