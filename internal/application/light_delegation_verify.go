@@ -2,16 +2,13 @@ package application
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/brg444/arkade-runtime/internal/deployment"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
-	"github.com/btcsuite/btcd/btcec/v2/schnorr"
+
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -39,64 +36,13 @@ type lightDelegationPlan struct {
 	InputExpiresAt int64                  `json:"inputExpiresAt"`
 }
 
-func delegationDigest(domain string, value any) ([]byte, error) {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	sum := sha256.Sum256(append([]byte("vaulted-light/delegate-"+domain+"/v1:"), raw...))
-	return sum[:], nil
-}
 func lightDelegationRequestDigest(r lightDelegationRequest) ([]byte, error) {
-	if r.Program != "" {
-		shared := spendingDelegationSetRequest{Program: r.Program, DescriptorHash: r.DescriptorHash, VaultID: r.VaultID}
-		return shared.planDigest(spendingDelegationInput{OperationID: r.OperationID, Intent: r.Intent, ForfeitTxs: r.ForfeitTxs, DeleteIntent: r.DeleteIntent, ExpiresAt: r.ExpiresAt, OwnerSignature: r.OwnerSignature})
-	}
-	if r.DescriptorHash != "" {
-		return nil, fmt.Errorf("legacy Light request context")
-	}
-
-	return delegationDigest("schedule", struct {
-		VaultID      string              `json:"vaultId"`
-		OperationID  string              `json:"operationId"`
-		Intent       lightDelegateIntent `json:"intent"`
-		ForfeitTxs   []string            `json:"forfeitTxs"`
-		DeleteIntent lightDelegateIntent `json:"deleteIntent"`
-		ExpiresAt    int64               `json:"expiresAt"`
-	}{r.VaultID, r.OperationID, r.Intent, r.ForfeitTxs, r.DeleteIntent, r.ExpiresAt})
-}
-func verifyDelegationOwner(d light.Descriptor, digest []byte, encoded string) error {
-	raw, err := hex.DecodeString(encoded)
-	if err != nil || len(raw) != 64 || hex.EncodeToString(raw) != encoded {
-		return fmt.Errorf("Light delegation owner signature")
-	}
-	pub, err := schnorr.ParsePubKey(mustDecodeRenewalHex(d.OwnerPub))
-	if err != nil {
-		return err
-	}
-	sig, err := schnorr.ParseSignature(raw)
-	if err != nil || !sig.Verify(digest, pub) {
-		return fmt.Errorf("Light delegation owner authorization required")
-	}
-	return nil
-}
-
-// Validate the original SDK bytes; neither proof timestamps nor signed outputs
-// are rewritten. The separate owner's envelope bounds journal authorization.
-func verifyLightDelegationRequest(r lightDelegationRequest, d light.Descriptor, tree *vtxoPolicyTree, forfeitScript []byte) (lightDelegationPlan, error) {
-	c, err := legacyLightRenewalContract(d, tree)
-	if err != nil {
-		return lightDelegationPlan{}, err
-	}
-	return verifyDelegationRequest(r, c, forfeitScript)
+	shared := spendingDelegationSetRequest{Program: r.Program, DescriptorHash: r.DescriptorHash, VaultID: r.VaultID}
+	return shared.planDigest(spendingDelegationInput{OperationID: r.OperationID, Intent: r.Intent, ForfeitTxs: r.ForfeitTxs, DeleteIntent: r.DeleteIntent, ExpiresAt: r.ExpiresAt, OwnerSignature: r.OwnerSignature})
 }
 func verifyDelegationRequest(r lightDelegationRequest, c renewalContract, forfeitScript []byte) (lightDelegationPlan, error) {
 	d := c.Binding
-	if c.legacyLight {
-		if r.Program != "" || r.DescriptorHash != "" {
-			return lightDelegationPlan{}, fmt.Errorf("legacy Light request context")
-		}
-	} else if r.Program != d.Program || r.DescriptorHash != c.DescriptorHash {
+	if r.Program != d.Program || r.DescriptorHash != c.DescriptorHash {
 		return lightDelegationPlan{}, fmt.Errorf("renewal request context")
 	}
 

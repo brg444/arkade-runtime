@@ -12,7 +12,7 @@ import (
 	arktree "github.com/arkade-os/arkd/pkg/ark-lib/tree"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/brg444/arkade-runtime/internal/deployment"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/txscript"
@@ -116,20 +116,6 @@ func canonicalLightRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree,
 	return flat, graph, err
 }
 
-// The forfeit is released only against a fully signed replacement VTXO path
-// with the same enrolled script and exact post-fee balance. Its connector must
-// spend the same commitment, so it cannot execute independently of that batch.
-func verifyLightRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, registration verifiedLightRenewalRegistration) (verifiedLightRenewalFinal, error) {
-	return verifyLightFinal(e, plan, d, tree, registration, txscript.SigHashDefault)
-}
-
-func verifyLightFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
-	c, err := legacyLightRenewalContract(d, tree)
-	if err != nil {
-		return verifiedLightRenewalFinal{}, err
-	}
-	return verifyRenewalFinal(e, plan, c, registration, ownerSighash)
-}
 func verifyRenewalFinal(e lightRenewalFinalEvidence, plan lightRenewalPlan, c renewalContract, registration verifiedLightRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedLightRenewalFinal, error) {
 	digest, err := plan.digestForContract(c)
 	if err != nil {

@@ -29,7 +29,7 @@ type RecoveryArchiveBinding struct {
 	DescriptorHash       string `json:"descriptorHash"`
 }
 type RecoveryArchiveOpenResponse struct {
-	LightBackupOpenResponse
+	BackupOpenResponse
 	Binding RecoveryArchiveBinding `json:"binding"`
 }
 
@@ -82,7 +82,7 @@ func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchi
 func (s *Service) IssueRecoveryArchiveChallenge() (*PasskeyChallengeResponse, error) {
 	return s.issueBackupChallenge(recoveryArchivePurpose)
 }
-func (s *Service) OpenRecoveryArchive(ctx context.Context, req LightBackupOpenRequest) (*RecoveryArchiveOpenResponse, error) {
+func (s *Service) OpenRecoveryArchive(ctx context.Context, req BackupOpenRequest) (*RecoveryArchiveOpenResponse, error) {
 	return s.openBackup(ctx, req, recoveryArchivePurpose)
 }
 
@@ -157,7 +157,7 @@ func (s *Service) readArchiveLocked(session *backupSession) (*policy.RecoveryBac
 	session.HeaderDigest = digest
 	return backup, nil
 }
-func (s *Service) ReadRecoveryArchive(req LightBackupRequest) (*policy.RecoveryBackup, error) {
+func (s *Service) ReadRecoveryArchive(req BackupRequest) (*policy.RecoveryBackup, error) {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	key, session, err := s.verifiedArchiveSessionLocked(req.Token)
@@ -170,7 +170,7 @@ func (s *Service) ReadRecoveryArchive(req LightBackupRequest) (*policy.RecoveryB
 	}
 	return backup, err
 }
-func (s *Service) WriteRecoveryArchive(req LightBackupRequest) (*policy.RecoveryBackup, error) {
+func (s *Service) WriteRecoveryArchive(req BackupRequest) (*policy.RecoveryBackup, error) {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	key, session, err := s.verifiedArchiveSessionLocked(req.Token)
@@ -209,7 +209,7 @@ func attachRecoveryArchiveRoutes(mux *http.ServeMux, s *Service, origin string) 
 		writeJSON(w, v, err)
 	})
 	mux.HandleFunc("POST /v1/recovery-archive/open", func(w http.ResponseWriter, r *http.Request) {
-		var req LightBackupOpenRequest
+		var req BackupOpenRequest
 		if err := decodeMutation(r, &req, origin); err != nil {
 			writeMutationError(w, err)
 			return
@@ -219,7 +219,7 @@ func attachRecoveryArchiveRoutes(mux *http.ServeMux, s *Service, origin string) 
 	})
 	for _, phase := range []string{"read", "write"} {
 		mux.HandleFunc("POST /v1/recovery-archive/"+phase, func(w http.ResponseWriter, r *http.Request) {
-			var req LightBackupRequest
+			var req BackupRequest
 			if err := decodeMutation(r, &req, origin); err != nil {
 				writeMutationError(w, err)
 				return

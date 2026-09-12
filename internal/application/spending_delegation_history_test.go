@@ -22,8 +22,8 @@ func delegationAPI(t *testing.T) (delegatedFixture, http.Handler, *time.Time) {
 	now := f.now
 	*now = time.Unix(f.p.ValidAt-60, 0)
 	expiry := f.p.InputExpiresAt
-	f.f.env.svc.ArkResolver = stubArkResolver{signer: f.f.tree.ArkdPub.SerializeCompressed(), network: f.f.descriptor.Network, vtxos: []ports.ResolvedVtxo{{Txid: f.p.Renewal.Txid, Vout: f.p.Renewal.Vout, ValueSats: uint64(f.p.Renewal.ValueSats), Script: f.f.tree.PkScript, ExpiresAt: &expiry, CommitmentTxids: []string{fmt.Sprintf("%064x", 1)}}}}
-	if _, _, err := f.f.env.svc.delegationContext(f.f.descriptor.VaultID); err != nil {
+	f.f.env.svc.ArkResolver = stubArkResolver{signer: f.f.tree.ArkdPub.SerializeCompressed(), network: f.f.contract.Binding.Network, vtxos: []ports.ResolvedVtxo{{Txid: f.p.Renewal.Txid, Vout: f.p.Renewal.Vout, ValueSats: uint64(f.p.Renewal.ValueSats), Script: f.f.tree.PkScript, ExpiresAt: &expiry, CommitmentTxids: []string{fmt.Sprintf("%064x", 1)}}}}
+	if _, err := f.f.env.svc.delegationContract(f.f.contract.Binding.VaultID); err != nil {
 		t.Fatalf("API fixture: %v", err)
 	}
 	return f, testAuthorizer(f.f.env.svc), now
@@ -34,7 +34,7 @@ func delegationAPIPost(t *testing.T, h http.Handler, route string, body any, wan
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/v1/light/delegate/"+route, bytes.NewReader(raw))
+	req := httptest.NewRequest(http.MethodPost, "/v1/vtxo/delegate/"+route, bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", fixture.Origin)
 	res := httptest.NewRecorder()
@@ -46,7 +46,7 @@ func delegationAPIPost(t *testing.T, h http.Handler, route string, body any, wan
 }
 func delegationAPISign(t *testing.T, f delegatedFixture, purpose string, body any) string {
 	t.Helper()
-	digest, err := delegationDigest(purpose, body)
+	digest, err := spendingDelegationDigest(purpose, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,35 +56,39 @@ func delegationAPISign(t *testing.T, f delegatedFixture, purpose string, body an
 	}
 	return hex.EncodeToString(sig.Serialize())
 }
-func delegationAPIRead(t *testing.T, f delegatedFixture, purpose string, expiry int64) lightDelegationReadRequest {
+func delegationAPIRead(t *testing.T, f delegatedFixture, purpose string, expiry int64) spendingDelegationReadRequest {
 	t.Helper()
-	r := lightDelegationReadRequest{VaultID: f.f.descriptor.VaultID, OperationID: f.p.Request.OperationID, ExpiresAt: expiry}
+	r := spendingDelegationReadRequest{Program: f.f.contract.Binding.Program, DescriptorHash: f.f.contract.DescriptorHash, VaultID: f.f.contract.Binding.VaultID, OperationID: f.p.Request.OperationID, ExpiresAt: expiry}
 	r.OwnerSignature = delegationAPISign(t, f, purpose, struct {
-		VaultID     string `json:"vaultId"`
-		OperationID string `json:"operationId"`
-		ExpiresAt   int64  `json:"expiresAt"`
-	}{r.VaultID, r.OperationID, r.ExpiresAt})
+		Program        string `json:"program"`
+		DescriptorHash string `json:"descriptorHash"`
+		VaultID        string `json:"vaultId"`
+		OperationID    string `json:"operationId"`
+		ExpiresAt      int64  `json:"expiresAt"`
+	}{r.Program, r.DescriptorHash, r.VaultID, r.OperationID, r.ExpiresAt})
 	return r
 }
-func delegationAPIList(t *testing.T, f delegatedFixture, cursor string, expiry int64) lightDelegationListRequest {
+func delegationAPIList(t *testing.T, f delegatedFixture, cursor string, expiry int64) spendingDelegationReadRequest {
 	t.Helper()
-	r := lightDelegationListRequest{VaultID: f.f.descriptor.VaultID, AfterOperationID: cursor, ExpiresAt: expiry}
+	r := spendingDelegationReadRequest{Program: f.f.contract.Binding.Program, DescriptorHash: f.f.contract.DescriptorHash, VaultID: f.f.contract.Binding.VaultID, AfterOperationID: cursor, ExpiresAt: expiry}
 	r.OwnerSignature = delegationAPISign(t, f, "list", struct {
+		Program          string `json:"program"`
+		DescriptorHash   string `json:"descriptorHash"`
 		VaultID          string `json:"vaultId"`
 		AfterOperationID string `json:"afterOperationId"`
 		ExpiresAt        int64  `json:"expiresAt"`
-	}{r.VaultID, r.AfterOperationID, r.ExpiresAt})
+	}{r.Program, r.DescriptorHash, r.VaultID, r.AfterOperationID, r.ExpiresAt})
 	return r
 }
-func TestLightDelegationAPIAuthenticationAndExactRetry(t *testing.T) {
+func TestSpendingDelegationAPIAuthenticationAndExactRetry(t *testing.T) {
 	f, h, now := delegationAPI(t)
 	var info struct {
 		Enabled bool   `json:"enabled"`
 		Pubkey  string `json:"pubkey"`
 		Address string `json:"delegateAddress"`
 	}
-	raw := delegationAPIPost(t, h, "info", map[string]string{"vaultId": f.f.descriptor.VaultID}, 200)
-	if err := json.Unmarshal(raw, &info); err != nil || !info.Enabled || info.Pubkey != "02"+f.f.descriptor.CosignerPub || info.Address != f.f.tree.ArkAddress {
+	raw := delegationAPIPost(t, h, "info", map[string]string{"vaultId": f.f.contract.Binding.VaultID}, 200)
+	if err := json.Unmarshal(raw, &info); err != nil || !info.Enabled || info.Pubkey != "02"+f.f.contract.Binding.CosignerPub || info.Address != f.f.tree.ArkAddress {
 		t.Fatalf("native identity: %s", raw)
 	}
 	var state lightDelegationResponse
@@ -94,20 +98,30 @@ func TestLightDelegationAPIAuthenticationAndExactRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	decode(delegationAPIPost(t, h, "schedule", f.p.Request, 200))
+	schedule := func() {
+		var result spendingDelegationSetResponse
+		if err := json.Unmarshal(delegationAPIPost(t, h, "schedule", delegatedSetFixture(t, f, 7), 200), &result); err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Operations) != 1 {
+			t.Fatal("set membership changed")
+		}
+		state = result.Operations[0]
+	}
+	schedule()
 	if state.State != "armed" || state.ReceiverSats != f.p.Renewal.ReceiverSats {
 		t.Fatalf("schedule: %+v", state)
 	}
 	// An accepted request remains recoverable by exact retry without live indexer
 	// access, even when the original owner authorization has since elapsed.
 	*now = time.Unix(f.p.Request.ExpiresAt+60, 0)
-	f.f.env.svc.ArkResolver = stubArkResolver{signer: f.f.tree.ArkdPub.SerializeCompressed(), network: f.f.descriptor.Network}
-	decode(delegationAPIPost(t, h, "schedule", f.p.Request, 200))
+	f.f.env.svc.ArkResolver = stubArkResolver{signer: f.f.tree.ArkdPub.SerializeCompressed(), network: f.f.contract.Binding.Network}
+	schedule()
 	if state.State != "armed" {
 		t.Fatalf("retry changed state: %+v", state)
 	}
-	changed := f.p.Request
-	changed.OperationID = fmt.Sprintf("%032x", 999)
+	changed := delegatedSetFixture(t, f, 7)
+	changed.Plans[0].OperationID = fmt.Sprintf("%032x", 999)
 	delegationAPIPost(t, h, "schedule", changed, 400)
 	auth := delegationAPIRead(t, f, "status", now.Unix()+120)
 	decode(delegationAPIPost(t, h, "status", auth, 200))
@@ -127,15 +141,15 @@ func TestLightDelegationAPIAuthenticationAndExactRetry(t *testing.T) {
 	if state.State != "cancelled" {
 		t.Fatalf("cancel: %+v", state)
 	}
-	decode(delegationAPIPost(t, h, "schedule", f.p.Request, 200))
+	schedule()
 	if state.State != "cancelled" {
 		t.Fatal("retry resurrected cancellation")
 	}
 	f.f.env.svc.LightDelegationEnabled = false
-	delegationAPIPost(t, h, "schedule", f.p.Request, 404)
+	delegationAPIPost(t, h, "schedule", delegatedSetFixture(t, f, 7), 404)
 }
 
-func TestLightDelegationAPIListAuthenticatesCursorAndPaginatesHistory(t *testing.T) {
+func TestSpendingDelegationAPIListAuthenticatesCursorAndPaginatesHistory(t *testing.T) {
 	f, h, now := delegationAPI(t)
 	// Seed valid terminal history through the authoritative ledger. Repeated
 	// cancelled authorizations for one unchanged input are legal and inexpensive.
@@ -152,12 +166,9 @@ func TestLightDelegationAPIListAuthenticatesCursorAndPaginatesHistory(t *testing
 			t.Fatal(err)
 		}
 		p.Request.OwnerSignature = hex.EncodeToString(sig.Serialize())
-		raw, err := json.Marshal(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = f.f.env.ledger.ScheduleLightDelegation(t.Context(), policy.LightDelegation{OperationID: p.Request.OperationID, VaultID: p.Request.VaultID, InputTxid: p.Renewal.Txid, InputVout: p.Renewal.Vout, ValidAt: p.ValidAt, ExpiresAt: p.Request.ExpiresAt, FeeSats: p.Renewal.FeeSats, PlanDigest: hex.EncodeToString(digest), Plan: string(raw)})
-		if err != nil {
+		copyFixture := f
+		copyFixture.p = p
+		if _, err := f.f.env.svc.scheduleSpendingDelegationSet(t.Context(), delegatedSetFixture(t, copyFixture, uint32(i+7))); err != nil {
 			t.Fatal(err)
 		}
 		_, err = f.f.env.ledger.AdvanceLightDelegation(t.Context(), policy.LightDelegationEvent{OperationID: p.Request.OperationID, Phase: "cancelled", Evidence: `{}`}, 0)

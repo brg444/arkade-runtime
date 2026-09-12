@@ -12,7 +12,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
 
-func lnurlAssertion(t *testing.T, f lightEnrolledFixture, action, name string) LightBackupOpenRequest {
+func lnurlAssertion(t *testing.T, f spendingOnlyFixture, action, name string) BackupOpenRequest {
 	t.Helper()
 	c, err := f.env.svc.IssueLNURLChallenge(action, name)
 	if err != nil {
@@ -28,7 +28,7 @@ func lnurlAssertion(t *testing.T, f lightEnrolledFixture, action, name string) L
 	if err != nil {
 		t.Fatal(err)
 	}
-	return LightBackupOpenRequest{VaultID: f.start.VaultID, SessionAssertionRequest: SessionAssertionRequest{
+	return BackupOpenRequest{VaultID: f.start.VaultID, SessionAssertionRequest: SessionAssertionRequest{
 		ChallengeID: c.ChallengeID, CredentialID: hex.EncodeToString(f.env.credID), ClientDataJSON: hex.EncodeToString(a.ClientDataJSON),
 		AuthenticatorData: hex.EncodeToString(a.AuthenticatorData), Signature: hex.EncodeToString(a.DERSignature), DirectProof: hex.EncodeToString(proof)}}
 }
@@ -44,7 +44,7 @@ func TestLNURLRegistrationBindsEnrollmentAndConsumesAssertion(t *testing.T) {
 			t.Fatal(err)
 		}
 		if action != "register" || b.VaultID != f.start.VaultID || b.SpendingAddress != st.SpendingArkAddress ||
-			b.SpendingScript != st.SpendingArkScript || b.ClaimPublicKey != st.PhoneBIP340Pub || b.DescriptorHash != st.LightDescriptorHash {
+			b.SpendingScript != st.SpendingArkScript || b.ClaimPublicKey != st.PhoneBIP340Pub || b.DescriptorHash != f.request.DescriptorHash {
 			t.Fatal("registration did not bind enrolled public facts")
 		}
 		return json.RawMessage(`{"active":true}`), nil
@@ -74,10 +74,10 @@ func TestLNURLCannotReuseBackupOrRevokeAuthority(t *testing.T) {
 	if _, err := s.ConfigureLNURL(t.Context(), "revoke", "", lnurlAssertion(t, f, "register", "")); err == nil {
 		t.Fatal("accepted registration on revoke")
 	}
-	for _, mutate := range []func(*LightBackupOpenRequest){
-		func(r *LightBackupOpenRequest) { r.VaultID = strings.Repeat("ff", 16) },
-		func(r *LightBackupOpenRequest) { r.DirectProof = strings.Repeat("00", 64) },
-		func(r *LightBackupOpenRequest) { r.Signature = "aaaa" },
+	for _, mutate := range []func(*BackupOpenRequest){
+		func(r *BackupOpenRequest) { r.VaultID = strings.Repeat("ff", 16) },
+		func(r *BackupOpenRequest) { r.DirectProof = strings.Repeat("00", 64) },
+		func(r *BackupOpenRequest) { r.Signature = "aaaa" },
 	} {
 		req := lnurlAssertion(t, f, "register", "")
 		mutate(&req)
@@ -123,7 +123,7 @@ func TestLNURLLedgerEnrollmentAfterGuardianRestart(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					request := LightBackupOpenRequest{VaultID: vaultID, SessionAssertionRequest: SessionAssertionRequest{ChallengeID: challenge.ChallengeID, CredentialID: req.CredentialID, ClientDataJSON: hex.EncodeToString(assertion.ClientDataJSON), AuthenticatorData: hex.EncodeToString(assertion.AuthenticatorData), Signature: hex.EncodeToString(assertion.DERSignature), DirectProof: hex.EncodeToString(proof)}}
+					request := BackupOpenRequest{VaultID: vaultID, SessionAssertionRequest: SessionAssertionRequest{ChallengeID: challenge.ChallengeID, CredentialID: req.CredentialID, ClientDataJSON: hex.EncodeToString(assertion.ClientDataJSON), AuthenticatorData: hex.EncodeToString(assertion.AuthenticatorData), Signature: hex.EncodeToString(assertion.DERSignature), DirectProof: hex.EncodeToString(proof)}}
 					if _, err := f.svc.ConfigureLNURL(t.Context(), action, "", request); err != nil {
 						t.Fatal(err)
 					}

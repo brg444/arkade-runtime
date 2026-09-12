@@ -9,7 +9,7 @@ import (
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -31,14 +31,6 @@ type lightRenewalPlan struct {
 	FeeSats          int64  `json:"feeSats"`
 	FeePolicyDigest  string `json:"feePolicyDigest"`
 	RegisterExpireAt int64  `json:"registerExpireAt"`
-}
-
-func (p lightRenewalPlan) digest(d light.Descriptor) ([]byte, error) {
-	c, err := legacyLightRenewalContract(d, nil)
-	if err != nil {
-		return nil, err
-	}
-	return p.digestForContract(c)
 }
 
 func (p lightRenewalPlan) digestForContract(c renewalContract) ([]byte, error) {
@@ -67,20 +59,6 @@ type verifiedLightRenewalRegistration struct {
 	Message       string
 }
 
-// Registration proof is a bounded BIP-322 intent, never a payment PSBT. Both
-// the synthetic input and the one real input must carry the owner's exact
-// cooperative leaf signature. The renewal receiver cannot leave this wallet.
-func verifyLightRenewalRegistration(raw, message string, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree) (verifiedLightRenewalRegistration, error) {
-	return verifyLightRegistration(raw, message, plan, d, tree, 0, plan.RegisterExpireAt, nil)
-}
-
-func verifyLightRegistration(raw, message string, plan lightRenewalPlan, d light.Descriptor, tree *vtxoPolicyTree, validAt, expireAt int64, expectedSession []byte) (verifiedLightRenewalRegistration, error) {
-	c, err := legacyLightRenewalContract(d, tree)
-	if err != nil {
-		return verifiedLightRenewalRegistration{}, err
-	}
-	return verifyRenewalRegistration(raw, message, plan, c, validAt, expireAt, expectedSession)
-}
 func verifyRenewalRegistration(raw, message string, plan lightRenewalPlan, c renewalContract, validAt, expireAt int64, expectedSession []byte) (verifiedLightRenewalRegistration, error) {
 	tree := c.Tree
 

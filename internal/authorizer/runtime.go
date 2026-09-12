@@ -26,7 +26,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/ports"
 	"github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
-	"github.com/brg444/arkade-runtime/internal/profile/vaultedlightv1"
+
 	"github.com/brg444/arkade-runtime/internal/program"
 	arkaderuntime "github.com/brg444/arkade-runtime/internal/runtime"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -298,7 +298,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	if err != nil {
 		return nil, err
 	}
-	host, err := arkaderuntime.OpenProfiles(registry, []string{arkadevaultv1.ProfileID, vaultedlightv1.ProfileID}, arkaderuntime.Mount{
+	host, err := arkaderuntime.OpenProfiles(registry, []string{arkadevaultv1.ProfileID}, arkaderuntime.Mount{
 		Handler: httpapi.Authorizer(svc),
 		Readiness: func(ctx context.Context) error {
 			ready := svc.Ready(ctx)
@@ -350,7 +350,7 @@ func signerUnavailable(signer application.Signer) bool {
 // linked here at build time; there is no configuration or discovery path that
 // can add another profile at runtime.
 func compiledRegistry() (*arkaderuntime.Registry, error) {
-	return arkaderuntime.Compile(arkadevaultv1.Definition(), vaultedlightv1.Definition())
+	return arkaderuntime.Compile(arkadevaultv1.Definition())
 }
 
 // provisionEnrollmentInvite turns one operator-supplied secret file into one

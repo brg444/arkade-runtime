@@ -194,7 +194,7 @@ func TestBackupChallengeFloodAndInvalidProofPreserveOwnerAuthentication(t *testi
 	s := f.env.svc
 	req := backupAssertion(t, f)
 	for i := 0; i < maxBackupSessions*2; i++ {
-		for _, purpose := range []string{lightBackupPurpose, recoveryArchivePurpose} {
+		for _, purpose := range []string{recoveryArchivePurpose} {
 			if _, err := s.issueBackupChallenge(purpose); err != nil {
 				t.Fatal(err)
 			}
@@ -202,16 +202,16 @@ func TestBackupChallengeFloodAndInvalidProofPreserveOwnerAuthentication(t *testi
 	}
 	bad := req
 	bad.DirectProof = strings.Repeat("00", 64)
-	if _, err := s.OpenLightBackup(context.Background(), bad); err == nil {
+	if _, err := s.OpenRecoveryArchive(context.Background(), bad); err == nil {
 		t.Fatal("invalid backup proof accepted")
 	}
 	if len(s.consumedPasskeyChallenges) != 0 {
 		t.Fatal("anonymous backup request allocated replay entry")
 	}
-	if _, err := s.OpenLightBackup(context.Background(), req); err != nil {
+	if _, err := s.OpenRecoveryArchive(context.Background(), req); err != nil {
 		t.Fatal("owner backup request starved", err)
 	}
-	if _, err := s.OpenLightBackup(context.Background(), req); err == nil {
+	if _, err := s.OpenRecoveryArchive(context.Background(), req); err == nil {
 		t.Fatal("backup assertion replayed")
 	}
 }

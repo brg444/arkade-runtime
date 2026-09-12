@@ -10,7 +10,6 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -29,8 +28,8 @@ func TestSpendingRenewalContextWalletVectors(t *testing.T) {
 	if err := json.Unmarshal(raw, &vectors); err != nil {
 		t.Fatal(err)
 	}
-	if len(vectors) != 10 {
-		t.Fatalf("expected ten cross-language vectors, got %d", len(vectors))
+	if len(vectors) != 8 {
+		t.Fatalf("expected eight cross-language vectors, got %d", len(vectors))
 	}
 	for _, v := range vectors {
 		t.Run(v.Name, func(t *testing.T) {
@@ -42,45 +41,33 @@ func TestSpendingRenewalContextWalletVectors(t *testing.T) {
 			// Rebuild with Go's contract implementation, independently of the
 			// TypeScript script builder that produced the vector's output script.
 			var script []byte
-			if b.Program == light.Program {
-				if v.Status.LightDescriptor == nil {
-					t.Fatal("missing Light descriptor")
-				}
-				pins, _ := deployment.IdentityFor(b.Network)
-				tree, err := buildLightPolicyTree(*v.Status.LightDescriptor, mustDecodeRenewalHex(pins.OperatorSignerPubHex), map[string]string{"mainnet": "ark", "mutinynet": "tark"}[b.Network])
+			xonly := func(encoded string) []byte {
+				raw, err := hex.DecodeString(encoded)
 				if err != nil {
 					t.Fatal(err)
 				}
-				script = tree.PkScript
-			} else {
-				xonly := func(encoded string) []byte {
-					raw, err := hex.DecodeString(encoded)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(raw) == 32 {
-						return raw
-					}
-					pub, err := btcec.ParsePubKey(raw)
-					if err != nil {
-						t.Fatal(err)
-					}
-					return schnorr.SerializePubKey(pub)
+				if len(raw) == 32 {
+					return raw
 				}
-				pins, err := program.PinsFor(b.Network)
+				pub, err := btcec.ParsePubKey(raw)
 				if err != nil {
 					t.Fatal(err)
 				}
-				params := policy.VaultPolicyV1Params{Network: b.Network, UserPub: xonly(b.OwnerPub), VtxoVaultCosignerPub: xonly(b.CosignerPub), ArkdServerPub: xonly(b.OperatorPub), DelegatePub: xonly(pins.DelegatePub), ExitDevicePub: xonly(b.OwnerPub), ExitHardwarePub: xonly(v.Status.ExternalOwnerWalletPub)}
-				if v.Status.RecoveryKeyPub != "" {
-					params.ExitRecoveryPub = xonly(v.Status.RecoveryKeyPub)
-				}
-				tree, err := policy.BuildVaultPolicyV1Tree(params)
-				if err != nil {
-					t.Fatal(err)
-				}
-				script = tree.PkScript
+				return schnorr.SerializePubKey(pub)
 			}
+			pins, err := program.PinsFor(b.Network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			params := policy.VaultPolicyV1Params{Network: b.Network, UserPub: xonly(b.OwnerPub), VtxoVaultCosignerPub: xonly(b.CosignerPub), ArkdServerPub: xonly(b.OperatorPub), DelegatePub: xonly(pins.DelegatePub), ExitDevicePub: xonly(b.OwnerPub), ExitHardwarePub: xonly(v.Status.ExternalOwnerWalletPub)}
+			if v.Status.RecoveryKeyPub != "" {
+				params.ExitRecoveryPub = xonly(v.Status.RecoveryKeyPub)
+			}
+			tree, err := policy.BuildVaultPolicyV1Tree(params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			script = tree.PkScript
 			if hex.EncodeToString(script) != b.ScriptPubKey {
 				t.Fatal("Go and wallet enrolled scripts differ")
 			}
@@ -115,7 +102,7 @@ func TestSpendingRenewalContextUsesEnrolledKeyScope(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if ctx.Binding.Program != program.VaultPolicyV1 || ctx.Binding.ProtectionTier != tier || ctx.KeyScope.lightProfile || ctx.Binding.VaultID != id || ctx.KeyScope.vaultID != id {
+				if ctx.Binding.Program != program.VaultPolicyV1 || ctx.Binding.ProtectionTier != tier || ctx.Binding.VaultID != id || ctx.KeyScope.vaultID != id {
 					t.Fatal("Vault authority substituted")
 				}
 				if ctx.Tree.DelegatePub == nil || len(ctx.Tree.RevealedScripts) <= 2 {
@@ -128,12 +115,12 @@ func TestSpendingRenewalContextUsesEnrolledKeyScope(t *testing.T) {
 		}
 	}
 
-	f := newLightRenewalProofFixture(t)
-	ctx, err := f.env.svc.spendingRenewalContext(f.descriptor.VaultID)
+	f := newSpendingRenewalProofFixture(t)
+	ctx, err := f.env.svc.spendingRenewalContext(f.contract.Binding.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ctx.Binding.Program != light.Program || ctx.Binding.ProtectionTier != "light" || !ctx.KeyScope.lightProfile || ctx.Tree.DelegatePub != nil {
+	if ctx.Binding.Program != program.VaultPolicyV1 || ctx.Binding.ProtectionTier != "light" || ctx.Tree.DelegatePub == nil || ctx.vaultParams.ExitMode != "device" {
 		t.Fatal("Light authority substituted")
 	}
 }

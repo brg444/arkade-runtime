@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/brg444/arkade-runtime/internal/ports"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +24,7 @@ import (
 )
 
 type delegatedFixture struct {
-	f        lightRenewalProofFixture
+	f        spendingRenewalProofFixture
 	p        lightDelegationPlan
 	tree     lightDelegationTree
 	final    lightRenewalFinalEvidence
@@ -33,19 +35,23 @@ type delegatedFixture struct {
 
 func newDelegatedFixture(t *testing.T, otherSessions ...*btcec.PrivateKey) delegatedFixture {
 	t.Helper()
-	f := newLightRenewalProofFixture(t)
+	return newDelegatedFixtureForAccount(t, "mutinynet", "light", otherSessions...)
+}
+func newDelegatedFixtureForAccount(t *testing.T, network, tier string, otherSessions ...*btcec.PrivateKey) delegatedFixture {
+	t.Helper()
+	f := newSpendingRenewalProofFixtureForAccount(t, network, tier)
 	f.env.svc.LightDelegationEnabled = true
 	keys := f.env.svc.keys.lightDelegation.(*fileBackedVaultKeys)
 	var guardian *btcec.PrivateKey
-	if err := keys.withDelegationKey(context.Background(), f.descriptor, func(key *btcec.PrivateKey) error { guardian, _ = btcec.PrivKeyFromBytes(key.Serialize()); return nil }); err != nil {
+	if err := keys.withRenewalKey(context.Background(), f.contract, func(key *btcec.PrivateKey) error { guardian, _ = btcec.PrivKeyFromBytes(key.Serialize()); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	operator, _ := btcec.NewPrivateKey()
-	f, _, final := buildLightRenewalFinalFixture(t, f, guardian, operator, otherSessions...)
+	f, _, final := buildSpendingRenewalFinalFixture(t, f, guardian, operator, otherSessions...)
 	now := time.Now().UTC().Truncate(time.Second)
 	valid := now.Add(time.Hour).Unix()
 	expires := now.Add(2 * time.Hour).Unix()
-	f.message, _ = (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ValidAt: valid, ExpireAt: expires, CosignersPublicKeys: []string{"02" + f.descriptor.CosignerPub}}).Encode()
+	f.message, _ = (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ValidAt: valid, ExpireAt: expires, CosignersPublicKeys: []string{"02" + f.contract.Binding.CosignerPub}}).Encode()
 	proof, _ := f.proof(t).B64Encode()
 	partial, err := parsePSBT(final.OwnerForfeitPSBT)
 	if err != nil {
@@ -61,18 +67,18 @@ func newDelegatedFixture(t *testing.T, otherSessions ...*btcec.PrivateKey) deleg
 	}
 	partial.Inputs[0].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{signature}
 	forfeit, _ := partial.B64Encode()
-	r := lightDelegationRequest{VaultID: f.descriptor.VaultID, OperationID: f.plan.OperationID, Intent: lightDelegateIntent{proof, f.message}, ForfeitTxs: []string{forfeit}, DeleteIntent: delegatedDeleteFixture(t, f), ExpiresAt: expires}
+	r := lightDelegationRequest{Program: f.contract.Binding.Program, DescriptorHash: f.contract.DescriptorHash, VaultID: f.contract.Binding.VaultID, OperationID: f.plan.OperationID, Intent: lightDelegateIntent{proof, f.message}, ForfeitTxs: []string{forfeit}, DeleteIntent: delegatedDeleteFixture(t, f), ExpiresAt: expires}
 	digest, _ := lightDelegationRequestDigest(r)
 	ownerSig, err := schnorr.Sign(f.owner, digest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r.OwnerSignature = hex.EncodeToString(ownerSig.Serialize())
-	script, err := delegationForfeitScript(f.descriptor.Network)
+	script, err := delegationForfeitScript(f.contract.Binding.Network)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := verifyLightDelegationRequest(r, f.descriptor, f.tree, script)
+	p, err := verifyDelegationRequest(r, f.contract, script)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,18 +97,29 @@ func newDelegatedFixture(t *testing.T, otherSessions ...*btcec.PrivateKey) deleg
 		t.Fatal(err)
 	}
 	fixture := delegatedFixture{f, p, lightDelegationTree{final.BatchID, final.BatchExpiry, final.CommitmentPSBT, unsigned}, final, operator, guardian, &now}
+	expiry := p.InputExpiresAt
+	f.env.svc.ArkResolver = stubArkResolver{network: f.contract.Binding.Network, signer: f.tree.ArkdPub.SerializeCompressed(), feePolicy: ports.IntentFeePolicy{OffchainInput: "100.0"}, vtxos: []ports.ResolvedVtxo{{Txid: p.Renewal.Txid, Vout: p.Renewal.Vout, ValueSats: uint64(p.Renewal.ValueSats), Script: f.tree.PkScript, ExpiresAt: &expiry, CommitmentTxids: []string{strings.Repeat("aa", 32)}}}}
 	reopenDelegatedFixture(t, fixture)
 	return fixture
 }
-func TestLightDelegationNativeMuSigAndRecovery(t *testing.T) {
-	fixture := newDelegatedFixture(t)
+func TestSpendingDelegationNativeMuSigAndRecovery(t *testing.T) {
+	for _, network := range []string{"mainnet", "mutinynet"} {
+		for _, tier := range []string{"light", "standard", "advanced"} {
+			t.Run(network+"/"+tier, func(t *testing.T) {
+				assertSpendingDelegationNativeMuSigAndRecovery(t, newDelegatedFixtureForAccount(t, network, tier))
+			})
+		}
+	}
+}
+func assertSpendingDelegationNativeMuSigAndRecovery(t *testing.T, fixture delegatedFixture) {
+	t.Helper()
 	f, p := fixture.f, fixture.p
 	keys := f.env.svc.keys.lightDelegation
-	capsule, err := keys.prepareLightDelegationTree(t.Context(), f.descriptor, p, fixture.tree)
+	capsule, err := keys.prepareSpendingDelegationTree(t.Context(), f.contract, p, fixture.tree)
 	if err != nil {
 		t.Fatal(err)
 	}
-	graph, commitment, root, err := verifyDelegationSigningTree(f.descriptor, p, fixture.tree)
+	graph, commitment, root, err := verifyRenewalSigningTree(f.contract, p, fixture.tree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,17 +143,17 @@ func TestLightDelegationNativeMuSigAndRecovery(t *testing.T) {
 	coordinator.AddNonce(fixture.operator.PubKey(), peer)
 	all := map[string]map[string]string{}
 	for txid, n := range ours {
-		all[txid] = map[string]string{f.descriptor.CosignerPub: hex.EncodeToString(n.PubNonce[:]), hex.EncodeToString(schnorr.SerializePubKey(fixture.operator.PubKey())): hex.EncodeToString(peer[txid].PubNonce[:])}
+		all[txid] = map[string]string{f.contract.Binding.CosignerPub: hex.EncodeToString(n.PubNonce[:]), hex.EncodeToString(schnorr.SerializePubKey(fixture.operator.PubKey())): hex.EncodeToString(peer[txid].PubNonce[:])}
 	}
 	prepared := lightDelegationPreparedTree{fixture.tree, capsule}
 	bindDelegationTestTranscript(t, fixture, prepared, all)
-	sigs, err := keys.signLightDelegationTree(t.Context(), f.descriptor, p, prepared, all)
+	sigs, err := keys.signSpendingDelegationTree(t.Context(), f.contract, p, prepared, all)
 	if err != nil {
 		t.Fatal(err)
 	}
 	reopenDelegatedFixture(t, fixture)
 	keys = f.env.svc.keys.lightDelegation
-	replay, err := keys.signLightDelegationTree(t.Context(), f.descriptor, p, prepared, all)
+	replay, err := keys.signSpendingDelegationTree(t.Context(), f.contract, p, prepared, all)
 	if err != nil || !sameDelegationBytes(sigs, replay) {
 		t.Fatal("nonce capsule restart changed signature", err)
 	}
@@ -149,7 +166,7 @@ func TestLightDelegationNativeMuSigAndRecovery(t *testing.T) {
 		copyPeers[hex.EncodeToString(schnorr.SerializePubKey(fixture.operator.PubKey()))] = capsule.Nonces[txid]
 		changedPeers[txid] = copyPeers
 	}
-	if _, err := keys.signLightDelegationTree(t.Context(), f.descriptor, p, prepared, changedPeers); err == nil {
+	if _, err := keys.signSpendingDelegationTree(t.Context(), f.contract, p, prepared, changedPeers); err == nil {
 		t.Fatal("second peer transcript reused nonce after restart")
 	}
 	oursigs, err := arktree.NewTreePartialSigs(sigs)
@@ -179,7 +196,7 @@ func TestLightDelegationNativeMuSigAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	flat, _ := signed.Serialize()
-	final, err := f.env.svc.prepareDelegationFinal(t.Context(), p, f.descriptor, prepared, fixture.final.CommitmentPSBT, flat, fixture.final.Connectors)
+	final, err := f.env.svc.prepareSpendingDelegationFinal(t.Context(), p, f.contract, prepared, fixture.final.CommitmentPSBT, flat, fixture.final.Connectors)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,12 +214,12 @@ func TestLightDelegationNativeMuSigAndRecovery(t *testing.T) {
 	}
 	changed := prepared
 	changed.Capsule.Binding = "00" + changed.Capsule.Binding[2:]
-	if _, err := keys.signLightDelegationTree(t.Context(), f.descriptor, p, changed, all); err == nil {
+	if _, err := keys.signSpendingDelegationTree(t.Context(), f.contract, p, changed, all); err == nil {
 		t.Fatal("changed nonce binding signed")
 	}
 	unsignedFinal := final.Evidence
 	unsignedFinal.VtxoTree = fixture.tree.VtxoTree
-	if _, err := keys.authorizeLightDelegation(t.Context(), f.descriptor, p, &unsignedFinal); err == nil {
+	if _, err := keys.authorizeSpendingDelegation(t.Context(), f.contract, p, &unsignedFinal); err == nil {
 		t.Fatal("unsigned replacement authorized")
 	}
 	if path := os.Getenv("VAULT_DELEGATION_PUBLIC_FIXTURE"); path != "" {
@@ -210,28 +227,28 @@ func TestLightDelegationNativeMuSigAndRecovery(t *testing.T) {
 			Descriptor any                      `json:"descriptor"`
 			Plan       lightDelegationPlan      `json:"plan"`
 			Recovery   *lightDelegationRecovery `json:"recovery"`
-		}{f.descriptor, p, delegationRecoveryWire(final.Evidence)}, "", "  ")
+		}{f.contract, p, delegationRecoveryWire(final.Evidence)}, "", "  ")
 		if err := os.WriteFile(path, raw, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 }
-func TestLightDelegationNonceCapsuleRejectsWrongWalletAndTamper(t *testing.T) {
+func TestSpendingDelegationNonceCapsuleRejectsWrongWalletAndTamper(t *testing.T) {
 	a := newDelegatedFixture(t)
 	b := newDelegatedFixture(t)
 	keys := a.f.env.svc.keys.lightDelegation
-	capsule, err := keys.prepareLightDelegationTree(t.Context(), a.f.descriptor, a.p, a.tree)
+	capsule, err := keys.prepareSpendingDelegationTree(t.Context(), a.f.contract, a.p, a.tree)
 	if err != nil {
 		t.Fatal(err)
 	}
 	prepared := lightDelegationPreparedTree{a.tree, capsule}
-	if _, err := b.f.env.svc.keys.lightDelegation.signLightDelegationTree(t.Context(), b.f.descriptor, b.p, prepared, nil); err == nil {
+	if _, err := b.f.env.svc.keys.lightDelegation.signSpendingDelegationTree(t.Context(), b.f.contract, b.p, prepared, nil); err == nil {
 		t.Fatal("cross-wallet capsule accepted")
 	}
 	raw, _ := hex.DecodeString(capsule.Ciphertext)
 	raw[0] ^= 1
 	prepared.Capsule.Ciphertext = hex.EncodeToString(raw)
-	if _, err := keys.signLightDelegationTree(t.Context(), a.f.descriptor, a.p, prepared, nil); err == nil {
+	if _, err := keys.signSpendingDelegationTree(t.Context(), a.f.contract, a.p, prepared, nil); err == nil {
 		t.Fatal("tampered capsule accepted")
 	}
 	if bytes.Contains(raw, a.guardian.Serialize()) {
@@ -242,10 +259,7 @@ func TestLightDelegationNonceCapsuleRejectsWrongWalletAndTamper(t *testing.T) {
 func bindDelegationTestTranscript(t *testing.T, fixture delegatedFixture, prepared lightDelegationPreparedTree, all map[string]map[string]string) {
 	t.Helper()
 	s, p := fixture.f.env.svc, fixture.p
-	plan, _ := json.Marshal(p)
-	digest, _ := lightDelegationRequestDigest(p.Request)
-	_, err := s.Stores.LightDelegation.ScheduleLightDelegation(t.Context(), policy.LightDelegation{OperationID: p.Request.OperationID, VaultID: p.Request.VaultID, InputTxid: p.Renewal.Txid, InputVout: p.Renewal.Vout, ValidAt: p.ValidAt, ExpiresAt: p.Request.ExpiresAt, FeeSats: p.Renewal.FeeSats, PlanDigest: hex.EncodeToString(digest), Plan: string(plan)})
-	if err != nil {
+	if _, err := s.scheduleSpendingDelegationSet(t.Context(), delegatedSetFixture(t, fixture, 7)); err != nil {
 		t.Fatal(err)
 	}
 	*fixture.now = time.Unix(p.ValidAt, 0)
@@ -270,7 +284,7 @@ func reopenDelegatedFixture(t *testing.T, f delegatedFixture) {
 	if err := e.ledger.Close(); err != nil {
 		t.Fatal(err)
 	}
-	ledger, err := policy.OpenLedgerForNetwork(e.dbPath, func() time.Time { return *f.now }, f.f.descriptor.Network)
+	ledger, err := policy.OpenLedgerForNetwork(e.dbPath, func() time.Time { return *f.now }, f.f.contract.Binding.Network)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +306,7 @@ func reopenDelegatedFixture(t *testing.T, f delegatedFixture) {
 	e.svc.SessionNow = func() time.Time { return *f.now }
 }
 
-func delegatedDeleteFixture(t *testing.T, f lightRenewalProofFixture) lightDelegateIntent {
+func delegatedDeleteFixture(t *testing.T, f spendingRenewalProofFixture) lightDelegateIntent {
 	t.Helper()
 	message, err := (intent.DeleteMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: 0}).Encode()
 	if err != nil {
@@ -324,4 +338,12 @@ func delegatedDeleteFixture(t *testing.T, f lightRenewalProofFixture) lightDeleg
 		t.Fatal(err)
 	}
 	return lightDelegateIntent{raw, message}
+}
+
+func delegatedSetFixture(t *testing.T, f delegatedFixture, count uint32) spendingDelegationSetRequest {
+	t.Helper()
+	r := f.p.Request
+	set := spendingDelegationSetRequest{Program: r.Program, DescriptorHash: r.DescriptorHash, VaultID: r.VaultID, SetID: r.OperationID, Plans: []spendingDelegationInput{{OperationID: r.OperationID, Intent: r.Intent, ForfeitTxs: r.ForfeitTxs, DeleteIntent: r.DeleteIntent, ExpiresAt: r.ExpiresAt, OwnerSignature: r.OwnerSignature}}}
+	signSpendingSetFixture(t, f.f.env, &set, count)
+	return set
 }

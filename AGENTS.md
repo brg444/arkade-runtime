@@ -81,7 +81,7 @@ separate security-sensitive PR.
   through stock Operator batch interfaces;
   its scoped key capability verifies the persisted signing transcript.
   See `docs/spending-delegated-renewal.md` and
-  `docs/light-delegated-renewal.md` for authorization and cleanup behavior.
+  `docs/delegated-renewal-lifecycle.md` for authorization and cleanup behavior.
 
 ## Test fixtures
 

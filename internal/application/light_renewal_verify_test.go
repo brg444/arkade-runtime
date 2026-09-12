@@ -2,7 +2,6 @@ package application
 
 import (
 	"bytes"
-	"context"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -10,7 +9,7 @@ import (
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -18,40 +17,54 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-type lightRenewalProofFixture struct {
-	env        *env
-	plan       lightRenewalPlan
-	descriptor light.Descriptor
-	tree       *vtxoPolicyTree
-	owner      *btcec.PrivateKey
-	message    string
+type spendingRenewalProofFixture struct {
+	env      *env
+	plan     lightRenewalPlan
+	contract renewalContract
+	tree     *vtxoPolicyTree
+	owner    *btcec.PrivateKey
+	message  string
 }
 
-func newLightRenewalProofFixture(t *testing.T) lightRenewalProofFixture {
+func newSpendingRenewalProofFixture(t *testing.T) spendingRenewalProofFixture {
 	t.Helper()
-	f := newLightEnrollmentFixture(t, true)
-	st, err := f.env.svc.FinishLightEnrollment(context.Background(), f.token, f.request)
+	return newSpendingRenewalProofFixtureForAccount(t, deployment.NetworkMutinynet, "light")
+}
+func newSpendingRenewalProofFixtureForAccount(t *testing.T, network, tier string) spendingRenewalProofFixture {
+	t.Helper()
+	var e *env
+	var id string
+	if tier == "light" {
+		f := newSpendingOnlyFixtureForNetwork(t, true, network)
+		status, err := f.env.svc.FinishEnrollment(t.Context(), f.token, f.request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, id = f.env, status.VaultID
+	} else {
+		f := ledgerEnrollmentReadyForNetwork(t, tier == "advanced", network)
+		status := f.finish(t)
+		e = &env{svc: f.svc, ledger: f.ledger, dbPath: f.dbPath, hot: f.hot, p256: f.pass, direct: f.signer.direct, credID: mustDecode(t, f.request.CredentialID)}
+		id = status.VaultID
+	}
+	tree, err := e.svc.buildVtxoPolicyTree(id, e.svc.snapshot(id))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := f.env.svc.buildVtxoPolicyTree(f.start.VaultID, f.env.svc.snapshot(f.start.VaultID))
+	context, err := e.svc.spendingRenewalContext(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := *st.LightDescriptor
-	hash, err := light.DescriptorDigest(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan := lightRenewalPlan{OperationID: strings.Repeat("18", 16), VaultID: d.VaultID, DescriptorHash: hash, Txid: strings.Repeat("51", 32), Vout: 3, ValueSats: 80000, ReceiverSats: 79900, FeeSats: 100, FeePolicyDigest: strings.Repeat("67", 32), RegisterExpireAt: time.Now().Add(time.Minute).Unix()}
+	c := renewalContract{context}
+	plan := lightRenewalPlan{OperationID: strings.Repeat("18", 16), VaultID: c.Binding.VaultID, DescriptorHash: c.DescriptorHash, Txid: strings.Repeat("51", 32), Vout: 3, ValueSats: 80000, ReceiverSats: 79900, FeeSats: 100, FeePolicyDigest: strings.Repeat("67", 32), RegisterExpireAt: time.Now().Add(time.Minute).Unix()}
 	session, _ := btcec.NewPrivateKey()
 	message, err := (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ExpireAt: plan.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(session.PubKey().SerializeCompressed())}}).Encode()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return lightRenewalProofFixture{f.env, plan, d, tree, f.env.hot, message}
+	return spendingRenewalProofFixture{e, plan, c, tree, e.hot, message}
 }
-func (f lightRenewalProofFixture) proof(t *testing.T) *psbt.Packet {
+func (f spendingRenewalProofFixture) proof(t *testing.T) *psbt.Packet {
 	t.Helper()
 	hash, err := chainhash.NewHashFromStr(f.plan.Txid)
 	if err != nil {
@@ -76,22 +89,22 @@ func (f lightRenewalProofFixture) proof(t *testing.T) *psbt.Packet {
 	}
 	return &proof.Packet
 }
-func TestLightRenewalRegistrationBindsOwnerAndSameWallet(t *testing.T) {
-	f := newLightRenewalProofFixture(t)
+func TestSpendingRenewalRegistrationBindsOwnerAndSameWallet(t *testing.T) {
+	f := newSpendingRenewalProofFixture(t)
 	raw, err := f.proof(t).B64Encode()
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := verifyLightRenewalRegistration(raw, f.message, f.plan, f.descriptor, f.tree)
+	result, err := verifyRenewalRegistration(raw, f.message, f.plan, f.contract, 0, f.plan.RegisterExpireAt, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := f.plan.digest(f.descriptor)
+	digest, err := f.plan.digestForContract(f.contract)
 	if err != nil || !bytes.Equal(result.PlanDigest, digest) || len(result.RequestDigest) != 32 || len(result.TreeSession) != 33 || result.CanonicalPSBT != raw {
 		t.Fatal("renewal binding changed")
 	}
 	// Renewed principal is not a recipient payment and can exceed the payment cap.
-	if f.plan.ReceiverSats <= f.descriptor.SpendingPolicy.TxRecipientCapSats {
+	if f.plan.ReceiverSats <= f.contract.Binding.SpendingPolicy.TxRecipientCapSats {
 		t.Fatal("fixture does not exercise full-balance renewal")
 	}
 	for name, mutate := range map[string]func(*lightRenewalPlan){
@@ -106,14 +119,14 @@ func TestLightRenewalRegistrationBindsOwnerAndSameWallet(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := f.plan
 			mutate(&p)
-			if _, err := verifyLightRenewalRegistration(raw, f.message, p, f.descriptor, f.tree); err == nil {
+			if _, err := verifyRenewalRegistration(raw, f.message, p, f.contract, 0, p.RegisterExpireAt, nil); err == nil {
 				t.Fatal("changed renewal accepted")
 			}
 		})
 	}
 }
-func TestLightRenewalRejectsPaymentAndProofSubstitution(t *testing.T) {
-	f := newLightRenewalProofFixture(t)
+func TestSpendingRenewalRejectsPaymentAndProofSubstitution(t *testing.T) {
+	f := newSpendingRenewalProofFixture(t)
 	for name, mutate := range map[string]func(*psbt.Packet){
 		"missing owner":     func(p *psbt.Packet) { p.Inputs[1].TaprootScriptSpendSig = nil },
 		"synthetic owner":   func(p *psbt.Packet) { p.Inputs[0].TaprootScriptSpendSig = nil },
@@ -136,7 +149,7 @@ func TestLightRenewalRejectsPaymentAndProofSubstitution(t *testing.T) {
 			if err != nil {
 				return
 			}
-			if _, err := verifyLightRenewalRegistration(raw, f.message, f.plan, f.descriptor, f.tree); err == nil {
+			if _, err := verifyRenewalRegistration(raw, f.message, f.plan, f.contract, 0, f.plan.RegisterExpireAt, nil); err == nil {
 				t.Fatal("invalid renewal accepted")
 			}
 		})

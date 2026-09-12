@@ -384,7 +384,7 @@ func TestProductionRegistryCompilesVaultAndLight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := registry.ProfileIDs(), []string{arkadevaultv1.ProfileID, "vaulted-light-v1"}; !reflect.DeepEqual(got, want) {
+	if got, want := registry.ProfileIDs(), []string{arkadevaultv1.ProfileID}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("compiled production profiles = %v, want %v", got, want)
 	}
 }

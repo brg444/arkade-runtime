@@ -272,6 +272,10 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 // validateEnrollmentCreate verifies the same attested passkey ceremony for each
 // explicitly named enrollment profile. Profile keys and policy are checked separately.
 func (s *Service) validateEnrollmentCreate(pending *policy.PendingEnrollment, req EnrollFinishRequest) error {
+	if req.VaultID != "" && req.VaultID != pending.VaultID {
+		return fmt.Errorf("vault id does not match pending enrollment")
+	}
+
 	cfg := s.runtimeConfig()
 	clientData, err := decodeHex(req.ClientDataJSON)
 	if err != nil {
@@ -329,6 +333,10 @@ func (s *Service) acceptDuplicateFinishFromToken(tokenHash []byte, req EnrollFin
 }
 
 func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*Status, bool) {
+	if req.VaultID != "" && req.VaultID != vaultID {
+		return nil, false
+	}
+
 	key, err := s.credentialIntegrityKey()
 	if err != nil {
 		return nil, false

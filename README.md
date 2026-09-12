@@ -6,8 +6,8 @@ process validates enrolled programs, authorizes permitted operations, and
 retains the state needed to reconcile interrupted requests.
 
 The source supports mainnet and Mutinynet through distinct compiled deployment
-parameters. The binary includes the `arkade-vault-v1` and `vaulted-light-v1`
-profile definitions. Programs and key capabilities are compiled into the
+parameters. The binary includes the `arkade-vault-v1`
+profile definition. Programs and key capabilities are compiled into the
 application; clients cannot upload executable policy or request arbitrary
 signatures.
 
@@ -64,16 +64,6 @@ for the service and tenant access boundaries.
 | `GET /v1/status` | Public service status or one vault's status with `?vault=`. |
 | `GET /v1/invite` | Invitation availability. |
 | `POST /v1/enroll/session` | Issue a ten-minute, single-use setup session when invite-only admission is off. |
-| `POST /v1/light/renew/prepare` | Reserve the fee for renewing one Light output. |
-| `POST /v1/light/renew/register` | Verify owner and passkey approval, then register the exact Light renewal. |
-| `POST /v1/light/renew/final` | Verify signed replacement paths and submit the owner-authorized forfeit. |
-| `POST /v1/light/renew/status` | Reconcile the replacement output and confirmed Bitcoin commitment. |
-| `POST /v1/light/renew/release` | Cancel an unsent renewal or fence an expired registration after checking the old output. |
-| `POST /v1/light/delegate/info` | Read enrolled native delegate capabilities when enabled. |
-| `POST /v1/light/delegate/schedule` | Persist bounded owner authorization for one Light renewal. |
-| `POST /v1/light/delegate/status` | Read operation state and verified replacement recovery paths. |
-| `POST /v1/light/delegate/list` | Discover this vault’s scheduled operations with owner authorization. |
-| `POST /v1/light/delegate/cancel` | Cancel an armed renewal before dispatch claims its input. |
 | `GET /v1/vtxo/bitcoin/info` | Read the Spending-to-Bitcoin capability. |
 | `POST /v1/vtxo/bitcoin/prepare` | Reserve an owner-bound Bitcoin output plan and fee. |
 | `POST /v1/vtxo/bitcoin/register` | Approve the exact Bitcoin payment and protected Spending change. |
@@ -92,13 +82,6 @@ for the service and tenant access boundaries.
 | `POST /v1/recovery-archive/open` | Authenticate a Savings passkey and pin the enrolled descriptor for eight hours. |
 | `POST /v1/recovery-archive/read` | Read the authenticated encrypted archive of recovery data. |
 | `POST /v1/recovery-archive/write` | Save an encrypted archive at the expected revision with its original header. |
-| `POST /v1/light/backup/challenge` | Issue a single-use discoverable passkey challenge. |
-| `POST /v1/light/backup/open` | Authenticate a Light passkey and open an eight-hour backup-only session. |
-| `POST /v1/light/backup/read` | Read the authenticated encrypted recovery snapshot. |
-| `POST /v1/light/backup/write` | Atomically replace an encrypted snapshot at the expected revision. |
-| `POST /v1/light/enroll/start` | Assign a Light identity and freeze its spending policy. |
-| `POST /v1/light/enroll/propose` | Return the Light descriptor for local verification and backup. |
-| `POST /v1/light/enroll/finish` | Verify the passkey ceremony and atomically consume admission. |
 | `POST /v1/enroll/start` | Freeze the protection tier and canonical policy digest, reserve a vault ID, and return the create-ceremony challenge. |
 | `POST /v1/enroll/propose` | Return the Savings and `vault-board-v1` descriptors for wallet review. |
 | `POST /v1/enroll/finish` | Verify the complete enrollment and consume the invitation. |

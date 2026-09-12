@@ -19,7 +19,7 @@ func TestLightOnlyEnrollmentRejectsStandardEndpointsBeforeEffects(t *testing.T) 
 }
 
 func TestLightOnlyEnrollmentKeepsLightFinishAndExistingStatus(t *testing.T) {
-	svc, token, start, req, _ := lightEnrollmentFixture(t, true)
+	svc, token, start, req, _ := spendingOnlyEnrollmentFixture(t, true)
 	svc.LightOnlyEnrollment = true
 	status, err := svc.PublicStatus()
 	if err != nil {
@@ -28,7 +28,7 @@ func TestLightOnlyEnrollmentKeepsLightFinishAndExistingStatus(t *testing.T) {
 	if len(status.SupportedSetups) != 1 || status.SupportedSetups[0] != "light" || status.LedgerSavingsCapability != nil {
 		t.Fatal("non-Light enrollment advertised")
 	}
-	if _, err := svc.FinishLightEnrollment(context.Background(), token, req); err != nil {
+	if _, err := svc.FinishEnrollment(context.Background(), token, req); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.LoadVaults(); err != nil {

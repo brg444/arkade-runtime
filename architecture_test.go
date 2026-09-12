@@ -21,19 +21,17 @@ func TestInternalImportBoundaries(t *testing.T) {
 	}
 
 	allowed := map[string]map[string]bool{
-		modulePath + "/internal/apperr":                 {},
-		modulePath + "/internal/contractpack":           {},
-		modulePath + "/internal/deployment":             {},
-		modulePath + "/internal/ports":                  {},
-		modulePath + "/internal/program":                {},
-		modulePath + "/internal/runtime":                {},
-		modulePath + "/internal/webauthn":               {},
-		modulePath + "/internal/vault":                  {},
-		modulePath + "/internal/vault/savings":          {modulePath + "/internal/program": true},
-		modulePath + "/internal/vault/light":            {modulePath + "/internal/program": true},
-		modulePath + "/internal/policy":                 {modulePath + "/internal/program": true},
-		modulePath + "/internal/iface/http":             {modulePath + "/internal/application": true},
-		modulePath + "/internal/profile/vaultedlightv1": {modulePath + "/internal/runtime": true, modulePath + "/internal/vault/light": true},
+		modulePath + "/internal/apperr":        {},
+		modulePath + "/internal/contractpack":  {},
+		modulePath + "/internal/deployment":    {},
+		modulePath + "/internal/ports":         {},
+		modulePath + "/internal/program":       {},
+		modulePath + "/internal/runtime":       {},
+		modulePath + "/internal/webauthn":      {},
+		modulePath + "/internal/vault":         {},
+		modulePath + "/internal/vault/savings": {modulePath + "/internal/program": true},
+		modulePath + "/internal/policy":        {modulePath + "/internal/program": true},
+		modulePath + "/internal/iface/http":    {modulePath + "/internal/application": true},
 		modulePath + "/internal/profile/arkadevaultv1": {
 			modulePath + "/internal/policy":  true,
 			modulePath + "/internal/program": true,
@@ -71,8 +69,8 @@ func TestInternalImportBoundaries(t *testing.T) {
 		seen[pkg.ImportPath] = true
 		var unexpected []string
 		for _, imported := range pkg.Imports {
-			if imported == modulePath+"/internal/vault/connector" {
-				t.Errorf("retired connector must not be imported: %s", pkg.ImportPath)
+			if imported == modulePath+"/internal/vault/connector" || imported == modulePath+"/internal/vault/light" {
+				t.Errorf("retired program must not be imported: %s", pkg.ImportPath)
 			}
 			if imported == modulePath+"/fixture" && !nonProductionPackages[pkg.ImportPath] {
 				unexpected = append(unexpected, imported)

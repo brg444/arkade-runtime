@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
 
@@ -60,7 +59,7 @@ func (s *Service) IssueLNURLChallenge(action, name string) (*PasskeyChallengeRes
 	return s.issuePasskeyChallenge("", purpose, nil)
 }
 
-func (s *Service) ConfigureLNURL(ctx context.Context, action, name string, req LightBackupOpenRequest) (json.RawMessage, error) {
+func (s *Service) ConfigureLNURL(ctx context.Context, action, name string, req BackupOpenRequest) (json.RawMessage, error) {
 	if s.LNURLRegistrar == nil {
 		return nil, fmt.Errorf("Lightning addresses are unavailable")
 	}
@@ -78,7 +77,7 @@ func (s *Service) ConfigureLNURL(ctx context.Context, action, name string, req L
 		return nil, failPasskeyAuth("Lightning address challenge", nil)
 	}
 	cred, err := s.loadVerifiedCredentialFor(req.VaultID)
-	if err != nil || cred == nil || (cred.TemplateVersion != light.Profile && !recoveryArchiveCredentialAllowed(cred)) {
+	if err != nil || cred == nil || !recoveryArchiveCredentialAllowed(cred) {
 		return nil, failPasskeyAuth("Lightning address credential", nil)
 	}
 	assertion, err := decodeBoundedSessionAssertion(req.SessionAssertionRequest)
@@ -103,14 +102,11 @@ func (s *Service) ConfigureLNURL(ctx context.Context, action, name string, req L
 	if err != nil {
 		return nil, err
 	}
-	descriptorHash := status.LightDescriptorHash
-	if cred.TemplateVersion != light.Profile {
-		archive, err := s.recoveryArchiveBinding(cred)
-		if err != nil {
-			return nil, err
-		}
-		descriptorHash = archive.DescriptorHash
+	archive, err := s.recoveryArchiveBinding(cred)
+	if err != nil {
+		return nil, err
 	}
+	descriptorHash := archive.DescriptorHash
 	if descriptorHash == "" || status.SpendingArkAddress == "" || status.SpendingArkScript == "" || status.SpendingPolicyDigest == "" {
 		return nil, fmt.Errorf("incomplete enrolled receiving destination")
 	}
@@ -137,14 +133,14 @@ func attachLNURLRoutes(mux *http.ServeMux, s *Service, origin string) {
 	for _, action := range []string{"register", "revoke"} {
 		mux.HandleFunc("POST /v1/lnurl/"+action, func(w http.ResponseWriter, r *http.Request) {
 			var req struct {
-				LightBackupOpenRequest
+				BackupOpenRequest
 				Name string `json:"name"`
 			}
 			if err := decodeMutation(r, &req, origin); err != nil {
 				writeMutationError(w, err)
 				return
 			}
-			value, err := s.ConfigureLNURL(r.Context(), action, req.Name, req.LightBackupOpenRequest)
+			value, err := s.ConfigureLNURL(r.Context(), action, req.Name, req.BackupOpenRequest)
 			writeJSON(w, value, err)
 		})
 	}

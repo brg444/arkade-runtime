@@ -15,7 +15,7 @@ import (
 	arktree "github.com/arkade-os/arkd/pkg/ark-lib/tree"
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/wire"
 )
@@ -95,7 +95,7 @@ func (s *Service) dispatchDueDelegations(ctx context.Context, rt *lightDelegatio
 	}
 }
 func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot) error {
-	c, err := s.delegationContract(saved.Operation.VaultID, saved.Operation.Program == "")
+	c, err := s.delegationContract(saved.Operation.VaultID)
 	d, tree := c.Binding, c.Tree
 	if err != nil {
 		return err
@@ -494,7 +494,7 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 				continue
 			}
 			if event.BatchFinalized != nil && event.BatchFinalized.ID == batch {
-				fresh, err := s.delegationContract(d.VaultID, c.legacyLight)
+				fresh, err := s.delegationContract(d.VaultID)
 				if err != nil {
 					return err
 				}
@@ -507,13 +507,7 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 		}
 	}
 }
-func (s *Service) prepareDelegationFinal(ctx context.Context, p lightDelegationPlan, d light.Descriptor, prepared lightDelegationPreparedTree, commitment string, vtxos, connectors arktree.FlatTxTree) (lightDelegationFinal, error) {
-	c, err := legacyLightRenewalContract(d, nil)
-	if err != nil {
-		return lightDelegationFinal{}, err
-	}
-	return s.prepareSpendingDelegationFinal(ctx, p, c, prepared, commitment, vtxos, connectors)
-}
+
 func (s *Service) prepareSpendingDelegationFinal(ctx context.Context, p lightDelegationPlan, c renewalContract, prepared lightDelegationPreparedTree, commitment string, vtxos, connectors arktree.FlatTxTree) (lightDelegationFinal, error) {
 
 	var out lightDelegationFinal

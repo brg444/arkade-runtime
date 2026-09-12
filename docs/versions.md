@@ -7,17 +7,17 @@ domains identify separate contracts. Their numeric suffixes are independent.
 | --------------------------- | -------------------------------------------------------------------------------- |
 | SQLite schema               | `schema_meta.version = 12`, with authenticated retirement from the exact schema 11 baseline |
 | Full-wallet profile         | `arkade-vault-v1`                                                                |
-| Light profile and Spending  | `vaulted-light-v1`, `vault-light-policy-v1`                                      |
+| Spending-only account | `vaulted-spending-v1` with `vault-policy-v1` |
 | Direct-hardware Savings     | `arkade-vault/savings-v1`, template `phone-hww-recovery-savings-v1`              |
 | Full-wallet VTXO programs   | `vault-board-v1`, `vault-policy-v1`                                              |
-| Protection tier             | `standard` or `advanced`                                                         |
+| Protection tier             | `light`, `standard` or `advanced`                                                         |
 | Full-wallet Spending policy | `vault-spending-policy-v1`                                                       |
 | Recovery binding            | v4 for direct-hardware Savings; v6 for Ledger Savings                      |
 
 Ledger Savings uses `phone-ledger-guardian-savings-v1`. Connector v1 and v2
 are retired from application admission, signing, recovery and HTTP dispatch.
 Schema 12 retires their database tables and authenticated account ownership.
-Contract Packs still require the coordinated release-baseline update, including
+Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical-account storage access and direct-hardware Savings still require retirement. Contract Packs still require the coordinated release-baseline update, including
 the mainnet schema declaration; this branch is not a release candidate.
 
 Opaque passkey challenge tickets use prefix `v2.` and MAC domain

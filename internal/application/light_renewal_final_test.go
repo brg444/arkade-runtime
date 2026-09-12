@@ -19,28 +19,28 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-func newLightRenewalFinalFixture(t *testing.T) (lightRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+func newSpendingRenewalFinalFixture(t *testing.T) (spendingRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
 	t.Helper()
-	f := newLightRenewalProofFixture(t)
+	f := newSpendingRenewalProofFixture(t)
 	sessionKey, _ := btcec.NewPrivateKey()
 	operatorSessionKey, _ := btcec.NewPrivateKey()
-	return buildLightRenewalFinalFixture(t, f, sessionKey, operatorSessionKey)
+	return buildSpendingRenewalFinalFixture(t, f, sessionKey, operatorSessionKey)
 }
 
-func buildLightRenewalFinalFixture(t *testing.T, f lightRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey, otherSessions ...*btcec.PrivateKey) (lightRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+func buildSpendingRenewalFinalFixture(t *testing.T, f spendingRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
 	t.Helper()
 	f.message, _ = (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ExpireAt: f.plan.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(sessionKey.PubKey().SerializeCompressed())}}).Encode()
 	raw, _ := f.proof(t).B64Encode()
-	registered, err := verifyLightRenewalRegistration(raw, f.message, f.plan, f.descriptor, f.tree)
+	registered, err := verifyRenewalRegistration(raw, f.message, f.plan, f.contract, 0, f.plan.RegisterExpireAt, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return buildSpendingBatchEvidenceFixture(t, f, registered, sessionKey, operatorSessionKey, nil, otherSessions...)
 }
 
-func buildSpendingBatchEvidenceFixture(t *testing.T, f lightRenewalProofFixture, registered verifiedLightRenewalRegistration, sessionKey, operatorSessionKey *btcec.PrivateKey, onchain []*wire.TxOut, otherSessions ...*btcec.PrivateKey) (lightRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+func buildSpendingBatchEvidenceFixture(t *testing.T, f spendingRenewalProofFixture, registered verifiedLightRenewalRegistration, sessionKey, operatorSessionKey *btcec.PrivateKey, onchain []*wire.TxOut, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
 	t.Helper()
-	pins, err := deployment.IdentityFor(f.descriptor.Network)
+	pins, err := deployment.IdentityFor(f.contract.Binding.Network)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,23 +144,23 @@ func buildSpendingBatchEvidenceFixture(t *testing.T, f lightRenewalProofFixture,
 	return f, registered, evidence
 }
 
-func TestLightRenewalForfeitRequiresSignedProtectedReplacement(t *testing.T) {
-	f, registered, e := newLightRenewalFinalFixture(t)
-	result, err := verifyLightRenewalFinal(e, f.plan, f.descriptor, f.tree, registered)
+func TestSpendingRenewalForfeitRequiresSignedProtectedReplacement(t *testing.T) {
+	f, registered, e := newSpendingRenewalFinalFixture(t)
+	result, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(result.RequestDigest) != 32 || result.CommitmentTxid == "" || result.ReceiverTxid == "" || result.CanonicalForfeitPSBT != e.OwnerForfeitPSBT {
 		t.Fatal("missing final binding")
 	}
-	replay, err := verifyLightRenewalFinal(e, f.plan, f.descriptor, f.tree, registered)
+	replay, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault)
 	if err != nil || !bytes.Equal(replay.RequestDigest, result.RequestDigest) {
 		t.Fatal("final replay changed")
 	}
 }
 
-func TestLightRenewalForfeitRejectsIncompleteOrChangedBatch(t *testing.T) {
-	f, registered, original := newLightRenewalFinalFixture(t)
+func TestSpendingRenewalForfeitRejectsIncompleteOrChangedBatch(t *testing.T) {
+	f, registered, original := newSpendingRenewalFinalFixture(t)
 	for name, mutate := range map[string]func(*lightRenewalFinalEvidence){
 		"missing replacement signatures": func(e *lightRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.VtxoTree[0].Tx)
@@ -206,7 +206,7 @@ func TestLightRenewalForfeitRejectsIncompleteOrChangedBatch(t *testing.T) {
 			e.VtxoTree = append(arktree.FlatTxTree(nil), original.VtxoTree...)
 			e.Connectors = append(arktree.FlatTxTree(nil), original.Connectors...)
 			mutate(&e)
-			if _, err := verifyLightRenewalFinal(e, f.plan, f.descriptor, f.tree, registered); err == nil {
+			if _, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault); err == nil {
 				t.Fatal("invalid final authorization accepted")
 			}
 		})

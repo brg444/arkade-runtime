@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/wire"
 )
@@ -40,7 +39,7 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+			f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 			_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
 			final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 			if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {
@@ -124,7 +123,7 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+	f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 	_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
 	final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 	if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {

@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 type spendingDelegationSetResponse struct {
@@ -29,7 +28,7 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 	if err != nil || len(encoded) > maxJSONBody {
 		return out, fmt.Errorf("renewal set exceeds request limit")
 	}
-	c, err := s.delegationContract(r.VaultID, false)
+	c, err := s.delegationContract(r.VaultID)
 	if err != nil {
 		return out, err
 	}
@@ -103,18 +102,12 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		// the supplied assertion or compare against a later unrelated counter.
 		return out, nil
 	}
-	var credentialID []byte
-	var count uint32
-	if c.Binding.Program == program.VaultPolicyV1 {
-		if r.Authorization == nil {
-			return out, fmt.Errorf("renewal passkey authorization required")
-		}
-		credentialID, count, err = s.verifyVtxoAuthorization(ctx, r.VaultID, digest, r.Authorization.WebAuthnAssertionRequest, r.Authorization.DirectSig)
-		if err != nil {
-			return out, err
-		}
-	} else if r.Authorization != nil {
-		return out, fmt.Errorf("unexpected Light renewal passkey authorization")
+	if r.Authorization == nil {
+		return out, fmt.Errorf("renewal passkey authorization required")
+	}
+	credentialID, count, err := s.verifyVtxoAuthorization(ctx, r.VaultID, digest, r.Authorization.WebAuthnAssertionRequest, r.Authorization.DirectSig)
+	if err != nil {
+		return out, err
 	}
 	operations := make([]policy.LightDelegation, len(plans))
 	now := s.vtxoNow().Unix()
@@ -213,18 +206,7 @@ func (s *Service) verifySpendingDelegationRead(ctx context.Context, c renewalCon
 }
 
 func (s *Service) spendingDelegationResponse(saved *policy.LightDelegationSnapshot, c renewalContract, withRecovery bool) (lightDelegationResponse, error) {
-	contract := c
-	if saved.Operation.Program == "" {
-		if c.lightDescriptor == nil {
-			return lightDelegationResponse{}, fmt.Errorf("legacy renewal program mismatch")
-		}
-		var err error
-		contract, err = legacyLightRenewalContract(*c.lightDescriptor, c.Tree)
-		if err != nil {
-			return lightDelegationResponse{}, err
-		}
-	}
-	response, err := s.delegationResponseForContract(saved, contract, withRecovery)
+	response, err := s.delegationResponseForContract(saved, c, withRecovery)
 	if err != nil {
 		return response, err
 	}
@@ -257,7 +239,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 					writeMutationError(w, err)
 					return
 				}
-				c, err := s.delegationContract(req.VaultID, false)
+				c, err := s.delegationContract(req.VaultID)
 				if err != nil {
 					writeJSON(w, nil, err)
 					return
@@ -270,7 +252,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 				writeMutationError(w, err)
 				return
 			}
-			c, err := s.delegationContract(req.VaultID, false)
+			c, err := s.delegationContract(req.VaultID)
 			if err != nil {
 				writeJSON(w, nil, err)
 				return

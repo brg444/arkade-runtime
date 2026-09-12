@@ -78,3 +78,7 @@ func (s *Service) storedSpendingEnrollmentDescriptor(cred *policy.Credential, sn
 		spendingPolicy: spendingPolicyFromCredential(cred), boardPub: snap.Board.BoardingPub, boardingProgram: program.VaultBoardV1,
 	})
 }
+
+func validateRecordSpendingPolicy(network string, rec *policy.VaultRecord) error {
+	return program.ValidateSpendingPolicyFor(network, spendingPolicyFromRecord(rec))
+}

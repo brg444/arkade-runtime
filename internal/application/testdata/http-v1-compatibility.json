@@ -18,18 +18,6 @@
       "OPTIONS",
       "POST"
     ],
-    "/v1/light/enroll/finish": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/enroll/propose": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/enroll/start": [
-      "OPTIONS",
-      "POST"
-    ],
     "/v1/enroll/start": [
       "OPTIONS",
       "POST"
@@ -63,26 +51,6 @@
       "POST"
     ],
     "/v1/passkey/recover": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/final": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/prepare": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/register": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/release": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/status": [
       "OPTIONS",
       "POST"
     ],
@@ -131,22 +99,6 @@
       "OPTIONS",
       "POST"
     ],
-    "/v1/light/backup/challenge": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/backup/open": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/backup/read": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/backup/write": [
-      "OPTIONS",
-      "POST"
-    ],
     "/v1/recovery-archive/challenge": [
       "OPTIONS",
       "POST"
@@ -160,26 +112,6 @@
       "POST"
     ],
     "/v1/recovery-archive/write": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/cancel": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/info": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/list": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/schedule": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/status": [
       "OPTIONS",
       "POST"
     ],
@@ -253,18 +185,6 @@
       "feePolicyDigest:string",
       "registerExpireAt:integer"
     ],
-    "LightRenewalPrepareRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "txid:string",
-      "vout:integer",
-      "ownerSignature:string"
-    ],
-    "LightRenewalPrepared": [
-      "plan:object",
-      "planDigest:string",
-      "state:string"
-    ],
     "LightRenewalRegisterRequest": [
       "vaultId:string",
       "operationId:string",
@@ -298,29 +218,6 @@
       "receiverTxid:string,omitempty",
       "receiverVout:integer,omitempty"
     ],
-    "ProposedLightEnrollment": [
-      "descriptor:object",
-      "descriptorHash:string"
-    ],
-    "LightEnrollStartRequest": [
-      "spendingPolicy:object",
-      "spendingPolicyDigest:string"
-    ],
-    "LightEnrollFinishRequest": [
-      "handle:string",
-      "vaultId:string",
-      "userHandle:string",
-      "clientDataJSON:string",
-      "authenticatorData:string",
-      "attestationObject:string,omitempty",
-      "credentialId:string",
-      "webauthnP256:string",
-      "phoneDirectP256:string",
-      "ownerPub:string",
-      "descriptorHash:string",
-      "spendingPolicy:object",
-      "spendingPolicyDigest:string"
-    ],
     "ReadyStatus": [
       "ok:boolean",
       "schema:integer",
@@ -344,8 +241,6 @@
     ],
     "Status": [
       "ledgerSavings:object|null,omitempty",
-      "lightDescriptor:object|null,omitempty",
-      "lightDescriptorHash:string,omitempty",
       "enrolled:boolean",
       "network:string",
       "clientOrigin:string",
@@ -699,26 +594,6 @@
       "error:string",
       "code:string"
     ],
-    "LightBackupOpenRequest": [
-      "vaultId:string",
-      "challengeId:string",
-      "credentialId:string",
-      "clientDataJSON:string",
-      "authenticatorData:string",
-      "signature:string",
-      "directProof:string"
-    ],
-    "LightBackupRequest": [
-      "token:string",
-      "revision:integer,omitempty",
-      "payload:string,omitempty"
-    ],
-    "LightBackupOpenResponse": [
-      "token:string",
-      "vaultId:string",
-      "expiresAt:string",
-      "backup:object|null"
-    ],
     "LightBackup": [
       "revision:integer",
       "payload:string"
@@ -753,18 +628,6 @@
     "LightDelegateIntent": [
       "proof:string",
       "message:string"
-    ],
-    "LightDelegationReadRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "expiresAt:integer",
-      "ownerSignature:string"
-    ],
-    "LightDelegationListRequest": [
-      "vaultId:string",
-      "afterOperationId:string",
-      "expiresAt:integer",
-      "ownerSignature:string"
     ],
     "LightDelegationRecovery": [
       "batchId:string",
@@ -917,6 +780,26 @@
       "feePolicyDigest:string",
       "registerExpireAt:integer",
       "outputs:array<object>,omitempty"
+    ],
+    "BackupOpenRequest": [
+      "vaultId:string",
+      "challengeId:string",
+      "credentialId:string",
+      "clientDataJSON:string",
+      "authenticatorData:string",
+      "signature:string",
+      "directProof:string"
+    ],
+    "BackupRequest": [
+      "token:string",
+      "revision:integer,omitempty",
+      "payload:string,omitempty"
+    ],
+    "BackupOpenResponse": [
+      "token:string",
+      "vaultId:string",
+      "expiresAt:string",
+      "backup:object|null"
     ]
   }
 }

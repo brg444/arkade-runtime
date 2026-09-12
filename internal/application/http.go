@@ -190,24 +190,6 @@ var authorizerRouteMethods = map[string]map[string]struct{}{
 	"/v1/recovery-archive/read":      {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/recovery-archive/write":     {http.MethodPost: {}, http.MethodOptions: {}},
 
-	"/v1/light/backup/challenge": {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/backup/open":      {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/backup/read":      {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/backup/write":     {http.MethodPost: {}, http.MethodOptions: {}},
-
-	"/v1/light/renew/prepare":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/register":       {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/final":          {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/status":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/delegate/info":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/delegate/schedule":    {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/delegate/status":      {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/delegate/cancel":      {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/delegate/list":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/renew/release":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/enroll/start":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/enroll/propose":       {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/light/enroll/finish":        {http.MethodPost: {}, http.MethodOptions: {}},
 	"/health":                        {http.MethodGet: {}},
 	"/ready":                         {http.MethodGet: {}},
 	"/v1/status":                     {http.MethodGet: {}, http.MethodOptions: {}},
@@ -264,10 +246,10 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 		writeJSON(w, st, nil)
 	})
 	attachEnrollmentRoutes(mux, svc, origin)
-	attachLightEnrollmentRoutes(mux, svc, origin)
+
 	attachRecoveryArchiveRoutes(mux, svc, origin)
 	attachLNURLRoutes(mux, svc, origin)
-	attachLightRenewalRoutes(mux, svc, origin)
+
 	attachSpendingBitcoinRoutes(mux, svc, origin)
 	attachSpendingDelegationRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
@@ -291,7 +273,7 @@ func decodeMutation(r *http.Request, dst any, expectedOrigin string) error {
 		return &mutationError{http.StatusForbidden, "origin"}
 	}
 	limit := int64(maxJSONBody)
-	if r.URL.Path == "/v1/light/backup/write" || r.URL.Path == "/v1/recovery-archive/write" {
+	if r.URL.Path == "/v1/recovery-archive/write" {
 		limit = 3_100_000
 	}
 	if r.ContentLength > limit {

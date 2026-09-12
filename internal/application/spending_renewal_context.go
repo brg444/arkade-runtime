@@ -10,7 +10,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
 
@@ -53,11 +53,6 @@ func (b spendingRenewalBinding) digest() (string, error) {
 		return "", fmt.Errorf("renewal output script")
 	}
 	switch b.Program {
-	case light.Program:
-		if b.ProtectionTier != "light" {
-			return "", fmt.Errorf("renewal Light tier")
-		}
-		err = light.ValidatePolicy(b.Network, light.Policy(b.SpendingPolicy))
 	case program.VaultPolicyV1:
 		if b.ProtectionTier != program.ProtectionTierLight && b.ProtectionTier != "standard" && b.ProtectionTier != "advanced" {
 			return "", fmt.Errorf("renewal Vault tier")
@@ -80,12 +75,11 @@ func (b spendingRenewalBinding) digest() (string, error) {
 // Authority is reconstructed from authenticated enrollment and the existing
 // scoped-key derivation. No HTTP caller can construct this context directly.
 type spendingRenewalContext struct {
-	Binding         spendingRenewalBinding
-	DescriptorHash  string
-	Tree            *vtxoPolicyTree
-	KeyScope        vtxoKeyContext
-	lightDescriptor *light.Descriptor
-	vaultParams     *policy.VaultPolicyV1Params
+	Binding        spendingRenewalBinding
+	DescriptorHash string
+	Tree           *vtxoPolicyTree
+	KeyScope       vtxoKeyContext
+	vaultParams    *policy.VaultPolicyV1Params
 }
 
 // Reconstruct the compiled program before scoped signing. A matching public
@@ -109,25 +103,8 @@ func (c spendingRenewalContext) validateTree() error {
 	var script, leaf, control []byte
 	var revealed []string
 	switch b.Program {
-	case light.Program:
-		if c.lightDescriptor == nil || c.vaultParams != nil || !c.KeyScope.lightProfile {
-			return fmt.Errorf("renewal Light authority")
-		}
-		d := *c.lightDescriptor
-		if err := light.ValidateDescriptor(d); err != nil {
-			return err
-		}
-		if d.VaultID != b.VaultID || d.Network != b.Network || d.OwnerPub != b.OwnerPub || d.CosignerPub != b.CosignerPub || d.OperatorPub != b.OperatorPub || !sameDelegationBytes(program.SpendingPolicy(d.SpendingPolicy), b.SpendingPolicy) {
-			return fmt.Errorf("renewal Light descriptor")
-		}
-		tree, err := light.BuildTree(d.Params)
-		if err != nil {
-			return err
-		}
-		script, leaf, control = tree.PkScript, tree.SpendScript, tree.SpendControlBlock
-		revealed = []string{hex.EncodeToString(tree.SpendScript), hex.EncodeToString(tree.ExitScript)}
 	case program.VaultPolicyV1:
-		if c.vaultParams == nil || c.lightDescriptor != nil || c.KeyScope.lightProfile {
+		if c.vaultParams == nil {
 			return fmt.Errorf("renewal Vault authority")
 		}
 		p := *c.vaultParams
@@ -182,24 +159,11 @@ func (s *Service) spendingRenewalContext(vaultID string) (spendingRenewalContext
 		OperatorPub:    hex.EncodeToString(schnorr.SerializePubKey(tree.ArkdPub)),
 		ScriptPubKey:   hex.EncodeToString(tree.PkScript), SpendingPolicy: spendingPolicyFromRecord(record),
 	}
-	if snapshot.Light != nil {
-		d := *snapshot.Light
-		if err := light.ValidateDescriptor(d); err != nil {
-			return out, err
-		}
-		if d.VaultID != id || d.Network != binding.Network || d.OwnerPub != binding.OwnerPub || d.CosignerPub != binding.CosignerPub || d.OperatorPub != binding.OperatorPub || d.ScriptPubKey != binding.ScriptPubKey {
-			return out, fmt.Errorf("renewal Light enrollment mismatch")
-		}
-		binding.Program, binding.ProtectionTier = light.Program, "light"
-		binding.SpendingPolicy = program.SpendingPolicy(d.SpendingPolicy)
-		out.lightDescriptor = &d
-	} else {
-		if tree.params == nil {
-			return out, fmt.Errorf("shared Spending parameters unavailable")
-		}
-		p := *tree.params
-		out.vaultParams = &p
+	if tree.params == nil {
+		return out, fmt.Errorf("shared Spending parameters unavailable")
 	}
+	p := *tree.params
+	out.vaultParams = &p
 	digest, err := binding.digest()
 	if err != nil {
 		return out, err

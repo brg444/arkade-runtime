@@ -2,13 +2,10 @@
 
 Guardian can execute finite owner-authorized renewals while the wallet is
 closed. Light, Standard, and Advanced renew into their exact enrolled Spending
-script, including the original delegate and recovery leaves. Existing and
-Savings connector enrollments use the same Spending workflow. Savings scripts,
-withdrawal authority, and key derivation remain unchanged.
+script, including the original delegate and recovery leaves. Shared Spending has one current program, with Savings absent or provided by Ledger. Savings scripts, withdrawal authority and retained key derivation remain unchanged.
 
 The existing opt-in `VAULT_LIGHT_DELEGATION_ENABLED=true` (or
-`--light-delegation-enabled=true`) now enables both the compatibility Light API
-and the shared Spending API, using one scheduler and authenticated journal.
+`--light-delegation-enabled=true`) enables the shared Spending API, using one scheduler and authenticated journal.
 Its default remains false. `VAULT_LIGHT_ENABLED` independently controls new
 Light enrollment. Enabling renewal requires qualification for every supported
 Spending program; a Light-only funded test does not qualify Standard or
@@ -18,9 +15,7 @@ Advanced.
 
 The server reconstructs a context from authenticated enrollment, validates its
 complete compiled tree, and derives the existing scoped VTXO key. The request
-cannot select a key domain or supply authoritative tree parameters. The named
-program is `vault-light-policy-v1` for Light and `vault-policy-v1` for Standard
-and Advanced; `vaulted-light-v1` is a profile identifier, not a program.
+cannot select a key domain or supply authoritative tree parameters. The named program is `vault-policy-v1` for Light, Standard and Advanced. Light uses shared Spending with device recovery; protected Savings uses Ledger.
 
 The context digest is SHA256 of the UTF-8 prefix
 `vaulted-vtxo/renewal-context/v1:` followed by compact JSON with ordered fields
@@ -28,7 +23,7 @@ The context digest is SHA256 of the UTF-8 prefix
 Public keys are lowercase x-only hex; the script is the exact enrolled P2TR
 output. Spending policy retains its existing canonical field order. Wallet and
 Guardian independently reconstruct this binding, with shared test vectors for
-both networks and every enrollment template.
+both networks. Historical vector rows leave with their programs; retained expectations remain fixed.
 
 ## Bounded authorization set
 
@@ -58,7 +53,7 @@ outpoints. The existing 1 MiB request limit also applies. Each plan authorizes
 one committed live input and one replacement using the byte-identical enrolled
 Spending script. Registration, partial forfeit, deletion proof, current fee
 verification, and finite deadlines retain the rules in
-[the native renewal lifecycle](light-delegated-renewal.md).
+[the native renewal lifecycle](delegated-renewal-lifecycle.md).
 
 Each plan's `ownerSignature` is BIP340 over SHA256 of
 `vaulted-vtxo/delegate-schedule/v1:` plus ordered
@@ -67,12 +62,11 @@ The outer request also carries an `ownerSignature` over SHA256 of
 `vaulted-vtxo/delegate-schedule-set/v1:` plus the complete ordered semantic
 object above, including every per-plan signature.
 
-Standard and Advanced additionally supply `authorization` with
+Every retained account supplies `authorization` with
 `credentialId,clientDataJSON,authenticatorData,signature,directSig`.
 The existing enrolled WebAuthn credential validates presence, origin, RP ID,
 and user verification; PhoneDirectP256 signs the set digest. The WebAuthn
-presence challenge need not equal that digest. Light uses its owner signature
-and rejects an additional passkey authorization object.
+presence challenge need not equal that digest.
 
 All plans and one strict credential-counter acceptance commit atomically.
 Failure cannot leave partial authority or consume the counter. Nonzero counters
@@ -88,12 +82,11 @@ deadlines or a later unrelated ceremony. It grants no additional authority and
 does not consume the supplied assertion. Changed membership, order, program,
 context, set ID, or plan cannot extend that receipt. Set and operation IDs are
 16-byte lowercase hex, and context hashes are 32-byte lowercase hex. Vault IDs
-retain their exact enrolled opaque UTF-8 value; Standard/Advanced public
-enrollment currently assigns 16-byte hex IDs, while Light requires 32-byte hex.
+retain their exact enrolled opaque UTF-8 value; current public enrollment assigns 16-byte hex IDs for every retained configuration.
 Identifiers are never decoded, lowercased, or Unicode-normalized for key
 derivation or signing.
 
-## Readback and compatibility
+## Authenticated readback
 
 The shared POST `info` endpoint takes `vaultId` and returns the enrolled program,
 context hash, delegate key/address, and limits. Shared `status`, `list`, and
@@ -103,17 +96,9 @@ context hash, delegate key/address, and limits. Shared `status`, `list`, and
 `afterOperationId` for `operationId`. These authorizations expire within five
 minutes and cannot be exchanged across purposes.
 
-Existing `/v1/light/delegate/*` signed requests and digest domains remain
-unchanged. They accept only the original Light request format. The shared API
-can discover old Light operations after validating their original proof and
-returns the shared context hash. The legacy list omits shared-format records,
-so an older wallet cannot mistake their context hash for its Light descriptor.
+The historical Light profile, standalone renewal API and backup API are removed. Retired routes return 404, including for preflight requests. Current delegation requires the enrolled program, descriptor hash and authenticated set membership; a historical operation cannot fall back to the current context.
 
-Schema 5 retains its table names and MAC domains. New set metadata is appended
-with omission of empty values, preserving the exact serialization of older
-rows. MAC verification and complete set membership checks precede use. A missing
-or substituted member fails closed, while global set-ID collisions cannot
-combine different vaults.
+Schema 12 retains the current journal's table names, serialization and MAC domains. MAC verification and complete set membership checks precede use. A missing or substituted member fails closed, while global set-ID collisions cannot combine different vaults. Further historical-account storage retirement and the coordinated Contract Pack update remain required before release.
 
 ## Execution and recovery
 

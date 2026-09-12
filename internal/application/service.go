@@ -21,7 +21,7 @@ import (
 	arkadevaultv1 "github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/brg444/arkade-runtime/internal/vault"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -170,8 +170,8 @@ var ErrVerificationBusy = errors.New("crypto verification capacity exhausted")
 
 // enrolledSnapshot is one immutable published enrollment for a single vault.
 type enrolledSnapshot struct {
-	ProtectionTier      string
-	Light               *light.Descriptor
+	ProtectionTier string
+
 	VaultID             string
 	CredentialID        []byte
 	PhoneBIP340         *btcec.PublicKey
@@ -489,9 +489,6 @@ func (s *Service) LoadVaults() error {
 }
 
 func (s *Service) publishStoredEnrollment(cred *policy.Credential) error {
-	if cred.TemplateVersion == light.Profile {
-		return s.publishStoredLightEnrollment(cred)
-	}
 	phone, _, _, _, _, sv, err := s.rebuildFromCredential(cred)
 	if err != nil {
 		return err
@@ -748,7 +745,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, err
 	}
 	snap := s.snapshot(id)
-	if snap.Savings == nil && snap.Light == nil && snap.ProtectionTier != program.ProtectionTierLight {
+	if snap.Savings == nil && snap.ProtectionTier != program.ProtectionTierLight {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
 	if s.Stores.Identity == nil {

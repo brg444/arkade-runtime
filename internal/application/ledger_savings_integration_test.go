@@ -424,7 +424,7 @@ func TestLedgerSavingsRecoveryArchivePersistsCompositeAcrossRestart(t *testing.T
 		f := ledgerEnrollmentReady(t, advanced)
 		f.finish(t)
 		f.svc.LedgerSavingsEnabled = false
-		auth := func() LightBackupOpenRequest {
+		auth := func() BackupOpenRequest {
 			return archiveAssertion(t, f.svc, f.start.VaultID, f.pass, f.signer.direct, mustDecode(t, f.request.CredentialID), recoveryArchivePurpose)
 		}
 		opened, err := f.svc.OpenRecoveryArchive(t.Context(), auth())
@@ -432,17 +432,17 @@ func TestLedgerSavingsRecoveryArchivePersistsCompositeAcrossRestart(t *testing.T
 			t.Fatal("archive identity", err)
 		}
 		payload := archivePayload(opened.Binding, "immutable-ledger-header", strings.Repeat("A", 64))
-		saved, err := f.svc.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Payload: payload})
+		saved, err := f.svc.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Payload: payload})
 		if err != nil {
 			t.Fatal(err)
 		}
 		wrong := opened.Binding
 		wrong.TemplateVersion = savings.Template
-		if _, err := f.svc.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Revision: 1, Payload: archivePayload(wrong, "immutable-ledger-header", strings.Repeat("A", 64))}); err == nil {
+		if _, err := f.svc.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Revision: 1, Payload: archivePayload(wrong, "immutable-ledger-header", strings.Repeat("A", 64))}); err == nil {
 			t.Fatal("archive contract substituted")
 		}
 		f.restart(t)
-		if _, err := f.svc.ReadRecoveryArchive(LightBackupRequest{Token: opened.Token}); err == nil {
+		if _, err := f.svc.ReadRecoveryArchive(BackupRequest{Token: opened.Token}); err == nil {
 			t.Fatal("old archive session survived restart")
 		}
 		recovered, err := f.svc.OpenRecoveryArchive(t.Context(), auth())

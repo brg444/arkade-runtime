@@ -32,14 +32,14 @@ func spendingDelegationFixture(t *testing.T, network, tier string) (*env, renewa
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{svc: f.svc, ledger: f.ledger, hot: f.hot, p256: f.pass, direct: f.signer.direct, credID: credID}
+	e := &env{svc: f.svc, ledger: f.ledger, dbPath: f.dbPath, hot: f.hot, p256: f.pass, direct: f.signer.direct, credID: credID}
 	e.svc.keys.lightDelegation.(*fileBackedVaultKeys).bindDelegationJournal(e.ledger)
 	id := enrolled.VaultID
 	if id != f.start.VaultID || len(id) != 32 {
 		t.Fatal("fixture must use real enrollment-assigned vault ID unchanged")
 	}
 	e.svc.LightDelegationEnabled = true
-	c, err := e.svc.delegationContract(id, false)
+	c, err := e.svc.delegationContract(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,9 +231,9 @@ func TestSpendingDelegationAPIAllVaultPrograms(t *testing.T) {
 					t.Fatal(err)
 				}
 				altered := c
-				altered.KeyScope.lightProfile = true
+				altered.KeyScope.vaultID = strings.Repeat("fe", 16)
 				if _, err := e.svc.keys.lightDelegation.authorizeSpendingDelegation(t.Context(), altered, plan, nil); err == nil {
-					t.Fatal("Light key scope substituted")
+					t.Fatal("cross-account key scope substituted")
 				}
 			})
 		}
@@ -243,8 +243,8 @@ func TestSpendingDelegationAPIAllVaultPrograms(t *testing.T) {
 func TestSpendingDelegationSharedLightAndReadBoundaries(t *testing.T) {
 	f, handler, now := delegationAPI(t)
 	e := f.f.env
-	delegationAPIPost(t, handler, "schedule", f.p.Request, 200)
-	c, err := e.svc.delegationContract(f.p.Request.VaultID, false)
+	delegationAPIPost(t, handler, "schedule", delegatedSetFixture(t, f, 7), 200)
+	c, err := e.svc.delegationContract(f.p.Request.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestSpendingDelegationSharedLightAndReadBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(listed.Operations) != 1 || listed.Operations[0].DescriptorHash != c.DescriptorHash || listed.Operations[0].Program != c.Binding.Program {
-		t.Fatal("legacy operation not bound to shared context")
+		t.Fatal("operation not bound to shared context")
 	}
 	r.OperationID = f.p.Request.OperationID
 	spendingDelegationHTTP(t, e, "status", r, 400)
@@ -312,11 +312,11 @@ func TestSpendingDelegationSharedLightAndReadBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	set.OwnerSignature = hex.EncodeToString(sig.Serialize())
+	signSpendingSetFixture(t, e, &set, 8)
 	spendingDelegationHTTP(t, e, "schedule", set, 200)
-	// Older clients can still list their compatible Light operation; a new
-	// context must not be misread as the original Light descriptor hash.
-	legacy := delegationAPIList(t, f, "", now.Unix()+120)
-	delegationAPIPost(t, handler, "list", legacy, 200)
+	// The current owner can list terminal history and the newly armed set.
+	listedRequest := delegationAPIList(t, f, "", now.Unix()+120)
+	delegationAPIPost(t, handler, "list", listedRequest, 200)
 }
 
 func TestSpendingDelegationRejectsNewAuthorityWithoutCompleteAuthorization(t *testing.T) {
@@ -383,7 +383,7 @@ func TestSpendingDelegationSetSizeRejectedBeforeEnrollmentOrVerification(t *test
 func TestSpendingDelegationFinalizedRetryKeepsRecoveryOnStatusOnly(t *testing.T) {
 	f, _, now := delegationAPI(t)
 	e := f.f.env
-	c, err := e.svc.delegationContract(f.p.Request.VaultID, false)
+	c, err := e.svc.delegationContract(f.p.Request.VaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,6 +402,7 @@ func TestSpendingDelegationFinalizedRetryKeepsRecoveryOnStatusOnly(t *testing.T)
 	}
 	set.Plans[0].OwnerSignature = sign(set.planDigest(set.Plans[0]))
 	set.OwnerSignature = sign(set.digest())
+	signSpendingSetFixture(t, e, &set, 7)
 	spendingDelegationHTTP(t, e, "schedule", set, 200)
 	saved, err := e.svc.getDelegation(t.Context(), set.VaultID, request.OperationID)
 	if err != nil {

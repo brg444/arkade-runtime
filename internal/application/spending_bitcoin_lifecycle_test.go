@@ -14,7 +14,6 @@ import (
 	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -92,7 +91,7 @@ func TestSpendingBitcoinFinalRequiresDistinctOutputsAndSignedChange(t *testing.T
 			case "value":
 				outputs[1].Value--
 			}
-			f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+			f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 			_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, outputs)
 			if change == "change signature" {
 				packet, _ := parsePSBT(evidence.VtxoTree[0].Tx)
@@ -184,10 +183,10 @@ func TestSpendingBitcoinRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fixture := lightRenewalProofFixture{
+			fixture := spendingRenewalProofFixture{
 				env: e, plan: prepared.Plan.batchInput(),
-				descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}},
-				tree:       c.spending.Tree, owner: e.hot,
+				contract: c.spending,
+				tree:     c.spending.Tree, owner: e.hot,
 			}
 			_, _, evidence := buildSpendingBatchEvidenceFixture(t, fixture, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
 			_, err = e.svc.finalizeBitcoinPayment(t.Context(), lightRenewalFinalRequest{
@@ -261,7 +260,7 @@ func TestSpendingBitcoinReleaseRequiresConfirmedExactDeletion(t *testing.T) {
 	if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
 		t.Fatalf("register: %+v %v", result, err)
 	}
-	f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), tree: c.spending.Tree, owner: e.hot}
+	f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), tree: c.spending.Tree, owner: e.hot}
 	deletion := delegatedDeleteFixture(t, f)
 	r := bitcoinPaymentReleaseRequest{VaultID: request.VaultID, OperationID: request.OperationID, DeleteIntent: &deletion}
 	if result, err := e.svc.releaseBitcoinPayment(t.Context(), r); err != nil || result.State != "waiting_expiry" || operator.deletes != 0 {
@@ -323,7 +322,7 @@ func TestSpendingBitcoinDeleteCapabilityRejectsOtherMessagesAndOutputs(t *testin
 	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 2)
 	session, _ := btcec.NewPrivateKey()
 	registration := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-	deletion := delegatedDeleteFixture(t, lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), tree: c.spending.Tree, owner: e.hot})
+	deletion := delegatedDeleteFixture(t, spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), tree: c.spending.Tree, owner: e.hot})
 	for _, bad := range []lightDelegateIntent{
 		{Proof: registration.PSBT, Message: registration.Message},
 		{Proof: deletion.Proof, Message: `{"type":"delete","expire_at":1}`},
@@ -352,7 +351,7 @@ func TestSpendingBitcoinExpiredAbsentIntentReleasesOnlyUndispatchedFinal(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+			f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 			_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
 			final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 			if dispatched {
@@ -450,7 +449,7 @@ func TestSpendingBitcoinLostFinalCannotReleaseOrSubmitTwice(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+				f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 				_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
 				final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 				for i := 0; i < 2; i++ {
