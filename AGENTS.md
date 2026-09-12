@@ -19,10 +19,10 @@ official Arkade SDK owns wallet-side transaction coordination.
   route, store, and key-scope identifiers.
 - `internal/policy` is the authenticated SQLite ledger and policy sequence.
 - `internal/program` contains canonical program and Spending-policy values.
-- `internal/ports` contains the narrow `ArkResolver` and Emulator-compatible
-  `Signer` interfaces. Boarding chain and Operator interfaces currently remain
+- `internal/ports` contains the narrow `ArkResolver` interface.
+  Boarding chain and Operator interfaces currently remain
   private to `internal/application`.
-- `internal/vault/savings` constructs and verifies the Savings covenant.
+- `internal/vault/savings` constructs and verifies the Ledger Savings contracts.
 - `internal/webauthn` parses and verifies passkey material.
 - `internal/iface/http` is currently a thin composition shim. HTTP handlers
   still live in `internal/application/http*.go`.
@@ -58,7 +58,8 @@ Refactor PRs preserve all of the following:
 - the single SQLite connection, the ledger mutex, MAC-before-use ordering, or
   the policy-sequence write and fsync ordering;
 - passkey, PRF, cross-device recovery, or sign-count behavior;
-- the pinned public Operator, indexer, Esplora, and Emulator trust boundaries.
+- the pinned public Operator, indexer and Esplora trust boundaries, and the
+  identity bytes committed by retained enrollment descriptors.
 
 If one of these must change, stop treating the work as a refactor. Isolate the
 behavior change, add adversarial and compatibility tests, and review it as a

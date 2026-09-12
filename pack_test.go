@@ -7,26 +7,15 @@ import (
 	"testing"
 
 	"github.com/brg444/arkade-runtime/internal/contractpack"
-	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
-func TestContractPackMatchesLiveEnroll(t *testing.T) {
+func TestContractPackRecoveryFormats(t *testing.T) {
 	raw, err := os.ReadFile("contract-pack.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var pack struct {
-		Version  int `json:"version"`
-		Programs struct {
-			Savings struct {
-				Status          string `json:"status"`
-				Enrollable      *bool  `json:"enrollable"`
-				Template        string `json:"template"`
-				ProtectionTiers map[string]struct {
-					RecoveryKey string `json:"recoveryKey"`
-				} `json:"protectionTiers"`
-			} `json:"savings-recovery-v1"`
-		} `json:"programs"`
+		Version int `json:"version"`
 		Formats struct {
 			RecoveryKit int `json:"recoveryKit"`
 			MapBackup   int `json:"mapBackup"`
@@ -35,16 +24,8 @@ func TestContractPackMatchesLiveEnroll(t *testing.T) {
 	if err := json.Unmarshal(raw, &pack); err != nil {
 		t.Fatal(err)
 	}
-	if pack.Programs.Savings.Status != "live" || pack.Programs.Savings.Template != savings.Template {
-		t.Fatalf("live enroll: %+v want template %s", pack.Programs.Savings, savings.Template)
-	}
-	if pack.Programs.Savings.Enrollable == nil || !*pack.Programs.Savings.Enrollable {
-		t.Fatalf("Savings program must be enrollable: %+v", pack.Programs.Savings)
-	}
-	if pack.Version != 2 || pack.Formats.RecoveryKit != 3 || pack.Formats.MapBackup != 3 ||
-		pack.Programs.Savings.ProtectionTiers["standard"].RecoveryKey != "forbidden" ||
-		pack.Programs.Savings.ProtectionTiers["advanced"].RecoveryKey != "required" {
-		t.Fatalf("protection/formats contract: %+v", pack)
+	if pack.Version != 2 || pack.Formats.RecoveryKit != 3 || pack.Formats.MapBackup != 3 {
+		t.Fatalf("recovery formats: %+v", pack)
 	}
 }
 

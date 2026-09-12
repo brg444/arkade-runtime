@@ -18,7 +18,7 @@ const (
 	// report getblockchaininfo.chain="signet".
 	MutinynetCheckpoint1 = "000002855893a0a9b24eaffc5efc770558a326fee4fc10c9da22fc19cd2954f9"
 
-	// MutinynetArkadeCosigner* pin the public routine cosigner into the release.
+	// MutinynetArkadeCosigner* retain the cosigner identity bytes committed by enrollment.
 	// Changing any value requires an explicit reviewed binary release; the
 	// Mutinynet Compose interface deliberately provides no environment
 	// override for this custody role.

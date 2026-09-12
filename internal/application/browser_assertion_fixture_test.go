@@ -1,4 +1,4 @@
-package vault
+package application
 
 import (
 	"encoding/hex"

@@ -536,3 +536,39 @@ func TestLedgerSavingsWalletRecoveryVectors(t *testing.T) {
 		})
 	}
 }
+
+func TestLedgerSavingsRejectsMalformedParentEvidence(t *testing.T) {
+	f := newLedgerTransitionFixture(t, false)
+	for name, mutate := range map[string]func(*psbt.Packet){
+		"missing witness": func(p *psbt.Packet) { p.Inputs[0].WitnessUtxo = nil },
+		"missing parent":  func(p *psbt.Packet) { p.Inputs[0].NonWitnessUtxo = nil },
+		"parent hash":     func(p *psbt.Packet) { p.UnsignedTx.TxIn[0].PreviousOutPoint.Hash[0] ^= 1 },
+		"parent index":    func(p *psbt.Packet) { p.UnsignedTx.TxIn[0].PreviousOutPoint.Index = 99 },
+		"witness value":   func(p *psbt.Packet) { p.Inputs[0].WitnessUtxo.Value++ },
+		"witness script":  func(p *psbt.Packet) { p.Inputs[0].WitnessUtxo.PkScript[0] ^= 1 },
+		"empty inputs":    func(p *psbt.Packet) { p.Inputs = nil; p.UnsignedTx.TxIn = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := f.request(t, "initiate", "hardware", "", 0)
+			packet, err := parsePSBT(req.retainedPSBT)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(packet)
+			req.retainedPSBT, err = packet.B64Encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.auth.authorizeTransition(t.Context(), req); err == nil {
+				t.Fatal("malformed parent evidence signed")
+			}
+		})
+	}
+	for _, raw := range []string{"", "not-a-psbt", "cHNid"} {
+		req := f.request(t, "initiate", "hardware", "", 0)
+		req.retainedPSBT = raw
+		if _, err := f.auth.authorizeTransition(t.Context(), req); err == nil {
+			t.Fatal("malformed PSBT signed")
+		}
+	}
+}

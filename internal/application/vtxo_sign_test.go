@@ -60,9 +60,6 @@ func TestSignExactArkStageSignsEachInputWithoutPrevoutVerify(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := parseAndVerifyPrevout(raw); err == nil {
-		t.Fatal("fixture unexpectedly has a verified prevout")
-	}
 	signed, err := signExactArkStage(context.Background(), raw, priv, schnorr.SerializePubKey(priv.PubKey()), script)
 	if err != nil {
 		t.Fatal(err)

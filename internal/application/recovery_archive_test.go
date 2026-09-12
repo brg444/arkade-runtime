@@ -121,7 +121,7 @@ func TestRecoveryArchiveRejectsAuthenticationAndFamilySubstitution(t *testing.T)
 		}
 	}
 	for _, tier := range []string{"", "light", "future-tier"} {
-		if recoveryArchiveCredentialAllowed(&policy.Credential{TemplateVersion: savings.Template, ProtectionTier: tier}) {
+		if recoveryArchiveCredentialAllowed(&policy.Credential{TemplateVersion: "phone-hww-recovery-savings-v1", ProtectionTier: tier}) {
 			t.Fatal("unknown tier", tier)
 		}
 	}

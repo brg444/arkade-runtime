@@ -437,7 +437,7 @@ func TestLedgerSavingsRecoveryArchivePersistsCompositeAcrossRestart(t *testing.T
 			t.Fatal(err)
 		}
 		wrong := opened.Binding
-		wrong.TemplateVersion = savings.Template
+		wrong.TemplateVersion = "phone-hww-recovery-savings-v1"
 		if _, err := f.svc.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Revision: 1, Payload: archivePayload(wrong, "immutable-ledger-header", strings.Repeat("A", 64))}); err == nil {
 			t.Fatal("archive contract substituted")
 		}

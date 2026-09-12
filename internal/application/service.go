@@ -20,14 +20,11 @@ import (
 	"github.com/brg444/arkade-runtime/internal/ports"
 	arkadevaultv1 "github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault"
 
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/btcsuite/btcd/btcutil/psbt"
-	"github.com/btcsuite/btcd/wire"
 )
 
 // Service is the trusted VaultCosigner authorization boundary.
@@ -948,18 +945,6 @@ func decodeAssertion(req WebAuthnAssertionRequest) (webauthn.Assertion, error) {
 		AuthenticatorData: ad,
 		DERSignature:      sig,
 	}, nil
-}
-
-func parseAndVerifyPrevout(raw string) (*psbt.Packet, *wire.MsgTx, error) {
-	ptx, err := psbt.NewFromRawBytes(strings.NewReader(raw), true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("psbt: %w", err)
-	}
-	prev, err := vault.RequireVerifiedPrevout(ptx)
-	if err != nil {
-		return nil, nil, err
-	}
-	return ptx, prev, nil
 }
 
 func verifyDirectAuth(directPub, digest, compact []byte) error {

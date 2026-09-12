@@ -18,15 +18,15 @@ func TestArkadeVaultV1CompatibilityArtifacts(t *testing.T) {
 		"internal/application/testdata/ledger-recovery-vectors.json":   "ce9857af7d4255b09175e06272eab5cf34a6b28d035d8d7881200d2929ff3569",
 		"internal/vault/savings/testdata/ledger-key-vectors.json":      "34c30d64fc0facd4a172e53d61d75983b5f15afadc7d0f665cb20a60e8d5a84b",
 		"internal/vault/savings/testdata/ledger-family-vectors.json":   "5dd692720ef47174f6b2ad7e6e9c09def0ea3197d4ac7d7534a9c0e7ff0e47e5",
-		"contract-pack.json":                                          "11b343eb38f9e706b72ff693d8f151b39b0b08d52f43ab872f53738ceb2c6c49",
-		"internal/contractpack/contract-pack.json":                    "11b343eb38f9e706b72ff693d8f151b39b0b08d52f43ab872f53738ceb2c6c49",
-		"contract-pack.mainnet.json":                                  "06a4fcf1087eb4c7b159d7fe7fca3822434ae83bde1478a756918ac76e0f9137",
-		"internal/contractpack/contract-pack.mainnet.json":            "06a4fcf1087eb4c7b159d7fe7fca3822434ae83bde1478a756918ac76e0f9137",
-		"internal/application/testdata/http-v1-compatibility.json":    "45e692a51180f4c825ef5240a9a6033b4a4adde1c48a12814685268d4b890f91",
+		"contract-pack.json":                               "11b343eb38f9e706b72ff693d8f151b39b0b08d52f43ab872f53738ceb2c6c49",
+		"internal/contractpack/contract-pack.json":         "11b343eb38f9e706b72ff693d8f151b39b0b08d52f43ab872f53738ceb2c6c49",
+		"contract-pack.mainnet.json":                       "06a4fcf1087eb4c7b159d7fe7fca3822434ae83bde1478a756918ac76e0f9137",
+		"internal/contractpack/contract-pack.mainnet.json": "06a4fcf1087eb4c7b159d7fe7fca3822434ae83bde1478a756918ac76e0f9137",
+		// Eleven direct-hardware descriptor shapes retired; retained routes and shapes are unchanged.
+		"internal/application/testdata/http-v1-compatibility.json":    "bf8a52a6d8fd28f4344fdd341185f1b9cc1a2b27532b49fa09f7f7dd334d42ed",
 		"internal/policy/testdata/hkdf-sha256-v1.json":                "0739edebb44f122e70aee6153e9aaf6875c73a01412469d8f16124a8f9186cde",
 		"internal/policy/testdata/vtxo-hkdf-sha256-v1.json":           "9b376662c2d33f51981d2e8b1aa1f0134ccb06b556aa2536c5f93ad2c48b1285",
 		"internal/policy/testdata/vault-policy-v1-tree.json":          "2774756345e8cc01aa43743f62afe831baa9cbba0f4f7117e7b9a2f38776e993",
-		"internal/vault/savings/testdata/savings-v1-vectors.json":     "d49d3a162cdef07585d147ea27cd506faba245b211a6e795a055d10b476a155a",
 		"internal/application/testdata/sdk-0.4.65-pending-proof.json": "519d6efe60517d8a5cc9702857f7ec056693afb32163ec1464367efb523a7eb5",
 	}
 	for path, expected := range want {

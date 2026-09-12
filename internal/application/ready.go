@@ -36,8 +36,8 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	}
 	cfg := s.runtimeConfig()
 	st.Network = cfg.Network
-	// Keep the nonempty legacy field for deployed clients without publishing
-	// the transport locator. Actual signer readiness is checked below.
+	// Preserve the retained response field while reporting the pinned enrollment
+	// identity. Guardian and Operator readiness are checked below.
 	st.ArkadeOrigin = "configured"
 	st.ArkadeVersion = s.ArkadeCosignerVersion
 	if err := cfg.Validate(); err != nil {

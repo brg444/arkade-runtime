@@ -14,7 +14,7 @@ const modulePath = "github.com/brg444/arkade-runtime"
 
 func TestInternalImportBoundaries(t *testing.T) {
 	goBinary := filepath.Join(goruntime.GOROOT(), "bin", "go")
-	cmd := exec.Command(goBinary, "list", "-json", "./...")
+	cmd := exec.Command(goBinary, "list", "-deps", "-json", "./...")
 	raw, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("go list: %v", err)
@@ -28,7 +28,6 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/program":       {},
 		modulePath + "/internal/runtime":       {},
 		modulePath + "/internal/webauthn":      {},
-		modulePath + "/internal/vault":         {},
 		modulePath + "/internal/vault/savings": {modulePath + "/internal/program": true},
 		modulePath + "/internal/policy":        {modulePath + "/internal/program": true},
 		modulePath + "/internal/iface/http":    {modulePath + "/internal/application": true},
@@ -58,6 +57,9 @@ func TestInternalImportBoundaries(t *testing.T) {
 		if err := decoder.Decode(&pkg); err != nil {
 			t.Fatalf("decode go list: %v", err)
 		}
+		if strings.HasPrefix(pkg.ImportPath, "github.com/arkade-os/emulator") {
+			t.Errorf("retired signing dependency remains reachable: %s", pkg.ImportPath)
+		}
 		if !strings.HasPrefix(pkg.ImportPath, modulePath) {
 			continue
 		}
@@ -69,7 +71,7 @@ func TestInternalImportBoundaries(t *testing.T) {
 		seen[pkg.ImportPath] = true
 		var unexpected []string
 		for _, imported := range pkg.Imports {
-			if imported == modulePath+"/internal/vault/connector" || imported == modulePath+"/internal/vault/light" {
+			if imported == modulePath+"/internal/vault/connector" || imported == modulePath+"/internal/vault/light" || strings.HasPrefix(imported, "github.com/arkade-os/emulator") {
 				t.Errorf("retired program must not be imported: %s", pkg.ImportPath)
 			}
 			if imported == modulePath+"/fixture" && !nonProductionPackages[pkg.ImportPath] {

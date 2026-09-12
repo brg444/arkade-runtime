@@ -34,9 +34,9 @@ type ledgerKeyVector struct {
 		} `json:"children"`
 	} `json:"guardian"`
 	Normal struct {
-		WalletPolicy LedgerWalletPolicy `json:"walletPolicy"`
-		Receive      savingsVectorTree  `json:"receive"`
-		Change       savingsVectorTree  `json:"change"`
+		WalletPolicy LedgerWalletPolicy  `json:"walletPolicy"`
+		Receive      ledgerKeyVectorTree `json:"receive"`
+		Change       ledgerKeyVectorTree `json:"change"`
 	} `json:"normal"`
 }
 
@@ -91,8 +91,8 @@ func TestLedgerGuardianKeyVectors(t *testing.T) {
 			if !reflect.DeepEqual(normal.WalletPolicy, v.Normal.WalletPolicy) {
 				t.Fatal("Ledger policy differs from wallet")
 			}
-			assertVectorTree(t, "Ledger receive", normal.Receive.Tree, v.Normal.Receive)
-			assertVectorTree(t, "Ledger change", normal.Change.Tree, v.Normal.Change)
+			assertLedgerKeyVectorTree(t, "Ledger receive", normal.Receive.Tree, v.Normal.Receive)
+			assertLedgerKeyVectorTree(t, "Ledger change", normal.Change.Tree, v.Normal.Change)
 			digest, err := LedgerSavingsContextDigest(in)
 			if err != nil {
 				t.Fatal(err)
@@ -218,7 +218,7 @@ func TestLedgerGuardianRejectsSubstitution(t *testing.T) {
 		func(c *LedgerSavingsKeyContext) { c.PolicyDigest = "" },
 		func(c *LedgerSavingsKeyContext) { c.VaultID = strings.ToUpper(c.VaultID) },
 		func(c *LedgerSavingsKeyContext) { c.PhoneDirectP256 = strings.Repeat("00", 33) },
-		func(c *LedgerSavingsKeyContext) { c.TemplateVersion = Template },
+		func(c *LedgerSavingsKeyContext) { c.TemplateVersion = "phone-hww-recovery-savings-v1" },
 		func(c *LedgerSavingsKeyContext) { c.TemplateVersion = "phone-ledger-recovery-savings-v1" },
 	} {
 		changed := in
@@ -265,5 +265,17 @@ func TestLedgerGuardianRejectsSubstitution(t *testing.T) {
 		if _, err := LedgerGuardianInitiateChild(in, parent, "phone", 0); err == nil {
 			t.Fatal("accepted substituted Guardian parent")
 		}
+	}
+}
+
+type ledgerKeyVectorTree struct {
+	Address string `json:"address"`
+	Script  string `json:"script"`
+}
+
+func assertLedgerKeyVectorTree(t *testing.T, name string, got Tree, want ledgerKeyVectorTree) {
+	t.Helper()
+	if got.Address != want.Address || hex.EncodeToString(got.PkScript) != want.Script {
+		t.Fatalf("%s = %s/%x, want %s/%s", name, got.Address, got.PkScript, want.Address, want.Script)
 	}
 }

@@ -8,17 +8,24 @@ domains identify separate contracts. Their numeric suffixes are independent.
 | SQLite schema               | `schema_meta.version = 12`, with authenticated retirement from the exact schema 11 baseline |
 | Full-wallet profile         | `arkade-vault-v1`                                                                |
 | Spending-only account | `vaulted-spending-v1` with `vault-policy-v1` |
-| Direct-hardware Savings     | `arkade-vault/savings-v1`, template `phone-hww-recovery-savings-v1`              |
+| Ledger Savings | `phone-ledger-guardian-savings-v1` |
 | Full-wallet VTXO programs   | `vault-board-v1`, `vault-policy-v1`                                              |
 | Protection tier             | `light`, `standard` or `advanced`                                                         |
 | Full-wallet Spending policy | `vault-spending-policy-v1`                                                       |
-| Recovery binding            | v4 for direct-hardware Savings; v6 for Ledger Savings                      |
+| Recovery binding | v4 for shared Spending; v6 for Ledger Savings |
 
 Ledger Savings uses `phone-ledger-guardian-savings-v1`. Connector v1 and v2
 are retired from application admission, signing, recovery and HTTP dispatch.
 Schema 12 retires their database tables and authenticated account ownership.
-Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical Light accounts retire with schema 11, and shared stores reject their former fee-only renewal and delegation records. Direct-hardware Savings still requires retirement. Contract Packs still require the coordinated release-baseline update, including
+Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical Light accounts retire with schema 11, and shared stores reject their former fee-only renewal and delegation records. Direct-hardware Savings application paths, covenant builders and outbound signing transport are removed. Its policy stores and account retirement still require completion. Contract Packs still require the coordinated release-baseline update, including
 the mainnet schema declaration; this branch is not a release candidate.
+
+The runtime holds scoped Guardian capabilities and uses stock Operator and chain
+interfaces. It has no Emulator client, generic signer or script-engine dependency.
+Current Ledger enrollment retains its exact cosigner identity fields from release
+pins, including the opaque mainnet identity. These fields require no remote signer
+or private endpoint configuration. Retained derivation domains, script bytes and
+cross-language vectors are unchanged.
 
 Opaque passkey challenge tickets use prefix `v2.` and MAC domain
 `vaulted/passkey-challenge/v2\0`, with no withdrawal-candidate field. Tickets are

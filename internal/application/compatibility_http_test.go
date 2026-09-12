@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
 type httpV1CompatibilityGolden struct {
@@ -112,17 +111,6 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"VtxoOperationView":                 reflect.TypeOf(VtxoOperationView{}),
 		"VtxoAbortRequest":                  reflect.TypeOf(VtxoAbortRequest{}),
 		"VtxoAbortResponse":                 reflect.TypeOf(VtxoAbortResponse{}),
-		"SavingsPublicDescriptor":           reflect.TypeOf(savings.PublicDescriptor{}),
-		"SavingsPublicKeys":                 reflect.TypeOf(savings.PublicKeys{}),
-		"SavingsPublicPair":                 reflect.TypeOf(savings.PublicPair{}),
-		"SavingsPublicTweaks":               reflect.TypeOf(savings.PublicTweaks{}),
-		"SavingsPublicArkade":               reflect.TypeOf(savings.PublicArkade{}),
-		"SavingsPublicCSV":                  reflect.TypeOf(savings.PublicCSV{}),
-		"SavingsPublicPolicy":               reflect.TypeOf(savings.PublicPolicy{}),
-		"SavingsPublicP2A":                  reflect.TypeOf(savings.PublicP2A{}),
-		"SavingsTreeRef":                    reflect.TypeOf(savings.TreeRef{}),
-		"SavingsPendingRef":                 reflect.TypeOf(savings.PendingRef{}),
-		"SavingsQuarantineRef":              reflect.TypeOf(savings.QuarantineRef{}),
 		"MutationSuccess": reflect.TypeOf(struct {
 			OK bool `json:"ok"`
 		}{}),

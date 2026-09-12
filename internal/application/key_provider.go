@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
@@ -480,4 +481,17 @@ func deriveVaultBoardKey(master *btcec.PrivateKey, req vaultBoardKeyContext) (*b
 		return nil, fmt.Errorf("vault-board-v1 key context required")
 	}
 	return policy.DeriveVaultBoardCosignerScalar(master, req.vaultID, req.network, req.operatorPub)
+}
+
+func isNilInterface(value any) bool {
+	if value == nil {
+		return true
+	}
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }

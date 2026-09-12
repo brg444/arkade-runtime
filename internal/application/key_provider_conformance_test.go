@@ -19,11 +19,12 @@ func TestKeyCapabilitiesExposeNoSigningOrRawKeyOperation(t *testing.T) {
 	}
 
 	privateKeyType := reflect.TypeOf((*btcec.PrivateKey)(nil))
-	genericSignerType := reflect.TypeOf((*application.Signer)(nil)).Elem()
+
 	for _, surface := range []reflect.Type{reflect.TypeOf(application.Service{}), reflect.TypeOf(application.Deps{})} {
 		for i := 0; i < surface.NumField(); i++ {
 			field := surface.Field(i)
-			if field.IsExported() && (field.Type == privateKeyType || field.Type == genericSignerType) {
+			_, hasGenericSign := field.Type.MethodByName("Sign")
+			if field.IsExported() && (field.Type == privateKeyType || hasGenericSign) {
 				t.Fatalf("%s exports raw or generic signing field %q", surface.Name(), field.Name)
 			}
 		}

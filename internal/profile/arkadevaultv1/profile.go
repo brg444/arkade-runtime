@@ -14,9 +14,8 @@ const (
 	ProfileID = "arkade-vault-v1"
 	ModuleID  = "arkade-vault-v1"
 
-	LedgerSavingsProgram   = "phone-ledger-guardian-savings-v1"
-	SavingsRecoveryProgram = "savings-recovery-v1"
-	SpendingPolicy         = "vault-spending-policy-v1"
+	LedgerSavingsProgram = "phone-ledger-guardian-savings-v1"
+	SpendingPolicy       = "vault-spending-policy-v1"
 )
 
 // Definition returns a fresh compile-time profile definition. Policy values,
@@ -27,7 +26,6 @@ func Definition() arkaderuntime.ProfileDefinition {
 		Modules: []arkaderuntime.ModuleDefinition{{
 			ID: ModuleID,
 			Programs: []string{
-				SavingsRecoveryProgram,
 				LedgerSavingsProgram,
 				program.VaultBoardV1,
 				program.VaultPolicyV1,
@@ -37,7 +35,6 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"identity-store",
 				"allowance-store",
 				"vtxo-operation-store",
-				"recovery-operation-store",
 				"ledger-savings-store",
 				"map-store",
 				"vault-board-store",
@@ -46,13 +43,11 @@ func Definition() arkaderuntime.ProfileDefinition {
 			},
 			KeyScopes: []string{
 				"enrollment-derivation",
-				"savings-recovery-authorization",
 				"ledger-savings-recovery-authorization",
 				"vtxo-transaction-authorization",
 				"vtxo-checkpoint-authorization",
 				"vtxo-delegation-authorization",
 				"vault-board-authorization",
-				"public-emulator-operation",
 			},
 		}},
 		Routes: routes(),
