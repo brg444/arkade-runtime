@@ -1,7 +1,6 @@
 package application
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -11,7 +10,6 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -110,22 +108,9 @@ func TestSpendingRenewalContextUsesEnrolledKeyScope(t *testing.T) {
 	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
 		for _, tier := range []string{"standard", "advanced"} {
 			t.Run(network+"/"+tier, func(t *testing.T) {
-				f := newConnectorFixture(t, network)
-				phone, _ := btcec.NewPrivateKey()
-				hardware, _ := btcec.NewPrivateKey()
-				boarding, _ := btcec.NewPrivateKey()
-				var recovery *btcec.PrivateKey
-				if tier == "advanced" {
-					recovery, _ = btcec.NewPrivateKey()
-				}
-				id := strings.Repeat("12", 32)
-				if tier == "advanced" {
-					id = "550e8400-e29b-41d4-a716-446655440000"
-				}
-				token := bytes.Repeat([]byte{0x13}, 32)
-				putConnectorInvite(t, f.led, token)
-				req := connectorEnrollRequestForNetwork(t, network, phone, hardware, boarding, tier, recovery, connector.Taproot, false)
-				enrollConnectorVault(t, f.svc, id, token, req)
+				f := ledgerEnrollmentReadyForNetwork(t, tier == "advanced", network)
+				f.finish(t)
+				id := f.start.VaultID
 				ctx, err := f.svc.spendingRenewalContext(id)
 				if err != nil {
 					t.Fatal(err)

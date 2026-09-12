@@ -352,7 +352,7 @@ func validateLedgerSavingsTransition(req ledgerSavingsTransitionAuthorization) (
 			delete(expected, string(derivation.XOnlyPubKey))
 		}
 	}
-	if err := requirePresentConnectorSig(packet, 0, schnorr.SerializePubKey(userPub), leaf); err != nil {
+	if err := requirePresentDefaultTaprootSignature(packet, 0, schnorr.SerializePubKey(userPub), leaf); err != nil {
 		return ledgerSavingsTransitionPlan{}, fmt.Errorf("Ledger user signature: %w", err)
 	}
 	if userRole == "phone" {

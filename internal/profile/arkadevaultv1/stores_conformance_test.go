@@ -55,13 +55,6 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 				"GetCurrentVaultBoardAttempt", "GetVaultBoardEnrollment",
 			},
 		},
-		{
-			name: "connector", typ: reflect.TypeOf((*arkadevaultv1.ConnectorStore)(nil)).Elem(),
-			want: []string{
-				"ApplyConnectorReplay", "GetConnectorEnrollment", "GetConnectorOperation",
-				"ListConnectorConflicts", "ResolveConnectorOperation", "StoreConnectorStage",
-			},
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -78,7 +71,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 
 func TestStoresBundleContainsExactlyElevenNarrowPorts(t *testing.T) {
 	typ := reflect.TypeOf(arkadevaultv1.Stores{})
-	want := []string{"Identity", "LedgerSavings", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "LightDelegation", "Connector", "RecoveryBackup"}
+	want := []string{"Identity", "LedgerSavings", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "LightDelegation", "RecoveryBackup"}
 	got := make([]string, typ.NumField())
 	for i := range got {
 		got[i] = typ.Field(i).Name

@@ -11,7 +11,6 @@ transaction review, owner ceremonies, and external signing.
 | [Storage](storage.md)                                        | Authenticated state, migrations, and rollback detection           |
 | [Spending](vault-policy-v1-spend.md)                         | Reservation, policy, transaction verification, and reconciliation |
 | [Boarding](boarding.md)                                      | Confirmed Bitcoin input settlement into protected Spending        |
-| [Savings connector v2](connector-dual-v2.md)                 | Hardware-first approvals and v1 compatibility                     |
 | [Light contract](../internal/vault/light/README.md)          | Cooperative Spending and delayed owner exit                       |
 | [Foreground Light renewal](light-renewal.md)                 | Bounded renewal operations and confirmed replacement state        |
 | [Delegated renewal](light-delegated-renewal.md)              | Owner authority and native execution lifecycle                    |

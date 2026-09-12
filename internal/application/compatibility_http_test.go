@@ -98,9 +98,6 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"TransitionResponse":           reflect.TypeOf(TransitionResponse{}),
 		"PasskeyChallengeRequest":      reflect.TypeOf(PasskeyChallengeRequest{}),
 		"PasskeyChallengeResponse":     reflect.TypeOf(PasskeyChallengeResponse{}),
-		"ConnectorWithdrawRequest":     reflect.TypeOf(ConnectorWithdrawRequest{}),
-		"ConnectorWithdrawResponse":    reflect.TypeOf(ConnectorWithdrawResponse{}),
-		"ConnectorOperationView":       reflect.TypeOf(ConnectorOperationView{}),
 		"RecoveryBindingRouteRequest": reflect.TypeOf(struct {
 			VaultID string `json:"vaultId"`
 			RecoveryBindingRequest

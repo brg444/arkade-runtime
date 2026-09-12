@@ -21,7 +21,6 @@ import (
 	arkadevaultv1 "github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/brg444/arkade-runtime/internal/vault"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
@@ -58,24 +57,18 @@ type Service struct {
 	MaxConcurrentVerifications int
 	// MaxConcurrentFeeSelections bounds authenticated but potentially
 	// adversarial Operator CEL evaluation. Zero uses the conservative default.
-	MaxConcurrentFeeSelections int
-	ArkResolver                ports.ArkResolver
-	contractPackJSON           []byte
-	vaultPolicyHasExit         *bool
-	mu                         sync.Mutex
-	published                  atomic.Pointer[publishedIndex]
-	verificationOnce           sync.Once
-	verificationSlots          chan struct{}
-	feeSelectionOnce           sync.Once
-	feeSelectionSlots          chan struct{}
-	transitionRateMu           sync.Mutex
-	transitionRateHits         map[string][]time.Time
-	connectorWithdrawRateMu    sync.Mutex
-	connectorWithdrawRateHits  map[string][]time.Time
-	// connectorChain overrides the release-pinned chain view. Production
-	// leaves it nil so each call dials the pinned indexer; tests inject a
-	// scripted view. It never accepts digests, PSBTs, or caller assertions.
-	connectorChain              connectorChainView
+	MaxConcurrentFeeSelections  int
+	ArkResolver                 ports.ArkResolver
+	contractPackJSON            []byte
+	vaultPolicyHasExit          *bool
+	mu                          sync.Mutex
+	published                   atomic.Pointer[publishedIndex]
+	verificationOnce            sync.Once
+	verificationSlots           chan struct{}
+	feeSelectionOnce            sync.Once
+	feeSelectionSlots           chan struct{}
+	transitionRateMu            sync.Mutex
+	transitionRateHits          map[string][]time.Time
 	sessionMu                   sync.Mutex
 	sessionChallengeKey         []byte
 	consumedPasskeyChallenges   map[[32]byte]consumedPasskeyChallenge
@@ -238,15 +231,6 @@ type RegisterRequest struct {
 	ProtectionTier       string                 `json:"protectionTier"`
 	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
 	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
-	// Optional Savings connector origin. All-absent means a legacy vault.
-	// When present, ConnectorType must be p2tr or p2wpkh, ConnectorPub is the
-	// full 33-byte compressed origin key in lowercase hex (parity matters for
-	// P2WPKH), and Fingerprint/Path carry the BIP84/BIP86 or Electrum-native
-	// origin. Old clients simply omit these fields.
-	ConnectorType        string   `json:"connectorType,omitempty"`
-	ConnectorPub         string   `json:"connectorPub,omitempty"`
-	ConnectorFingerprint uint32   `json:"connectorFingerprint,omitempty"`
-	ConnectorPath        []uint32 `json:"connectorPath,omitempty"`
 }
 
 type parsedRegisterRequest struct {
@@ -259,8 +243,6 @@ type parsedRegisterRequest struct {
 	vaultID                           string
 	protectionTier                    string
 	spendingPolicy                    program.SpendingPolicy
-	connectorOrigin                   *connector.KeyOrigin
-	connectorPub                      *btcec.PublicKey
 }
 
 func (s *Service) requireLedgerIntegrity() error {
@@ -305,15 +287,8 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err != nil {
 		return err
 	}
-	parsed, err = applyConnectorEnrollmentRequest(parsed, req, s.runtimeConfig().Network)
-	if err != nil {
-		return err
-	}
 	if req.LedgerSavings != nil {
 		return s.createLedgerSavingsTenantVault(vaultID, tokenHash, req, parsed, pending, childPub)
-	}
-	if parsed.connectorOrigin != nil {
-		return s.createConnectorTenantVault(vaultID, tokenHash, req, parsed, pending, childPub)
 	}
 	proposed, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil {
@@ -448,7 +423,7 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 		if !s.LightEnabled {
 			return parsed, fmt.Errorf("Light enrollment unavailable")
 		}
-		if req.ExternalOwnerWalletXOnly != "" || recoveryField(req) != "" || req.LedgerSavings != nil || hasConnectorRequest(req) {
+		if req.ExternalOwnerWalletXOnly != "" || recoveryField(req) != "" || req.LedgerSavings != nil {
 			return parsed, fmt.Errorf("Spending-only enrollment must not contain protected Savings keys")
 		}
 	} else {
@@ -554,25 +529,6 @@ func (s *Service) rebuildFromCredential(cred *policy.Credential) (
 	if cred.TemplateVersion == program.SpendingOnlyTemplate {
 		phone, err = btcec.ParsePubKey(cred.PhoneBIP340)
 		return
-	}
-	if isConnectorCredential(cred) {
-		fam, ferr := s.rebuildConnectorFamily(cred)
-		if ferr != nil {
-			return nil, nil, nil, nil, nil, nil, ferr
-		}
-		phone, externalOwner, recovery, vaultBase, arkadeBase, err = parseConnectorCredentialKeys(cred)
-		if err != nil {
-			return nil, nil, nil, nil, nil, nil, err
-		}
-		sv = &savingsSnapshot{
-			Address:             fam.Recovery.Savings.Address,
-			PkScript:            append([]byte(nil), fam.Recovery.Savings.PkScript...),
-			ExternalOwnerWallet: externalOwner,
-			RecoveryKey:         recovery,
-			VaultCosignerBase:   vaultBase,
-			ArkadeCosignerBase:  arkadeBase,
-		}
-		return phone, externalOwner, recovery, vaultBase, arkadeBase, sv, nil
 	}
 	if cred.TemplateVersion == savings.LedgerNativeTemplate {
 		return s.rebuildLedgerSavings(cred)

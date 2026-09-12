@@ -12,15 +12,13 @@ import (
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
 const recoveryArchivePurpose = "recovery-archive-open"
 
 // These are enrolled public facts, never values selected by the archive writer.
-// DescriptorHash is the existing Savings+boarding composite for legacy Savings,
-// or connectorEnrollment.descriptorHash for the connector template.
+// DescriptorHash commits the complete enrolled account descriptor.
 type RecoveryArchiveBinding struct {
 	VaultID              string `json:"vaultId"`
 	Network              string `json:"network"`
@@ -39,7 +37,7 @@ func recoveryArchiveCredentialAllowed(cred *policy.Credential) bool {
 	if cred != nil && cred.TemplateVersion == program.SpendingOnlyTemplate {
 		return cred.ProtectionTier == program.ProtectionTierLight
 	}
-	return cred != nil && (cred.TemplateVersion == savings.Template || cred.TemplateVersion == savings.LedgerNativeTemplate || connector.IsTemplate(cred.TemplateVersion)) &&
+	return cred != nil && (cred.TemplateVersion == savings.Template || cred.TemplateVersion == savings.LedgerNativeTemplate) &&
 		(cred.ProtectionTier == program.ProtectionTierStandard || cred.ProtectionTier == program.ProtectionTierAdvanced)
 }
 func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchiveBinding, error) {
@@ -69,12 +67,6 @@ func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchi
 			return RecoveryArchiveBinding{}, e
 		}
 		hash = enrolled.DescriptorHash
-	} else if isConnectorCredential(cred) {
-		identity, e := s.connectorEnrollmentStatus(cred, snap)
-		if e != nil {
-			return RecoveryArchiveBinding{}, e
-		}
-		hash = identity.DescriptorHash
 	} else {
 		_, hash, err = s.statusVaultBoardDescriptor(cred, snap)
 		if err != nil {

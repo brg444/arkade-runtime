@@ -25,7 +25,7 @@ func TestLightOnlyEnrollmentKeepsLightFinishAndExistingStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(status.SupportedSetups) != 1 || status.SupportedSetups[0] != "light" || status.ConnectorCapability != nil || status.LedgerSavingsCapability != nil {
+	if len(status.SupportedSetups) != 1 || status.SupportedSetups[0] != "light" || status.LedgerSavingsCapability != nil {
 		t.Fatal("non-Light enrollment advertised")
 	}
 	if _, err := svc.FinishLightEnrollment(context.Background(), token, req); err != nil {

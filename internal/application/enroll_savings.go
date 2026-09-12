@@ -8,7 +8,6 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -70,7 +69,7 @@ func (s *Service) savingsFamilyInput(vaultID string, parsed parsedRegisterReques
 
 func (s *Service) mintEnrollmentCredential(vaultID string, parsed parsedRegisterRequest, vaultBase *btcec.PublicKey) (policy.Credential, *savingsSnapshot, error) {
 	if parsed.protectionTier == program.ProtectionTierLight {
-		if parsed.externalOwner != nil || parsed.recovery != nil || parsed.connectorOrigin != nil {
+		if parsed.externalOwner != nil || parsed.recovery != nil {
 			return policy.Credential{}, nil, fmt.Errorf("Spending-only enrollment contains Savings keys")
 		}
 		cred := s.enrollmentCredential(vaultID, parsed, vaultBase)
@@ -188,7 +187,7 @@ func applySavingsProgram(in *savings.FamilyInput, template string) {
 }
 
 func knownTemplate(template string) bool {
-	return template == program.SpendingOnlyTemplate || template == savings.Template || template == savings.LedgerNativeTemplate || connector.IsTemplate(template)
+	return template == program.SpendingOnlyTemplate || template == savings.Template || template == savings.LedgerNativeTemplate
 }
 
 func publicEnrollTemplate(*Service) string { return savings.Template }

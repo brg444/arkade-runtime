@@ -12,12 +12,10 @@ Guardian enforces the enrolled per-payment, rolling allowance, and fee policy.
 Bitcoin Script verifies its committed spending conditions, while the Guardian
 maintains the rolling allowance ledger.
 
-Connector Savings requires device and online signatures plus a conventional
-external signer input under the enforced program. In v2 the Emulator verifies
-two exact hardware approval digests and the canonical transaction packet.
-An honest enforcing cosigner is necessary: the device and both online signing
-keys together can bypass the connector policy. Bitcoin does not execute the
-Emulator program. Retained direct-hardware Savings uses its own enrolled leaf.
+Ledger Savings authorizes named initiate and clawback transitions. Its scoped
+Guardian key derives from the enrolled network and vault identity. The required
+user signature and any phone proof commit the retained transaction, whose
+inputs, outputs, fees, scripts and key origins are independently checked.
 
 Finite delegated renewals retain owner-presigned authority for exact inputs,
 receivers, fees, and deadlines. Guardian cannot sign a replacement generation

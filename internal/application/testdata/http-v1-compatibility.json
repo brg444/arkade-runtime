@@ -131,14 +131,6 @@
       "OPTIONS",
       "POST"
     ],
-    "/v1/connector/withdraw/authorize": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/connector/operation": [
-      "GET",
-      "OPTIONS"
-    ],
     "/v1/light/backup/challenge": [
       "OPTIONS",
       "POST"
@@ -340,7 +332,6 @@
     ],
     "PublicStatus": [
       "ledgerSavingsCapability:object|null,omitempty",
-      "connectorCapability:object|null,omitempty",
       "supportedSetups:array<string>",
       "network:string",
       "clientOrigin:string",
@@ -353,7 +344,6 @@
     ],
     "Status": [
       "ledgerSavings:object|null,omitempty",
-      "connectorEnrollment:object|null,omitempty",
       "lightDescriptor:object|null,omitempty",
       "lightDescriptorHash:string,omitempty",
       "enrolled:boolean",
@@ -445,11 +435,7 @@
       "descriptorHash:string,omitempty",
       "protectionTier:string",
       "spendingPolicy:object",
-      "spendingPolicyDigest:string",
-      "connectorType:string,omitempty",
-      "connectorPub:string,omitempty",
-      "connectorFingerprint:integer,omitempty",
-      "connectorPath:array<integer>,omitempty"
+      "spendingPolicyDigest:string"
     ],
     "ProposedEnrollment": [
       "vaultId:string",
@@ -475,37 +461,13 @@
     ],
     "PasskeyChallengeRequest": [
       "purpose:string",
-      "vaultId:string,omitempty",
-      "candidateTxid:string,omitempty"
+      "vaultId:string,omitempty"
     ],
     "PasskeyChallengeResponse": [
       "challengeId:string",
       "challenge:string",
       "allowCredentialId:string",
       "expiresInSeconds:integer"
-    ],
-    "ConnectorWithdrawRequest": [
-      "vaultId:string",
-      "psbt:string",
-      "challengeId:string",
-      "credentialId:string",
-      "clientDataJSON:string",
-      "authenticatorData:string",
-      "signature:string",
-      "directProof:string"
-    ],
-    "ConnectorWithdrawResponse": [
-      "signedPsbt:string",
-      "replay:boolean",
-      "operationId:string"
-    ],
-    "ConnectorOperationView": [
-      "operationId:string",
-      "phase:string",
-      "resolution:string",
-      "candidateTxid:string",
-      "signedPsbt:string,omitempty",
-      "verified:boolean"
     ],
     "RecoveryBindingRouteRequest": [
       "vaultId:string",

@@ -57,7 +57,7 @@ func (s *Service) IssueLNURLChallenge(action, name string) (*PasskeyChallengeRes
 	if err != nil {
 		return nil, err
 	}
-	return s.issuePasskeyChallenge("", purpose, "", nil)
+	return s.issuePasskeyChallenge("", purpose, nil)
 }
 
 func (s *Service) ConfigureLNURL(ctx context.Context, action, name string, req LightBackupOpenRequest) (json.RawMessage, error) {

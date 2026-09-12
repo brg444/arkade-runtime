@@ -1,7 +1,6 @@
 package application
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"database/sql"
 	"encoding/hex"
@@ -16,11 +15,9 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
-	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 func archiveAssertion(t *testing.T, s *Service, id string, pass, direct *ecdsa.PrivateKey, credID []byte, purpose string) LightBackupOpenRequest {
@@ -48,41 +45,13 @@ func archivePayload(binding RecoveryArchiveBinding, headerTag, body string) stri
 
 func TestRecoveryArchiveEnrollmentFamiliesAndRestart(t *testing.T) {
 	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
-		for _, template := range []string{savings.Template, connector.Template} {
+		for _, template := range []string{savings.LedgerNativeTemplate} {
 			for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
 				t.Run(network+"/"+template+"/"+tier, func(t *testing.T) {
-					f := newConnectorFixture(t, network)
-					phone, _ := btcec.NewPrivateKey()
-					hardware, _ := btcec.NewPrivateKey()
-					board, _ := btcec.NewPrivateKey()
-					var recovery *btcec.PrivateKey
-					if tier == program.ProtectionTierAdvanced {
-						recovery, _ = btcec.NewPrivateKey()
-					}
-					req := connectorEnrollRequestForNetwork(t, network, phone, hardware, board, tier, recovery, connector.NativeSegwit, false)
-					pass, _ := webauthn.NewP256()
-					direct, _ := webauthn.NewP256()
-					req.WebAuthnP256 = hex.EncodeToString(webauthn.CompressedP256(pass))
-					req.PhoneDirectP256 = hex.EncodeToString(webauthn.CompressedP256(direct))
-					id, _ := newOpaqueVaultID()
-					token := bytes.Repeat([]byte{0x71}, 32)
-					putConnectorInvite(t, f.led, token)
-					if template == savings.Template {
-						req.ConnectorType = ""
-						req.ConnectorPub = ""
-						req.ConnectorFingerprint = 0
-						req.ConnectorPath = nil
-						proposed, err := f.svc.previewVaultBoardEnrollmentDescriptor(id, req)
-						if err != nil {
-							t.Fatal(err)
-						}
-						req.DescriptorHash = proposed.DescriptorHash
-						if err := f.svc.CreateTenantVault(id, token, req); err != nil {
-							t.Fatal(err)
-						}
-					} else {
-						req = enrollConnectorVault(t, f.svc, id, token, req)
-					}
+					f := ledgerEnrollmentReadyForNetwork(t, tier == program.ProtectionTierAdvanced, network)
+					f.finish(t)
+					req, id := f.request, f.start.VaultID
+					pass, direct := f.pass, f.signer.direct
 					credID, _ := hex.DecodeString(req.CredentialID)
 					auth := func() LightBackupOpenRequest {
 						return archiveAssertion(t, f.svc, id, pass, direct, credID, recoveryArchivePurpose)
@@ -107,7 +76,7 @@ func TestRecoveryArchiveEnrollmentFamiliesAndRestart(t *testing.T) {
 					if err != nil || *retry != *saved {
 						t.Fatal("exact retry", err)
 					}
-					f.reopen(t)
+					f.restart(t)
 					if _, err := f.svc.ReadRecoveryArchive(LightBackupRequest{Token: opened.Token}); err == nil {
 						t.Fatal("session survived restart")
 					}
@@ -168,7 +137,7 @@ func TestRecoveryArchiveRejectsAuthenticationAndFamilySubstitution(t *testing.T)
 	if _, err := l.env.svc.ReadRecoveryArchive(LightBackupRequest{Token: lightOpen.Token}); err == nil {
 		t.Fatal("Light token entered Savings route")
 	}
-	for _, template := range []string{"", light.Profile, "future-savings-v99"} {
+	for _, template := range []string{"", light.Profile, "phone-connector-recovery-savings-v1", "phone-connector-recovery-savings-v2", "future-savings-v99"} {
 		if recoveryArchiveCredentialAllowed(&policy.Credential{TemplateVersion: template, ProtectionTier: program.ProtectionTierStandard}) {
 			t.Fatal("unknown template", template)
 		}
@@ -198,7 +167,7 @@ func TestRecoveryArchiveHeaderBindingCASAndMalformedWrites(t *testing.T) {
 	}
 	for name, mutate := range map[string]func(*RecoveryArchiveBinding){
 		"vault": func(b *RecoveryArchiveBinding) { b.VaultID = strings.Repeat("ff", 32) }, "network": func(b *RecoveryArchiveBinding) { b.Network = "mainnet" },
-		"template": func(b *RecoveryArchiveBinding) { b.TemplateVersion = connector.Template }, "tier": func(b *RecoveryArchiveBinding) { b.ProtectionTier = "advanced" },
+		"template": func(b *RecoveryArchiveBinding) { b.TemplateVersion = "phone-connector-recovery-savings-v1" }, "tier": func(b *RecoveryArchiveBinding) { b.ProtectionTier = "advanced" },
 		"policy": func(b *RecoveryArchiveBinding) { b.PolicyVersion = "invalid" }, "policy digest": func(b *RecoveryArchiveBinding) { b.SpendingPolicyDigest = strings.Repeat("11", 32) },
 		"descriptor": func(b *RecoveryArchiveBinding) { b.DescriptorHash = strings.Repeat("11", 32) },
 	} {

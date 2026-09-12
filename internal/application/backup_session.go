@@ -27,7 +27,7 @@ type backupSession struct {
 // Discovery has no tenant lookup or credential enumeration. It uses the same
 // stateless challenge boundary as enrolled sessions; sessions remain bounded.
 func (s *Service) issueBackupChallenge(purpose string) (*PasskeyChallengeResponse, error) {
-	return s.issuePasskeyChallenge("", purpose, "", nil)
+	return s.issuePasskeyChallenge("", purpose, nil)
 }
 
 func (s *Service) openBackup(ctx context.Context, req LightBackupOpenRequest, purpose string) (*RecoveryArchiveOpenResponse, error) {

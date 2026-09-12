@@ -1,17 +1,15 @@
 package application
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
-	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 func lnurlAssertion(t *testing.T, f lightEnrolledFixture, action, name string) LightBackupOpenRequest {
@@ -89,66 +87,52 @@ func TestLNURLCannotReuseBackupOrRevokeAuthority(t *testing.T) {
 	}
 }
 
-func TestLNURLConnectorEnrollmentAfterGuardianRestart(t *testing.T) {
-	for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
-		t.Run(tier, func(t *testing.T) {
-			f := newConnectorFixture(t, "mutinynet")
-			phone, _ := btcec.NewPrivateKey()
-			hardware, _ := btcec.NewPrivateKey()
-			boarding, _ := btcec.NewPrivateKey()
-			var recovery *btcec.PrivateKey
-			if tier == program.ProtectionTierAdvanced {
-				recovery, _ = btcec.NewPrivateKey()
-			}
-			req := connectorEnrollRequest(t, phone, hardware, boarding, tier, recovery, connector.NativeSegwit)
-			pass, _ := webauthn.NewP256()
-			direct, _ := webauthn.NewP256()
-			req.WebAuthnP256 = hex.EncodeToString(webauthn.CompressedP256(pass))
-			req.PhoneDirectP256 = hex.EncodeToString(webauthn.CompressedP256(direct))
-			vaultID, err := newOpaqueVaultID()
-			if err != nil {
-				t.Fatal(err)
-			}
-			token := bytes.Repeat([]byte{0x77}, 32)
-			putConnectorInvite(t, f.led, token)
-			req = enrollConnectorVault(t, f.svc, vaultID, token, req)
-			f.reopen(t)
-			calls := 0
-			f.svc.LNURLRegistrar = func(_ context.Context, action string, b LNURLBinding, _ string) (json.RawMessage, error) {
-				calls++
-				status, err := f.svc.StatusFor(t.Context(), vaultID)
-				if err != nil {
-					t.Fatal(err)
+func TestLNURLLedgerEnrollmentAfterGuardianRestart(t *testing.T) {
+	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
+		for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
+			t.Run(network+"/"+tier, func(t *testing.T) {
+				f := ledgerEnrollmentReadyForNetwork(t, tier == program.ProtectionTierAdvanced, network)
+				f.finish(t)
+				req, vaultID := f.request, f.start.VaultID
+				pass, direct := f.pass, f.signer.direct
+				f.restart(t)
+				calls := 0
+				f.svc.LNURLRegistrar = func(_ context.Context, action string, b LNURLBinding, _ string) (json.RawMessage, error) {
+					calls++
+					status, err := f.svc.StatusFor(t.Context(), vaultID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if b.ProtectionTier != tier || b.VaultID != vaultID || b.DescriptorHash != req.DescriptorHash || b.ClaimPublicKey != req.PhoneBIP340Pub || b.SpendingScript != status.SpendingArkScript || b.SpendingAddress != status.SpendingArkAddress {
+						t.Fatal("Ledger receiving binding mismatch")
+					}
+					return json.RawMessage(`{"active":true}`), nil
 				}
-				if b.ProtectionTier != tier || b.VaultID != vaultID || b.DescriptorHash != req.DescriptorHash || b.ClaimPublicKey != req.PhoneBIP340Pub || b.SpendingScript != status.SpendingArkScript || b.SpendingAddress != status.SpendingArkAddress {
-					t.Fatal("connector receiving binding mismatch")
+				for _, action := range []string{"register", "revoke"} {
+					challenge, err := f.svc.IssueLNURLChallenge(action, "")
+					if err != nil {
+						t.Fatal(err)
+					}
+					raw, _ := hex.DecodeString(challenge.Challenge)
+					credID, _ := hex.DecodeString(req.CredentialID)
+					assertion, err := webauthn.Synth(pass, credID, raw, f.svc.runtimeConfig().ClientOrigin, f.svc.runtimeConfig().RPID, true, true)
+					if err != nil {
+						t.Fatal(err)
+					}
+					proof, err := webauthn.SignDigestLowS(direct, passkeySessionProofDigest("lnurl-"+action, raw, credID))
+					if err != nil {
+						t.Fatal(err)
+					}
+					request := LightBackupOpenRequest{VaultID: vaultID, SessionAssertionRequest: SessionAssertionRequest{ChallengeID: challenge.ChallengeID, CredentialID: req.CredentialID, ClientDataJSON: hex.EncodeToString(assertion.ClientDataJSON), AuthenticatorData: hex.EncodeToString(assertion.AuthenticatorData), Signature: hex.EncodeToString(assertion.DERSignature), DirectProof: hex.EncodeToString(proof)}}
+					if _, err := f.svc.ConfigureLNURL(t.Context(), action, "", request); err != nil {
+						t.Fatal(err)
+					}
 				}
-				return json.RawMessage(`{"active":true}`), nil
-			}
-			for _, action := range []string{"register", "revoke"} {
-				challenge, err := f.svc.IssueLNURLChallenge(action, "")
-				if err != nil {
-					t.Fatal(err)
+				if calls != 2 {
+					t.Fatal("missing bridge operation")
 				}
-				raw, _ := hex.DecodeString(challenge.Challenge)
-				credID, _ := hex.DecodeString(req.CredentialID)
-				assertion, err := webauthn.Synth(pass, credID, raw, f.origin, f.rpid, true, true)
-				if err != nil {
-					t.Fatal(err)
-				}
-				proof, err := webauthn.SignDigestLowS(direct, passkeySessionProofDigest("lnurl-"+action, raw, credID))
-				if err != nil {
-					t.Fatal(err)
-				}
-				request := LightBackupOpenRequest{VaultID: vaultID, SessionAssertionRequest: SessionAssertionRequest{ChallengeID: challenge.ChallengeID, CredentialID: req.CredentialID, ClientDataJSON: hex.EncodeToString(assertion.ClientDataJSON), AuthenticatorData: hex.EncodeToString(assertion.AuthenticatorData), Signature: hex.EncodeToString(assertion.DERSignature), DirectProof: hex.EncodeToString(proof)}}
-				if _, err := f.svc.ConfigureLNURL(t.Context(), action, "", request); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if calls != 2 {
-				t.Fatal("missing bridge operation")
-			}
-		})
+			})
+		}
 	}
 }
 

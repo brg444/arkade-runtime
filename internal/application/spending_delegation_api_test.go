@@ -2,7 +2,6 @@ package application
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -17,9 +16,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/ports"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
-	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -27,45 +24,18 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-func spendingDelegationFixture(t *testing.T, network, tier string, connected bool) (*env, renewalContract, spendingDelegationSetRequest) {
+func spendingDelegationFixture(t *testing.T, network, tier string) (*env, renewalContract, spendingDelegationSetRequest) {
 	t.Helper()
-	e := newEnvForNetwork(t, network)
-	e.credID = []byte{0x22}
-	var recovery *btcec.PrivateKey
-	if tier == "advanced" {
-		recovery, _ = btcec.NewPrivateKey()
-	}
-	req := connectorEnrollRequestForNetwork(t, network, e.hot, e.externalOwner, e.boarding, tier, recovery, connector.Taproot, false)
-	req.CredentialID = hex.EncodeToString(e.credID)
-	req.WebAuthnP256 = hex.EncodeToString(webauthn.CompressedP256(e.p256))
-	req.PhoneDirectP256 = hex.EncodeToString(webauthn.CompressedP256(e.direct))
-	if !connected {
-		req.ConnectorType, req.ConnectorPub = "", ""
-		req.ConnectorFingerprint, req.ConnectorPath = 0, nil
-	}
-	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x55}, 32))
-	tokenHash, err := HashEnrollmentToken(token)
+	f := ledgerEnrollmentReadyForNetwork(t, tier == "advanced", network)
+	enrolled := f.finish(t)
+	credID, err := hex.DecodeString(f.request.CredentialID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	putConnectorInvite(t, e.ledger, tokenHash)
-	start, err := e.svc.StartEnrollment(token, EnrollStartRequest{ProtectionTier: tier, SpendingPolicy: req.SpendingPolicy, SpendingPolicyDigest: req.SpendingPolicyDigest})
-	if err != nil {
-		t.Fatal(err)
-	}
-	finish := attestedFinish(t, e.svc, start, e.p256, e.credID, RegisterRequest{})
-	finish.RegisterRequest = req
-	preview, err := e.svc.ProposeEnrollment(token, finish)
-	if err != nil {
-		t.Fatal(err)
-	}
-	finish.DescriptorHash = preview.DescriptorHash
-	enrolled, err := e.svc.FinishEnrollment(t.Context(), token, finish)
-	if err != nil {
-		t.Fatal(err)
-	}
+	e := &env{svc: f.svc, ledger: f.ledger, hot: f.hot, p256: f.pass, direct: f.signer.direct, credID: credID}
+	e.svc.keys.lightDelegation.(*fileBackedVaultKeys).bindDelegationJournal(e.ledger)
 	id := enrolled.VaultID
-	if id != start.VaultID || len(id) != 32 {
+	if id != f.start.VaultID || len(id) != 32 {
 		t.Fatal("fixture must use real enrollment-assigned vault ID unchanged")
 	}
 	e.svc.LightDelegationEnabled = true
@@ -199,75 +169,73 @@ func spendingDelegationHTTP(t *testing.T, e *env, phase string, body any, want i
 func TestSpendingDelegationAPIAllVaultPrograms(t *testing.T) {
 	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
 		for _, tier := range []string{"standard", "advanced"} {
-			for _, connected := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/%s/connector=%t", network, tier, connected), func(t *testing.T) {
-					e, c, set := spendingDelegationFixture(t, network, tier, connected)
-					spendingDelegationHTTP(t, e, "info", map[string]string{"vaultId": set.VaultID}, 200)
-					bad := set
-					bad.Authorization = nil
-					spendingDelegationHTTP(t, e, "schedule", bad, 400)
-					all, err := e.ledger.ListLightDelegations(t.Context())
-					if err != nil || len(all) != 0 {
-						t.Fatal("unauthorized plans persisted")
-					}
-					raw := spendingDelegationHTTP(t, e, "schedule", set, 200)
-					var result spendingDelegationSetResponse
-					if err := json.Unmarshal(raw, &result); err != nil {
-						t.Fatal(err)
-					}
-					if result.SetID != set.SetID || len(result.Operations) != 2 || result.Operations[0].Program != c.Binding.Program || result.Operations[0].State != "armed" {
-						t.Fatal("set response identity")
-					}
-					status, err := e.svc.StatusFor(t.Context(), set.VaultID)
-					if err != nil || status.PeriodSpent != 0 {
-						t.Fatalf("armed set debited principal/fees: %d %v", status.PeriodSpent, err)
-					}
-					if err := e.ledger.AdvanceSignCount(set.VaultID, e.credID, 9); err != nil {
-						t.Fatal(err)
-					}
-					set.Authorization = nil
-					spendingDelegationHTTP(t, e, "schedule", set, 200)
-					changed := set
-					changed.SetID = strings.Repeat("88", 16)
-					changed.Plans = append([]spendingDelegationInput(nil), set.Plans...)
-					for i := range changed.Plans {
-						changed.Plans[i].OperationID = fmt.Sprintf("%032x", 100+i)
-						digest, err := changed.planDigest(changed.Plans[i])
-						if err != nil {
-							t.Fatal(err)
-						}
-						sig, err := schnorr.Sign(e.hot, digest)
-						if err != nil {
-							t.Fatal(err)
-						}
-						changed.Plans[i].OwnerSignature = hex.EncodeToString(sig.Serialize())
-					}
-					signSpendingSetFixture(t, e, &changed, 7)
-					if _, err := e.svc.scheduleSpendingDelegationSet(t.Context(), changed); err == nil || !strings.Contains(err.Error(), "sign count") {
-						t.Fatalf("new set reused old counter: %v", err)
-					}
-					all, err = e.ledger.ListLightDelegations(t.Context())
-					if err != nil || len(all) != 2 {
-						t.Fatalf("changed membership: %v", err)
-					}
-					plan, err := delegationStoredPlanForContract(&all[0], c)
+			t.Run(network+"/"+tier, func(t *testing.T) {
+				e, c, set := spendingDelegationFixture(t, network, tier)
+				spendingDelegationHTTP(t, e, "info", map[string]string{"vaultId": set.VaultID}, 200)
+				bad := set
+				bad.Authorization = nil
+				spendingDelegationHTTP(t, e, "schedule", bad, 400)
+				all, err := e.ledger.ListLightDelegations(t.Context())
+				if err != nil || len(all) != 0 {
+					t.Fatal("unauthorized plans persisted")
+				}
+				raw := spendingDelegationHTTP(t, e, "schedule", set, 200)
+				var result spendingDelegationSetResponse
+				if err := json.Unmarshal(raw, &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.SetID != set.SetID || len(result.Operations) != 2 || result.Operations[0].Program != c.Binding.Program || result.Operations[0].State != "armed" {
+					t.Fatal("set response identity")
+				}
+				status, err := e.svc.StatusFor(t.Context(), set.VaultID)
+				if err != nil || status.PeriodSpent != 0 {
+					t.Fatalf("armed set debited principal/fees: %d %v", status.PeriodSpent, err)
+				}
+				if err := e.ledger.AdvanceSignCount(set.VaultID, e.credID, 9); err != nil {
+					t.Fatal(err)
+				}
+				set.Authorization = nil
+				spendingDelegationHTTP(t, e, "schedule", set, 200)
+				changed := set
+				changed.SetID = strings.Repeat("88", 16)
+				changed.Plans = append([]spendingDelegationInput(nil), set.Plans...)
+				for i := range changed.Plans {
+					changed.Plans[i].OperationID = fmt.Sprintf("%032x", 100+i)
+					digest, err := changed.planDigest(changed.Plans[i])
 					if err != nil {
 						t.Fatal(err)
 					}
-					signed, err := e.svc.keys.lightDelegation.authorizeSpendingDelegation(t.Context(), c, plan, nil)
+					sig, err := schnorr.Sign(e.hot, digest)
 					if err != nil {
 						t.Fatal(err)
 					}
-					if err := requireOnlyVaultSignatureAdded(plan.Request.Intent.Proof, signed, mustDecodeRenewalHex(c.Binding.CosignerPub)); err != nil {
-						t.Fatal(err)
-					}
-					altered := c
-					altered.KeyScope.lightProfile = true
-					if _, err := e.svc.keys.lightDelegation.authorizeSpendingDelegation(t.Context(), altered, plan, nil); err == nil {
-						t.Fatal("Light key scope substituted")
-					}
-				})
-			}
+					changed.Plans[i].OwnerSignature = hex.EncodeToString(sig.Serialize())
+				}
+				signSpendingSetFixture(t, e, &changed, 7)
+				if _, err := e.svc.scheduleSpendingDelegationSet(t.Context(), changed); err == nil || !strings.Contains(err.Error(), "sign count") {
+					t.Fatalf("new set reused old counter: %v", err)
+				}
+				all, err = e.ledger.ListLightDelegations(t.Context())
+				if err != nil || len(all) != 2 {
+					t.Fatalf("changed membership: %v", err)
+				}
+				plan, err := delegationStoredPlanForContract(&all[0], c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				signed, err := e.svc.keys.lightDelegation.authorizeSpendingDelegation(t.Context(), c, plan, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := requireOnlyVaultSignatureAdded(plan.Request.Intent.Proof, signed, mustDecodeRenewalHex(c.Binding.CosignerPub)); err != nil {
+					t.Fatal(err)
+				}
+				altered := c
+				altered.KeyScope.lightProfile = true
+				if _, err := e.svc.keys.lightDelegation.authorizeSpendingDelegation(t.Context(), altered, plan, nil); err == nil {
+					t.Fatal("Light key scope substituted")
+				}
+			})
 		}
 	}
 }
@@ -352,7 +320,7 @@ func TestSpendingDelegationSharedLightAndReadBoundaries(t *testing.T) {
 }
 
 func TestSpendingDelegationRejectsNewAuthorityWithoutCompleteAuthorization(t *testing.T) {
-	e, c, set := spendingDelegationFixture(t, deployment.NetworkMainnet, "advanced", true)
+	e, c, set := spendingDelegationFixture(t, deployment.NetworkMainnet, "advanced")
 	for name, mutate := range map[string]func(*spendingDelegationSetRequest){
 		"different direct digest": func(r *spendingDelegationSetRequest) { r.Authorization.DirectSig = strings.Repeat("01", 64) },
 		"different credential":    func(r *spendingDelegationSetRequest) { r.Authorization.CredentialID = "abcd" },

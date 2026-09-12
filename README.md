@@ -17,15 +17,13 @@ signatures.
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Enrollment        | Verify passkeys and freeze the selected mode, keys, descriptor, and Spending policy                                                      |
 | Spending          | Reserve inputs, enforce payment and fee limits, verify transactions and checkpoints, and reconcile the same operation after interruption |
-| Savings connector | Verify the enrolled transaction family, signer approvals, protected outputs, and retained candidate before service signing               |
 | Boarding          | Verify and submit the SDK's program-specific registration, release, and finalization artifacts                                           |
 | Recovery          | Authorize the enrolled Savings transitions and retain authenticated encrypted archives                                                   |
 | Renewal           | Verify foreground renewals or execute finite owner-presigned requests when delegation is enabled                                         |
 
-New Savings connector enrollment uses `savings-connector-dual-v2`. Existing v1 and direct-hardware Savings records retain the programs and
-transaction requirements selected at enrollment. Light uses
-passkey-owned Spending and a delayed owner exit. Standard and Advanced retain
-their distinct hardware and recovery-key requirements.
+Shared Spending supports Spending-only accounts and accounts with Ledger
+Savings. Standard and Advanced retain their distinct hardware and recovery-key
+requirements.
 
 `VAULT_INVITE_ONLY` controls open or invitation-based admission, while
 `VAULT_LIGHT_ENABLED` controls new Light enrollment independently of admission.
@@ -37,15 +35,13 @@ retained operation state.
 
 The Guardian's allowance ledger and signing capability share one process.
 Rows are authenticated before use, and economic state changes advance an
-independent policy sequence. SQLite schema 6 includes validated forward
+independent policy sequence. SQLite schema 11 includes validated forward
 migrations from supported earlier schemas.
 
 Spending requires the owner and Arkade Operator in addition to the Guardian.
-Connector Savings additionally relies on the enforcing online cosigners to
-verify external signer approval and transaction policy. The device key plus
-both online signing keys can bypass that connector policy; Bitcoin does not
-execute the Emulator's Arkade Script program. Older direct-hardware Savings
-has a different normal-spend leaf.
+Ledger Savings uses the enrolled phone, hardware and Guardian key origins;
+Advanced also includes the enrolled recovery key. Each transition verifies the
+exact committed scripts and required signatures.
 
 The supplied software does not establish an attested or hardware-isolated
 signing environment. Browser integrity, host key protection, storage
@@ -122,8 +118,6 @@ for the service and tenant access boundaries.
 | `POST /v1/passkey/install` | Install a passkey credential envelope. |
 | `POST /v1/passkey/recover` | Recover a passkey credential envelope. |
 | `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
-| `POST /v1/connector/withdraw/authorize` | Validate, durably authorize, and cosign one Savings connector withdrawal. |
-| `GET /v1/connector/operation` | Read one connector operation for retry reconciliation. |
 
 ## Build and test
 
@@ -151,7 +145,7 @@ covers the protocol and persistence contracts.
 | `internal/application` | Enrollment, transaction, recovery, renewal, and HTTP workflows |
 | `internal/profile`     | Compiled profile declarations                                  |
 | `internal/policy`      | Authenticated SQLite ledger, migrations, and policy sequence   |
-| `internal/vault`       | Savings, connector, and Light program construction             |
+| `internal/vault`       | Savings and Spending program construction             |
 | `internal/deployment`  | Network-specific parameters and dependency checks              |
 | `contract-pack*.json`  | Shared wallet/Guardian program parameters                      |
 

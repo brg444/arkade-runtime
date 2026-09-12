@@ -962,7 +962,11 @@ func startTestEnrollmentWithTier(t *testing.T, svc *Service, led *policy.Ledger,
 	if err := led.PutInvite(hash, now, now); err != nil {
 		t.Fatal(err)
 	}
-	start, err := svc.StartEnrollment(token, enrollStartRequestWithTier(t, selected, tier))
+	digest, err := program.SpendingPolicyDigestHexFor(svc.runtimeConfig().Network, selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := svc.StartEnrollment(token, EnrollStartRequest{ProtectionTier: tier, SpendingPolicy: selected, SpendingPolicyDigest: digest})
 	if err != nil {
 		t.Fatal(err)
 	}

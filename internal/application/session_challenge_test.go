@@ -66,7 +66,7 @@ func TestPasskeyChallengeBadProofDoesNotBurnOwnerTicket(t *testing.T) {
 
 func TestPasskeyChallengeTicketAuthenticatesEveryFieldAndCanonicalEncoding(t *testing.T) {
 	s := &Service{}
-	issued, err := s.issuePasskeyChallenge("vault", passkeyPurposeConnectorWithdraw, strings.Repeat("ab", 32), nil)
+	issued, err := s.issuePasskeyChallenge("vault", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestPasskeyChallengeTicketAuthenticatesEveryFieldAndCanonicalEncoding(t *te
 	if err = json.Unmarshal(payload, &record); err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"VaultID", "Purpose", "CandidateTxid", "Challenge", "ExpiresAt"} {
+	for _, field := range []string{"VaultID", "Purpose", "Challenge", "ExpiresAt"} {
 		t.Run(field, func(t *testing.T) {
 			altered := make(map[string]any, len(record))
 			for k, v := range record {
@@ -88,30 +88,30 @@ func TestPasskeyChallengeTicketAuthenticatesEveryFieldAndCanonicalEncoding(t *te
 			altered[field] = "attacker"
 			b, _ := json.Marshal(altered)
 			ticket := passkeyChallengeTicketPrefix + base64.RawURLEncoding.EncodeToString(append(b, tag...))
-			if _, err := s.readPasskeyChallenge("vault", ticket, passkeyPurposeConnectorWithdraw); err == nil {
+			if _, err := s.readPasskeyChallenge("vault", ticket, passkeyPurposeInstall); err == nil {
 				t.Fatal("unsigned field substitution accepted")
 			}
 		})
 	}
-	for _, alias := range []string{issued.ChallengeID + "\r\n", issued.ChallengeID + "=", strings.Replace(issued.ChallengeID, "v1.", "v2.", 1), issued.ChallengeID[:len(issued.ChallengeID)-1], strings.Repeat("x", 4096)} {
-		if _, err := s.readPasskeyChallenge("vault", alias, passkeyPurposeConnectorWithdraw); err == nil {
+	for _, alias := range []string{issued.ChallengeID + "\r\n", issued.ChallengeID + "=", strings.Replace(issued.ChallengeID, "v2.", "v1.", 1), issued.ChallengeID[:len(issued.ChallengeID)-1], strings.Repeat("x", 4096)} {
+		if _, err := s.readPasskeyChallenge("vault", alias, passkeyPurposeInstall); err == nil {
 			t.Fatal("noncanonical ticket accepted")
 		}
 	}
-	if _, err = s.readPasskeyChallenge("another-vault", issued.ChallengeID, passkeyPurposeConnectorWithdraw); err == nil {
+	if _, err = s.readPasskeyChallenge("another-vault", issued.ChallengeID, passkeyPurposeInstall); err == nil {
 		t.Fatal("cross-vault ticket accepted")
 	}
 	if _, err = s.readPasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeMapWrite); err == nil {
 		t.Fatal("cross-purpose ticket accepted")
 	}
-	got, err := s.readPasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeConnectorWithdraw)
-	if err != nil || hex.EncodeToString(got.Challenge) != issued.Challenge || got.CandidateTxid != strings.Repeat("ab", 32) {
+	got, err := s.readPasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeInstall)
+	if err != nil || hex.EncodeToString(got.Challenge) != issued.Challenge {
 		t.Fatal("exact ticket changed", err)
 	}
-	if _, err = s.consumePasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeConnectorWithdraw); err != nil {
+	if _, err = s.consumePasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeInstall); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.readPasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeConnectorWithdraw); err == nil {
+	if _, err = s.readPasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeInstall); err == nil {
 		t.Fatal("spent ticket accepted")
 	}
 }
@@ -119,7 +119,7 @@ func TestPasskeyChallengeTicketAuthenticatesEveryFieldAndCanonicalEncoding(t *te
 func TestPasskeyChallengeExpiryAndRestartInvalidateAuthority(t *testing.T) {
 	now := time.Unix(1700000000, 0)
 	s := &Service{SessionNow: func() time.Time { return now }}
-	issued, err := s.issuePasskeyChallenge("vault", passkeyPurposeInstall, "", nil)
+	issued, err := s.issuePasskeyChallenge("vault", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestPasskeyChallengeExpiryAndRestartInvalidateAuthority(t *testing.T) {
 	if _, err = s.consumePasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeInstall); err == nil {
 		t.Fatal("expired during verification accepted")
 	}
-	issued, err = s.issuePasskeyChallenge("vault", passkeyPurposeInstall, "", nil)
+	issued, err = s.issuePasskeyChallenge("vault", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestPasskeyChallengeExpiryAndRestartInvalidateAuthority(t *testing.T) {
 	if _, err = restarted.readPasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeInstall); err == nil || len(restarted.sessionChallengeKey) != 0 {
 		t.Fatal("validation created an epoch key")
 	}
-	if _, err = restarted.issuePasskeyChallenge("vault", passkeyPurposeInstall, "", nil); err != nil {
+	if _, err = restarted.issuePasskeyChallenge("vault", passkeyPurposeInstall, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = restarted.readPasskeyChallenge("vault", issued.ChallengeID, passkeyPurposeInstall); err == nil {
@@ -154,7 +154,7 @@ func TestPasskeyChallengeExpiryAndRestartInvalidateAuthority(t *testing.T) {
 func TestPasskeyChallengeSpentCapacityNeverEvictsLiveReplayEvidence(t *testing.T) {
 	now := time.Unix(1700000000, 0)
 	s := &Service{SessionNow: func() time.Time { return now }}
-	spent, err := s.issuePasskeyChallenge("vault", passkeyPurposeInstall, "", nil)
+	spent, err := s.issuePasskeyChallenge("vault", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestPasskeyChallengeSpentCapacityNeverEvictsLiveReplayEvidence(t *testing.T
 		binary.BigEndian.PutUint64(k[:8], uint64(i))
 		s.consumedPasskeyChallenges[k] = consumedPasskeyChallenge{VaultID: "other", ExpiresAt: now.Add(passkeyChallengeTTL)}
 	}
-	fresh, err := s.issuePasskeyChallenge("vault", passkeyPurposeInstall, "", nil)
+	fresh, err := s.issuePasskeyChallenge("vault", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatalf("full spent cache prevented stateless issuance: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestPasskeyChallengeSpentCapacityNeverEvictsLiveReplayEvidence(t *testing.T
 		t.Fatal("live replay entry evicted")
 	}
 	now = now.Add(passkeyChallengeTTL)
-	fresh, err = s.issuePasskeyChallenge("vault", passkeyPurposeInstall, "", nil)
+	fresh, err = s.issuePasskeyChallenge("vault", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestPasskeyChallengeAuthenticatedCapacityIsIsolatedPerOwner(t *testing.T) {
 	var last *PasskeyChallengeResponse
 	for i := 0; i < maxConsumedPasskeyChallengesPerVault; i++ {
 		var err error
-		last, err = s.issuePasskeyChallenge("busy-owner", passkeyPurposeInstall, "", nil)
+		last, err = s.issuePasskeyChallenge("busy-owner", passkeyPurposeInstall, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -229,14 +229,14 @@ func TestPasskeyChallengeAuthenticatedCapacityIsIsolatedPerOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	next, err := s.issuePasskeyChallenge("busy-owner", passkeyPurposeInstall, "", nil)
+	next, err := s.issuePasskeyChallenge("busy-owner", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.consumePasskeyChallenge("busy-owner", next.ChallengeID, passkeyPurposeInstall); !errors.Is(err, ErrVerificationBusy) {
 		t.Fatal("owner replay budget unbounded", err)
 	}
-	other, err := s.issuePasskeyChallenge("other-owner", passkeyPurposeInstall, "", nil)
+	other, err := s.issuePasskeyChallenge("other-owner", passkeyPurposeInstall, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,22 +280,5 @@ func TestPasskeyChallengeBadDirectProofCannotAdvanceCounter(t *testing.T) {
 	}
 	if _, err = e.svc.authenticatePasskeySession(t.Context(), passkeyPurposeInstall, fixture.VaultID, withCounter(6)); err != nil {
 		t.Fatal("invalid proof advanced counter or burned ticket", err)
-	}
-}
-
-func TestPasskeyChallengeConnectorCandidateMismatchDoesNotBurnTicket(t *testing.T) {
-	w := newWithdrawalFixture(t)
-	req := w.assertion(t, w.txid)
-	if _, err := w.f.svc.authenticateConnectorWithdrawSession(t.Context(), w.id, req, strings.Repeat("ab", 32)); err == nil {
-		t.Fatal("wrong candidate accepted")
-	}
-	if len(w.f.svc.consumedPasskeyChallenges) != 0 {
-		t.Fatal("candidate mismatch consumed ticket")
-	}
-	if _, err := w.f.svc.authenticateConnectorWithdrawSession(t.Context(), w.id, req, w.txid); err != nil {
-		t.Fatal("bound candidate ticket burned", err)
-	}
-	if _, err := w.f.svc.authenticateConnectorWithdrawSession(t.Context(), w.id, req, w.txid); err == nil {
-		t.Fatal("candidate ticket replayed")
 	}
 }
