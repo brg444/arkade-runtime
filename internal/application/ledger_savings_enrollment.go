@@ -178,15 +178,16 @@ func (s *Service) mintLedgerSavingsCredential(vaultID string, req RegisterReques
 	if req.DescriptorHash == "" || req.DescriptorHash != hash {
 		return policy.Credential{}, nil, nil, fmt.Errorf("Ledger Savings descriptor hash mismatch")
 	}
-	cred, snapshot, err := s.mintEnrollmentCredential(vaultID, parsed, legacy)
-	if err != nil {
-		return policy.Credential{}, nil, nil, err
+	cred := s.enrollmentCredential(vaultID, parsed, legacy)
+	cred.ExternalOwnerWallet = parsed.externalOwner.SerializeCompressed()
+	cred.ArkadeCosignerBase = s.ArkadeCosignerPub.SerializeCompressed()
+	cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion = s.arkadeIdentity()
+	if parsed.recovery != nil {
+		cred.RecoveryKey = parsed.recovery.SerializeCompressed()
 	}
 	cred.TemplateVersion = savings.LedgerNativeTemplate
-	cred.SavingsAddress = family.Receive.Address
-	cred.SavingsScript = bytes.Clone(family.Receive.PkScript)
-	snapshot.Address = cred.SavingsAddress
-	snapshot.PkScript = bytes.Clone(cred.SavingsScript)
+	cred.SavingsAddress, cred.SavingsScript = family.Receive.Address, bytes.Clone(family.Receive.PkScript)
+	snapshot := &savingsSnapshot{Address: cred.SavingsAddress, PkScript: bytes.Clone(cred.SavingsScript), ExternalOwnerWallet: parsed.externalOwner, RecoveryKey: parsed.recovery, VaultCosignerBase: legacy, ArkadeCosignerBase: s.ArkadeCosignerPub}
 	raw, err := json.Marshal(desc.Savings.Context)
 	if err != nil {
 		return policy.Credential{}, nil, nil, err

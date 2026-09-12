@@ -114,7 +114,7 @@ func TestLightBrowserHarness(t *testing.T) {
 			t.Fatal(err)
 		}
 		svc.keys.Wipe()
-		svc.keys = testKeys(t, master, unavailableSigner{})
+		svc.keys = testKeys(t, master)
 		svc.VaultCosignerPub = master.PubKey()
 		sequence, err := policy.OpenMonotonic(filepath.Join(directory, "policy-sequence"), testCredentialIntegrityKey)
 		if err != nil {

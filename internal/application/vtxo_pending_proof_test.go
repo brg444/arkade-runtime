@@ -370,3 +370,15 @@ func assertVtxoSpendLostResponse(t *testing.T, e *env, resolver *stubArkResolver
 		t.Fatal("lost authorize response is not recoverable from operation view")
 	}
 }
+
+func cloneSpendSig(s *psbt.TaprootScriptSpendSig) *psbt.TaprootScriptSpendSig {
+	if s == nil {
+		return nil
+	}
+	return &psbt.TaprootScriptSpendSig{
+		XOnlyPubKey: append([]byte(nil), s.XOnlyPubKey...),
+		LeafHash:    append([]byte(nil), s.LeafHash...),
+		Signature:   append([]byte(nil), s.Signature...),
+		SigHash:     s.SigHash,
+	}
+}

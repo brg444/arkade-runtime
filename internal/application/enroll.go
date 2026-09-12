@@ -96,6 +96,11 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 	if err := program.ValidateProtectionTier(request.ProtectionTier); err != nil {
 		return nil, err
 	}
+	if request.ProtectionTier != program.ProtectionTierLight {
+		if err := s.requireLedgerSavingsEnrollmentEnabled(); err != nil {
+			return nil, err
+		}
+	}
 	policyDigest, err := requireSpendingPolicyDigest(s.runtimeConfig().Network, request.SpendingPolicy, request.SpendingPolicyDigest)
 	if err != nil {
 		return nil, err

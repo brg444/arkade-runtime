@@ -27,10 +27,6 @@ type ledgerSavingsAuthorizer interface {
 	authorizeTransition(context.Context, ledgerSavingsTransitionAuthorization) (string, error)
 }
 
-type savingsRecoveryAuthorizer interface {
-	authorizeSavingsRecovery(context.Context, savingsRecoveryAuthorization) (string, error)
-}
-
 type vtxoTransactionAuthorizer interface {
 	vtxoVaultCosignerPublic(vtxoKeyContext) (*btcec.PublicKey, error)
 	authorizeVtxoTransaction(context.Context, vtxoTransactionAuthorization) (string, string, error)
@@ -45,10 +41,6 @@ type vaultBoardAuthorizer interface {
 	authorizeVaultBoard(context.Context, vaultBoardAuthorization) (string, error)
 }
 
-type publicEmulatorOperation interface {
-	authorizeSavingsRecoveryStage(context.Context, publicEmulatorRecoveryStage) (string, error)
-}
-
 type keyLifecycle interface {
 	wipe()
 }
@@ -59,14 +51,12 @@ type keyLifecycle interface {
 type KeyCapabilities struct {
 	enrollment      enrollmentDerivation
 	ledgerSavings   ledgerSavingsAuthorizer
-	savingsRecovery savingsRecoveryAuthorizer
 	vtxoTransaction vtxoTransactionAuthorizer
 	vtxoCheckpoint  vtxoCheckpointAuthorizer
 	vaultBoard      vaultBoardAuthorizer
 
 	bitcoinPayment  bitcoinPaymentAuthorizer
 	lightDelegation lightDelegationAuthorizer
-	publicEmulator  publicEmulatorOperation
 	lifecycle       keyLifecycle
 }
 
@@ -74,16 +64,12 @@ func (k KeyCapabilities) Validate() error {
 	switch {
 	case isNilInterface(k.enrollment):
 		return fmt.Errorf("arkade-vault-v1 enrollment derivation required")
-	case isNilInterface(k.savingsRecovery):
-		return fmt.Errorf("arkade-vault-v1 Savings recovery authorization required")
 	case isNilInterface(k.vtxoTransaction):
 		return fmt.Errorf("arkade-vault-v1 VTXO transaction authorization required")
 	case isNilInterface(k.vtxoCheckpoint):
 		return fmt.Errorf("arkade-vault-v1 VTXO checkpoint authorization required")
 	case isNilInterface(k.vaultBoard):
 		return fmt.Errorf("vault-board-v1 authorization required")
-	case isNilInterface(k.publicEmulator):
-		return fmt.Errorf("arkade-vault-v1 public Emulator operation required")
 	case isNilInterface(k.lifecycle):
 		return fmt.Errorf("arkade-vault-v1 key lifecycle required")
 	default:
@@ -106,16 +92,6 @@ func (k KeyCapabilities) enrollmentPublic(vaultID string) (*btcec.PublicKey, err
 		return nil, fmt.Errorf("arkade-vault-v1 enrollment derivation required")
 	}
 	return k.enrollment.vaultCosignerPublic(vaultID)
-}
-
-func (k KeyCapabilities) savingsRecoveryAuthorization(
-	ctx context.Context,
-	req savingsRecoveryAuthorization,
-) (string, error) {
-	if isNilInterface(k.savingsRecovery) {
-		return "", fmt.Errorf("both VaultCosigner and ArkadeCosigner signers are required")
-	}
-	return k.savingsRecovery.authorizeSavingsRecovery(ctx, req)
 }
 
 func (k KeyCapabilities) vtxoPublic(req vtxoKeyContext) (*btcec.PublicKey, error) {
@@ -162,23 +138,18 @@ func (k KeyCapabilities) vaultBoardAuthorization(
 }
 
 // NewFileBackedKeyCapabilities binds the current file-backed VaultCosigner
-// and release-pinned public Emulator to the v1 profile operations.
+// to the retained Spending, boarding and Ledger Savings operations.
 // The generic primitive remains private behind these semantic capabilities.
-func NewFileBackedKeyCapabilities(master *btcec.PrivateKey, emulator Signer) (KeyCapabilities, error) {
+func NewFileBackedKeyCapabilities(master *btcec.PrivateKey) (KeyCapabilities, error) {
 	if master == nil {
 		return KeyCapabilities{}, fmt.Errorf("VaultCosigner IKM required")
 	}
-	if isNilInterface(emulator) {
-		return KeyCapabilities{}, fmt.Errorf("public Emulator operation required")
-	}
 	keys := &fileBackedVaultKeys{master: master}
-	public := &pinnedPublicEmulatorOperation{signer: emulator}
-	savings := &fileBackedSavingsRecoveryAuthorizer{keys: keys, public: public}
 	capabilities := KeyCapabilities{
-		enrollment: keys, savingsRecovery: savings,
+		enrollment:      keys,
 		ledgerSavings:   &fileBackedLedgerSavingsAuthorizer{keys: keys},
 		vtxoTransaction: keys, vtxoCheckpoint: keys,
-		vaultBoard: keys, bitcoinPayment: keys, lightDelegation: keys, publicEmulator: public, lifecycle: keys,
+		vaultBoard: keys, bitcoinPayment: keys, lightDelegation: keys, lifecycle: keys,
 	}
 	if err := capabilities.Validate(); err != nil {
 		return KeyCapabilities{}, err
@@ -234,91 +205,6 @@ func (k *fileBackedVaultKeys) vaultCosignerPublic(vaultID string) (*btcec.Public
 		return nil
 	})
 	return pub, err
-}
-
-type savingsRecoveryAuthorization struct {
-	record              policy.VaultRecord
-	unsignedPSBT        string
-	vaultExpectedXOnly  []byte
-	arkadeExpectedXOnly []byte
-}
-
-func newSavingsRecoveryAuthorization(
-	record *policy.VaultRecord,
-	unsignedPSBT string,
-	vaultExpectedXOnly, arkadeExpectedXOnly []byte,
-) (savingsRecoveryAuthorization, error) {
-	if record == nil || record.VaultID == "" || record.CosignerMode != policy.CosignerModeHKDFSHA256V1 {
-		return savingsRecoveryAuthorization{}, fmt.Errorf("vault cosigner mode is not supported")
-	}
-	if unsignedPSBT == "" {
-		return savingsRecoveryAuthorization{}, fmt.Errorf("Savings recovery PSBT required")
-	}
-	if len(vaultExpectedXOnly) != schnorr.PubKeyBytesLen || len(arkadeExpectedXOnly) != schnorr.PubKeyBytesLen {
-		return savingsRecoveryAuthorization{}, fmt.Errorf("Savings recovery signer keys required")
-	}
-	return savingsRecoveryAuthorization{
-		record: *record, unsignedPSBT: unsignedPSBT,
-		vaultExpectedXOnly:  bytes.Clone(vaultExpectedXOnly),
-		arkadeExpectedXOnly: bytes.Clone(arkadeExpectedXOnly),
-	}, nil
-}
-
-type fileBackedSavingsRecoveryAuthorizer struct {
-	keys   *fileBackedVaultKeys
-	public publicEmulatorOperation
-}
-
-func (a *fileBackedSavingsRecoveryAuthorizer) authorizeSavingsRecovery(
-	ctx context.Context,
-	req savingsRecoveryAuthorization,
-) (string, error) {
-	if a == nil || a.keys == nil || isNilInterface(a.public) {
-		return "", fmt.Errorf("both VaultCosigner and ArkadeCosigner signers are required")
-	}
-	if req.record.VaultID == "" || req.record.CosignerMode != policy.CosignerModeHKDFSHA256V1 || req.unsignedPSBT == "" ||
-		len(req.vaultExpectedXOnly) != schnorr.PubKeyBytesLen || len(req.arkadeExpectedXOnly) != schnorr.PubKeyBytesLen {
-		return "", fmt.Errorf("invalid Savings recovery authorization")
-	}
-	var vaultStage string
-	err := a.keys.withMaster(func(master *btcec.PrivateKey) error {
-		if err := policy.VerifyVaultCosignerPub(master, req.record); err != nil {
-			return err
-		}
-		child, err := policy.DeriveVaultCosignerScalar(master, req.record.VaultID, req.record.CosignerMode)
-		if err != nil {
-			return err
-		}
-		defer child.Key.Zero()
-		vaultStage, err = signExactStage(ctx, req.unsignedPSBT, LocalSigner{Priv: child}, req.vaultExpectedXOnly, "VaultCosigner")
-		return err
-	})
-	if err != nil {
-		return "", err
-	}
-	return a.public.authorizeSavingsRecoveryStage(ctx, publicEmulatorRecoveryStage{
-		vaultSignedPSBT: vaultStage,
-		expectedXOnly:   bytes.Clone(req.arkadeExpectedXOnly),
-	})
-}
-
-type publicEmulatorRecoveryStage struct {
-	vaultSignedPSBT string
-	expectedXOnly   []byte
-}
-
-type pinnedPublicEmulatorOperation struct {
-	signer Signer
-}
-
-func (p *pinnedPublicEmulatorOperation) authorizeSavingsRecoveryStage(
-	ctx context.Context,
-	req publicEmulatorRecoveryStage,
-) (string, error) {
-	if p == nil || isNilInterface(p.signer) || req.vaultSignedPSBT == "" || len(req.expectedXOnly) != schnorr.PubKeyBytesLen {
-		return "", fmt.Errorf("ArkadeCosigner signer required")
-	}
-	return signExactStage(ctx, req.vaultSignedPSBT, p.signer, req.expectedXOnly, "ArkadeCosigner")
 }
 
 type vtxoKeyContext struct {

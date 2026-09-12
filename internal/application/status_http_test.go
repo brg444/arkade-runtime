@@ -9,7 +9,8 @@ import (
 )
 
 func TestPublicStatusIsRedactedWhileVaultQueryReturnsNamedVault(t *testing.T) {
-	environment := newEnv(t)
+	environment := ledgerEnrollmentReady(t, false)
+	environment.finish(t)
 	handler := testAuthorizer(environment.svc)
 	response := boundaryHTTPCall(t, handler, http.MethodGet, "/v1/status", "", fixture.Origin, "")
 	if response.Code != http.StatusOK {
@@ -24,7 +25,7 @@ func TestPublicStatusIsRedactedWhileVaultQueryReturnsNamedVault(t *testing.T) {
 			t.Fatalf("public status leaked %s: %s", field, response.Body.String())
 		}
 	}
-	response = boundaryHTTPCall(t, handler, http.MethodGet, "/v1/status?vault="+fixture.VaultID, "", fixture.Origin, "")
+	response = boundaryHTTPCall(t, handler, http.MethodGet, "/v1/status?vault="+environment.start.VaultID, "", fixture.Origin, "")
 	if response.Code != http.StatusOK {
 		t.Fatal(response.Body.String())
 	}
@@ -32,7 +33,7 @@ func TestPublicStatusIsRedactedWhileVaultQueryReturnsNamedVault(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if !status.Enrolled || status.VaultID != fixture.VaultID || status.SavingsAddr == "" {
+	if !status.Enrolled || status.VaultID != environment.start.VaultID || status.SavingsAddr == "" {
 		t.Fatalf("named Vault status: %+v", status)
 	}
 }

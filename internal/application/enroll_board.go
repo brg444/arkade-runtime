@@ -1,19 +1,13 @@
 package application
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
-
-const vaultBoardEnrollmentSchema = "arkade-vault/enrollment-with-board-v1"
 
 type vaultBoardPublicDescriptor struct {
 	Schema           string `json:"schema"`
@@ -28,13 +22,6 @@ type vaultBoardPublicDescriptor struct {
 	ExitDelayUnit    string `json:"exitDelayUnit"`
 	Script           string `json:"script"`
 	Address          string `json:"address"`
-}
-
-type vaultBoardCompositeDescriptor struct {
-	Schema   string                     `json:"schema"`
-	VaultID  string                     `json:"vaultId"`
-	Savings  savings.PublicDescriptor   `json:"savings"`
-	Boarding vaultBoardPublicDescriptor `json:"boarding"`
 }
 
 func (s *Service) previewVaultBoardEnrollmentDescriptor(vaultID string, req RegisterRequest) (*ProposedEnrollment, error) {
@@ -54,35 +41,7 @@ func (s *Service) previewVaultBoardEnrollmentDescriptor(vaultID string, req Regi
 		return &ProposedEnrollment{VaultID: vaultID, Descriptor: desc, DescriptorHash: hash}, nil
 	}
 
-	base, err := s.previewSavingsDescriptor(vaultID, req)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := s.parseRegisterRequestIndependent(req)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err = s.applyVaultBoardEnrollmentRequest(parsed, req)
-	if err != nil {
-		return nil, err
-	}
-	savingsDesc, ok := base.Descriptor.(savings.PublicDescriptor)
-	if !ok {
-		return nil, fmt.Errorf("Savings descriptor type")
-	}
-	board, _, err := s.buildVaultBoardEnrollment(vaultID, parsed)
-	if err != nil {
-		return nil, err
-	}
-	desc := vaultBoardCompositeDescriptor{
-		Schema: vaultBoardEnrollmentSchema, VaultID: vaultID, Savings: savingsDesc,
-		Boarding: board,
-	}
-	hash, err := hashVaultBoardComposite(desc)
-	if err != nil {
-		return nil, err
-	}
-	return &ProposedEnrollment{VaultID: vaultID, DescriptorHash: hash, Descriptor: desc}, nil
+	return nil, fmt.Errorf("protected Savings requires Ledger enrollment")
 }
 
 func (s *Service) applyVaultBoardEnrollmentRequest(parsed parsedRegisterRequest, req RegisterRequest) (parsedRegisterRequest, error) {
@@ -149,68 +108,6 @@ func (s *Service) buildVaultBoardEnrollment(vaultID string, parsed parsedRegiste
 		Script: hex.EncodeToString(tree.PkScript), Address: tree.OnchainAddress,
 	}
 	return desc, tree, nil
-}
-
-func hashVaultBoardComposite(desc vaultBoardCompositeDescriptor) (string, error) {
-	savingsHash, err := savings.HashPublicDescriptor(desc.Savings)
-	if err != nil {
-		return "", err
-	}
-	fields := []string{
-		desc.Schema, desc.VaultID, savingsHash, desc.Boarding.Schema, desc.Boarding.Program,
-		desc.Boarding.Template, desc.Boarding.Network, desc.Boarding.BoardingPub,
-		desc.Boarding.RecoveryPhonePub, desc.Boarding.CosignerPub, desc.Boarding.OperatorPub,
-		desc.Boarding.ExitDelayUnit, desc.Boarding.Script, desc.Boarding.Address,
-	}
-	payload := make([]byte, 0, 1024)
-	for _, field := range fields {
-		payload = binary.LittleEndian.AppendUint32(payload, uint32(len(field)))
-		payload = append(payload, field...)
-	}
-	payload = binary.LittleEndian.AppendUint32(payload, desc.Boarding.ExitDelay)
-	sum := sha256.Sum256(payload)
-	zeroServiceBytes(payload)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func (s *Service) statusVaultBoardDescriptor(cred *policy.Credential, snap enrolledSnapshot) (vaultBoardCompositeDescriptor, string, error) {
-	if cred == nil || snap.Board == nil || snap.Board.BoardingPub == nil {
-		return vaultBoardCompositeDescriptor{}, "", fmt.Errorf("vault-board-v1 enrollment descriptor unavailable")
-	}
-	phone, hardware, recovery, vaultBase, arkadeBase, _, err := s.rebuildSavings(cred)
-	if err != nil {
-		return vaultBoardCompositeDescriptor{}, "", err
-	}
-	in := savings.FamilyInput{
-		VaultID: cred.VaultID, Network: cred.Network, Phone: phone, Hardware: hardware,
-		Recovery: recovery, PhoneDirectP256: append([]byte(nil), cred.PhoneDirectP256...),
-		VaultCosignerBase: vaultBase, ArkadeCosignerBase: arkadeBase,
-		ProtectionTier: cred.ProtectionTier,
-		SpendingPolicy: program.SpendingPolicyFromValues(
-			cred.TxRecipientCapSats, cred.PeriodAllowanceSats, cred.AbsoluteFeeCapSats, cred.FeerateCapSatPerV,
-		),
-	}
-	applySavingsProgram(&in, cred.TemplateVersion)
-	savingsDesc, _, err := savings.BuildPublicDescriptor(in, cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion)
-	if err != nil {
-		return vaultBoardCompositeDescriptor{}, "", err
-	}
-	boardTree, err := s.buildVtxoBoardTree(cred.VaultID, snap, snap.Board.BoardingPub)
-	if err != nil || boardTree.OnchainAddress != snap.Board.Address || !bytes.Equal(boardTree.PkScript, snap.Board.PkScript) {
-		return vaultBoardCompositeDescriptor{}, "", fmt.Errorf("vault-board-v1 enrollment descriptor mismatch")
-	}
-	board := vaultBoardPublicDescriptor{
-		Schema: program.VaultBoardV1Schema, Program: program.VaultBoardV1, Template: program.VaultBoardV1Template,
-		Network: cred.Network, BoardingPub: hex.EncodeToString(boardTree.BoardingPub.SerializeCompressed()),
-		RecoveryPhonePub: hex.EncodeToString(phone.SerializeCompressed()),
-		CosignerPub:      hex.EncodeToString(boardTree.CosignerPub.SerializeCompressed()),
-		OperatorPub:      hex.EncodeToString(boardTree.OperatorPub.SerializeCompressed()),
-		ExitDelay:        s.boardExitDelay(), ExitDelayUnit: program.VaultBoardV1ExitDelayUnit,
-		Script: hex.EncodeToString(boardTree.PkScript), Address: boardTree.OnchainAddress,
-	}
-	desc := vaultBoardCompositeDescriptor{Schema: vaultBoardEnrollmentSchema, VaultID: cred.VaultID, Savings: savingsDesc, Boarding: board}
-	hash, err := hashVaultBoardComposite(desc)
-	return desc, hash, err
 }
 
 func boardSnapshotFromRecord(rec *policy.VaultBoardEnrollment) (*vaultBoardSnapshot, error) {

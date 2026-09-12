@@ -11,8 +11,7 @@ import (
 
 func TestScopedKeyCapabilitiesPreserveExistingDerivations(t *testing.T) {
 	master, _ := btcec.NewPrivateKey()
-	emulator, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,8 +54,7 @@ func TestScopedKeyCapabilitiesPreserveExistingDerivations(t *testing.T) {
 
 func TestVaultBoardCapabilityIsAlwaysAvailable(t *testing.T) {
 	master, _ := btcec.NewPrivateKey()
-	emulator, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,8 +85,8 @@ func TestKeyCapabilitySurfaceIsSealedAndSemantic(t *testing.T) {
 			}
 		}
 	}
-	if _, err := newSavingsRecoveryAuthorization(nil, "", nil, nil); err == nil {
-		t.Fatal("unvalidated Savings authorization accepted")
+	if _, err := (&fileBackedLedgerSavingsAuthorizer{}).authorizeTransition(t.Context(), ledgerSavingsTransitionAuthorization{}); err == nil {
+		t.Fatal("unvalidated Ledger Savings authorization accepted")
 	}
 	if _, err := newVtxoTransactionAuthorization(vtxoKeyContext{}, "", "", nil, nil); err == nil {
 		t.Fatal("unvalidated VTXO transaction authorization accepted")
@@ -100,8 +98,7 @@ func TestKeyCapabilitySurfaceIsSealedAndSemantic(t *testing.T) {
 
 func TestKeyCapabilitiesWipeBackendAndHandles(t *testing.T) {
 	master, _ := btcec.NewPrivateKey()
-	emulator, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}

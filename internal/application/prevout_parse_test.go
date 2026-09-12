@@ -1,6 +1,7 @@
 package application
 
 import (
+	"github.com/brg444/arkade-runtime/fixture"
 	"testing"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
@@ -15,7 +16,7 @@ func TestParseAndVerifyPrevoutFailClosed(t *testing.T) {
 	e := newEnv(t)
 	previous := wire.NewMsgTx(2)
 	previous.AddTxIn(&wire.TxIn{PreviousOutPoint: wire.OutPoint{Index: ^uint32(0)}})
-	previous.AddTxOut(&wire.TxOut{Value: 90_000, PkScript: e.savings.PkScript})
+	previous.AddTxOut(&wire.TxOut{Value: 90_000, PkScript: e.svc.snapshot(fixture.VaultID).Board.PkScript})
 	destinationKey, _ := btcec.NewPrivateKey()
 	destination, err := txscript.PayToTaprootScript(destinationKey.PubKey())
 	if err != nil {

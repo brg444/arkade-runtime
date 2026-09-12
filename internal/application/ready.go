@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-runtime/internal/deployment"
-	"github.com/brg444/arkade-runtime/internal/vault/savings"
+	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 const (
@@ -28,7 +28,7 @@ type ReadyStatus struct {
 // Ready checks ledger access and every release-pinned signing dependency.
 func (s *Service) Ready(ctx context.Context) ReadyStatus {
 	st := ReadyStatus{
-		EnrollTemplate: savings.Template,
+		EnrollTemplate: program.SpendingOnlyTemplate,
 	}
 	if s == nil {
 		st.Error = "service unavailable"
@@ -44,11 +44,11 @@ func (s *Service) Ready(ctx context.Context) ReadyStatus {
 		st.Error = "deployment not ready"
 		return st
 	}
-	// Preserve the established readiness precedence: the five original ledger
+	// Preserve the established readiness precedence: the core ledger
 	// capabilities fail before integrity and signer checks, while the profile's
 	// boarding capability retains its release-specific error below.
 	if s.Stores.Identity == nil || s.Stores.Allowance == nil || s.Stores.VtxoOperations == nil ||
-		s.Stores.RecoveryOperations == nil || s.Stores.Maps == nil {
+		s.Stores.Maps == nil {
 		st.Error = "ledger unavailable"
 		return st
 	}

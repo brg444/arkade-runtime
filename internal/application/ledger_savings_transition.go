@@ -37,7 +37,7 @@ func ledgerSavingsFields(fields ...[]byte) []byte {
 	return encoded
 }
 
-// deriveLedgerSavingsGuardianRoot is an independent candidate-only HKDF domain.
+// deriveLedgerSavingsGuardianRoot uses the independent Ledger Savings HKDF domain.
 // IKM is the master scalar, salt is domain + "/guardian-root", and info is
 // uint32-BE-length-prefixed network UTF-8, canonical vault ID UTF-8, and one-byte
 // counter (0..255). Reject zero/overflow rather than reducing modulo the order.

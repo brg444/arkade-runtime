@@ -58,12 +58,7 @@ func attachEnrollmentRoutes(mux *http.ServeMux, svc *Service, origin string) {
 			}{status, board, enrolled.DescriptorHash}, boardErr)
 			return
 		}
-		desc, hash, descErr := svc.statusVaultBoardDescriptor(cred, snap)
-		writeJSON(w, struct {
-			Status
-			VtxoBoardingDescriptor     vaultBoardPublicDescriptor `json:"vtxoBoardingDescriptor"`
-			VtxoBoardingDescriptorHash string                     `json:"vtxoBoardingDescriptorHash"`
-		}{Status: status, VtxoBoardingDescriptor: desc.Boarding, VtxoBoardingDescriptorHash: hash}, descErr)
+		writeJSON(w, nil, fmt.Errorf("unsupported enrollment template"))
 	})
 	mux.HandleFunc("POST /v1/enroll/session", func(w http.ResponseWriter, r *http.Request) {
 		var request struct{}

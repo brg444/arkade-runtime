@@ -88,9 +88,6 @@ func statusWarnings(cred *policy.Credential) []string {
 		return nil
 	}
 	var out []string
-	if cred.TemplateVersion == savings.Template {
-		out = append(out, "A recovery already in flight cannot be cancelled if both cosigners are gone.")
-	}
 	if cred.Network == deployment.NetworkMutinynet {
 		out = append(out, "Mutinynet blocks are much faster than mainnet. Delays are block counts, not days.")
 	}
@@ -118,19 +115,17 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 		return PublicStatus{}, err
 	}
 	st := PublicStatus{
-		SupportedSetups:            []string{"standard", "advanced"},
+		SupportedSetups:            []string{},
 		Network:                    cfg.Network,
 		ClientOrigin:               cfg.ClientOrigin,
 		RPID:                       cfg.RPID,
-		TemplateVersion:            publicEnrollTemplate(s),
+		TemplateVersion:            program.SpendingOnlyTemplate,
 		PolicyVersion:              program.PolicyVersion,
 		SpendingPolicyCapabilities: caps,
 	}
 	if !s.LightOnlyEnrollment && s.LedgerSavingsEnabled && s.requireLedgerSavingsEnrollmentEnabled() == nil {
 		st.LedgerSavingsCapability = &LedgerSavingsCapability{Version: 1, TemplateVersion: savings.LedgerNativeTemplate}
-	}
-	if s.LightOnlyEnrollment {
-		st.SupportedSetups = []string{}
+		st.SupportedSetups = []string{"standard", "advanced"}
 	}
 	if s.LightEnabled {
 		st.SupportedSetups = append([]string{"light"}, st.SupportedSetups...)
@@ -196,7 +191,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		ClientOrigin:         cfg.ClientOrigin,
 		RPID:                 cfg.RPID,
 		VaultID:              vaultID,
-		TemplateVersion:      publicEnrollTemplate(s),
+		TemplateVersion:      program.SpendingOnlyTemplate,
 		PolicyVersion:        policyVersion,
 		ProtectionTier:       cred.ProtectionTier,
 		PeriodAllowance:      allowance,

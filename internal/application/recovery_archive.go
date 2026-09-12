@@ -37,7 +37,7 @@ func recoveryArchiveCredentialAllowed(cred *policy.Credential) bool {
 	if cred != nil && cred.TemplateVersion == program.SpendingOnlyTemplate {
 		return cred.ProtectionTier == program.ProtectionTierLight
 	}
-	return cred != nil && (cred.TemplateVersion == savings.Template || cred.TemplateVersion == savings.LedgerNativeTemplate) &&
+	return cred != nil && cred.TemplateVersion == savings.LedgerNativeTemplate &&
 		(cred.ProtectionTier == program.ProtectionTierStandard || cred.ProtectionTier == program.ProtectionTierAdvanced)
 }
 func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchiveBinding, error) {
@@ -67,11 +67,7 @@ func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchi
 			return RecoveryArchiveBinding{}, e
 		}
 		hash = enrolled.DescriptorHash
-	} else {
-		_, hash, err = s.statusVaultBoardDescriptor(cred, snap)
-		if err != nil {
-			return RecoveryArchiveBinding{}, err
-		}
+
 	}
 	digest, err := program.SpendingPolicyDigestHexFor(cred.Network, spendingPolicyFromCredential(cred))
 	if err != nil {

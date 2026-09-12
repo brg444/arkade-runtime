@@ -27,7 +27,7 @@ func TestSharedSpendingEnrollmentVector(t *testing.T) {
 	owner, _ := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{7}, 32))
 	board, _ := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{9}, 32))
 	svc.VaultCosignerPub = master.PubKey()
-	svc.keys = testKeys(t, master, LocalSigner{Priv: master})
+	svc.keys = testKeys(t, master)
 	svc.ArkResolver = stubArkResolver{signer: mustDecode(t, "03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a")}
 	direct, err := hex.DecodeString("036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296")
 	if err != nil {

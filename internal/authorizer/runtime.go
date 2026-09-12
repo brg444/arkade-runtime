@@ -254,7 +254,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
+	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey)
 	if err != nil {
 		zero(credentialIntegrityKey)
 		return nil, err

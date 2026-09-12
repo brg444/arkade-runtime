@@ -427,6 +427,9 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 			return parsed, fmt.Errorf("Spending-only enrollment must not contain protected Savings keys")
 		}
 	} else {
+		if req.LedgerSavings == nil {
+			return parsed, fmt.Errorf("protected Savings requires Ledger enrollment")
+		}
 		parsed.externalOwner, err = s.parseOnboardingKey("externalOwnerWalletXOnly", req.ExternalOwnerWalletXOnly)
 		if err != nil {
 			return parsed, err
@@ -530,10 +533,7 @@ func (s *Service) rebuildFromCredential(cred *policy.Credential) (
 	if cred.TemplateVersion == savings.LedgerNativeTemplate {
 		return s.rebuildLedgerSavings(cred)
 	}
-	if cred.TemplateVersion != savings.Template {
-		return nil, nil, nil, nil, nil, nil, fmt.Errorf("unsupported vault template %q", cred.TemplateVersion)
-	}
-	return s.rebuildSavings(cred)
+	return nil, nil, nil, nil, nil, nil, fmt.Errorf("unsupported vault template %q", cred.TemplateVersion)
 }
 
 func (s *Service) requireCompatible(cred *policy.Credential) error {

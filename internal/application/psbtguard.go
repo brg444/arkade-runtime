@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brg444/arkade-runtime/internal/vault"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil/psbt"
@@ -14,10 +13,6 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-// signExactStage gives one signer a clone of the exact stored stage, imports
-// only its single valid expected signature, and discards every other response
-// mutation. This wrapper protects both the in-process primitive and the
-// hostile public Emulator response with the same delta invariant.
 func parsePSBT(raw string) (*psbt.Packet, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("psbt required")
@@ -35,44 +30,6 @@ func parsePSBT(raw string) (*psbt.Packet, error) {
 	return ptx, nil
 }
 
-func signExactStage(
-	ctx context.Context,
-	stored string,
-	signer Signer,
-	expectedXOnly []byte,
-	role string,
-) (string, error) {
-	if isNilInterface(signer) {
-		return "", fmt.Errorf("%s signer required", role)
-	}
-	submitted, _, err := parseAndVerifyPrevout(stored)
-	if err != nil {
-		return "", fmt.Errorf("%s stored stage: %w", role, err)
-	}
-	work, err := clonePacket(submitted)
-	if err != nil {
-		return "", err
-	}
-	response, err := signer.Sign(ctx, work)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", role, err)
-	}
-	added, err := extractVerifiedSignerSig(submitted, response, expectedXOnly)
-	if err != nil {
-		return "", fmt.Errorf("%s response: %w", role, err)
-	}
-	out, err := clonePacket(submitted)
-	if err != nil {
-		return "", err
-	}
-	out.Inputs[0].TaprootScriptSpendSig = append(out.Inputs[0].TaprootScriptSpendSig, added)
-	return out.B64Encode()
-}
-
-// signExactArkStage adds exactly one TaprootScriptSpendSig for expectedXOnly
-// on every input whose collaborative leaf commits that key. It does not call
-// parseAndVerifyPrevout / RequireVerifiedPrevout and does not assume a
-// single input. Existing signatures are left untouched.
 func signExactArkStage(
 	ctx context.Context,
 	stored string,
@@ -295,101 +252,6 @@ func clonePacket(p *psbt.Packet) (*psbt.Packet, error) {
 		return nil, err
 	}
 	return psbt.NewFromRawBytes(strings.NewReader(encoded), true)
-}
-
-func cloneSpendSig(s *psbt.TaprootScriptSpendSig) *psbt.TaprootScriptSpendSig {
-	if s == nil {
-		return nil
-	}
-	return &psbt.TaprootScriptSpendSig{
-		XOnlyPubKey: append([]byte(nil), s.XOnlyPubKey...),
-		LeafHash:    append([]byte(nil), s.LeafHash...),
-		Signature:   append([]byte(nil), s.Signature...),
-		SigHash:     s.SigHash,
-	}
-}
-
-// extractVerifiedSignerSig returns the single new expected Taproot script
-// spend signature from a signer response. Verification is against the
-// immutable submitted packet, not the response's possibly mutated fields.
-func extractVerifiedSignerSig(submitted, response *psbt.Packet, expectedXOnly []byte) (*psbt.TaprootScriptSpendSig, error) {
-	if submitted == nil || submitted.UnsignedTx == nil || len(submitted.Inputs) != 1 || len(submitted.UnsignedTx.TxIn) != 1 {
-		return nil, fmt.Errorf("exactly one submitted input required")
-	}
-	if response == nil || response.UnsignedTx == nil || len(response.Inputs) != 1 || len(response.UnsignedTx.TxIn) != 1 {
-		return nil, fmt.Errorf("malformed signed psbt")
-	}
-	if len(expectedXOnly) != 32 {
-		return nil, fmt.Errorf("expected signer x-only key")
-	}
-	in := submitted.Inputs[0]
-	if in.WitnessUtxo == nil || len(in.TaprootLeafScript) != 1 || in.TaprootLeafScript[0] == nil {
-		return nil, fmt.Errorf("submitted input missing leaf commitment")
-	}
-	leaf := txscript.NewBaseTapLeaf(in.TaprootLeafScript[0].Script)
-	leafHash := leaf.TapHash()
-
-	var extras []*psbt.TaprootScriptSpendSig
-	matched := make([]bool, len(in.TaprootScriptSpendSig))
-	for _, s := range response.Inputs[0].TaprootScriptSpendSig {
-		if i := indexOriginalSig(in.TaprootScriptSpendSig, s); i >= 0 && !matched[i] {
-			matched[i] = true
-			continue
-		}
-		extras = append(extras, s)
-	}
-
-	var found *psbt.TaprootScriptSpendSig
-	for _, extra := range extras {
-		if extra == nil || len(extra.Signature) != 64 {
-			continue
-		}
-		if !bytes.Equal(extra.XOnlyPubKey, expectedXOnly) {
-			continue
-		}
-		if !bytes.Equal(extra.LeafHash, leafHash[:]) {
-			continue
-		}
-		if extra.SigHash != txscript.SigHashDefault {
-			continue
-		}
-		if err := verifySignerSig(submitted, extra, expectedXOnly, leaf); err != nil {
-			continue
-		}
-		if found != nil {
-			return nil, fmt.Errorf("expected exactly one new signer signature, got extra")
-		}
-		found = extra
-	}
-	if found == nil {
-		return nil, fmt.Errorf("expected exactly one new signer signature")
-	}
-	return cloneSpendSig(found), nil
-}
-
-func verifySignerSig(submitted *psbt.Packet, found *psbt.TaprootScriptSpendSig, expectedXOnly []byte, leaf txscript.TapLeaf) error {
-	if err := vault.VerifySchnorrOnSubmittedTx(submitted, found.Signature, expectedXOnly, leaf.Script); err != nil {
-		return fmt.Errorf("signer signature invalid")
-	}
-	return nil
-}
-
-func indexOriginalSig(before []*psbt.TaprootScriptSpendSig, s *psbt.TaprootScriptSpendSig) int {
-	if s == nil {
-		return -1
-	}
-	for i, want := range before {
-		if want == nil {
-			continue
-		}
-		if bytes.Equal(s.XOnlyPubKey, want.XOnlyPubKey) &&
-			bytes.Equal(s.LeafHash, want.LeafHash) &&
-			bytes.Equal(s.Signature, want.Signature) &&
-			s.SigHash == want.SigHash {
-			return i
-		}
-	}
-	return -1
 }
 
 // requirePresentDefaultTaprootSignature verifies that the expected signer already has a

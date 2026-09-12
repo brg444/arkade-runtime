@@ -47,11 +47,6 @@ type VtxoOperationStore interface {
 	VerifySignedVtxoReplay(context.Context, string, string, []byte, uint32) error
 }
 
-// RecoveryOperationStore is the replay-safe Savings recovery operation store.
-type RecoveryOperationStore interface {
-	ApplyRecoveryReplay(policy.RecoverySession) (policy.ReplayAction, *policy.RecoverySession, error)
-}
-
 // LedgerSavingsStore owns authenticated Guardian-only enrollment and the
 // durable journal of named recovery signing reservations and completions.
 type LedgerSavingsStore interface {
@@ -100,28 +95,27 @@ type RecoveryBackupStore interface {
 // Stores is the complete persistence capability set compiled into the
 // arkade-vault-v1 profile.
 type Stores struct {
-	Identity           IdentityStore
-	LedgerSavings      LedgerSavingsStore
-	Allowance          AllowanceStore
-	VtxoOperations     VtxoOperationStore
-	RecoveryOperations RecoveryOperationStore
-	Maps               MapStore
-	VaultBoard         VaultBoardStore
-	LightRenewal       LightRenewalStore
-	LightDelegation    LightDelegationStore
-	RecoveryBackup     RecoveryBackupStore
+	Identity        IdentityStore
+	LedgerSavings   LedgerSavingsStore
+	Allowance       AllowanceStore
+	VtxoOperations  VtxoOperationStore
+	Maps            MapStore
+	VaultBoard      VaultBoardStore
+	LightRenewal    LightRenewalStore
+	LightDelegation LightDelegationStore
+	RecoveryBackup  RecoveryBackupStore
 }
 
 func (s Stores) Validate() error {
 	switch {
 	case s.Identity == nil:
 		return fmt.Errorf("arkade-vault-v1 identity store required")
+	case s.LedgerSavings == nil:
+		return fmt.Errorf("Ledger Savings store required")
 	case s.Allowance == nil:
 		return fmt.Errorf("arkade-vault-v1 allowance store required")
 	case s.VtxoOperations == nil:
 		return fmt.Errorf("arkade-vault-v1 VTXO operation store required")
-	case s.RecoveryOperations == nil:
-		return fmt.Errorf("arkade-vault-v1 recovery operation store required")
 	case s.Maps == nil:
 		return fmt.Errorf("arkade-vault-v1 map store required")
 	case s.RecoveryBackup == nil:
@@ -143,15 +137,14 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		return Stores{}, fmt.Errorf("arkade-vault-v1 ledger required")
 	}
 	return Stores{
-		Identity:           ledger,
-		LedgerSavings:      ledger,
-		Allowance:          ledger,
-		VtxoOperations:     ledger,
-		RecoveryOperations: ledger,
-		Maps:               ledger,
-		VaultBoard:         ledger,
-		LightRenewal:       ledger,
-		LightDelegation:    ledger,
-		RecoveryBackup:     ledger,
+		Identity:        ledger,
+		LedgerSavings:   ledger,
+		Allowance:       ledger,
+		VtxoOperations:  ledger,
+		Maps:            ledger,
+		VaultBoard:      ledger,
+		LightRenewal:    ledger,
+		LightDelegation: ledger,
+		RecoveryBackup:  ledger,
 	}, nil
 }
