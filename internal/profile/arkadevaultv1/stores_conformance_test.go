@@ -42,7 +42,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 		},
 		{
 			name: "Light delegation", typ: reflect.TypeOf((*arkadevaultv1.LightDelegationStore)(nil)).Elem(),
-			want: []string{"AdvanceLightDelegation", "ListLightDelegations", "ScheduleLightDelegation", "ScheduleVtxoDelegationSet"},
+			want: []string{"AdvanceLightDelegation", "ListLightDelegations", "ScheduleVtxoDelegationSet"},
 		}, {
 			name: "Light renewal", typ: reflect.TypeOf((*arkadevaultv1.LightRenewalStore)(nil)).Elem(),
 			want: []string{"AppendLightRenewalEvent", "GetLightRenewal", "ReserveLightRenewal"},

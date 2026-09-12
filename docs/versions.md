@@ -17,7 +17,7 @@ domains identify separate contracts. Their numeric suffixes are independent.
 Ledger Savings uses `phone-ledger-guardian-savings-v1`. Connector v1 and v2
 are retired from application admission, signing, recovery and HTTP dispatch.
 Schema 12 retires their database tables and authenticated account ownership.
-Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical-account storage access and direct-hardware Savings still require retirement. Contract Packs still require the coordinated release-baseline update, including
+Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical Light accounts retire with schema 11, and shared stores reject their former fee-only renewal and delegation records. Direct-hardware Savings still requires retirement. Contract Packs still require the coordinated release-baseline update, including
 the mainnet schema declaration; this branch is not a release candidate.
 
 Opaque passkey challenge tickets use prefix `v2.` and MAC domain

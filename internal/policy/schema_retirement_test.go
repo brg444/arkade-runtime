@@ -186,8 +186,13 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 				t.Fatal(err)
 			}
 			delegation := LightDelegation{OperationID: strings.Repeat("a1", 16), VaultID: delegationID, InputTxid: strings.Repeat("a2", 32), ValidAt: l.NowUTC().Unix(), ExpiresAt: l.NowUTC().Add(time.Hour).Unix(), FeeSats: 123, PlanDigest: strings.Repeat("a3", 32), Plan: `{"owner":"signed"}`}
+			delegation.Program, delegation.DescriptorHash = delegationSetVaultProgram, strings.Repeat("ac", 32)
+			delegation.SetID, delegation.SetDigest, delegation.SetSize = delegation.OperationID, strings.Repeat("ad", 32), 1
+			if _, err := l.ScheduleVtxoDelegationSet(t.Context(), []LightDelegation{delegation}, []byte{0x54, 0x55}, 2); err != nil {
+				t.Fatal(err)
+			}
 			stageDelegation(t, l, delegation, "claimed")
-			renewal := LightRenewalOperation{OperationID: strings.Repeat("b1", 16), VaultID: renewalID, InputTxid: strings.Repeat("b2", 32), FeeSats: 123, PlanDigest: strings.Repeat("b3", 32), Plan: `{"renewal":true}`, ExpiresAt: l.NowUTC().Add(5 * time.Minute).Format(time.RFC3339)}
+			renewal := LightRenewalOperation{OperationID: strings.Repeat("b1", 16), VaultID: renewalID, Kind: SpendingBitcoinBatchKind, AmountSats: 1000, InputTxid: strings.Repeat("b2", 32), FeeSats: 123, PlanDigest: strings.Repeat("b3", 32), Plan: `{"renewal":true}`, ExpiresAt: l.NowUTC().Add(5 * time.Minute).Format(time.RFC3339)}
 			if _, err := l.ReserveLightRenewal(t.Context(), renewal, 10000); err != nil {
 				t.Fatal(err)
 			}
@@ -198,6 +203,7 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 			before := migrationFingerprints(t, l.db)
 			retiredStorageRows(t, l, "retired-v1", "phone-connector-recovery-savings-v1", 0x61)
 			retiredStorageRows(t, l, "retired-v2", "phone-connector-recovery-savings-v2", 0x63)
+			retiredLightStorageRows(t, l)
 			sequence, sequenceBytes, count := seedRetirementSequence(t, l)
 			current := reopenRetirement(t, l, path)
 			if version, err := current.SchemaVersion(); err != nil || version != 11 {
@@ -233,7 +239,7 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 				t.Fatal("sequence rewritten", err)
 			}
 			base, present, err := readPolicySequenceBase(current.db, network, testIntegrityKey())
-			if err != nil || !present || base != 4 {
+			if err != nil || !present || base != 8 {
 				t.Fatal("removed row offset", base, present, err)
 			}
 			if n, err := current.currentEconomicSequence(current.db); err != nil || n != count {
@@ -290,11 +296,12 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 }
 
 func TestSchemaRetirementRejectsUnauthenticatedSelectionWithoutWrites(t *testing.T) {
-	for _, scenario := range []string{"wrong-key", "retained-template", "retired-template", "credential"} {
+	for _, scenario := range []string{"wrong-key", "retained-template", "retired-template", "light-template", "light-retained-template", "light-credential", "credential"} {
 		t.Run(scenario, func(t *testing.T) {
 			l, path := schemaElevenFixture(t, "mainnet")
 			retirementAccount(t, l, "retained", "vault-spending-v1", 0x51)
 			retiredStorageRows(t, l, "retired", "phone-connector-recovery-savings-v2", 0x61)
+			retiredLightStorageRows(t, l)
 			key := testIntegrityKey()
 			switch scenario {
 			case "wrong-key":
@@ -305,6 +312,18 @@ func TestSchemaRetirementRejectsUnauthenticatedSelectionWithoutWrites(t *testing
 				}
 			case "retired-template":
 				if _, err := l.db.Exec(`UPDATE vault SET template_version='vault-spending-v1' WHERE vault_id='retired'`); err != nil {
+					t.Fatal(err)
+				}
+			case "light-template":
+				if _, err := l.db.Exec(`UPDATE vault SET template_version='vault-spending-v1' WHERE vault_id='retired-light'`); err != nil {
+					t.Fatal(err)
+				}
+			case "light-retained-template":
+				if _, err := l.db.Exec(`UPDATE vault SET template_version='vaulted-light-v1' WHERE vault_id='retained'`); err != nil {
+					t.Fatal(err)
+				}
+			case "light-credential":
+				if _, err := l.db.Exec(`UPDATE vault_credential SET integrity_mac=zeroblob(32) WHERE vault_id='retired-light'`); err != nil {
 					t.Fatal(err)
 				}
 			case "credential":
@@ -551,5 +570,40 @@ func TestFreshSchemaCreatesOnlyCurrentStoresAndSealsOnce(t *testing.T) {
 				t.Fatal("key reinstall mutated source")
 			}
 		})
+	}
+}
+
+// Discarded rows need no historical serializer or signing implementation.
+// The verified account owns these rows; their state and amount are never used.
+func retiredLightStorageRows(t *testing.T, l *Ledger) {
+	t.Helper()
+	retirementAccount(t, l, "retired-light", "vaulted-light-v1", 0x71)
+	for _, table := range []string{"light_renewal", "light_delegation"} {
+		operation := fmt.Sprintf(`{"operationId":%q,"vaultId":"retired-light"}`, table+"-old")
+		event := fmt.Sprintf(`{"operationId":%q,"phase":"register_authorized"}`, table+"-old")
+		if _, err := l.db.Exec(`INSERT INTO `+table+`_operation VALUES(?, 'retired-light', ?, ?)`, table+"-old", operation, renewalMAC(testIntegrityKey(), "vaulted-light/"+strings.TrimPrefix(table, "light_")+"-operation/v1", operation)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := l.db.Exec(`INSERT INTO `+table+`_event VALUES(?, 'register_authorized', ?, ?)`, table+"-old", event, renewalMAC(testIntegrityKey(), "vaulted-light/"+strings.TrimPrefix(table, "light_")+"-event/v1", event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSchemaRetirementRejectsRedirectedPayment(t *testing.T) {
+	l, path := schemaElevenFixture(t, "mainnet")
+	retirementAccount(t, l, "retained", "vault-spending-v1", 0x51)
+	retiredStorageRows(t, l, "retired", "phone-connector-recovery-savings-v2", 0x61)
+	insertTestVtxoOperation(t, l, testVtxoOperation("retained", "signed-payment", vtxoPurposeSpend, vtxoStateSigned, 1000, 100, l.NowUTC()))
+	if _, err := l.db.Exec(`UPDATE vtxo_operation SET vault_id='retired' WHERE operation_id='signed-payment'`); err != nil {
+		t.Fatal(err)
+	}
+	before := migrationFingerprints(t, l.db)
+	current := reopenRetirement(t, l, path)
+	if err := current.SetIntegrityKey(testIntegrityKey()); err == nil {
+		t.Fatal("retained payment deleted through unauthenticated ownership")
+	}
+	if !reflect.DeepEqual(before, migrationFingerprints(t, current.db)) {
+		t.Fatal("rejected retirement changed records")
 	}
 }

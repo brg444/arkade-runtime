@@ -17,7 +17,7 @@ func renewalFixture(t *testing.T) (*Ledger, *time.Time, LightRenewalOperation) {
 	led := openPolicyTestLedger(t, func() time.Time { return now })
 	vault := strings.Repeat("ab", 32)
 	createPolicyTestVault(t, led, vault, 0x51)
-	return led, &now, LightRenewalOperation{OperationID: strings.Repeat("01", 16), VaultID: vault, InputTxid: strings.Repeat("02", 32), FeeSats: 123, PlanDigest: strings.Repeat("03", 32), Plan: `{"renewal":true}`, ExpiresAt: now.Add(5 * time.Minute).Format(time.RFC3339)}
+	return led, &now, LightRenewalOperation{OperationID: strings.Repeat("01", 16), VaultID: vault, Kind: SpendingBitcoinBatchKind, AmountSats: 1000, InputTxid: strings.Repeat("02", 32), FeeSats: 123, PlanDigest: strings.Repeat("03", 32), Plan: `{"changeSats":0}`, ExpiresAt: now.Add(5 * time.Minute).Format(time.RFC3339)}
 }
 func appendRenewal(t *testing.T, l *Ledger, op LightRenewalOperation, phase string) LightRenewalEvent {
 	t.Helper()
@@ -49,19 +49,19 @@ func appendRenewal(t *testing.T, l *Ledger, op LightRenewalOperation, phase stri
 	}
 	return out
 }
-func TestLightRenewalChargesOnlyFeeAndHoldsUncertainAfterExpiry(t *testing.T) {
+func TestBitcoinBatchHoldsPrincipalAndFeeAfterExpiry(t *testing.T) {
 	l, now, op := renewalFixture(t)
 	ctx := context.Background()
-	if _, err := l.ReserveLightRenewal(ctx, op, 123); err != nil {
+	if _, err := l.ReserveLightRenewal(ctx, op, 1123); err != nil {
 		t.Fatal(err)
 	}
 	appendRenewal(t, l, op, "register_authorized")
 	appendRenewal(t, l, op, "register_dispatched")
 	*now = now.Add(48 * time.Hour)
-	if used, err := l.SpentInPeriod(ctx, op.VaultID, ""); err != nil || used != 123 {
+	if used, err := l.SpentInPeriod(ctx, op.VaultID, ""); err != nil || used != 1123 {
 		t.Fatalf("uncertain fee %d %v", used, err)
 	}
-	if _, err := l.ReserveLightRenewal(ctx, op, 123); err != nil {
+	if _, err := l.ReserveLightRenewal(ctx, op, 1123); err != nil {
 		t.Fatalf("expired exact retry: %v", err)
 	}
 	next := op
@@ -74,10 +74,10 @@ func TestLightRenewalChargesOnlyFeeAndHoldsUncertainAfterExpiry(t *testing.T) {
 		t.Fatal("cancelled dispatched registration")
 	}
 }
-func TestLightRenewalConfirmedFeeWindowAndImmutableReplay(t *testing.T) {
+func TestBitcoinBatchConfirmedWindowAndImmutableReplay(t *testing.T) {
 	l, now, op := renewalFixture(t)
 	ctx := context.Background()
-	if _, err := l.ReserveLightRenewal(ctx, op, 123); err != nil {
+	if _, err := l.ReserveLightRenewal(ctx, op, 1123); err != nil {
 		t.Fatal(err)
 	}
 	auth := appendRenewal(t, l, op, "register_authorized")
@@ -90,7 +90,7 @@ func TestLightRenewalConfirmedFeeWindowAndImmutableReplay(t *testing.T) {
 	for _, phase := range []string{"register_dispatched", "register_result", "final_authorized", "final_dispatched", "final_result", "confirmed"} {
 		appendRenewal(t, l, op, phase)
 	}
-	if used, err := l.SpentInPeriod(ctx, op.VaultID, ""); err != nil || used != 123 {
+	if used, err := l.SpentInPeriod(ctx, op.VaultID, ""); err != nil || used != 1123 {
 		t.Fatalf("confirmed fee: %d %v", used, err)
 	}
 	*now = now.Add(24*time.Hour + time.Second)
@@ -169,7 +169,7 @@ func TestLightRenewalSequenceAndAtomicCredentialFailure(t *testing.T) {
 	if err := l.AttachMonotonic(sequence); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := l.ReserveLightRenewal(ctx, op, 123); err != nil {
+	if _, err := l.ReserveLightRenewal(ctx, op, 1123); err != nil {
 		t.Fatal(err)
 	}
 	appendRenewal(t, l, op, "register_authorized")
@@ -183,7 +183,7 @@ func TestLightRenewalSequenceAndAtomicCredentialFailure(t *testing.T) {
 		t.Fatal("database rollback accepted")
 	}
 	l2, _, op2 := renewalFixture(t)
-	if _, err := l2.ReserveLightRenewal(ctx, op2, 123); err != nil {
+	if _, err := l2.ReserveLightRenewal(ctx, op2, 1123); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := l2.db.Exec(`DROP TABLE webauthn_sign_count`); err != nil {
@@ -201,13 +201,13 @@ func TestLightRenewalSequenceAndAtomicCredentialFailure(t *testing.T) {
 func TestLightRenewalTransitionsRejectLateFinalAndContradictoryResult(t *testing.T) {
 	l, now, op := renewalFixture(t)
 	ctx := context.Background()
-	if _, err := l.ReserveLightRenewal(ctx, op, 123); err != nil {
+	if _, err := l.ReserveLightRenewal(ctx, op, 1123); err != nil {
 		t.Fatal(err)
 	}
 	for _, phase := range []string{"register_authorized", "register_dispatched", "register_result", "final_authorized"} {
 		appendRenewal(t, l, op, phase)
 	}
-	*now = now.Add(6 * time.Minute)
+	*now = now.Add(5*time.Minute + 10*time.Second)
 	e := LightRenewalEvent{OperationID: op.OperationID, Phase: "final_dispatched", RequestDigest: op.PlanDigest}
 	if _, _, err := l.AppendLightRenewalEvent(ctx, e, nil, 0); err == nil {
 		t.Fatal("late forfeit dispatch accepted")
@@ -222,7 +222,7 @@ func TestLightRenewalTransitionsRejectLateFinalAndContradictoryResult(t *testing
 func TestLightRenewalExpiredReleaseFencesFinalAuthorization(t *testing.T) {
 	l, now, op := renewalFixture(t)
 	ctx := context.Background()
-	if _, err := l.ReserveLightRenewal(ctx, op, 123); err != nil {
+	if _, err := l.ReserveLightRenewal(ctx, op, 1123); err != nil {
 		t.Fatal(err)
 	}
 	appendRenewal(t, l, op, "register_authorized")
@@ -232,6 +232,12 @@ func TestLightRenewalExpiredReleaseFencesFinalAuthorization(t *testing.T) {
 		t.Fatal("live registration released")
 	}
 	*now = now.Add(6 * time.Minute)
+	if _, _, err := l.AppendLightRenewalEvent(ctx, release, nil, 0); err == nil {
+		t.Fatal("released without confirmed intent deletion")
+	}
+	for _, phase := range []string{"delete_authorized", "delete_dispatched", "delete_result"} {
+		appendRenewal(t, l, op, phase)
+	}
 	if _, _, err := l.AppendLightRenewalEvent(ctx, release, nil, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +254,7 @@ func TestLightRenewalExpiredUndispatchedFinalCanBeFenced(t *testing.T) {
 	for _, dispatched := range []bool{false, true} {
 		l, now, op := renewalFixture(t)
 		ctx := context.Background()
-		if _, err := l.ReserveLightRenewal(ctx, op, 123); err != nil {
+		if _, err := l.ReserveLightRenewal(ctx, op, 1123); err != nil {
 			t.Fatal(err)
 		}
 		for _, phase := range []string{"register_authorized", "register_dispatched", "register_result", "final_authorized"} {
@@ -258,6 +264,11 @@ func TestLightRenewalExpiredUndispatchedFinalCanBeFenced(t *testing.T) {
 			appendRenewal(t, l, op, "final_dispatched")
 		}
 		*now = now.Add(6 * time.Minute)
+		if !dispatched {
+			for _, phase := range []string{"delete_authorized", "delete_dispatched", "delete_result"} {
+				appendRenewal(t, l, op, phase)
+			}
+		}
 		_, _, err := l.AppendLightRenewalEvent(ctx, LightRenewalEvent{OperationID: op.OperationID, Phase: "released", RequestDigest: op.PlanDigest, Evidence: `{"oldOutput":"live"}`}, nil, 0)
 		if dispatched {
 			if err == nil {

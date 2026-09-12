@@ -92,36 +92,17 @@ func TestDelegationSetSizes(t *testing.T) {
 	}
 }
 
-func TestDelegationSetLegacyParity(t *testing.T) {
-	l, _, o := delegationFixture(t)
-	saved, err := l.ScheduleLightDelegation(t.Context(), o)
+func TestDelegationRetainedEncoding(t *testing.T) {
+	o := setTestPlans(t, "assigned-account", delegationSetVaultProgram, 1, time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC))[0]
+	o.CreatedAt = "2026-09-05T00:00:00Z"
+	raw, err := json.Marshal(o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var payload string
-	if err := l.db.QueryRow(`SELECT payload FROM light_delegation_operation WHERE operation_id=?`, o.OperationID).Scan(&payload); err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := json.Marshal(saved.Operation)
-	if string(raw) != payload {
-		t.Fatal("stored payload is not the canonical operation encoding")
-	}
-	for _, key := range []string{`"program"`, `"descriptorHash"`, `"setId"`, `"setDigest"`, `"setSize"`, `"setIndex"`} {
-		if strings.Contains(payload, key) {
-			t.Fatalf("legacy row leaks set field %s", key)
-		}
-	}
-	if _, err := l.ScheduleLightDelegation(t.Context(), o); err != nil {
-		t.Fatal("legacy exact retry", err)
-	}
-	setPlan := o
-	setPlan.Program = delegationSetLightProgram
-	setPlan.DescriptorHash = strings.Repeat("0a", 32)
-	setPlan.SetID = strings.Repeat("0b", 16)
-	setPlan.SetDigest = strings.Repeat("0c", 32)
-	setPlan.SetSize = 1
-	if _, err := l.ScheduleLightDelegation(t.Context(), setPlan); err == nil {
-		t.Fatal("legacy schedule accepted set metadata")
+	// Captured from 890ea1a before removing historical policy dispatch.
+	const expectedMAC = "355c808e3dd2d166563109806e60308cbea8d1dc25ab93ca9168139a699fecc4"
+	if got := hex.EncodeToString(renewalMAC(testIntegrityKey(), "vaulted-light/delegation-operation/v1", string(raw))); got != expectedMAC {
+		t.Fatal("retained operation encoding or MAC changed", got)
 	}
 }
 
@@ -261,7 +242,7 @@ func TestDelegationSetMutationsReject(t *testing.T) {
 			return p
 		},
 		"changed-program": func(p []LightDelegation) []LightDelegation {
-			p[0].Program = delegationSetLightProgram
+			p[0].Program = "vault-light-policy-v1"
 			return p
 		},
 		"changed-set": func(p []LightDelegation) []LightDelegation { p[0].SetID = strings.Repeat("ee", 16); return p },
@@ -281,20 +262,12 @@ func TestDelegationSetMutationsReject(t *testing.T) {
 			}
 		})
 	}
-	// Legacy-row reuse: an operation ID bound by the old API cannot join a set.
-	l2, now2, rop := renewalFixture(t)
-	legacyOp := LightDelegation{
-		OperationID: rop.OperationID, VaultID: rop.VaultID, InputTxid: rop.InputTxid,
-		ValidAt: now2.Unix() + 60, ExpiresAt: now2.Unix() + 3660,
-		FeeSats: rop.FeeSats, PlanDigest: rop.PlanDigest, Plan: `{"owner":"signed"}`,
-	}
-	if _, err := l2.ScheduleLightDelegation(ctx, legacyOp); err != nil {
-		t.Fatal(err)
-	}
-	reuse := setTestPlans(t, legacyOp.VaultID, delegationSetVaultProgram, 1, *now2)
-	reuse[0].OperationID = legacyOp.OperationID
-	if _, err := l2.ScheduleVtxoDelegationSet(ctx, reuse, setTestCredential(), 1); err == nil {
-		t.Fatal("legacy-row reuse accepted")
+	// An operation assigned to one current set cannot join another set.
+	reused := clone()[:1]
+	reused[0].SetID = strings.Repeat("de", 16)
+	reused[0].SetSize = 1
+	if _, err := l.ScheduleVtxoDelegationSet(ctx, reused, setTestCredential(), 2); err == nil {
+		t.Fatal("operation reused across sets")
 	}
 }
 
@@ -308,12 +281,12 @@ func TestDelegationSetCredentialAndCount(t *testing.T) {
 	if _, err := l.ScheduleVtxoDelegationSet(ctx, bad, nil, 0); err == nil {
 		t.Fatal("empty credential accepted for vault program")
 	}
-	light := setTestPlans(t, op.VaultID, delegationSetLightProgram, 1, *now)
+	light := setTestPlans(t, op.VaultID, "vault-light-policy-v1", 1, *now)
 	if _, err := l.ScheduleVtxoDelegationSet(ctx, light, setTestCredential(), 1); err == nil {
-		t.Fatal("Light set accepted a credential")
+		t.Fatal("retired Light program accepted")
 	}
-	if _, err := l.ScheduleVtxoDelegationSet(ctx, light, nil, 0); err != nil {
-		t.Fatal("Light set without credential", err)
+	if _, err := l.ScheduleVtxoDelegationSet(ctx, light, nil, 0); err == nil {
+		t.Fatal("retired Light program accepted without credential")
 	}
 	// Nonzero counters are strictly monotonic for new sets.
 	fresh := setTestPlans(t, op.VaultID, delegationSetVaultProgram, 1, *now)
@@ -442,23 +415,20 @@ func TestDelegationSetVsPaymentRace(t *testing.T) {
 func TestDelegationSetOverlapAndAllowance(t *testing.T) {
 	l, now, op := renewalFixture(t)
 	ctx := context.Background()
-	armed := LightDelegation{
-		OperationID: strings.Repeat("06", 16), VaultID: op.VaultID,
-		InputTxid: strings.Repeat("07", 32), ValidAt: now.Unix() + 60,
-		ExpiresAt: now.Unix() + 3660, FeeSats: 50,
-		PlanDigest: strings.Repeat("03", 32), Plan: `{"owner":"signed"}`,
-	}
-	if _, err := l.ScheduleLightDelegation(ctx, armed); err != nil {
+	armed := setTestPlans(t, op.VaultID, delegationSetVaultProgram, 1, *now)[0]
+	armed.OperationID, armed.SetID = strings.Repeat("06", 16), strings.Repeat("06", 16)
+	armed.InputTxid, armed.FeeSats = strings.Repeat("07", 32), 50
+	if _, err := l.ScheduleVtxoDelegationSet(ctx, []LightDelegation{armed}, setTestCredential(), 1); err != nil {
 		t.Fatal(err)
 	}
 	overlap := setTestPlans(t, op.VaultID, delegationSetVaultProgram, 1, *now)
 	overlap[0].InputTxid = armed.InputTxid
 	overlap[0].InputVout = armed.InputVout
-	if _, err := l.ScheduleVtxoDelegationSet(ctx, overlap, setTestCredential(), 1); !errors.Is(err, ErrVtxoOperationActive) {
+	if _, err := l.ScheduleVtxoDelegationSet(ctx, overlap, setTestCredential(), 2); !errors.Is(err, ErrVtxoOperationActive) {
 		t.Fatalf("input overlap: %v", err)
 	}
 	plans := setTestPlans(t, op.VaultID, delegationSetVaultProgram, 2, *now)
-	if _, err := l.ScheduleVtxoDelegationSet(ctx, plans, setTestCredential(), 1); err != nil {
+	if _, err := l.ScheduleVtxoDelegationSet(ctx, plans, setTestCredential(), 2); err != nil {
 		t.Fatal(err)
 	}
 	// Armed schedules hold no allowance.
@@ -494,15 +464,16 @@ func TestDelegationSetCapacity(t *testing.T) {
 	for i := 0; i < 256; i++ {
 		next := o
 		next.OperationID = fmt.Sprintf("%032x", 0x100+i)
+		next.SetID = next.OperationID
 		next.InputTxid = fmt.Sprintf("%064x", 0x200+i)
 		next.ValidAt = now.Unix() + 60
 		next.ExpiresAt = now.Unix() + 3660
-		if _, err := l.ScheduleLightDelegation(ctx, next); err != nil {
+		if _, err := scheduleOneDelegation(l, ctx, next); err != nil {
 			t.Fatal(i, err)
 		}
 	}
-	full := setTestPlans(t, o.VaultID, delegationSetLightProgram, 1, *now)
-	if _, err := l.ScheduleVtxoDelegationSet(ctx, full, nil, 0); err == nil {
+	full := setTestPlans(t, o.VaultID, delegationSetVaultProgram, 1, *now)
+	if _, err := l.ScheduleVtxoDelegationSet(ctx, full, setTestCredential(), 1); err == nil {
 		t.Fatal("capacity exceeded")
 	}
 }
@@ -544,8 +515,8 @@ func TestDelegationVaultIDPreservesProgramIdentity(t *testing.T) {
 		if !ValidDelegationVaultID(delegationSetVaultProgram, id) {
 			t.Fatalf("opaque enrolled Vault ID rejected: %q", id)
 		}
-		if len(id) != 64 && (ValidDelegationVaultID(delegationSetLightProgram, id) || ValidDelegationVaultID("", id)) {
-			t.Fatalf("Light ID contract widened: %q", id)
+		if ValidDelegationVaultID("vault-light-policy-v1", id) || ValidDelegationVaultID("", id) {
+			t.Fatalf("retired program ID accepted: %q", id)
 		}
 	}
 	for _, id := range []string{"", " ", " vault", "vault ", string([]byte{0xff})} {
@@ -555,5 +526,32 @@ func TestDelegationVaultIDPreservesProgramIdentity(t *testing.T) {
 	}
 	if ValidDelegationVaultID("unknown", strings.Repeat("ab", 32)) {
 		t.Fatal("unknown renewal program accepted")
+	}
+}
+
+func TestRetiredDelegationRowsCannotBecomeCurrentAuthority(t *testing.T) {
+	for _, programID := range []string{"", "vault-light-policy-v1"} {
+		t.Run(programID, func(t *testing.T) {
+			l, now, op := renewalFixture(t)
+			row := setTestPlans(t, op.VaultID, programID, 1, *now)[0]
+			row.CreatedAt = now.Format(time.RFC3339)
+			if programID == "" {
+				row.DescriptorHash, row.SetID, row.SetDigest = "", "", ""
+				row.SetSize = 0
+			}
+			raw, err := json.Marshal(row)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := l.db.Exec(`INSERT INTO light_delegation_operation VALUES(?,?,?,?)`, row.OperationID, row.VaultID, string(raw), renewalMAC(testIntegrityKey(), "vaulted-light/delegation-operation/v1", string(raw))); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := l.ListLightDelegations(t.Context()); err == nil {
+				t.Fatal("retired delegation became live authority")
+			}
+			if _, err := l.SpentInPeriod(t.Context(), op.VaultID, ""); err == nil {
+				t.Fatal("unsupported authority ignored by allowance")
+			}
+		})
 	}
 }

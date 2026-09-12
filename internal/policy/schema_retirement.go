@@ -109,9 +109,13 @@ func (l *Ledger) retireSchemaEleven(tx *sql.Tx, key []byte) error {
 				return err
 			}
 		}
-		if record.TemplateVersion == "phone-connector-recovery-savings-v1" || record.TemplateVersion == "phone-connector-recovery-savings-v2" {
+		switch record.TemplateVersion {
+		case "phone-connector-recovery-savings-v1", "phone-connector-recovery-savings-v2", "vaulted-light-v1":
 			retired = append(retired, id)
 		}
+	}
+	if err := verifyRetirementOwnership(tx, key); err != nil {
+		return err
 	}
 	before, err := economicOutflowCount(tx)
 	if err != nil {

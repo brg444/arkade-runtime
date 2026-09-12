@@ -1,14 +1,18 @@
-# Connector storage retirement
+# Historical account storage retirement
 
 Schema 12 keeps shared Spending and Ledger Savings records while removing both
 connector stores and accounts whose authenticated template identifies either
-connector generation. The exact schema 11 baseline is the only supported
+connector generation or the historical `vaulted-light-v1` program. The exact schema 11 baseline is the only supported
 upgrade source, and schemas 1 through 10 fail admission.
 
 Opening an existing database validates its complete schema without upgrading
 it. Installing the integrity key revalidates schema 11 inside a transaction,
-authenticates every account descriptor and its primary credential, and selects
-connector accounts only after descriptor verification. The transaction drops
+authenticates every account descriptor and credential, and selects discarded
+accounts only after descriptor verification. Shared operations, events,
+recovery material and sign counters are also authenticated before their
+correlation fields can determine deletion. This prevents a database writer
+from redirecting a retained signed payment into a discarded account and
+concealing its removal in the sequence base. The transaction drops
 both connector tables, removes the selected accounts and their owned records,
 and advances the schema version. Retained records and their existing MACs are
 unchanged. A failed transaction leaves schema 11 and its records intact.
@@ -34,7 +38,10 @@ networks. They cover retained identity, sign counts, signed payments, backups,
 Ledger recovery, renewal, delegation, boarding conflict history, transaction
 abort, malformed source schemas, account substitution and independent sequence
 rollback. Current schema goldens record the deliberate schema 12 baseline;
-retained signing, derivation and row-MAC vectors remain unchanged.
+retained signing, derivation and row-MAC vectors remain unchanged. Tests also
+reject corrupted records in all 20 shared stores inspected during retirement,
+authenticated journal payloads with changed SQL correlation fields, and
+retained payments redirected onto a discarded account.
 
 Release qualification must bind the schema 12 runtime to matching Contract
 Packs, wallet and recovery inputs before activation. Production backup,

@@ -27,8 +27,8 @@ type LightDelegation struct {
 	PlanDigest  string `json:"planDigest"`
 	Plan        string `json:"plan"`
 	CreatedAt   string `json:"createdAt"`
-	// Renewal-set members only, in this exact field order. Empty for legacy
-	// single-row schedules, so legacy rows keep byte-identical JSON and MACs.
+	// Current renewal-set membership, in the retained JSON field order.
+	// Keep omitempty tags: zero SetIndex is omitted in existing signed rows.
 	Program        string `json:"program,omitempty"`
 	DescriptorHash string `json:"descriptorHash,omitempty"`
 	SetID          string `json:"setId,omitempty"`
@@ -70,19 +70,10 @@ func (s *LightDelegationSnapshot) State() string {
 	return state
 }
 
-// ValidDelegationVaultID preserves the enrolled identity as opaque UTF-8 for
-// vault-policy-v1. Public enrollment currently assigns 16-byte hex IDs; older
-// authenticated enrollments can use other exact strings. Light and its legacy
-// journal retain their original 32-byte canonical hexadecimal ID contract.
+// ValidDelegationVaultID preserves the exact enrolled identity as opaque UTF-8
+// for the retained Spending program. Public enrollment assigns 16-byte hex IDs.
 func ValidDelegationVaultID(programID, vaultID string) bool {
-	switch programID {
-	case delegationSetVaultProgram:
-		return vaultID != "" && utf8.ValidString(vaultID) && strings.TrimSpace(vaultID) == vaultID
-	case "", delegationSetLightProgram:
-		return canonicalRenewalHex(vaultID, 32)
-	default:
-		return false
-	}
+	return programID == delegationSetVaultProgram && vaultID != "" && utf8.ValidString(vaultID) && strings.TrimSpace(vaultID) == vaultID
 }
 
 func validateDelegation(o LightDelegation) error {
@@ -96,26 +87,11 @@ func validateDelegation(o LightDelegation) error {
 	return nil
 }
 
-// Program identifiers for renewal-set members. vault-policy-v1 mirrors
-// program.VaultPolicyV1; vault-light-policy-v1 mirrors light.Program. Literals
-// keep this ledger file free of new package dependencies.
-const (
-	delegationSetVaultProgram = "vault-policy-v1"
-	delegationSetLightProgram = "vault-light-policy-v1"
-)
-
-// hasDelegationSetMetadata reports any renewal-set field. SetIndex alone is
-// never set without the accompanying fields, so a zero index does not hide
-// membership.
-func hasDelegationSetMetadata(o LightDelegation) bool {
-	return o.Program != "" || o.DescriptorHash != "" || o.SetID != "" || o.SetDigest != "" || o.SetSize != 0 || o.SetIndex != 0
-}
+// The literal mirrors program.VaultPolicyV1 without widening store dependencies.
+const delegationSetVaultProgram = "vault-policy-v1"
 
 func validateDelegationSetFields(o LightDelegation) error {
-	if !hasDelegationSetMetadata(o) {
-		return nil
-	}
-	if o.Program != delegationSetVaultProgram && o.Program != delegationSetLightProgram {
+	if o.Program != delegationSetVaultProgram {
 		return fmt.Errorf("invalid delegation set program")
 	}
 	if !canonicalRenewalHex(o.DescriptorHash, 32) || !canonicalRenewalHex(o.SetID, 16) || !canonicalRenewalHex(o.SetDigest, 32) {
@@ -220,9 +196,6 @@ func loadLightDelegations(ctx context.Context, q queryContext, key []byte) (map[
 func validateDelegationSets(all map[string]*LightDelegationSnapshot) error {
 	bySet := map[string][]*LightDelegationSnapshot{}
 	for _, s := range all {
-		if s.Operation.SetID == "" {
-			continue
-		}
 		bySet[s.Operation.SetID] = append(bySet[s.Operation.SetID], s)
 	}
 	for id, members := range bySet {
@@ -272,60 +245,6 @@ func (l *Ledger) ListLightDelegations(ctx context.Context) ([]LightDelegationSna
 	sort.Slice(out, func(i, j int) bool { return out[i].Operation.OperationID < out[j].Operation.OperationID })
 	return out, nil
 }
-func (l *Ledger) ScheduleLightDelegation(ctx context.Context, o LightDelegation) (*LightDelegationSnapshot, error) {
-	o.CreatedAt = l.NowUTC().Format(time.RFC3339)
-	if hasDelegationSetMetadata(o) {
-		return nil, fmt.Errorf("Light delegation set requires ScheduleVtxoDelegationSet")
-	}
-	var out *LightDelegationSnapshot
-	err := l.withLightRenewalTx(ctx, func(tx *sql.Conn, key []byte) error {
-		all, err := loadLightDelegations(ctx, tx, key)
-		if err != nil {
-			return err
-		}
-		// Check the existing sequence before inserting a replacement row. Otherwise
-		// deletion followed by insertion could restore the count and hide rollback.
-		if err := l.observeEconomicOutflowsLocked(tx); err != nil {
-			return err
-		}
-		if old := all[o.OperationID]; old != nil {
-			copy := o
-			copy.CreatedAt = old.Operation.CreatedAt
-			if copy != old.Operation {
-				return fmt.Errorf("Light delegation operation already bound")
-			}
-			out = old
-			return nil
-		}
-		if err := validateDelegation(o); err != nil {
-			return err
-		}
-		active := 0
-		for _, s := range all {
-			if s.Operation.VaultID != o.VaultID || delegationTerminal(s) {
-				continue
-			}
-			active++
-			if s.Operation.InputTxid == o.InputTxid && s.Operation.InputVout == o.InputVout {
-				return ErrVtxoOperationActive
-			}
-		}
-		if active >= 256 {
-			return fmt.Errorf("Light delegation capacity reached")
-		}
-		if err := l.rejectDelegationPaymentOverlap(ctx, tx, key, o); err != nil {
-			return err
-		}
-		if err := l.rejectActiveLightRenewal(ctx, tx, o.VaultID); err != nil {
-			return err
-		}
-		payload, _ := json.Marshal(o)
-		_, err = tx.ExecContext(ctx, `INSERT INTO light_delegation_operation VALUES(?,?,?,?)`, o.OperationID, o.VaultID, string(payload), renewalMAC(key, "vaulted-light/delegation-operation/v1", string(payload)))
-		out = &LightDelegationSnapshot{o, map[string]LightDelegationEvent{}}
-		return err
-	})
-	return out, err
-}
 
 // delegationEnrolledCredentialID returns the MAC-verified enrolled WebAuthn
 // credential for vault, read inside the caller's transaction.
@@ -361,7 +280,7 @@ func delegationEnrolledCredentialID(ctx context.Context, tx queryContext, vaultI
 // member metadata and plan bytes — returns the stored snapshots in input
 // order without consulting or mutating the current sign count, so it stays
 // valid after later unrelated ceremonies. Any missing, subset, reordered,
-// superset, conflicting, or legacy-row member rejects.
+// superset, or conflicting member rejects.
 func (l *Ledger) ScheduleVtxoDelegationSet(ctx context.Context, plans []LightDelegation, credentialID []byte, signCount uint32) ([]LightDelegationSnapshot, error) {
 	n := len(plans)
 	if n < 1 || n > 50 {
@@ -374,9 +293,6 @@ func (l *Ledger) ScheduleVtxoDelegationSet(ctx context.Context, plans []LightDel
 		members[i].CreatedAt = created
 	}
 	first := members[0]
-	if !hasDelegationSetMetadata(first) {
-		return nil, fmt.Errorf("delegation set metadata required")
-	}
 	var out []LightDelegationSnapshot
 	err := l.withLightRenewalTx(ctx, func(tx *sql.Conn, key []byte) error {
 		all, err := loadLightDelegations(ctx, tx, key)
@@ -391,9 +307,6 @@ func (l *Ledger) ScheduleVtxoDelegationSet(ctx context.Context, plans []LightDel
 		}
 		for i := range members {
 			o := members[i]
-			if !hasDelegationSetMetadata(o) {
-				return fmt.Errorf("delegation set metadata required")
-			}
 			if o.VaultID != first.VaultID || o.Program != first.Program || o.DescriptorHash != first.DescriptorHash || o.SetID != first.SetID || o.SetDigest != first.SetDigest || o.SetSize != n || o.SetIndex != i {
 				return fmt.Errorf("delegation set membership changed")
 			}
@@ -458,22 +371,15 @@ func (l *Ledger) ScheduleVtxoDelegationSet(ctx context.Context, plans []LightDel
 				return err
 			}
 		}
-		if first.Program != delegationSetVaultProgram && first.Program != delegationSetLightProgram {
-			return fmt.Errorf("invalid delegation set program")
+		enrolled, err := delegationEnrolledCredentialID(ctx, tx, first.VaultID, key)
+		if err != nil {
+			return err
 		}
-		if first.Program == delegationSetVaultProgram {
-			enrolled, err := delegationEnrolledCredentialID(ctx, tx, first.VaultID, key)
-			if err != nil {
-				return err
-			}
-			if len(credentialID) == 0 || !bytes.Equal(credentialID, enrolled) {
-				return fmt.Errorf("delegation vault credential mismatch")
-			}
-			if err := l.advanceSignCountLocked(tx, first.VaultID, credentialID, signCount); err != nil {
-				return err
-			}
-		} else if len(credentialID) != 0 || signCount != 0 {
-			return fmt.Errorf("delegation set credential unexpected")
+		if len(credentialID) == 0 || !bytes.Equal(credentialID, enrolled) {
+			return fmt.Errorf("delegation vault credential mismatch")
+		}
+		if err := l.advanceSignCountLocked(tx, first.VaultID, credentialID, signCount); err != nil {
+			return err
 		}
 		active := 0
 		for _, s := range all {

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -28,32 +29,36 @@ func TestSpendingBitcoinChargesPrincipalAndRetainsFinalDispatch(t *testing.T) {
 	}
 }
 
-func TestSpendingBitcoinSharesRenewalReservationFence(t *testing.T) {
-	for _, kind := range []string{"", SpendingBitcoinBatchKind} {
+func TestSpendingBitcoinRejectsHistoricalRenewal(t *testing.T) {
+	for _, kind := range []string{"", "vault-light-policy-v1", "savings-setup-v1"} {
 		t.Run(kind, func(t *testing.T) {
 			l, _, op := renewalFixture(t)
-			op.Kind = kind
-			op.AmountSats = 1000
-			if kind == "" {
-				op.AmountSats = 0
+			op.Kind, op.AmountSats = kind, 0
+			if _, err := l.ReserveLightRenewal(t.Context(), op, 10000); err == nil {
+				t.Fatal("retired batch admitted")
 			}
-			if _, err := l.ReserveLightRenewal(t.Context(), op, 10000); err != nil {
-				t.Fatal(err)
-			}
-			for _, phase := range []string{"register_authorized", "register_dispatched", "register_result", "final_authorized", "final_dispatched"} {
-				appendRenewal(t, l, op, phase)
-			}
-			op.OperationID = "abababababababababababababababab"
-			if kind == "" {
-				op.Kind = SpendingBitcoinBatchKind
-				op.AmountSats = 1500
-			} else {
-				op.Kind = ""
-				op.AmountSats = 0
-			}
-			if _, err := l.ReserveLightRenewal(t.Context(), op, 10000); !errors.Is(err, ErrVtxoOperationActive) {
-				t.Fatalf("second payment allowed across route kinds: %v", err)
+			var n int
+			if err := l.db.QueryRow(`SELECT COUNT(*) FROM light_renewal_operation`).Scan(&n); err != nil || n != 0 {
+				t.Fatal("retired batch persisted", n, err)
 			}
 		})
+	}
+}
+
+func TestRetiredRenewalRowsCannotBecomeBitcoinPayments(t *testing.T) {
+	l, now, op := renewalFixture(t)
+	op.Kind, op.AmountSats, op.CreatedAt = "", 0, now.Format(time.RFC3339)
+	raw, err := json.Marshal(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.db.Exec(`INSERT INTO light_renewal_operation VALUES(?,?,?,?)`, op.OperationID, op.VaultID, string(raw), renewalMAC(testIntegrityKey(), "vaulted-light/renewal-operation/v1", string(raw))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.GetLightRenewal(t.Context(), op.OperationID); err == nil {
+		t.Fatal("retired renewal became a current payment")
+	}
+	if _, err := l.SpentInPeriod(t.Context(), op.VaultID, ""); err == nil {
+		t.Fatal("unsupported authority ignored by allowance")
 	}
 }

@@ -17,11 +17,30 @@ import (
 func delegationFixture(t *testing.T) (*Ledger, *time.Time, LightDelegation) {
 	t.Helper()
 	l, now, r := renewalFixture(t)
-	return l, now, LightDelegation{OperationID: r.OperationID, VaultID: r.VaultID, InputTxid: r.InputTxid, ValidAt: now.Unix(), ExpiresAt: now.Add(time.Hour).Unix(), FeeSats: r.FeeSats, PlanDigest: r.PlanDigest, Plan: `{"owner":"signed"}`}
+	o := setTestPlans(t, r.VaultID, delegationSetVaultProgram, 1, *now)[0]
+	o.OperationID, o.InputTxid, o.FeeSats, o.PlanDigest = r.OperationID, r.InputTxid, r.FeeSats, r.PlanDigest
+	o.ValidAt, o.ExpiresAt = now.Unix(), now.Add(time.Hour).Unix()
+	return l, now, o
 }
+
+// One-member sets use the same authenticated API as every current schedule.
+// A zero counter models the supported counterless passkey; dedicated tests
+// below exercise strictly increasing counters and exact retry after advancement.
+func scheduleOneDelegation(l *Ledger, ctx context.Context, o LightDelegation) (*LightDelegationSnapshot, error) {
+	credential, err := delegationEnrolledCredentialID(ctx, l.db, o.VaultID, testIntegrityKey())
+	if err != nil {
+		return nil, err
+	}
+	saved, err := l.ScheduleVtxoDelegationSet(ctx, []LightDelegation{o}, credential, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &saved[0], nil
+}
+
 func stageDelegation(t *testing.T, l *Ledger, o LightDelegation, through string) *LightDelegationSnapshot {
 	t.Helper()
-	s, err := l.ScheduleLightDelegation(t.Context(), o)
+	s, err := scheduleOneDelegation(l, t.Context(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +71,7 @@ func TestLightDelegationPaymentInvalidationAndOverlap(t *testing.T) {
 			input := VtxoOperationInput{Txid: txid, ValueSats: 2000, Script: []byte{0x51}}
 			unrelated := o
 			unrelated.OperationID = strings.Repeat("06", 16)
+			unrelated.SetID = unrelated.OperationID
 			unrelated.InputTxid = strings.Repeat("07", 32)
 			if !paymentFirst {
 				stageDelegation(t, l, o, "armed")
@@ -61,10 +81,10 @@ func TestLightDelegationPaymentInvalidationAndOverlap(t *testing.T) {
 				t.Fatal(err)
 			}
 			if paymentFirst {
-				if _, err := l.ScheduleLightDelegation(t.Context(), o); !errors.Is(err, ErrVtxoOperationActive) {
+				if _, err := scheduleOneDelegation(l, t.Context(), o); !errors.Is(err, ErrVtxoOperationActive) {
 					t.Fatal("overlap", err)
 				}
-				if _, err := l.ScheduleLightDelegation(t.Context(), unrelated); err != nil {
+				if _, err := scheduleOneDelegation(l, t.Context(), unrelated); err != nil {
 					t.Fatal("unrelated schedule", err)
 				}
 			} else {
@@ -234,11 +254,11 @@ func TestLightDelegationAllowanceAndImmutableTranscript(t *testing.T) {
 	if used, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err != nil || used != 0 {
 		t.Fatal(used, err)
 	}
-	if _, err := l.ScheduleLightDelegation(t.Context(), o); err != nil {
+	if _, err := scheduleOneDelegation(l, t.Context(), o); err != nil {
 		t.Fatal("expired exact retry", err)
 	}
 	o.FeeSats++
-	if _, err := l.ScheduleLightDelegation(t.Context(), o); err == nil {
+	if _, err := scheduleOneDelegation(l, t.Context(), o); err == nil {
 		t.Fatal("changed plan retry")
 	}
 }

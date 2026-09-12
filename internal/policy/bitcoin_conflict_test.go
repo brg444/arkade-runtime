@@ -73,12 +73,9 @@ func TestBitcoinConflictReleaseFencesAndRetainsEvidence(t *testing.T) {
 	}
 }
 func TestBitcoinConflictReleaseRejectsUnboundEvidence(t *testing.T) {
-	for _, scenario := range []string{"ordinary renewal", "wrong digest", "shallow", "unknown field", "unspent only"} {
+	for _, scenario := range []string{"wrong digest", "shallow", "unknown field", "unspent only"} {
 		t.Run(scenario, func(t *testing.T) {
 			kind := SpendingBitcoinBatchKind
-			if scenario == "ordinary renewal" {
-				kind = ""
-			}
 			l, op, event := dispatchedBitcoinConflictFixture(t, kind)
 			switch scenario {
 			case "wrong digest":
