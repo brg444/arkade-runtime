@@ -17,6 +17,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/contractpack"
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
+	"github.com/brg444/arkade-runtime/internal/program"
 	"github.com/btcsuite/btcd/btcec/v2"
 )
 
@@ -62,8 +63,11 @@ func TestConstructedServiceUsesItsNetworkContractPack(t *testing.T) {
 			if err := svc.requireVaultPolicyV1Exit(); err != nil {
 				t.Errorf("Spending reservation policy: %v", err)
 			}
-			if got := svc.Ready(context.Background()); !got.Ok {
+			if got := svc.Ready(context.Background()); !got.Ok || got.Schema != 12 || got.EnrollTemplate != program.SpendingOnlyTemplate {
 				t.Errorf("readiness: %+v", got)
+			}
+			if got, err := svc.PublicStatus(); err != nil || got.TemplateVersion != program.SpendingOnlyTemplate || got.Network != network {
+				t.Errorf("public enrollment handshake: %+v %v", got, err)
 			}
 			other := deployment.NetworkMainnet
 			if network == other {

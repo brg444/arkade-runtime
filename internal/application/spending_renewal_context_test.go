@@ -10,6 +10,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
+	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 )
@@ -28,11 +29,14 @@ func TestSpendingRenewalContextWalletVectors(t *testing.T) {
 	if err := json.Unmarshal(raw, &vectors); err != nil {
 		t.Fatal(err)
 	}
-	if len(vectors) != 8 {
-		t.Fatalf("expected eight cross-language vectors, got %d", len(vectors))
+	if len(vectors) != 4 {
+		t.Fatalf("expected four cross-language vectors, got %d", len(vectors))
 	}
 	for _, v := range vectors {
 		t.Run(v.Name, func(t *testing.T) {
+			if v.Status.TemplateVersion != savings.LedgerNativeTemplate {
+				t.Fatal("renewal fixture is not a retained Ledger account")
+			}
 			b := v.Context
 			got, err := b.digest()
 			if err != nil || got != v.DescriptorHash {

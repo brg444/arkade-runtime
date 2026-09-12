@@ -3,11 +3,87 @@ package pack_test
 import (
 	"encoding/json"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/brg444/arkade-runtime/internal/contractpack"
 )
+
+func TestRetainedContractBaselineBothNetworks(t *testing.T) {
+	for _, network := range []string{"mainnet", "mutinynet"} {
+		t.Run(network, func(t *testing.T) {
+			raw, err := contractpack.JSONFor(network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			name := "contract-pack.json"
+			if network == "mainnet" {
+				name = "contract-pack.mainnet.json"
+			}
+			root, err := os.ReadFile(name)
+			if err != nil || string(root) != string(raw) {
+				t.Fatalf("root/embedded pack mismatch: %v", err)
+			}
+			if err := contractpack.ValidateBytesFor(network, raw); err != nil {
+				t.Fatal(err)
+			}
+			other := "mainnet"
+			if network == other {
+				other = "mutinynet"
+			}
+			if contractpack.ValidateBytesFor(other, raw) == nil {
+				t.Fatal("another network's pack accepted")
+			}
+			var pack struct {
+				Version               int                        `json:"version"`
+				DatabaseSchemaVersion int                        `json:"databaseSchemaVersion"`
+				Programs              map[string]json.RawMessage `json:"programs"`
+				EnrollmentProfiles    map[string]json.RawMessage `json:"enrollmentProfiles"`
+				Domains               map[string]string          `json:"domains"`
+				Formats               struct {
+					RecoveryKit map[string]int `json:"recoveryKit"`
+					MapBackup   int            `json:"mapBackup"`
+				} `json:"formats"`
+			}
+			if err := json.Unmarshal(raw, &pack); err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for name := range pack.Programs {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			if !reflect.DeepEqual(names, []string{"phone-ledger-guardian-savings-v1", "vault-board-v1", "vault-policy-v1"}) {
+				t.Fatalf("unexpected retained programs: %v", names)
+			}
+			if pack.Version != 3 || pack.DatabaseSchemaVersion != 12 || len(pack.EnrollmentProfiles) != 1 || pack.EnrollmentProfiles["vaulted-spending-v1"] == nil {
+				t.Fatal("release baseline or Spending enrollment identity changed")
+			}
+			if !reflect.DeepEqual(pack.Formats.RecoveryKit, map[string]int{"vaulted-spending-v1": 5, "phone-ledger-guardian-savings-v1": 4}) || pack.Formats.MapBackup != 3 {
+				t.Fatalf("retained recovery formats: %+v", pack.Formats)
+			}
+			if pack.Domains["recoveryBinding"] != "arkade-vault/recovery-binding/v4" || pack.Domains["ledgerRecoveryBinding"] != "arkade-vault/recovery-binding/v6" {
+				t.Fatal("retained binding domains changed")
+			}
+			for _, name := range []string{"recoverySession", "connectorRecoveryBinding"} {
+				if _, exists := pack.Domains[name]; exists {
+					t.Fatalf("retired domain %s remains", name)
+				}
+			}
+			var ledger struct {
+				Formats map[string]int `json:"formats"`
+			}
+			if err := json.Unmarshal(pack.Programs["phone-ledger-guardian-savings-v1"], &ledger); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(ledger.Formats, map[string]int{"runtimeSchema": 12, "recoveryBinding": 6, "recoveryKit": 4, "recoveryHeader": 2}) {
+				t.Fatalf("Ledger formats: %v", ledger.Formats)
+			}
+		})
+	}
+}
 
 func TestContractPackRecoveryFormats(t *testing.T) {
 	raw, err := os.ReadFile("contract-pack.json")
@@ -17,14 +93,14 @@ func TestContractPackRecoveryFormats(t *testing.T) {
 	var pack struct {
 		Version int `json:"version"`
 		Formats struct {
-			RecoveryKit int `json:"recoveryKit"`
-			MapBackup   int `json:"mapBackup"`
+			RecoveryKit map[string]int `json:"recoveryKit"`
+			MapBackup   int            `json:"mapBackup"`
 		} `json:"formats"`
 	}
 	if err := json.Unmarshal(raw, &pack); err != nil {
 		t.Fatal(err)
 	}
-	if pack.Version != 2 || pack.Formats.RecoveryKit != 3 || pack.Formats.MapBackup != 3 {
+	if pack.Version != 3 || len(pack.Formats.RecoveryKit) != 2 || pack.Formats.RecoveryKit["vaulted-spending-v1"] != 5 || pack.Formats.RecoveryKit["phone-ledger-guardian-savings-v1"] != 4 || pack.Formats.MapBackup != 3 {
 		t.Fatalf("recovery formats: %+v", pack)
 	}
 }
@@ -42,7 +118,7 @@ func TestContractPackListsVaultPolicyV1WithExitAndDelegate(t *testing.T) {
 	if !ok {
 		t.Fatal("programs object required")
 	}
-	if _, ok := programs["savings-recovery-v1"].(map[string]any); !ok {
+	if _, ok := programs["phone-ledger-guardian-savings-v1"].(map[string]any); !ok {
 		t.Fatal("Savings recovery program must be listed")
 	}
 	listed, ok := programs["vault-policy-v1"].(map[string]any)
@@ -202,7 +278,7 @@ func TestContractPackDoesNotPublishEnrollmentProofs(t *testing.T) {
 	if pack.Domains["recoveryBinding"] != "arkade-vault/recovery-binding/v4" {
 		t.Fatalf("recovery binding domain = %q", pack.Domains["recoveryBinding"])
 	}
-	if _, ok := pack.Programs["savings-recovery-v1"]["recoveryPopTag"]; ok {
+	if _, ok := pack.Programs["phone-ledger-guardian-savings-v1"]["recoveryPopTag"]; ok {
 		t.Fatal("Savings recovery program must not publish a recovery proof tag")
 	}
 }
