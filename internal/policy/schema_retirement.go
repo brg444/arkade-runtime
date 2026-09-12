@@ -110,7 +110,7 @@ func (l *Ledger) retireSchemaEleven(tx *sql.Tx, key []byte) error {
 			}
 		}
 		switch record.TemplateVersion {
-		case "phone-connector-recovery-savings-v1", "phone-connector-recovery-savings-v2", "vaulted-light-v1":
+		case "phone-connector-recovery-savings-v1", "phone-connector-recovery-savings-v2", "vaulted-light-v1", "phone-hww-recovery-savings-v1":
 			retired = append(retired, id)
 		}
 	}
@@ -129,7 +129,7 @@ func (l *Ledger) retireSchemaEleven(tx *sql.Tx, key []byte) error {
 		return fmt.Errorf("retirement sequence overflow")
 	}
 	before += removedOperations
-	for _, statement := range []string{`DROP TABLE connector_operation`, `DROP TABLE connector_enrollment`, createPolicySequenceBaseSchema} {
+	for _, statement := range []string{`DROP TABLE connector_operation`, `DROP TABLE connector_enrollment`, `DROP TABLE recovery_session`, createPolicySequenceBaseSchema} {
 		if _, err := tx.Exec(statement); err != nil {
 			return err
 		}
@@ -177,7 +177,6 @@ func deleteRetiredAccount(tx *sql.Tx, id string) error {
 		`DELETE FROM vault_board_enrollment WHERE vault_id=?`,
 		`DELETE FROM ledger_savings_recovery_event WHERE vault_id=?`,
 		`DELETE FROM ledger_savings_enrollment WHERE vault_id=?`,
-		`DELETE FROM recovery_session WHERE vault_id=?`,
 		`DELETE FROM recovery_backup WHERE vault_id=?`,
 		`DELETE FROM webauthn_sign_count WHERE vault_id=?`,
 		`DELETE FROM vault_map WHERE vault_id=?`,

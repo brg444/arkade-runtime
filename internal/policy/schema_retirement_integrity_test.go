@@ -32,15 +32,12 @@ func retirementOwnershipFixture(t *testing.T) (*Ledger, string) {
 	if err := l.StoreVaultEnvelopeIfAbsent("retained", envelope); err != nil {
 		t.Fatal(err)
 	}
-	if err := l.PutRecoverySession(RecoverySession{VaultID: "retained", Purpose: sessionPurposeInitiate, InputTxid: "11", DestScript: "51"}); err != nil {
-		t.Fatal(err)
-	}
 	retiredLightStorageRows(t, l)
 	return l, path
 }
 
 func TestSchemaRetirementAuthenticatesEverySharedStore(t *testing.T) {
-	tables := []string{"vtxo_operation", "vtxo_operation_input", "vault_board_enrollment", "vault_board_operation", "vault_board_authorization", "vault_board_dispatch", "vault_board_submission", "vault_board_conflict", "ledger_savings_enrollment", "ledger_savings_recovery_event", "recovery_session", "recovery_backup", "vault_map", "webauthn_sign_count", "vault_credential", "vault_envelope", "light_renewal_operation", "light_renewal_event", "light_delegation_operation", "light_delegation_event"}
+	tables := []string{"vtxo_operation", "vtxo_operation_input", "vault_board_enrollment", "vault_board_operation", "vault_board_authorization", "vault_board_dispatch", "vault_board_submission", "vault_board_conflict", "ledger_savings_enrollment", "ledger_savings_recovery_event", "recovery_backup", "vault_map", "webauthn_sign_count", "vault_credential", "vault_envelope", "light_renewal_operation", "light_renewal_event", "light_delegation_operation", "light_delegation_event"}
 	for _, table := range tables {
 		t.Run(table, func(t *testing.T) {
 			l, path := retirementOwnershipFixture(t)
@@ -73,7 +70,7 @@ func TestSchemaRetirementPreservesAuthenticatedRecoveryMaterial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := l.GetRecoverySession("retained", "11", 0, sessionPurposeInitiate)
+	_, session, err := l.ApplyLedgerSavingsRecovery(ledgerSavingsRecoveryFixture("retained"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +82,7 @@ func TestSchemaRetirementPreservesAuthenticatedRecoveryMaterial(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(afterEnvelope, envelope) {
 		t.Fatal("retained envelope changed", err)
 	}
-	afterSession, err := current.GetRecoverySession("retained", "11", 0, sessionPurposeInitiate)
+	_, afterSession, err := current.ApplyLedgerSavingsRecovery(ledgerSavingsRecoveryFixture("retained"))
 	if err != nil || !reflect.DeepEqual(afterSession, session) {
 		t.Fatal("retained recovery session changed", err)
 	}

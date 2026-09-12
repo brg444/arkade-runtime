@@ -8,7 +8,6 @@ import (
 const (
 	vaultRecordMACDomain     = "arkade-vault/vault-record/v2"
 	vaultCredentialMACDomain = "arkade-vault/vault-credential/v1"
-	sessionMACDomain         = "arkade-2fa-vault/recovery-session/v2"
 	signCountMACDomain       = "arkade-2fa-vault/webauthn-sign-count/v1"
 	vaultMapMACDomain        = "arkade-2fa-vault/vault-map/v1"
 	monotonicMACDomain       = "arkade-vault/policy-sequence/v2"
@@ -87,19 +86,6 @@ CREATE TABLE IF NOT EXISTS pending_enrollment (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS vault_credential_vault ON vault_credential(vault_id);
-CREATE TABLE IF NOT EXISTS recovery_session (
-  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
-  purpose TEXT NOT NULL CHECK (purpose IN ('initiate', 'clawback')),
-  input_txid TEXT NOT NULL,
-  input_vout INTEGER NOT NULL,
-  dest_script TEXT NOT NULL,
-  last_sighash TEXT,
-  signature BLOB,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
-  PRIMARY KEY (vault_id, input_txid, input_vout, purpose)
-);
 CREATE TABLE IF NOT EXISTS webauthn_sign_count (
   vault_id TEXT NOT NULL REFERENCES vault(vault_id),
   credential_id BLOB NOT NULL,

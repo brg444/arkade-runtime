@@ -1,8 +1,9 @@
 # Historical account storage retirement
 
 Schema 12 keeps shared Spending and Ledger Savings records while removing both
-connector stores and accounts whose authenticated template identifies either
-connector generation or the historical `vaulted-light-v1` program. The exact schema 11 baseline is the only supported
+connector stores, the obsolete `recovery_session` store, and accounts whose
+authenticated template identifies either connector generation, historical
+`vaulted-light-v1`, or direct-hardware `phone-hww-recovery-savings-v1`. The exact schema 11 baseline is the only supported
 upgrade source, and schemas 1 through 10 fail admission.
 
 Opening an existing database validates its complete schema without upgrading
@@ -13,7 +14,7 @@ recovery material and sign counters are also authenticated before their
 correlation fields can determine deletion. This prevents a database writer
 from redirecting a retained signed payment into a discarded account and
 concealing its removal in the sequence base. The transaction drops
-both connector tables, removes the selected accounts and their owned records,
+both connector tables and `recovery_session`, removes the selected accounts and their owned records,
 and advances the schema version. Retained records and their existing MACs are
 unchanged. A failed transaction leaves schema 11 and its records intact.
 
@@ -27,6 +28,11 @@ The external sequence keeps its existing format, MAC domain, value and write
 ordering. Retirement never rewrites it; startup still rejects a missing
 required sequence or a database behind it.
 
+The removed recovery table has no retained callers and contributes no economic
+sequence count. Its rows are discarded as a whole, without decoding or resuming
+their programs. Ledger Savings keeps its separate authenticated recovery event
+journal, existing record encoding and replay rules.
+
 A fresh schema 12 database creates only current stores and seals a zero base
 when its first integrity key is installed. An enrolled database with a missing
 base fails startup. A changed value, MAC, network or key fails authentication.
@@ -39,7 +45,7 @@ Ledger recovery, renewal, delegation, boarding conflict history, transaction
 abort, malformed source schemas, account substitution and independent sequence
 rollback. Current schema goldens record the deliberate schema 12 baseline;
 retained signing, derivation and row-MAC vectors remain unchanged. Tests also
-reject corrupted records in all 20 shared stores inspected during retirement,
+reject corrupted records in all 19 shared stores inspected during retirement,
 authenticated journal payloads with changed SQL correlation fields, and
 retained payments redirected onto a discarded account.
 

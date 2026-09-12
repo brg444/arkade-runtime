@@ -292,7 +292,7 @@ func validateVaultSchemaObjects(q schemaQuerier, previous bool) error {
 		"index:vault_board_authorization_phase", "index:vault_board_operation_vault",
 	)
 	if previous {
-		want = append(want, "table:connector_enrollment", "table:connector_operation")
+		want = append(want, "table:connector_enrollment", "table:connector_operation", "table:recovery_session")
 	} else {
 		want = append(want, "table:policy_sequence_base")
 	}

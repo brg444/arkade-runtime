@@ -146,13 +146,6 @@ func verifyRetirementOwnership(tx *sql.Tx, key []byte) error {
 			}
 			return nil
 		}},
-		{`SELECT vault_id,purpose,input_txid,input_vout,dest_script,IFNULL(last_sighash,''),signature,created_at,updated_at,integrity_mac FROM recovery_session`, func(rows *sql.Rows) error {
-			var rec RecoverySession
-			if err := rows.Scan(&rec.VaultID, &rec.Purpose, &rec.InputTxid, &rec.InputVout, &rec.DestScript, &rec.LastSighash, &rec.Signature, &rec.CreatedAt, &rec.UpdatedAt, &rec.IntegrityMAC); err != nil {
-				return err
-			}
-			return verifySession(&rec, key)
-		}},
 		{`SELECT vault_id,revision,payload,integrity_mac FROM recovery_backup`, func(rows *sql.Rows) error {
 			var id string
 			var rec RecoveryBackup

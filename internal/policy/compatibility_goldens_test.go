@@ -13,6 +13,8 @@ import (
 )
 
 // TestSchemaCompatibilityGolden pins the physical SQLite contract.
+// The current schema12 baseline removes only recovery_session from the captured
+// 046ddd78 objects; retained object definitions are byte-identical.
 // The structural startup validator remains the enforcement mechanism; this
 // digest catches intentional-looking SQL edits that preserve coarse column
 // types while changing stored bytes, constraints, or object definitions.
@@ -41,7 +43,7 @@ func TestSchemaCompatibilityGolden(t *testing.T) {
 			if err := rows.Err(); err != nil {
 				t.Fatal(err)
 			}
-			want := map[string]string{"mainnet": "3ed0464db54dee6ea26bc2d8ee893de93a205c37a40f4772f9aac2d35ff0aa5c", "mutinynet": "09ebf86e0037f518431d393b967820f272c57915b2c39b47dbcfa466bef27a0b"}[network]
+			want := map[string]string{"mainnet": "52a3ddddaf82070f3eb2898d8356d5389de2034dccd3f227c391f9cd573c66b6", "mutinynet": "dbedcef68c9076f3aca605decdf39f42f0243e7d61dc2cb9450cfe6edeedbcda"}[network]
 			if got := fmt.Sprintf("%x", sha256.Sum256(canonical.Bytes())); got != want {
 				t.Fatalf("schema12 %s digest %s, want %s", network, got, want)
 			}

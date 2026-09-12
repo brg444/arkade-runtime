@@ -171,12 +171,12 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 	for _, network := range []string{"mainnet", "mutinynet"} {
 		t.Run(network, func(t *testing.T) {
 			l, path := schemaElevenFixture(t, network)
-			retirementAccount(t, l, retirementSpendingID, "vault-spending-v1", 0x51)
+			retirementAccount(t, l, retirementSpendingID, "vaulted-spending-v1", 0x51)
 			retirementAccount(t, l, "retained-ledger", savings.LedgerNativeTemplate, 0x53)
 			insertTestVtxoOperation(t, l, testVtxoOperation(retirementSpendingID, retirementSpendingID+"-payment", vtxoPurposeSpend, vtxoStateSigned, 1000, 100, l.NowUTC()))
 			delegationID, renewalID := strings.Repeat("54", 32), strings.Repeat("55", 32)
-			retirementAccount(t, l, delegationID, "vault-spending-v1", 0x54)
-			retirementAccount(t, l, renewalID, "vault-spending-v1", 0x55)
+			retirementAccount(t, l, delegationID, "vaulted-spending-v1", 0x54)
+			retirementAccount(t, l, renewalID, "vaulted-spending-v1", 0x55)
 			recovery := ledgerSavingsRecoveryFixture("retained-ledger")
 			if _, _, err := l.ApplyLedgerSavingsRecovery(recovery); err != nil {
 				t.Fatal(err)
@@ -204,6 +204,15 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 			retiredStorageRows(t, l, "retired-v1", "phone-connector-recovery-savings-v1", 0x61)
 			retiredStorageRows(t, l, "retired-v2", "phone-connector-recovery-savings-v2", 0x63)
 			retiredLightStorageRows(t, l)
+			retirementAccount(t, l, "retired-direct", "phone-hww-recovery-savings-v1", 0x75)
+			insertTestVtxoOperation(t, l, testVtxoOperation("retired-direct", "retired-direct-payment", vtxoPurposeSpend, vtxoStateSigned, 1000, 100, l.NowUTC()))
+			// The entire old store is discarded, including any rows attached to a
+			// retained account. Its contents supply no authority or sequence count.
+			for _, id := range []string{"retired-direct", "retained-ledger"} {
+				if _, err := l.db.Exec(`INSERT INTO recovery_session VALUES(?, 'initiate', 'discarded', 0, '51', 'discarded', X'01', 'old', 'old', zeroblob(32))`, id); err != nil {
+					t.Fatal(err)
+				}
+			}
 			sequence, sequenceBytes, count := seedRetirementSequence(t, l)
 			current := reopenRetirement(t, l, path)
 			if version, err := current.SchemaVersion(); err != nil || version != 11 {
@@ -217,7 +226,7 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 			}
 			after := migrationFingerprints(t, current.db)
 			for name, expected := range before {
-				if strings.HasPrefix(name, "connector_") {
+				if strings.HasPrefix(name, "connector_") || name == "recovery_session" || name == "recovery_session:rows" {
 					continue
 				}
 				if after[name] != expected {
@@ -228,7 +237,7 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 			if err != nil || !reflect.DeepEqual(ids, []string{retirementSpendingID, delegationID, renewalID, "retained-board", "retained-ledger"}) {
 				t.Fatal(ids, err)
 			}
-			if hasTable(current.db, "connector_enrollment") || hasTable(current.db, "connector_operation") {
+			if hasTable(current.db, "connector_enrollment") || hasTable(current.db, "connector_operation") || hasTable(current.db, "recovery_session") {
 				t.Fatal("retired stores survived")
 			}
 			if err := current.AttachMonotonic(sequence); err != nil {
@@ -239,7 +248,7 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 				t.Fatal("sequence rewritten", err)
 			}
 			base, present, err := readPolicySequenceBase(current.db, network, testIntegrityKey())
-			if err != nil || !present || base != 8 {
+			if err != nil || !present || base != 9 {
 				t.Fatal("removed row offset", base, present, err)
 			}
 			if n, err := current.currentEconomicSequence(current.db); err != nil || n != count {
@@ -299,7 +308,7 @@ func TestSchemaRetirementRejectsUnauthenticatedSelectionWithoutWrites(t *testing
 	for _, scenario := range []string{"wrong-key", "retained-template", "retired-template", "light-template", "light-retained-template", "light-credential", "credential"} {
 		t.Run(scenario, func(t *testing.T) {
 			l, path := schemaElevenFixture(t, "mainnet")
-			retirementAccount(t, l, "retained", "vault-spending-v1", 0x51)
+			retirementAccount(t, l, "retained", "vaulted-spending-v1", 0x51)
 			retiredStorageRows(t, l, "retired", "phone-connector-recovery-savings-v2", 0x61)
 			retiredLightStorageRows(t, l)
 			key := testIntegrityKey()
@@ -311,11 +320,11 @@ func TestSchemaRetirementRejectsUnauthenticatedSelectionWithoutWrites(t *testing
 					t.Fatal(err)
 				}
 			case "retired-template":
-				if _, err := l.db.Exec(`UPDATE vault SET template_version='vault-spending-v1' WHERE vault_id='retired'`); err != nil {
+				if _, err := l.db.Exec(`UPDATE vault SET template_version='vaulted-spending-v1' WHERE vault_id='retired'`); err != nil {
 					t.Fatal(err)
 				}
 			case "light-template":
-				if _, err := l.db.Exec(`UPDATE vault SET template_version='vault-spending-v1' WHERE vault_id='retired-light'`); err != nil {
+				if _, err := l.db.Exec(`UPDATE vault SET template_version='vaulted-spending-v1' WHERE vault_id='retired-light'`); err != nil {
 					t.Fatal(err)
 				}
 			case "light-retained-template":
@@ -423,7 +432,7 @@ func TestPolicySequenceBaseCannotBeReplacedOrTampered(t *testing.T) {
 	for _, scenario := range []string{"value", "tag", "missing", "network", "key"} {
 		t.Run(scenario, func(t *testing.T) {
 			l, path := schemaElevenFixture(t, "mainnet")
-			retirementAccount(t, l, "retained", "vault-spending-v1", 0x51)
+			retirementAccount(t, l, "retained", "vaulted-spending-v1", 0x51)
 			retiredStorageRows(t, l, "retired", "phone-connector-recovery-savings-v2", 0x61)
 			sequence, _, _ := seedRetirementSequence(t, l)
 			current := reopenRetirement(t, l, path)
@@ -461,7 +470,7 @@ func TestPolicySequenceBaseCannotBeReplacedOrTampered(t *testing.T) {
 
 func TestSchemaRetirementAbortRestoresWholeSource(t *testing.T) {
 	l, _ := schemaElevenFixture(t, "mainnet")
-	retirementAccount(t, l, "retained", "vault-spending-v1", 0x51)
+	retirementAccount(t, l, "retained", "vaulted-spending-v1", 0x51)
 	retiredStorageRows(t, l, "retired", "phone-connector-recovery-savings-v2", 0x61)
 	sequence, raw, _ := seedRetirementSequence(t, l)
 	before := migrationFingerprints(t, l.db)
@@ -543,7 +552,7 @@ func TestFreshSchemaCreatesOnlyCurrentStoresAndSealsOnce(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if hasTable(l.db, "connector_enrollment") || hasTable(l.db, "connector_operation") {
+			if hasTable(l.db, "connector_enrollment") || hasTable(l.db, "connector_operation") || hasTable(l.db, "recovery_session") {
 				t.Fatal("fresh retired store")
 			}
 			// Opening before the first key installation must remain restartable.
@@ -592,7 +601,7 @@ func retiredLightStorageRows(t *testing.T, l *Ledger) {
 
 func TestSchemaRetirementRejectsRedirectedPayment(t *testing.T) {
 	l, path := schemaElevenFixture(t, "mainnet")
-	retirementAccount(t, l, "retained", "vault-spending-v1", 0x51)
+	retirementAccount(t, l, "retained", "vaulted-spending-v1", 0x51)
 	retiredStorageRows(t, l, "retired", "phone-connector-recovery-savings-v2", 0x61)
 	insertTestVtxoOperation(t, l, testVtxoOperation("retained", "signed-payment", vtxoPurposeSpend, vtxoStateSigned, 1000, 100, l.NowUTC()))
 	if _, err := l.db.Exec(`UPDATE vtxo_operation SET vault_id='retired' WHERE operation_id='signed-payment'`); err != nil {

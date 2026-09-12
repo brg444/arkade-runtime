@@ -17,7 +17,7 @@ domains identify separate contracts. Their numeric suffixes are independent.
 Ledger Savings uses `phone-ledger-guardian-savings-v1`. Connector v1 and v2
 are retired from application admission, signing, recovery and HTTP dispatch.
 Schema 12 retires their database tables and authenticated account ownership.
-Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical Light accounts retire with schema 11, and shared stores reject their former fee-only renewal and delegation records. Direct-hardware Savings application paths, covenant builders and outbound signing transport are removed. Its policy stores and account retirement still require completion. Contract Packs still require the coordinated release-baseline update, including
+Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical Light accounts retire with schema 11, and shared stores reject their former fee-only renewal and delegation records. Direct-hardware Savings application paths, covenant builders and outbound signing transport are removed. Schema 12 also removes its recovery store and authenticated accounts. Contract Packs still require the coordinated release-baseline update, including
 the mainnet schema declaration; this branch is not a release candidate.
 
 The runtime holds scoped Guardian capabilities and uses stock Operator and chain

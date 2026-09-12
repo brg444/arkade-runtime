@@ -67,6 +67,7 @@ func validateRetainedSchema(q schemaQuerier, boardSchema string, version int) er
 		// These are hashes of the exact normalized tables in the captured v11
 		// baseline. No current path can create, read or resume their programs.
 		for table, want := range map[string]string{
+			"recovery_session":     "b410e6c4b4c4b0e31262788cfeec582161151fb3513bfebde7b0c32e8356656f",
 			"connector_enrollment": "9b5ee788bc05e37ea70e25b5a4a609d3c516d8aed02f2ba6d5865f037db45ada",
 			"connector_operation":  "fac9226f11fc3b938bf1f0ba53e8794b67b011faba60770342692c6c9920c3fa",
 		} {
