@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
-	"os"
+
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,8 +18,13 @@ import (
 func boardingConflictFixture(t *testing.T) (*Ledger, VaultBoardOperation, VaultBoardAuthorization, VaultBoardConflict) {
 	t.Helper()
 	l := openVaultBoardTestLedger(t, time.Date(2026, 9, 9, 6, 0, 0, 0, time.UTC))
-	createVaultBoardTestEnrollment(t, l, "boarding-conflict", 0x62)
-	operation := vaultBoardTestOperation(t, l, "boarding-conflict", 0x63)
+	return boardingConflictFixtureOn(t, l, "boarding-conflict")
+}
+
+func boardingConflictFixtureOn(t *testing.T, l *Ledger, id string) (*Ledger, VaultBoardOperation, VaultBoardAuthorization, VaultBoardConflict) {
+	t.Helper()
+	createVaultBoardTestEnrollmentForNetwork(t, l, id, 0x62, l.network)
+	operation := vaultBoardTestOperation(t, l, id, 0x63)
 	op, register, _, err := l.BeginVaultBoardAttempt(t.Context(), operation, vaultBoardRegisterRequest(l, 0x64), vaultBoardTestChainState(l))
 	if err != nil {
 		t.Fatal(err)
@@ -174,63 +179,6 @@ func TestVaultBoardConflictSerializesWithLateFinalResult(t *testing.T) {
 	}
 }
 
-func TestVaultBoardConflictMigrationPreservesV8AndRestartEvidence(t *testing.T) {
-	l, op, _, rec := boardingConflictFixture(t)
-	before, _ := l.GetCurrentVaultBoardAttempt(t.Context(), op.OperationID)
-	beforeJSON, _ := json.Marshal(before)
-	count, _ := economicOutflowCount(l.db)
-	if _, err := l.db.Exec(`DROP TABLE ledger_savings_recovery_event; DROP TABLE ledger_savings_enrollment; DROP TABLE vault_board_conflict`); err != nil {
-		t.Fatal(err)
-	}
-	restoreSchemaTenConstraints(t, l)
-	if _, err := l.db.Exec(`UPDATE schema_meta SET version=8`); err != nil {
-		t.Fatal(err)
-	}
-	var seq int
-	var name, path string
-	if err := l.db.QueryRow(`PRAGMA database_list`).Scan(&seq, &name, &path); err != nil {
-		t.Fatal(err)
-	}
-	now := l.NowUTC()
-	if err := l.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopen := func() *Ledger {
-		next, err := OpenLedger(path, func() time.Time { return now })
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := next.SetIntegrityKey(testIntegrityKey()); err != nil {
-			t.Fatal(err)
-		}
-		return next
-	}
-	l = reopen()
-	after, _ := l.GetCurrentVaultBoardAttempt(t.Context(), op.OperationID)
-	afterJSON, _ := json.Marshal(after)
-	if !bytes.Equal(beforeJSON, afterJSON) {
-		t.Fatal("migration changed authenticated history")
-	}
-	if version, err := l.SchemaVersion(); err != nil || version != schemaVersion {
-		t.Fatalf("schema %d %v", version, err)
-	}
-	if got, _ := economicOutflowCount(l.db); got != count {
-		t.Fatal("migration altered sequence")
-	}
-	if err := l.AppendVaultBoardConflict(t.Context(), rec, vaultBoardTestChainState(l)); err != nil {
-		t.Fatal(err)
-	}
-	if err := l.Close(); err != nil {
-		t.Fatal(err)
-	}
-	l = reopen()
-	defer l.Close()
-	after, err := l.GetCurrentVaultBoardAttempt(t.Context(), op.OperationID)
-	if err != nil || len(after.Conflicts) != 1 || after.FinalAuthorization == nil {
-		t.Fatal("restart lost authority or proof")
-	}
-}
-
 func TestVaultBoardConflictDeletionCannotBeMaskedByNewFinalRows(t *testing.T) {
 	l, op, auth, rec := boardingConflictFixture(t)
 	if err := l.AppendVaultBoardConflict(t.Context(), rec, vaultBoardTestChainState(l)); err != nil {
@@ -314,80 +262,5 @@ func TestVaultBoardMissingHistoricalConflictCannotHideBehindOtherOperations(t *t
 	auth.CommitmentTxid = strings.Repeat("dc", 32)
 	if _, _, _, err := l.AppendVaultBoardAuthorizationAndDispatch(t.Context(), auth, vaultBoardTestChainState(l)); err == nil || !strings.Contains(err.Error(), "historical final") {
 		t.Fatalf("unrelated inserts masked missing conflict: %v", err)
-	}
-}
-
-func TestLedgerMigrationPreservesDeployedBoardingConflictAndSequence(t *testing.T) {
-	l, op, _, rec := boardingConflictFixture(t)
-	if err := l.AppendVaultBoardConflict(t.Context(), rec, vaultBoardTestChainState(l)); err != nil {
-		t.Fatal(err)
-	}
-	before, err := l.GetCurrentVaultBoardAttempt(t.Context(), op.OperationID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	beforeJSON, _ := json.Marshal(before)
-	count, err := economicOutflowCount(l.db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sequencePath := filepath.Join(t.TempDir(), "sequence")
-	sequence, err := OpenMonotonic(sequencePath, testIntegrityKey())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sequence.write(count); err != nil {
-		t.Fatal(err)
-	}
-	if err := l.AttachMonotonic(sequence); err != nil {
-		t.Fatal(err)
-	}
-	sequenceBefore, err := os.ReadFile(sequencePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	restoreSchemaTenConstraints(t, l)
-	if _, err := l.db.Exec(`DROP TABLE ledger_savings_recovery_event; DROP TABLE ledger_savings_enrollment; UPDATE schema_meta SET version=9`); err != nil {
-		t.Fatal(err)
-	}
-	var seq int
-	var name, path string
-	if err := l.db.QueryRow(`PRAGMA database_list`).Scan(&seq, &name, &path); err != nil {
-		t.Fatal(err)
-	}
-	now := l.NowUTC()
-	if err := l.Close(); err != nil {
-		t.Fatal(err)
-	}
-	l, err = OpenLedger(path, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	if err := l.SetIntegrityKey(testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	if err := l.AttachMonotonic(sequence); err != nil {
-		t.Fatal(err)
-	}
-	after, err := l.GetCurrentVaultBoardAttempt(t.Context(), op.OperationID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	afterJSON, _ := json.Marshal(after)
-	if !bytes.Equal(beforeJSON, afterJSON) {
-		t.Fatal("migration changed authenticated conflict history")
-	}
-	if got, err := economicOutflowCount(l.db); err != nil || got != count {
-		t.Fatal("economic sequence changed", got, err)
-	}
-	sequenceAfter, err := os.ReadFile(sequencePath)
-	if err != nil || !bytes.Equal(sequenceBefore, sequenceAfter) {
-		t.Fatal("external sequence changed", err)
-	}
-	checks := vaultBoardTestChainState(l)
-	checks.ConflictChecks = [][]byte{after.Conflicts[0].IntegrityMAC}
-	if _, next, created, err := l.BeginVaultBoardAttempt(t.Context(), op, vaultBoardRegisterRequest(l, 0x77), checks); err != nil || !created || next.Attempt != before.FinalAuthorization.Attempt+1 {
-		t.Fatal("verified conflict retry broken after migration", err)
 	}
 }

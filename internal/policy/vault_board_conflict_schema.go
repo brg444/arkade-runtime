@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"database/sql"
 	"fmt"
 )
 
@@ -15,26 +14,7 @@ const createVaultBoardConflictSchema = `CREATE TABLE vault_board_conflict (
  FOREIGN KEY (operation_id, attempt, phase) REFERENCES vault_board_authorization(operation_id, attempt, phase)
 )`
 
-func applyVaultBoardConflictMigration(db *sql.DB) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(createVaultBoardConflictSchema); err != nil {
-		return err
-	}
-	result, err := tx.Exec(`UPDATE schema_meta SET version=9 WHERE version=8`)
-	if err != nil {
-		return err
-	}
-	if n, err := result.RowsAffected(); err != nil || n != 1 {
-		return fmt.Errorf("boarding conflict recovery requires schema 8")
-	}
-	return tx.Commit()
-}
-
-func validateVaultBoardConflictSchema(db *sql.DB) error {
+func validateVaultBoardConflictSchema(db schemaQuerier) error {
 	var actual string
 	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='vault_board_conflict'`).Scan(&actual); err != nil {
 		return err

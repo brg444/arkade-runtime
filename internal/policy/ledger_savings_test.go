@@ -157,48 +157,6 @@ func TestLedgerSavingsRecoveryJournalAuthenticatesBeforeFiltering(t *testing.T) 
 		t.Fatal("hidden conflict was trusted", err)
 	}
 }
-func TestLedgerSavingsMigrationPreservesVersionNineRows(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "migration.sqlite")
-	l, err := OpenLedger(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := l.SetIntegrityKey(testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	createPolicyTestVault(t, l, "legacy-vault", 92)
-	before, _, err := l.LoadVerifiedVault("legacy-vault", testIntegrityKey())
-	if err != nil {
-		t.Fatal(err)
-	}
-	restoreSchemaTenConstraints(t, l)
-	for _, statement := range []string{`DROP TABLE ledger_savings_recovery_event`, `DROP TABLE ledger_savings_enrollment`, `UPDATE schema_meta SET version=9`} {
-		if _, err := l.db.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := l.Close(); err != nil {
-		t.Fatal(err)
-	}
-	migrated, err := OpenLedger(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer migrated.Close()
-	if err := migrated.SetIntegrityKey(testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	after, _, err := migrated.LoadVerifiedVault("legacy-vault", testIntegrityKey())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(before.IntegrityMAC, after.IntegrityMAC) || VaultRecordsCanonicallyEqual(*before, *after) != nil {
-		t.Fatal("legacy vault changed during additive migration")
-	}
-	if version, err := migrated.SchemaVersion(); err != nil || version != schemaVersion {
-		t.Fatal("migration version", version, err)
-	}
-}
 
 func TestLedgerSavingsRecoveryCompletionMustMatchReservation(t *testing.T) {
 	l, rec := ledgerSavingsPolicyFixture(t)

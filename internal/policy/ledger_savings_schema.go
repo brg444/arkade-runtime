@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -21,25 +20,7 @@ CREATE TABLE ledger_savings_recovery_event (
 );
 `
 
-func applyLedgerSavingsMigration(db *sql.DB) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(createLedgerSavingsSchema); err != nil {
-		return err
-	}
-	result, err := tx.Exec(`UPDATE schema_meta SET version=10 WHERE version=9`)
-	if err != nil {
-		return err
-	}
-	if n, err := result.RowsAffected(); err != nil || n != 1 {
-		return fmt.Errorf("Ledger Savings requires schema9")
-	}
-	return tx.Commit()
-}
-func validateLedgerSavingsSchema(db *sql.DB) error {
+func validateLedgerSavingsSchema(db schemaQuerier) error {
 	for _, statement := range strings.Split(strings.TrimSpace(createLedgerSavingsSchema), ";") {
 		statement = strings.TrimSpace(statement)
 		if statement == "" {

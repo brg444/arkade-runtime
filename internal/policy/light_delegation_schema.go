@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -22,25 +21,7 @@ CREATE TABLE light_delegation_event (
 );
 `
 
-func applyLightDelegationMigration(db *sql.DB) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err = tx.Exec(createLightDelegationSchema); err != nil {
-		return err
-	}
-	r, err := tx.Exec(`UPDATE schema_meta SET version=5 WHERE version=4`)
-	if err != nil {
-		return err
-	}
-	if n, err := r.RowsAffected(); err != nil || n != 1 {
-		return fmt.Errorf("delegation requires schema 4")
-	}
-	return tx.Commit()
-}
-func validateLightDelegationSchema(db *sql.DB) error {
+func validateLightDelegationSchema(db schemaQuerier) error {
 	for _, statement := range strings.Split(strings.TrimSpace(createLightDelegationSchema), ";") {
 		statement = strings.TrimSpace(statement)
 		if statement == "" {

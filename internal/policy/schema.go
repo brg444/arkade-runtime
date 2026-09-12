@@ -3,21 +3,14 @@ package policy
 import (
 	"database/sql"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/brg444/arkade-runtime/internal/program"
 )
 
-const schemaVersion = 11
-const connectorSchemaVersion = 3
-const recoveryBackupSchemaVersion = 4
-const legacySchemaVersion = 1
-
-// lightSchemaVersion is the last version without the connector stores.
-// Databases at this version migrate forward; only schemaVersion opens clean.
-const lightSchemaVersion = 2
+const schemaVersion = 12
+const previousSchemaVersion = 11
 
 var boardingTables = []string{
 	"vault_board_authorization",
@@ -190,8 +183,8 @@ CREATE INDEX vault_board_authorization_phase ON vault_board_authorization(phase,
 CREATE INDEX vault_board_operation_vault ON vault_board_operation(vault_id, created_at);
 `
 
-// OpenLedger opens the current schema, applying only the explicit additive
-// migrations from structurally verified prior baselines.
+// OpenLedger creates or validates the current schema. A verified version-11
+// database completes its retirement migration when the integrity key is installed.
 func OpenLedger(path string, clock Clock) (*Ledger, error) {
 	return OpenLedgerForNetwork(path, clock, program.NetworkMutinynet)
 }
@@ -228,56 +221,7 @@ func OpenLedgerForNetwork(path string, clock Clock, network string) (*Ledger, er
 	return &Ledger{db: db, clock: clock, network: network}, nil
 }
 
-func initializeOrValidateLegacySchema(db *sql.DB, boardSchema string) error {
-	tables, err := applicationTables(db)
-	if err != nil {
-		return err
-	}
-	if len(tables) == 0 {
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-		if _, err := tx.Exec(createMultiTenantSchema + createVtxoSchema + boardSchema); err != nil {
-			return fmt.Errorf("create vault schema: %w", err)
-		}
-		if _, err := tx.Exec(`INSERT INTO schema_meta (version) VALUES (?)`, legacySchemaVersion); err != nil {
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-		tables = append(append([]string(nil), coreTables...), boardingTables...)
-	}
-	want := append(append([]string(nil), coreTables...), boardingTables...)
-	sort.Strings(want)
-	if !sameStrings(tables, want) {
-		return fmt.Errorf("database is not the current vault baseline: tables %v", tables)
-	}
-	if err := validateVaultSchemaObjects(db, false); err != nil {
-		return err
-	}
-	ver, rows, err := schemaMetaState(db)
-	if err != nil {
-		return err
-	}
-	if rows != 1 || ver != legacySchemaVersion {
-		return fmt.Errorf("database is not the current vault baseline: schema version %d", ver)
-	}
-	if err := validateMultiTenantSchemaOn(db); err != nil {
-		return err
-	}
-	if err := validateBoardingTables(db, boardSchema); err != nil {
-		return err
-	}
-	if err := requireForeignKeysEnabled(db); err != nil {
-		return err
-	}
-	return requireForeignKeyCheckClean(db)
-}
-
-func validateBoardingTables(db *sql.DB, boardSchema string) error {
+func validateBoardingTables(db schemaQuerier, boardSchema string) error {
 	for _, table := range boardingTables {
 		wantStruct := expectedBoardingTables[table]
 		cols, err := readTableXInfo(db, table)
@@ -335,51 +279,24 @@ func matchVaultBoardIndexes(table string, got, want []idxSpec) error {
 	return nil
 }
 
-func validateVaultSchemaObjects(db *sql.DB, renewal bool) error {
-	return validateVaultSchemaObjectsInner(db, renewal, false, false)
-}
-
-func validateVaultSchemaObjectsV3(db *sql.DB) error {
-	return validateVaultSchemaObjectsInner(db, true, true, false)
-}
-
-func validateVaultSchemaObjectsV4(db *sql.DB) error {
-	return validateVaultSchemaObjectsInner(db, true, true, true)
-}
-
-func validateVaultSchemaObjectsInner(db *sql.DB, renewal, connector, backup bool, delegation ...bool) error {
+func validateVaultSchemaObjects(q schemaQuerier, previous bool) error {
 	want := append([]string(nil), coreTables...)
 	for i, table := range want {
 		want[i] = "table:" + table
 	}
 	want = append(want,
-		"table:vault_board_authorization", "table:vault_board_enrollment",
-		"table:vault_board_dispatch", "table:vault_board_operation", "table:vault_board_submission",
-		"index:vault_credential_vault", "index:vtxo_operation_input_outpoint",
-		"index:vtxo_operation_vault_state_created", "index:vtxo_operation_vault_state_expiry",
+		"table:vault_board_authorization", "table:vault_board_enrollment", "table:vault_board_dispatch", "table:vault_board_operation", "table:vault_board_submission",
+		"table:light_renewal_operation", "table:light_renewal_event", "table:light_delegation_operation", "table:light_delegation_event",
+		"table:recovery_backup", "table:vault_board_conflict", "table:ledger_savings_enrollment", "table:ledger_savings_recovery_event",
+		"index:vault_credential_vault", "index:vtxo_operation_input_outpoint", "index:vtxo_operation_vault_state_created", "index:vtxo_operation_vault_state_expiry",
 		"index:vault_board_authorization_phase", "index:vault_board_operation_vault",
 	)
-	if renewal {
-		want = append(want, "table:light_renewal_operation", "table:light_renewal_event")
+	if previous {
+		want = append(want, "table:connector_enrollment", "table:connector_operation")
+	} else {
+		want = append(want, "table:policy_sequence_base")
 	}
-	if backup {
-		want = append(want, "table:recovery_backup")
-	}
-	if len(delegation) > 0 && delegation[0] {
-		want = append(want, "table:light_delegation_operation", "table:light_delegation_event")
-	}
-	if len(delegation) > 1 && delegation[1] {
-		want = append(want, "table:vault_board_conflict")
-	}
-	if len(delegation) > 2 && delegation[2] {
-		want = append(want, "table:ledger_savings_enrollment", "table:ledger_savings_recovery_event")
-	}
-	if connector {
-		want = append(want,
-			"table:connector_enrollment", "table:connector_operation",
-		)
-	}
-	rows, err := db.Query(`SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','index','trigger','view') AND (type != 'index' OR sql IS NOT NULL) ORDER BY type, name`)
+	rows, err := q.Query(`SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','index','trigger','view') AND (type != 'index' OR sql IS NOT NULL) ORDER BY type, name`)
 	if err != nil {
 		return err
 	}

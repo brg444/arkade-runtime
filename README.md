@@ -35,8 +35,9 @@ retained operation state.
 
 The Guardian's allowance ledger and signing capability share one process.
 Rows are authenticated before use, and economic state changes advance an
-independent policy sequence. SQLite schema 11 includes validated forward
-migrations from supported earlier schemas.
+independent policy sequence. SQLite schema 12 removes connector storage through
+an authenticated upgrade from the exact schema 11 baseline; see the
+[retirement contract](docs/ledger-schema-migration.md).
 
 Spending requires the owner and Arkade Operator in addition to the Guardian.
 Ledger Savings uses the enrolled phone, hardware and Guardian key origins;

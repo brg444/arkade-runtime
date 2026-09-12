@@ -1,0 +1,162 @@
+[
+  {
+    "name": "connector_enrollment",
+    "sql": "CREATE TABLE connector_enrollment (\n  vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),\n  connector_type TEXT NOT NULL CHECK (connector_type IN ('p2tr', 'p2wpkh')),\n  connector_pub BLOB NOT NULL CHECK (length(connector_pub) = 33),\n  fingerprint INTEGER NOT NULL CHECK (fingerprint \u003e= 0 AND fingerprint \u003c= 4294967295),\n  path TEXT NOT NULL CHECK (length(path) \u003e 0 AND length(path) \u003c= 512),\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "connector_operation",
+    "sql": "CREATE TABLE connector_operation (\n  operation_id TEXT PRIMARY KEY CHECK (length(operation_id) = 32),\n  vault_id TEXT NOT NULL REFERENCES connector_enrollment(vault_id),\n  savings_txid TEXT NOT NULL CHECK (length(savings_txid) = 64),\n  savings_vout INTEGER NOT NULL CHECK (savings_vout \u003e= 0 AND savings_vout \u003c= 4294967295),\n  connector_txid TEXT NOT NULL CHECK (length(connector_txid) = 64),\n  connector_vout INTEGER NOT NULL CHECK (connector_vout \u003e= 0 AND connector_vout \u003c= 4294967295),\n  dest_script TEXT NOT NULL CHECK (length(dest_script) \u003e 0 AND length(dest_script) \u003c= 20000),\n  amount_sats INTEGER NOT NULL CHECK (amount_sats \u003e= 0),\n  fee_sats INTEGER NOT NULL CHECK (fee_sats \u003e= 0),\n  connector_script BLOB NOT NULL CHECK (length(connector_script) IN (22, 34)),\n  candidate_psbt TEXT NOT NULL CHECK (length(candidate_psbt) \u003e 0 AND length(candidate_psbt) \u003c= 131072),\n  last_sighash TEXT NOT NULL CHECK (length(last_sighash) = 64),\n  guardian_psbt TEXT NOT NULL CHECK (length(guardian_psbt) \u003c= 131072),\n  emulator_psbt TEXT NOT NULL CHECK (length(emulator_psbt) \u003c= 131072),\n  phase TEXT NOT NULL CHECK (phase IN ('authorized', 'guardian_signed', 'emulator_signed')),\n  resolution TEXT NOT NULL CHECK (resolution IN ('none', 'confirmed', 'conflicted')),\n  resolution_txid TEXT NOT NULL CHECK (length(resolution_txid) IN (0, 64)),\n  resolution_block_hash TEXT NOT NULL CHECK (length(resolution_block_hash) IN (0, 64)),\n  resolution_block_height INTEGER NOT NULL CHECK (resolution_block_height \u003e= 0),\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "invite",
+    "sql": "CREATE TABLE invite (\n  token_hash BLOB PRIMARY KEY CHECK (length(token_hash) = 32),\n  expires_at TEXT NOT NULL,\n  consumed_vault_id TEXT UNIQUE REFERENCES vault(vault_id),\n  created_at TEXT NOT NULL\n)",
+    "type": "table"
+  },
+  {
+    "name": "ledger_savings_enrollment",
+    "sql": "CREATE TABLE ledger_savings_enrollment (\n vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),\n context_json BLOB NOT NULL CHECK(length(context_json)\u003e0 AND length(context_json)\u003c=8192),\n descriptor_hash TEXT NOT NULL CHECK(length(descriptor_hash)=64),\n integrity_mac BLOB NOT NULL CHECK(length(integrity_mac)=32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "ledger_savings_recovery_event",
+    "sql": "CREATE TABLE ledger_savings_recovery_event (\n event_id INTEGER PRIMARY KEY CHECK(event_id\u003e0),\n vault_id TEXT NOT NULL REFERENCES ledger_savings_enrollment(vault_id),\n record BLOB NOT NULL CHECK(length(record)\u003e0 AND length(record)\u003c=393216),\n integrity_mac BLOB NOT NULL CHECK(length(integrity_mac)=32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "light_delegation_event",
+    "sql": "CREATE TABLE light_delegation_event (\n operation_id TEXT NOT NULL REFERENCES light_delegation_operation(operation_id),\n phase TEXT NOT NULL,\n payload TEXT NOT NULL CHECK (length(payload) \u003e 0 AND length(payload) \u003c= 8000000),\n integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n PRIMARY KEY (operation_id,phase)\n)",
+    "type": "table"
+  },
+  {
+    "name": "light_delegation_operation",
+    "sql": "CREATE TABLE light_delegation_operation (\n operation_id TEXT PRIMARY KEY,\n vault_id TEXT NOT NULL REFERENCES vault(vault_id),\n payload TEXT NOT NULL CHECK (length(payload) \u003e 0 AND length(payload) \u003c= 131072),\n integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "light_renewal_event",
+    "sql": "CREATE TABLE light_renewal_event (\n operation_id TEXT NOT NULL REFERENCES light_renewal_operation(operation_id),\n phase TEXT NOT NULL CHECK (phase IN ('register_authorized','register_dispatched','register_result','final_authorized','final_dispatched','final_result','confirmed','delete_authorized','delete_dispatched','delete_result','released','cancelled')),\n payload TEXT NOT NULL CHECK (length(payload) \u003e 0 AND length(payload) \u003c= 1048576),\n integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n PRIMARY KEY (operation_id, phase)\n)",
+    "type": "table"
+  },
+  {
+    "name": "light_renewal_operation",
+    "sql": "CREATE TABLE light_renewal_operation (\n operation_id TEXT PRIMARY KEY,\n vault_id TEXT NOT NULL REFERENCES vault(vault_id),\n payload TEXT NOT NULL CHECK (length(payload) \u003e 0 AND length(payload) \u003c= 16384),\n integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "pending_enrollment",
+    "sql": "CREATE TABLE \"pending_enrollment\" (\n  handle TEXT PRIMARY KEY,\n  vault_id TEXT NOT NULL UNIQUE,\n  token_hash BLOB NOT NULL UNIQUE CHECK (length(token_hash) = 32) REFERENCES invite(token_hash),\n  challenge BLOB NOT NULL,\n  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('light', 'standard', 'advanced')),\n  policy_digest BLOB NOT NULL CHECK (length(policy_digest) = 32),\n  expires_at TEXT NOT NULL,\n  created_at TEXT NOT NULL\n)",
+    "type": "table"
+  },
+  {
+    "name": "recovery_backup",
+    "sql": "CREATE TABLE recovery_backup (\n vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),\n revision INTEGER NOT NULL CHECK (revision \u003e 0),\n payload TEXT NOT NULL CHECK (length(payload) \u003e 0 AND length(payload) \u003c= 3000000),\n integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "recovery_session",
+    "sql": "CREATE TABLE recovery_session (\n  vault_id TEXT NOT NULL REFERENCES vault(vault_id),\n  purpose TEXT NOT NULL CHECK (purpose IN ('initiate', 'clawback')),\n  input_txid TEXT NOT NULL,\n  input_vout INTEGER NOT NULL,\n  dest_script TEXT NOT NULL,\n  last_sighash TEXT,\n  signature BLOB,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  PRIMARY KEY (vault_id, input_txid, input_vout, purpose)\n)",
+    "type": "table"
+  },
+  {
+    "name": "schema_meta",
+    "sql": "CREATE TABLE schema_meta (\n  version INTEGER PRIMARY KEY\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault",
+    "sql": "CREATE TABLE \"vault\" (\n  vault_id TEXT PRIMARY KEY,\n  template_version TEXT NOT NULL,\n  policy_version TEXT NOT NULL,\n  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('light', 'standard', 'advanced')),\n  network TEXT NOT NULL,\n  rp_id TEXT NOT NULL,\n  origin TEXT NOT NULL,\n  phone_bip340_compressed BLOB NOT NULL,\n  phone_direct_p256_compressed BLOB NOT NULL,\n  external_owner_wallet_compressed BLOB NOT NULL,\n  recovery_key_compressed BLOB,\n  vault_cosigner_base_compressed BLOB NOT NULL,\n  arkade_cosigner_base_compressed BLOB NOT NULL,\n  arkade_cosigner_origin TEXT NOT NULL,\n  arkade_cosigner_version TEXT NOT NULL,\n  cosigner_mode TEXT NOT NULL CHECK (cosigner_mode = 'hkdf-sha256-v1'),\n  savings_address TEXT NOT NULL,\n  savings_script BLOB NOT NULL,\n  recipient_dust_sats INTEGER NOT NULL,\n  tx_recipient_cap_sats INTEGER NOT NULL,\n  period_allowance_sats INTEGER NOT NULL,\n  absolute_fee_cap_sats INTEGER NOT NULL,\n  feerate_cap_sat_vb INTEGER NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  CHECK (\n    (protection_tier IN ('light', 'standard') AND recovery_key_compressed IS NULL)\n    OR (protection_tier = 'advanced' AND length(recovery_key_compressed) = 33)\n  )\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_board_authorization",
+    "sql": "CREATE TABLE vault_board_authorization (\n  operation_id TEXT NOT NULL REFERENCES vault_board_operation(operation_id),\n  attempt INTEGER NOT NULL CHECK (attempt \u003e= 0 AND attempt \u003c= 4294967295),\n  phase TEXT NOT NULL CHECK (phase IN ('register', 'delete', 'finalize')),\n  request_digest BLOB NOT NULL CHECK (length(request_digest) = 32),\n  tree_session_pub BLOB CHECK (tree_session_pub IS NULL OR length(tree_session_pub) = 33),\n  receiver_sats INTEGER NOT NULL CHECK (receiver_sats \u003e= 0),\n  fee_sats INTEGER NOT NULL CHECK (fee_sats \u003e= 0),\n  expire_at INTEGER NOT NULL CHECK (expire_at \u003e= 0),\n  commitment_txid TEXT NOT NULL CHECK (length(commitment_txid) IN (0, 64)),\n  receiver_txid TEXT NOT NULL CHECK (length(receiver_txid) IN (0, 64)),\n  receiver_vout INTEGER NOT NULL CHECK (receiver_vout \u003e= 0 AND receiver_vout \u003c= 4294967295),\n  created_at TEXT NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  PRIMARY KEY (operation_id, attempt, phase),\n  CHECK (\n    (phase = 'register' AND expire_at \u003e 0 AND tree_session_pub IS NOT NULL AND length(tree_session_pub) = 33 AND receiver_sats \u003e 0 AND length(commitment_txid) = 0 AND length(receiver_txid) = 0 AND receiver_vout = 0)\n    OR (phase = 'delete' AND expire_at \u003e 0 AND tree_session_pub IS NULL AND receiver_sats = 0 AND fee_sats = 0 AND length(commitment_txid) = 0 AND length(receiver_txid) = 0 AND receiver_vout = 0)\n    OR (phase = 'finalize' AND expire_at = 0 AND tree_session_pub IS NULL AND receiver_sats = 0 AND fee_sats = 0 AND length(commitment_txid) = 64 AND length(receiver_txid) = 64)\n  )\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_board_conflict",
+    "sql": "CREATE TABLE vault_board_conflict (\n operation_id TEXT NOT NULL,\n attempt INTEGER NOT NULL CHECK (attempt \u003e= 0 AND attempt \u003c= 4294967295),\n phase TEXT NOT NULL CHECK (phase = 'finalize'),\n payload TEXT NOT NULL CHECK (length(payload) \u003e 0 AND length(payload) \u003c= 1048576),\n integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n PRIMARY KEY (operation_id, attempt),\n FOREIGN KEY (operation_id, attempt, phase) REFERENCES vault_board_authorization(operation_id, attempt, phase)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_board_dispatch",
+    "sql": "CREATE TABLE vault_board_dispatch (\n\toperation_id TEXT NOT NULL,\n\tattempt INTEGER NOT NULL,\n\tphase TEXT NOT NULL,\n\trequest_digest BLOB NOT NULL CHECK (length(request_digest) = 32),\n\tcreated_at TEXT NOT NULL,\n\tintegrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n\tPRIMARY KEY (operation_id, attempt, phase),\n\tFOREIGN KEY (operation_id, attempt, phase) REFERENCES vault_board_authorization(operation_id, attempt, phase)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_board_enrollment",
+    "sql": "CREATE TABLE vault_board_enrollment (\n  vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),\n  program TEXT NOT NULL CHECK (program = 'vault-board-v1'),\n  boarding_pub BLOB NOT NULL CHECK (length(boarding_pub) = 33),\n  cosigner_pub BLOB NOT NULL CHECK (length(cosigner_pub) = 33),\n  operator_pub BLOB NOT NULL CHECK (length(operator_pub) = 33),\n  exit_delay INTEGER NOT NULL CHECK (exit_delay = 604672),\n  exit_delay_unit TEXT NOT NULL CHECK (exit_delay_unit = 'seconds'),\n  pk_script BLOB NOT NULL CHECK (length(pk_script) = 34),\n  address TEXT NOT NULL CHECK (length(address) \u003e 0 AND length(address) \u003c= 128),\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_board_operation",
+    "sql": "CREATE TABLE vault_board_operation (\n  operation_id TEXT PRIMARY KEY,\n  vault_id TEXT NOT NULL REFERENCES vault_board_enrollment(vault_id),\n  txid BLOB NOT NULL CHECK (length(txid) = 32),\n  vout INTEGER NOT NULL CHECK (vout \u003e= 0 AND vout \u003c= 4294967295),\n  value_sats INTEGER NOT NULL CHECK (value_sats \u003e 0),\n  boarding_script BLOB NOT NULL CHECK (length(boarding_script) = 34),\n  receiver_script BLOB NOT NULL CHECK (length(receiver_script) \u003e 0 AND length(receiver_script) \u003c= 10000),\n  sequence_anchor_mtp INTEGER NOT NULL CHECK (sequence_anchor_mtp \u003e 0),\n  created_at TEXT NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  UNIQUE (vault_id, txid, vout)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_board_submission",
+    "sql": "CREATE TABLE vault_board_submission (\n  operation_id TEXT NOT NULL,\n  attempt INTEGER NOT NULL,\n  phase TEXT NOT NULL,\n  request_digest BLOB NOT NULL CHECK (length(request_digest) = 32),\n  outcome TEXT NOT NULL CHECK (outcome IN ('submitted', 'released', 'rejected')),\n  operator_ref TEXT NOT NULL CHECK (length(operator_ref) \u003c= 256),\n  commitment_txid TEXT NOT NULL CHECK (length(commitment_txid) IN (0, 64)),\n\treceiver_txid TEXT NOT NULL CHECK (length(receiver_txid) IN (0, 64)),\n\treceiver_vout INTEGER NOT NULL CHECK (receiver_vout \u003e= 0 AND receiver_vout \u003c= 4294967295),\n  created_at TEXT NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  PRIMARY KEY (operation_id, attempt, phase),\n  FOREIGN KEY (operation_id, attempt, phase) REFERENCES vault_board_authorization(operation_id, attempt, phase),\n\tFOREIGN KEY (operation_id, attempt, phase) REFERENCES vault_board_dispatch(operation_id, attempt, phase),\n  CHECK (\n\t\t(phase = 'register' AND ((outcome = 'submitted' AND length(operator_ref) \u003e 0) OR (outcome = 'rejected' AND length(operator_ref) = 0)) AND length(commitment_txid) = 0 AND length(receiver_txid) = 0 AND receiver_vout = 0)\n\t\tOR (phase = 'delete' AND outcome = 'released' AND length(operator_ref) = 0 AND length(commitment_txid) = 0 AND length(receiver_txid) = 0 AND receiver_vout = 0)\n\t\tOR (phase = 'finalize' AND outcome = 'submitted' AND length(operator_ref) = 0 AND length(commitment_txid) = 64 AND length(receiver_txid) = 64)\n  )\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_credential",
+    "sql": "CREATE TABLE vault_credential (\n  credential_id BLOB PRIMARY KEY,\n  vault_id TEXT NOT NULL REFERENCES vault(vault_id),\n  webauthn_p256_compressed BLOB NOT NULL,\n  user_handle BLOB,\n  resident INTEGER NOT NULL CHECK (resident IN (0, 1)),\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_envelope",
+    "sql": "CREATE TABLE vault_envelope (\n  vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),\n  version INTEGER NOT NULL CHECK (version = 2),\n  binding TEXT NOT NULL CHECK (length(binding) \u003e 0 AND length(binding) \u003c= 16384),\n  nonce BLOB NOT NULL CHECK (length(nonce) = 12),\n  ciphertext BLOB NOT NULL CHECK (length(ciphertext) = 48),\n  direct_signature BLOB NOT NULL CHECK (length(direct_signature) = 64),\n  phone_signature BLOB NOT NULL CHECK (length(phone_signature) = 64),\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_map",
+    "sql": "CREATE TABLE vault_map (\n  vault_id TEXT PRIMARY KEY REFERENCES vault(vault_id),\n  kit_hash TEXT NOT NULL CHECK (length(kit_hash) = 64),\n  payload TEXT NOT NULL CHECK (length(payload) \u003e 0 AND length(payload) \u003c= 98304),\n  updated_at TEXT NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vtxo_operation",
+    "sql": "CREATE TABLE vtxo_operation (\n  operation_id TEXT PRIMARY KEY,\n  vault_id TEXT NOT NULL REFERENCES vault(vault_id),\n  purpose TEXT NOT NULL CHECK (purpose = 'spend'),\n  bundle_digest BLOB NOT NULL CHECK (length(bundle_digest) = 32),\n  state TEXT NOT NULL CHECK (state IN ('reserved', 'signed', 'submitted', 'finalized', 'aborted', 'unresolved')),\n  amount_sats INTEGER NOT NULL CHECK (amount_sats \u003e= 0),\n  fee_sats INTEGER NOT NULL CHECK (fee_sats \u003e= 0),\n  fee_policy_digest BLOB NOT NULL CHECK (length(fee_policy_digest) = 32),\n  dest_script BLOB,\n  change_script BLOB,\n  change_sats INTEGER NOT NULL CHECK (change_sats \u003e= 0),\n  change_vout INTEGER CHECK (change_vout \u003e= 0),\n  unsigned_psbt TEXT,\n  authorized_psbt TEXT,\n  pending_proof_digest BLOB CHECK (pending_proof_digest IS NULL OR length(pending_proof_digest) = 32),\n  authorized_pending_proof TEXT,\n  checkpoint_psbts TEXT,\n  checkpoint_request_psbts TEXT,\n  checkpoint_tapscript BLOB,\n  ark_txid TEXT,\n  expires_at TEXT,\n  created_at TEXT NOT NULL,\n  last_dest_script BLOB,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  CHECK (\n    (change_sats = 0 AND change_vout IS NULL AND (change_script IS NULL OR length(change_script) = 0))\n    OR (change_sats \u003e= 330 AND change_vout = 1 AND change_script IS NOT NULL AND length(change_script) \u003e 0)\n  ),\n  CHECK (\n    (pending_proof_digest IS NULL AND (authorized_pending_proof IS NULL OR length(authorized_pending_proof) = 0))\n    OR (length(pending_proof_digest) = 32 AND authorized_pending_proof IS NOT NULL AND length(authorized_pending_proof) \u003e 0)\n  )\n)",
+    "type": "table"
+  },
+  {
+    "name": "vtxo_operation_input",
+    "sql": "CREATE TABLE vtxo_operation_input (\n  operation_id TEXT NOT NULL REFERENCES vtxo_operation(operation_id),\n  txid BLOB NOT NULL CHECK (length(txid) = 32),\n  vout INTEGER NOT NULL CHECK (vout \u003e= 0),\n  value_sats INTEGER NOT NULL CHECK (value_sats \u003e= 0),\n  script BLOB,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  PRIMARY KEY (operation_id, txid, vout)\n)",
+    "type": "table"
+  },
+  {
+    "name": "webauthn_sign_count",
+    "sql": "CREATE TABLE webauthn_sign_count (\n  vault_id TEXT NOT NULL REFERENCES vault(vault_id),\n  credential_id BLOB NOT NULL,\n  sign_count INTEGER NOT NULL CHECK (sign_count \u003e= 0),\n  updated_at TEXT NOT NULL,\n  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),\n  PRIMARY KEY (vault_id, credential_id)\n)",
+    "type": "table"
+  },
+  {
+    "name": "vault_board_authorization_phase",
+    "sql": "CREATE INDEX vault_board_authorization_phase ON vault_board_authorization(phase, created_at)",
+    "type": "index"
+  },
+  {
+    "name": "vault_board_operation_vault",
+    "sql": "CREATE INDEX vault_board_operation_vault ON vault_board_operation(vault_id, created_at)",
+    "type": "index"
+  },
+  {
+    "name": "vault_credential_vault",
+    "sql": "CREATE INDEX vault_credential_vault ON vault_credential(vault_id)",
+    "type": "index"
+  },
+  {
+    "name": "vtxo_operation_input_outpoint",
+    "sql": "CREATE INDEX vtxo_operation_input_outpoint ON vtxo_operation_input(txid, vout, operation_id)",
+    "type": "index"
+  },
+  {
+    "name": "vtxo_operation_vault_state_created",
+    "sql": "CREATE INDEX vtxo_operation_vault_state_created ON vtxo_operation(vault_id, state, created_at)",
+    "type": "index"
+  },
+  {
+    "name": "vtxo_operation_vault_state_expiry",
+    "sql": "CREATE INDEX vtxo_operation_vault_state_expiry ON vtxo_operation(vault_id, state, expires_at)",
+    "type": "index"
+  }
+]

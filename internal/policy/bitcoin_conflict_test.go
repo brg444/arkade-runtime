@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"bytes"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -33,29 +32,6 @@ func TestBitcoinConflictReleaseFencesAndRetainsEvidence(t *testing.T) {
 			before, err := l.GetLightRenewal(t.Context(), op.OperationID)
 			if err != nil {
 				t.Fatal(err)
-			}
-			// The reader fence changes only the version, never authenticated records.
-			var payload string
-			var mac []byte
-			if err := l.db.QueryRow(`SELECT payload,integrity_mac FROM light_renewal_operation`).Scan(&payload, &mac); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := l.db.Exec(`UPDATE schema_meta SET version=7`); err != nil {
-				t.Fatal(err)
-			}
-			if err := applyBitcoinConflictMigration(l.db); err != nil {
-				t.Fatal(err)
-			}
-			var afterPayload string
-			var afterMAC []byte
-			if err := l.db.QueryRow(`SELECT payload,integrity_mac FROM light_renewal_operation`).Scan(&afterPayload, &afterMAC); err != nil {
-				t.Fatal(err)
-			}
-			if payload != afterPayload || !bytes.Equal(mac, afterMAC) {
-				t.Fatal("migration rewrote authenticated operation")
-			}
-			if version, err := l.SchemaVersion(); err != nil || version != 8 {
-				t.Fatalf("schema %d: %v", version, err)
 			}
 			if _, created, err := l.AppendLightRenewalEvent(t.Context(), event, nil, 0); err != nil || !created {
 				t.Fatalf("release %v %v", created, err)

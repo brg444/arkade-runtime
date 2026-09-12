@@ -64,7 +64,7 @@ migration changes only the schema version, preserving authenticated rows and
 the independent policy sequence. Install the compatible Guardian before the
 wallet deployment, preserve a stopped-service backup of both stores, and use
 only binaries compatible with the current database schema for subsequent rollback.
-Boarding conflict recovery adds schema 9 and its own authenticated conflict history. Never clear the
+Boarding conflict recovery retains its authenticated conflict history in schema 12. Never clear the
 pending record or rewind the policy sequence manually.
 
 Tests cover one- and two-output Bitcoin payments, persisted final evidence across a

@@ -3,11 +3,11 @@ package policy
 import (
 	"bytes"
 	"context"
-	"database/sql"
+
 	"encoding/hex"
 	"errors"
 	"path/filepath"
-	"reflect"
+
 	"strings"
 	"sync"
 	"testing"
@@ -265,44 +265,7 @@ func TestLightDelegationTamperCannotHideOwnership(t *testing.T) {
 		})
 	}
 }
-func TestLightDelegationSchema4MigrationPreservesRows(t *testing.T) {
-	path, _, _ := populatedV2Database(t)
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(`PRAGMA foreign_keys=ON`); err != nil {
-		t.Fatal(err)
-	}
-	if err := applyConnectorMigration(db, 2, 3); err != nil {
-		t.Fatal(err)
-	}
-	if err := applyRecoveryBackupMigration(db); err != nil {
-		t.Fatal(err)
-	}
-	if err := validateV4Baseline(db, createVaultBoardSchema); err != nil {
-		t.Fatal(err)
-	}
-	before := connectorMigrationRows(t, db)
-	count, err := economicOutflowCount(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	l, err := OpenLedger(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	if !reflect.DeepEqual(before, connectorMigrationRows(t, l.db)) {
-		t.Fatal("old rows changed")
-	}
-	after, err := economicOutflowCount(l.db)
-	if err != nil || after != count {
-		t.Fatal(after, count, err)
-	}
-}
+
 func TestLightDelegationRestartRetainsSingleTranscript(t *testing.T) {
 	l, now, o := delegationFixture(t)
 	stageDelegation(t, l, o, "nonces_committed")
