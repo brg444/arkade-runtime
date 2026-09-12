@@ -211,30 +211,6 @@
       "OPTIONS",
       "POST"
     ],
-    "/v1/vtxo/savings-setup/final": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/info": [
-      "GET",
-      "OPTIONS"
-    ],
-    "/v1/vtxo/savings-setup/prepare": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/register": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/release": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/status": [
-      "OPTIONS",
-      "POST"
-    ],
     "/v1/vtxo/bitcoin/final": [
       "OPTIONS",
       "POST"
@@ -888,42 +864,6 @@
       "setId:string",
       "operations:array<object>"
     ],
-    "SavingsSetupPlan": [
-      "operationId:string",
-      "vaultId:string",
-      "descriptorHash:string",
-      "enrollmentDigest:string",
-      "txid:string",
-      "vout:integer",
-      "valueSats:integer",
-      "changeSats:integer",
-      "reserveScript:string",
-      "reserveSats:integer",
-      "reserveCount:integer",
-      "feeSats:integer",
-      "feePolicyDigest:string",
-      "registerExpireAt:integer",
-      "outputs:array<object>,omitempty"
-    ],
-    "SavingsSetupReleaseRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "deleteIntent:object|null,omitempty"
-    ],
-    "SavingsSetupPrepareRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "txid:string",
-      "vout:integer",
-      "reserveCount:integer",
-      "expiresAt:integer",
-      "ownerSignature:string"
-    ],
-    "SavingsSetupPrepared": [
-      "plan:object",
-      "planDigest:string",
-      "state:string"
-    ],
     "SpendingBitcoinPrepareRequest": [
       "vaultId:string",
       "operationId:string",
@@ -988,6 +928,33 @@
       "claimant:string",
       "remainingUser:string,omitempty",
       "change:integer|null"
+    ],
+    "BitcoinPaymentReleaseRequest": [
+      "vaultId:string",
+      "operationId:string",
+      "deleteIntent:object|null,omitempty"
+    ],
+    "BitcoinPaymentPrepared": [
+      "plan:object",
+      "planDigest:string",
+      "state:string"
+    ],
+    "BitcoinPaymentPlan": [
+      "operationId:string",
+      "vaultId:string",
+      "descriptorHash:string",
+      "enrollmentDigest:string",
+      "txid:string",
+      "vout:integer",
+      "valueSats:integer",
+      "changeSats:integer",
+      "reserveScript:string",
+      "reserveSats:integer",
+      "reserveCount:integer",
+      "feeSats:integer",
+      "feePolicyDigest:string",
+      "registerExpireAt:integer",
+      "outputs:array<object>,omitempty"
     ]
   }
 }

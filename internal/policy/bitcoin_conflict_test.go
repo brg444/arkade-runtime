@@ -27,7 +27,7 @@ func dispatchedBitcoinConflictFixture(t *testing.T, kind string) (*Ledger, Light
 	return l, op, LightRenewalEvent{OperationID: op.OperationID, Phase: "released", RequestDigest: op.PlanDigest, Evidence: string(raw)}
 }
 func TestBitcoinConflictReleaseFencesAndRetainsEvidence(t *testing.T) {
-	for _, kind := range []string{SavingsSetupBatchKind, SpendingBitcoinBatchKind} {
+	for _, kind := range []string{SpendingBitcoinBatchKind} {
 		t.Run(kind, func(t *testing.T) {
 			l, op, event := dispatchedBitcoinConflictFixture(t, kind)
 			before, err := l.GetLightRenewal(t.Context(), op.OperationID)
@@ -151,7 +151,7 @@ func TestBitcoinConflictReleaseRacesConfirmation(t *testing.T) {
 }
 
 func TestEndedOperatorBatchReleaseBindsDispatchAndLiveInput(t *testing.T) {
-	for _, kind := range []string{SavingsSetupBatchKind, SpendingBitcoinBatchKind} {
+	for _, kind := range []string{SpendingBitcoinBatchKind} {
 		t.Run(kind, func(t *testing.T) {
 			l, op, event := dispatchedBitcoinConflictFixture(t, kind)
 			snapshot, err := l.GetLightRenewal(t.Context(), op.OperationID)

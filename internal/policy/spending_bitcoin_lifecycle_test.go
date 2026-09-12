@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,9 +9,9 @@ import (
 	"time"
 )
 
-func TestSavingsSetupChargesPrincipalAndRetainsUncertainOutflow(t *testing.T) {
+func TestSpendingBitcoinChargesPrincipalAndRetainsUncertainOutflow(t *testing.T) {
 	l, now, op := renewalFixture(t)
-	op.Kind, op.AmountSats = SavingsSetupBatchKind, 1000
+	op.Kind, op.AmountSats = SpendingBitcoinBatchKind, 1000
 	if _, err := l.ReserveLightRenewal(context.Background(), op, 1000); !errors.Is(err, ErrPeriodAllowanceExceeded) {
 		t.Fatalf("principal plus fee not checked: %v", err)
 	}
@@ -33,9 +32,9 @@ func TestSavingsSetupChargesPrincipalAndRetainsUncertainOutflow(t *testing.T) {
 	}
 }
 
-func TestSavingsSetupKindAndAmountAreAuthenticated(t *testing.T) {
+func TestSpendingBitcoinKindAndAmountAreAuthenticated(t *testing.T) {
 	l, _, op := renewalFixture(t)
-	op.Kind, op.AmountSats = SavingsSetupBatchKind, 500
+	op.Kind, op.AmountSats = SpendingBitcoinBatchKind, 500
 	if _, err := l.ReserveLightRenewal(context.Background(), op, 10000); err != nil {
 		t.Fatal(err)
 	}
@@ -47,43 +46,11 @@ func TestSavingsSetupKindAndAmountAreAuthenticated(t *testing.T) {
 	}
 }
 
-func TestSavingsSetupReaderMigrationPreservesLegacyBatchBytes(t *testing.T) {
-	l, _, op := renewalFixture(t)
-	if _, err := l.ReserveLightRenewal(t.Context(), op, 10000); err != nil {
-		t.Fatal(err)
-	}
-	var before string
-	var macBefore []byte
-	if err := l.db.QueryRow(`SELECT payload,integrity_mac FROM light_renewal_operation`).Scan(&before, &macBefore); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := l.db.Exec(`UPDATE schema_meta SET version=5`); err != nil {
-		t.Fatal(err)
-	}
-	if err := applySavingsSetupMigration(l.db); err != nil {
-		t.Fatal(err)
-	}
-	var after string
-	var macAfter []byte
-	if err := l.db.QueryRow(`SELECT payload,integrity_mac FROM light_renewal_operation`).Scan(&after, &macAfter); err != nil {
-		t.Fatal(err)
-	}
-	if before != after || !bytes.Equal(macBefore, macAfter) {
-		t.Fatal("legacy batch authentication changed")
-	}
-	if strings.Contains(after, "amountSats") || strings.Contains(after, `"kind"`) {
-		t.Fatal("legacy MAC preimage gained new fields")
-	}
-	if version, err := l.SchemaVersion(); err != nil || version != 6 {
-		t.Fatalf("reader fence %d %v", version, err)
-	}
-}
-
-func TestSavingsSetupCannotReleaseWithoutDeleteOrFinalizeAfterDelete(t *testing.T) {
+func TestSpendingBitcoinCannotReleaseWithoutDeleteOrFinalizeAfterDelete(t *testing.T) {
 	for _, finalAuthorized := range []bool{false, true} {
 		t.Run(fmt.Sprint(finalAuthorized), func(t *testing.T) {
 			l, now, op := renewalFixture(t)
-			op.Kind, op.AmountSats = SavingsSetupBatchKind, 1000
+			op.Kind, op.AmountSats = SpendingBitcoinBatchKind, 1000
 			if _, err := l.ReserveLightRenewal(t.Context(), op, 10000); err != nil {
 				t.Fatal(err)
 			}

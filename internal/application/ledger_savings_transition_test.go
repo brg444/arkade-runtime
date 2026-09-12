@@ -33,6 +33,11 @@ type ledgerTransitionFixture struct {
 
 func newLedgerTransitionFixture(t *testing.T, advanced bool) ledgerTransitionFixture {
 	t.Helper()
+	return newLedgerTransitionFixtureForNetwork(t, advanced, "mutinynet")
+}
+
+func newLedgerTransitionFixtureForNetwork(t *testing.T, advanced bool, network string) ledgerTransitionFixture {
+	t.Helper()
 	f := ledgerTransitionFixture{accounts: map[string]*hdkeychain.ExtendedKey{}}
 	master, _ := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{0x31}, 32))
 	f.auth = &fileBackedLedgerSavingsAuthorizer{keys: &fileBackedVaultKeys{master: master}}
@@ -42,15 +47,15 @@ func newLedgerTransitionFixture(t *testing.T, advanced bool) ledgerTransitionFix
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.policy, err = program.DefaultSpendingPolicyFor("mutinynet")
+	f.policy, err = program.DefaultSpendingPolicyFor(network)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := program.SpendingPolicyDigestHexFor("mutinynet", f.policy)
+	digest, err := program.SpendingPolicyDigestHexFor(network, f.policy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.in = savings.LedgerSavingsKeyContext{TemplateVersion: savings.LedgerNativeTemplate, Network: "mutinynet", VaultID: "aabbccddeeff00112233445566778899", PolicyDigest: digest, PhoneDirectP256: hex.EncodeToString(webauthn.CompressedP256(f.direct))}
+	f.in = savings.LedgerSavingsKeyContext{TemplateVersion: savings.LedgerNativeTemplate, Network: network, VaultID: "aabbccddeeff00112233445566778899", PolicyDigest: digest, PhoneDirectP256: hex.EncodeToString(webauthn.CompressedP256(f.direct))}
 	root, err := f.auth.guardianPublic(f.in.Network, f.in.VaultID)
 	if err != nil {
 		t.Fatal(err)
@@ -60,13 +65,17 @@ func newLedgerTransitionFixture(t *testing.T, advanced bool) ledgerTransitionFix
 	if advanced {
 		roles = append(roles, "recovery")
 	}
+	params, coin := &chaincfg.TestNet3Params, uint32(1)
+	if network == "mainnet" {
+		params, coin = &chaincfg.MainNetParams, 0
+	}
 	for i, role := range roles {
-		master, err := hdkeychain.NewMaster(bytes.Repeat([]byte{byte(51 + i)}, 32), &chaincfg.TestNet3Params)
+		master, err := hdkeychain.NewMaster(bytes.Repeat([]byte{byte(51 + i)}, 32), params)
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(master.Zero)
-		path := []uint32{hdkeychain.HardenedKeyStart + 86, hdkeychain.HardenedKeyStart + 1, hdkeychain.HardenedKeyStart}
+		path := []uint32{hdkeychain.HardenedKeyStart + 86, hdkeychain.HardenedKeyStart + coin, hdkeychain.HardenedKeyStart}
 		account := master
 		for _, index := range path {
 			account, err = account.Derive(index)

@@ -170,18 +170,12 @@ func requireGatewaySecretValue(want string, next http.Handler) http.Handler {
 }
 
 var authorizerRouteMethods = map[string]map[string]struct{}{
-	"/v1/vtxo/savings-setup/info":     {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/vtxo/bitcoin/info":           {http.MethodGet: {}, http.MethodOptions: {}},
-	"/v1/vtxo/savings-setup/prepare":  {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/bitcoin/prepare":        {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/savings-setup/register": {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/bitcoin/register":       {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/savings-setup/final":    {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/bitcoin/final":          {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/savings-setup/status":   {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/bitcoin/status":         {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/savings-setup/release":  {http.MethodPost: {}, http.MethodOptions: {}},
-	"/v1/vtxo/bitcoin/release":        {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/bitcoin/info":     {http.MethodGet: {}, http.MethodOptions: {}},
+	"/v1/vtxo/bitcoin/prepare":  {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/bitcoin/register": {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/bitcoin/final":    {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/bitcoin/status":   {http.MethodPost: {}, http.MethodOptions: {}},
+	"/v1/vtxo/bitcoin/release":  {http.MethodPost: {}, http.MethodOptions: {}},
 
 	"/v1/vtxo/delegate/info":         {http.MethodPost: {}, http.MethodOptions: {}},
 	"/v1/vtxo/delegate/schedule":     {http.MethodPost: {}, http.MethodOptions: {}},
@@ -276,7 +270,7 @@ func attachCoreRoutes(mux *http.ServeMux, svc *Service, origin string) {
 	attachRecoveryArchiveRoutes(mux, svc, origin)
 	attachLNURLRoutes(mux, svc, origin)
 	attachLightRenewalRoutes(mux, svc, origin)
-	attachSavingsSetupRoutes(mux, svc, origin)
+	attachSpendingBitcoinRoutes(mux, svc, origin)
 	attachSpendingDelegationRoutes(mux, svc, origin)
 	attachRecoveryRoutes(mux, svc, origin)
 	attachVtxoRoutes(mux, svc, origin)

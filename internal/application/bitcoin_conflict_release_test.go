@@ -25,19 +25,12 @@ func (c *bitcoinConflictProofChain) confirmedBitcoinConflict(context.Context, st
 }
 
 func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
-	for _, kind := range []string{"legacy", "canonical"} {
-		t.Run(kind, func(t *testing.T) {
-			var e *env
-			var c bitcoinPaymentContext
-			var prepared bitcoinPaymentPrepared
-			if kind == "legacy" {
-				e, c, prepared, _ = setupFundingFixture(t, "mainnet", "standard")
-			} else {
-				e, c, prepared, _ = bitcoinFundingFixture(t, "mainnet", "standard", 1)
-			}
+	for _, count := range []int{1, 2} {
+		t.Run(fmt.Sprintf("outputs-%d", count), func(t *testing.T) {
+			e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", count)
 			session, _ := btcec.NewPrivateKey()
 			operatorSession, _ := btcec.NewPrivateKey()
-			request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+			request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
 			operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
 			e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
 			if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
@@ -121,7 +114,7 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
 	session, _ := btcec.NewPrivateKey()
 	operatorSession, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
 	operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("Operator rejected final after batch ended")}
 	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
 	if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {

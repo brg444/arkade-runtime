@@ -24,38 +24,10 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-func setupFundingFixture(t *testing.T, network, tier string) (*env, bitcoinPaymentContext, bitcoinPaymentPrepared, savingsSetupPrepareRequest) {
-	t.Helper()
-	e, _, set := spendingDelegationFixture(t, network, tier, true)
-	c, err := e.svc.bitcoinPaymentContext(set.VaultID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	coins, err := e.svc.ArkResolver.SpendableVtxos(t.Context(), c.spending.Tree.PkScript)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := savingsSetupPrepareRequest{VaultID: set.VaultID, OperationID: strings.Repeat("89", 16), Txid: coins[0].Txid, Vout: coins[0].Vout, ReserveCount: 2, ExpiresAt: e.svc.vtxoNow().Add(4 * time.Minute).Unix()}
-	digest, err := r.digest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig, err := schnorr.Sign(e.hot, digest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.OwnerSignature = hex.EncodeToString(sig.Serialize())
-	prepared, err := e.svc.prepareSavingsSetup(t.Context(), r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return e, c, prepared, r
-}
-
-func setupRegistrationFixture(t *testing.T, e *env, c bitcoinPaymentContext, p bitcoinPaymentPlan, session *btcec.PrivateKey, outputs []*wire.TxOut) lightRenewalRegisterRequest {
+func bitcoinRegistrationFixture(t *testing.T, e *env, c bitcoinPaymentContext, p bitcoinPaymentPlan, session *btcec.PrivateKey, outputs []*wire.TxOut) lightRenewalRegisterRequest {
 	t.Helper()
 	indexes := []int{1}
-	if len(p.onchainOutputs()) == 2 {
+	if len(p.Outputs) == 2 {
 		indexes = append(indexes, 2)
 	}
 	message, err := (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: indexes, ExpireAt: p.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(session.PubKey().SerializeCompressed())}}).Encode()
@@ -97,71 +69,11 @@ func setupRegistrationFixture(t *testing.T, e *env, c bitcoinPaymentContext, p b
 	return lightRenewalRegisterRequest{VaultID: p.VaultID, OperationID: p.OperationID, PSBT: raw, Message: message, Assertion: WebAuthnAssertionRequest{CredentialID: hex.EncodeToString(e.credID), ClientDataJSON: hex.EncodeToString(assertion.ClientDataJSON), AuthenticatorData: hex.EncodeToString(assertion.AuthenticatorData), Signature: hex.EncodeToString(assertion.DERSignature)}, DirectSig: hex.EncodeToString(direct)}
 }
 
-func TestSavingsSetupPrepareUsesEnrolledSignerAndChargesAllowance(t *testing.T) {
-	for _, network := range []string{"mainnet", "mutinynet"} {
-		for _, tier := range []string{"standard", "advanced"} {
-			t.Run(network+"/"+tier, func(t *testing.T) {
-				e, c, prepared, r := setupFundingFixture(t, network, tier)
-				if prepared.Plan.ReserveCount != 2 || prepared.Plan.ReserveSats != 500 {
-					t.Fatal("wrong reserve arrangement")
-				}
-				used, err := e.ledger.SpentInPeriod(t.Context(), r.VaultID, "")
-				if err != nil || used != 1000+prepared.Plan.FeeSats {
-					t.Fatalf("outflow %d %v", used, err)
-				}
-				replay, err := e.svc.prepareSavingsSetup(t.Context(), r)
-				if err != nil || replay.PlanDigest != prepared.PlanDigest {
-					t.Fatalf("exact retry changed: %v", err)
-				}
-				changed := prepared.Plan
-				changed.ReserveScript = c.spending.Binding.ScriptPubKey
-				if _, err := changed.digest(c); err == nil {
-					t.Fatal("arbitrary destination accepted")
-				}
-				changed = prepared.Plan
-				changed.ReserveSats = 1000
-				if _, err := changed.digest(c); err == nil {
-					t.Fatal("incorrect output value accepted")
-				}
-				r.ReserveCount = 1
-				if _, err := e.svc.prepareSavingsSetup(t.Context(), r); err == nil {
-					t.Fatal("changed signed request accepted")
-				}
-			})
-		}
-	}
-}
-
-func TestSavingsSetupRegistrationRejectsSignedOutputSubstitution(t *testing.T) {
-	e, c, prepared, _ := setupFundingFixture(t, "mainnet", "standard")
-	session, _ := btcec.NewPrivateKey()
-	for _, change := range []string{"none", "signer", "change", "amount", "missing"} {
-		t.Run(change, func(t *testing.T) {
-			outputs := prepared.Plan.outputs(c)
-			switch change {
-			case "signer":
-				outputs[1].PkScript = c.spending.Tree.PkScript
-			case "change":
-				outputs[0].PkScript = outputs[1].PkScript
-			case "amount":
-				outputs[1].Value++
-			case "missing":
-				outputs = outputs[:2]
-			}
-			request := setupRegistrationFixture(t, e, c, prepared.Plan, session, outputs)
-			_, err := verifyBitcoinPaymentRegistration(request.PSBT, request.Message, prepared.Plan, c)
-			if (err == nil) != (change == "none") {
-				t.Fatalf("%s: %v", change, err)
-			}
-		})
-	}
-}
-
-func TestSavingsSetupFinalRequiresDistinctOutputsAndSignedChange(t *testing.T) {
-	e, c, prepared, _ := setupFundingFixture(t, "mainnet", "advanced")
+func TestSpendingBitcoinFinalRequiresDistinctOutputsAndSignedChange(t *testing.T) {
+	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "advanced", 2)
 	session, _ := btcec.NewPrivateKey()
 	operatorSession, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
 	registration, err := verifyBitcoinPaymentRegistration(request.PSBT, request.Message, prepared.Plan, c)
 	if err != nil {
 		t.Fatal(err)
@@ -201,10 +113,10 @@ func TestSavingsSetupFinalRequiresDistinctOutputsAndSignedChange(t *testing.T) {
 	}
 }
 
-func TestSavingsSetupLostRegisterResponseDoesNotDispatchAgain(t *testing.T) {
-	e, c, prepared, _ := setupFundingFixture(t, "mainnet", "standard")
+func TestSpendingBitcoinLostRegisterResponseDoesNotDispatchAgain(t *testing.T) {
+	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 2)
 	session, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
 	operator := &lightRenewalTestOperator{registerErr: fmt.Errorf("response lost")}
 	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
 	for i := 0; i < 2; i++ {
@@ -220,7 +132,7 @@ func TestSavingsSetupLostRegisterResponseDoesNotDispatchAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot, err := e.svc.Stores.LightRenewal.GetLightRenewal(t.Context(), prepared.Plan.OperationID)
-	if err != nil || snapshot.Operation.Kind != policy.SavingsSetupBatchKind {
+	if err != nil || snapshot.Operation.Kind != policy.SpendingBitcoinBatchKind {
 		t.Fatal("wrong journal")
 	}
 	var recorded lightRenewalRegistrationEvidence
@@ -229,14 +141,14 @@ func TestSavingsSetupLostRegisterResponseDoesNotDispatchAgain(t *testing.T) {
 	}
 }
 
-func TestSavingsSetupSignedPrepareExpiryCannotCreateLateReservation(t *testing.T) {
-	e, _, prepared, r := setupFundingFixture(t, "mainnet", "standard")
+func TestSpendingBitcoinSignedPrepareExpiryCannotCreateLateReservation(t *testing.T) {
+	e, _, prepared, r := bitcoinFundingFixture(t, "mainnet", "standard", 2)
 	r.OperationID = strings.Repeat("90", 16)
 	r.ExpiresAt = e.svc.vtxoNow().Add(-time.Second).Unix()
 	digest, _ := r.digest()
 	sig, _ := schnorr.Sign(e.hot, digest)
 	r.OwnerSignature = hex.EncodeToString(sig.Serialize())
-	if _, err := e.svc.prepareSavingsSetup(t.Context(), r); err == nil {
+	if _, err := e.svc.prepareSpendingBitcoin(t.Context(), r); err == nil {
 		t.Fatal("expired prepare accepted")
 	}
 	result, err := e.svc.reconcileBitcoinPayment(t.Context(), lightRenewalOperationRequest{VaultID: r.VaultID, OperationID: r.OperationID})
@@ -249,54 +161,17 @@ func TestSavingsSetupSignedPrepareExpiryCannotCreateLateReservation(t *testing.T
 	}
 	used, err := e.ledger.SpentInPeriod(t.Context(), r.VaultID, "")
 	if err != nil || used != 0 {
-		t.Fatalf("cancelled setup still charged: %d %v", used, err)
+		t.Fatalf("cancelled payment still charged: %d %v", used, err)
 	}
 }
 
-func TestSavingsSetupLostFinalCannotReleaseOrSubmitTwice(t *testing.T) {
-	e, c, prepared, _ := setupFundingFixture(t, "mainnet", "standard")
-	session, _ := btcec.NewPrivateKey()
-	operatorSession, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-	operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
-	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
-	result, err := e.svc.registerBitcoinPayment(t.Context(), request)
-	if err != nil || result.State != "registered" {
-		t.Fatalf("register: %+v %v", result, err)
-	}
-	registration, err := verifyBitcoinPaymentRegistration(request.PSBT, request.Message, prepared.Plan, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
-	_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
-	final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
-	for i := 0; i < 2; i++ {
-		result, err = e.svc.finalizeBitcoinPayment(t.Context(), final)
-		if err != nil || result.State != "uncertain" {
-			t.Fatalf("final: %+v %v", result, err)
-		}
-	}
-	if operator.finals != 1 || operator.commitmentChecks != 2 {
-		t.Fatalf("dispatched %d times after %d batch checks", operator.finals, operator.commitmentChecks)
-	}
-	result, err = e.svc.releaseBitcoinPayment(t.Context(), bitcoinPaymentReleaseRequest{VaultID: request.VaultID, OperationID: request.OperationID})
-	if err != nil || result.State != "uncertain" {
-		t.Fatalf("unsafe release: %+v %v", result, err)
-	}
-	used, err := e.ledger.SpentInPeriod(t.Context(), request.VaultID, "")
-	if err != nil || used != 1000+prepared.Plan.FeeSats {
-		t.Fatalf("lost final allowance: %d %v", used, err)
-	}
-}
-
-func TestSavingsSetupRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
+func TestSpendingBitcoinRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
 	for _, failAt := range []int{1, 2} {
 		t.Run(fmt.Sprintf("check-%d", failAt), func(t *testing.T) {
-			e, c, prepared, _ := setupFundingFixture(t, "mainnet", "standard")
+			e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 2)
 			session, _ := btcec.NewPrivateKey()
 			operatorSession, _ := btcec.NewPrivateKey()
-			request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+			request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
 			operator := &lightRenewalTestOperator{
 				commitmentError:   fmt.Errorf("batch already ended"),
 				commitmentErrorAt: failAt,
@@ -333,22 +208,22 @@ func TestSavingsSetupRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
 	}
 }
 
-func TestSavingsSetupPublicRoutes(t *testing.T) {
-	e, c, prepared, request := setupFundingFixture(t, "mainnet", "standard")
+func TestSpendingBitcoinPublicRoutes(t *testing.T) {
+	e, c, prepared, request := bitcoinFundingFixture(t, "mainnet", "standard", 2)
 	handler := testAuthorizer(e.svc)
 	var info struct {
 		Version        int    `json:"version"`
 		DescriptorHash string `json:"descriptorHash"`
 	}
-	if err := json.Unmarshal(httpJSON(t, handler, "GET", "/v1/vtxo/savings-setup/info?vaultId="+request.VaultID, nil), &info); err != nil {
+	if err := json.Unmarshal(httpJSON(t, handler, "GET", "/v1/vtxo/bitcoin/info?vaultId="+request.VaultID, nil), &info); err != nil {
 		t.Fatal(err)
 	}
 	if info.Version != 1 || info.DescriptorHash != c.spending.DescriptorHash {
-		t.Fatal("setup capability not bound to enrollment")
+		t.Fatal("Bitcoin capability not bound to enrollment")
 	}
 	var retry bitcoinPaymentPrepared
 	body, _ := json.Marshal(request)
-	req := httptest.NewRequest("POST", "/v1/vtxo/savings-setup/prepare", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/vtxo/bitcoin/prepare", bytes.NewReader(body))
 	req.Header.Set("Origin", e.svc.ClientOrigin())
 	req.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -364,24 +239,24 @@ func TestSavingsSetupPublicRoutes(t *testing.T) {
 	}
 }
 
-type savingsSetupDeleteOperator struct {
+type bitcoinDeleteOperator struct {
 	lightRenewalTestOperator
 	deletes                      int
 	deleteErr                    error
 	deletedProof, deletedMessage string
 }
 
-func (o *savingsSetupDeleteOperator) deleteIntent(_ context.Context, proof, message string) error {
+func (o *bitcoinDeleteOperator) deleteIntent(_ context.Context, proof, message string) error {
 	o.deletes++
 	o.deletedProof, o.deletedMessage = proof, message
 	return o.deleteErr
 }
 
-func TestSavingsSetupReleaseRequiresConfirmedExactDeletion(t *testing.T) {
-	e, c, prepared, _ := setupFundingFixture(t, "mainnet", "standard")
+func TestSpendingBitcoinReleaseRequiresConfirmedExactDeletion(t *testing.T) {
+	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 2)
 	session, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-	operator := &savingsSetupDeleteOperator{}
+	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	operator := &bitcoinDeleteOperator{}
 	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
 	if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
 		t.Fatalf("register: %+v %v", result, err)
@@ -444,10 +319,10 @@ func TestSavingsSetupReleaseRequiresConfirmedExactDeletion(t *testing.T) {
 	}
 }
 
-func TestSavingsSetupDeleteCapabilityRejectsOtherMessagesAndOutputs(t *testing.T) {
-	e, c, prepared, _ := setupFundingFixture(t, "mainnet", "standard")
+func TestSpendingBitcoinDeleteCapabilityRejectsOtherMessagesAndOutputs(t *testing.T) {
+	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 2)
 	session, _ := btcec.NewPrivateKey()
-	registration := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	registration := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
 	deletion := delegatedDeleteFixture(t, lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), tree: c.spending.Tree, owner: e.hot})
 	for _, bad := range []lightDelegateIntent{
 		{Proof: registration.PSBT, Message: registration.Message},
@@ -466,8 +341,8 @@ func TestSpendingBitcoinExpiredAbsentIntentReleasesOnlyUndispatchedFinal(t *test
 			e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
 			session, _ := btcec.NewPrivateKey()
 			operatorSession, _ := btcec.NewPrivateKey()
-			request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-			operator := &savingsSetupDeleteOperator{deleteErr: stockOperatorIntentAbsent{}}
+			request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+			operator := &bitcoinDeleteOperator{deleteErr: stockOperatorIntentAbsent{}}
 			operator.finalErr = fmt.Errorf("final response lost")
 			e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
 			if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
@@ -558,38 +433,44 @@ func TestSpendingBitcoinExpiredAbsentIntentReleasesOnlyUndispatchedFinal(t *test
 }
 
 func TestSpendingBitcoinLostFinalCannotReleaseOrSubmitTwice(t *testing.T) {
-	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
-	session, _ := btcec.NewPrivateKey()
-	operatorSession, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-	operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
-	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
-	result, err := e.svc.registerBitcoinPayment(t.Context(), request)
-	if err != nil || result.State != "registered" {
-		t.Fatalf("register: %+v %v", result, err)
-	}
-	registration, err := verifyBitcoinPaymentRegistration(request.PSBT, request.Message, prepared.Plan, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
-	_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
-	final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
-	for i := 0; i < 2; i++ {
-		result, err = e.svc.finalizeBitcoinPayment(t.Context(), final)
-		if err != nil || result.State != "uncertain" {
-			t.Fatalf("final: %+v %v", result, err)
+	for _, network := range []string{"mainnet", "mutinynet"} {
+		for _, tier := range []string{"light", "standard", "advanced"} {
+			t.Run(network+"/"+tier, func(t *testing.T) {
+				e, c, prepared, _ := bitcoinFundingFixture(t, network, tier, 1)
+				session, _ := btcec.NewPrivateKey()
+				operatorSession, _ := btcec.NewPrivateKey()
+				request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+				operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
+				e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+				result, err := e.svc.registerBitcoinPayment(t.Context(), request)
+				if err != nil || result.State != "registered" {
+					t.Fatalf("register: %+v %v", result, err)
+				}
+				registration, err := verifyBitcoinPaymentRegistration(request.PSBT, request.Message, prepared.Plan, c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+				_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
+				final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
+				for i := 0; i < 2; i++ {
+					result, err = e.svc.finalizeBitcoinPayment(t.Context(), final)
+					if err != nil || result.State != "uncertain" {
+						t.Fatalf("final: %+v %v", result, err)
+					}
+				}
+				if operator.finals != 1 {
+					t.Fatalf("dispatched %d times", operator.finals)
+				}
+				result, err = e.svc.releaseBitcoinPayment(t.Context(), bitcoinPaymentReleaseRequest{VaultID: request.VaultID, OperationID: request.OperationID})
+				if err != nil || result.State != "uncertain" {
+					t.Fatalf("unsafe release: %+v %v", result, err)
+				}
+				used, err := e.ledger.SpentInPeriod(t.Context(), request.VaultID, "")
+				if err != nil || used != 1500+prepared.Plan.FeeSats {
+					t.Fatalf("lost final allowance: %d %v", used, err)
+				}
+			})
 		}
-	}
-	if operator.finals != 1 {
-		t.Fatalf("dispatched %d times", operator.finals)
-	}
-	result, err = e.svc.releaseBitcoinPayment(t.Context(), bitcoinPaymentReleaseRequest{VaultID: request.VaultID, OperationID: request.OperationID})
-	if err != nil || result.State != "uncertain" {
-		t.Fatalf("unsafe release: %+v %v", result, err)
-	}
-	used, err := e.ledger.SpentInPeriod(t.Context(), request.VaultID, "")
-	if err != nil || used != 1500+prepared.Plan.FeeSats {
-		t.Fatalf("lost final allowance: %d %v", used, err)
 	}
 }

@@ -15,7 +15,7 @@ import (
 func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOperationRequest) (lightRenewalResponse, error) {
 	// An absent operation is useful only to a client holding an expired, signed
 	// prepare request. It never proves that a dispatched transaction failed.
-	if _, err := s.bitcoinPaymentContext(r.VaultID, true); err != nil {
+	if _, err := s.bitcoinPaymentContext(r.VaultID); err != nil {
 		return lightRenewalResponse{}, err
 	}
 	if _, err := canonicalVtxoOperationID(r.OperationID); err != nil {
@@ -61,7 +61,7 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 	final, err := verifyBitcoinPaymentFinal(evidence, p, c, registration)
 	release()
 	if err != nil || hex.EncodeToString(final.RequestDigest) != snapshot.Events["final_dispatched"].RequestDigest {
-		return lightRenewalResponse{}, fmt.Errorf("Savings setup persisted final mismatch")
+		return lightRenewalResponse{}, fmt.Errorf("Bitcoin payment persisted final mismatch")
 	}
 	response := lightRenewalResponse{State: "uncertain", CommitmentTxid: final.CommitmentTxid, ReceiverTxid: final.ReceiverTxid, ReceiverVout: final.ReceiverVout}
 	if _, ok := snapshot.Events["final_result"]; ok {
@@ -73,7 +73,7 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 	}
 	indexer, ok := s.ArkResolver.(lightRenewalIndexer)
 	if !ok {
-		return lightRenewalResponse{}, fmt.Errorf("Savings setup reconciliation unavailable")
+		return lightRenewalResponse{}, fmt.Errorf("Bitcoin payment reconciliation unavailable")
 	}
 	settled, err := indexer.lightRenewalSettled(ctx, p.batchInput(), final, c.spending.Tree.PkScript)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 	}
 	packet, err := parseCanonicalVaultBoardPSBT(evidence.CommitmentPSBT, maxVaultBoardProofBytes)
 	if err != nil || confirmed.ValueSats != packet.UnsignedTx.TxOut[0].Value || !bytes.Equal(confirmed.PkScript, packet.UnsignedTx.TxOut[0].PkScript) {
-		return response, fmt.Errorf("Savings setup Bitcoin commitment mismatch")
+		return response, fmt.Errorf("Bitcoin payment commitment mismatch")
 	}
 	proof, err := json.Marshal(struct {
 		Commitment string `json:"commitmentTxid"`
@@ -226,7 +226,7 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 	sum := sha256.Sum256(append([]byte("vaulted-vtxo/savings-setup/delete/v1:"), encoded...))
 	digest := hex.EncodeToString(sum[:])
 	if saved, ok := snapshot.Events["delete_authorized"]; ok && saved.RequestDigest != digest {
-		return false, fmt.Errorf("Savings setup cancellation changed")
+		return false, fmt.Errorf("Bitcoin payment cancellation changed")
 	}
 	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "delete_authorized", RequestDigest: digest, Evidence: string(encoded)}); err != nil {
 		return false, err
@@ -248,7 +248,7 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 		deleteIntent(context.Context, string, string) error
 	})
 	if !ok {
-		return false, fmt.Errorf("Savings setup cancellation unavailable")
+		return false, fmt.Errorf("Bitcoin payment cancellation unavailable")
 	}
 	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "delete_dispatched", RequestDigest: digest}); err != nil {
 		return false, err

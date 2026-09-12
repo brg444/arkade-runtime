@@ -14,8 +14,8 @@ import (
 
 func bitcoinFundingFixture(t *testing.T, network, tier string, count int) (*env, bitcoinPaymentContext, bitcoinPaymentPrepared, spendingBitcoinPrepareRequest) {
 	t.Helper()
-	e, _, set := spendingDelegationFixture(t, network, tier, true)
-	c, err := e.svc.bitcoinPaymentContext(set.VaultID, true)
+	e, vaultID := bitcoinAccountFixture(t, network, tier)
+	c, err := e.svc.bitcoinPaymentContext(vaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func bitcoinFundingFixture(t *testing.T, network, tier string, count int) (*env,
 	if count == 2 {
 		outputs = []bitcoinPaymentOutput{{"0014" + strings.Repeat("43", 20), 500}, {"0014" + strings.Repeat("43", 20), 500}}
 	}
-	request := spendingBitcoinPrepareRequest{VaultID: set.VaultID, OperationID: strings.Repeat("67", 16), Txid: coins[0].Txid, Vout: coins[0].Vout, Outputs: outputs, ExpiresAt: e.svc.vtxoNow().Add(4 * time.Minute).Unix()}
+	request := spendingBitcoinPrepareRequest{VaultID: vaultID, OperationID: strings.Repeat("67", 16), Txid: coins[0].Txid, Vout: coins[0].Vout, Outputs: outputs, ExpiresAt: e.svc.vtxoNow().Add(4 * time.Minute).Unix()}
 	digest, err := request.digest()
 	if err != nil {
 		t.Fatal(err)
@@ -45,12 +45,12 @@ func bitcoinFundingFixture(t *testing.T, network, tier string, count int) (*env,
 }
 func TestSpendingBitcoinPrepareBindsArbitraryRecipientAndDuplicateOutputs(t *testing.T) {
 	for _, network := range []string{"mainnet", "mutinynet"} {
-		for _, tier := range []string{"standard", "advanced"} {
+		for _, tier := range []string{"light", "standard", "advanced"} {
 			for _, count := range []int{1, 2} {
 				t.Run(network+"/"+tier+"/"+string(rune('0'+count)), func(t *testing.T) {
 					e, c, prepared, r := bitcoinFundingFixture(t, network, tier, count)
 					p := prepared.Plan
-					if len(p.onchainOutputs()) != count || len(p.outputs(c)) != count+1 {
+					if len(p.Outputs) != count || len(p.outputs(c)) != count+1 {
 						t.Fatal("output count changed")
 					}
 					used, err := e.ledger.SpentInPeriod(t.Context(), r.VaultID, "")
@@ -73,7 +73,7 @@ func TestSpendingBitcoinPrepareBindsArbitraryRecipientAndDuplicateOutputs(t *tes
 						t.Fatal("operation rebound with fresh signature")
 					}
 					session, _ := btcec.NewPrivateKey()
-					registration := setupRegistrationFixture(t, e, c, p, session, p.outputs(c))
+					registration := bitcoinRegistrationFixture(t, e, c, p, session, p.outputs(c))
 					if _, err := verifyBitcoinPaymentRegistration(registration.PSBT, registration.Message, p, c); err != nil {
 						t.Fatal(err)
 					}
@@ -89,7 +89,7 @@ func TestSpendingBitcoinPrepareBindsArbitraryRecipientAndDuplicateOutputs(t *tes
 						case "merge":
 							outputs = outputs[:len(outputs)-1]
 						}
-						changed := setupRegistrationFixture(t, e, c, p, session, outputs)
+						changed := bitcoinRegistrationFixture(t, e, c, p, session, outputs)
 						if _, err := verifyBitcoinPaymentRegistration(changed.PSBT, changed.Message, p, c); err == nil {
 							t.Fatalf("accepted %s", kind)
 						}
@@ -128,7 +128,7 @@ func TestSpendingBitcoinRejectsUnsafeOutputsAndPolicyBypass(t *testing.T) {
 	// New output-plan authorization cannot be replayed as a fixed signer setup.
 	p := prepared.Plan
 	newDigest, _ := p.digest(c)
-	oldDigest, _ := setupDigest("plan", p)
+	oldDigest, _ := bitcoinPaymentDigest("plan", p)
 	if hex.EncodeToString(newDigest) == hex.EncodeToString(oldDigest) {
 		t.Fatal("domain collision")
 	}
@@ -141,7 +141,7 @@ func TestSpendingBitcoinRejectsUnsafeOutputsAndPolicyBypass(t *testing.T) {
 func TestSpendingBitcoinRejectedRegistrationReportsReasonAndReleasesAllowance(t *testing.T) {
 	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
 	session, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
 	operator := &lightRenewalTestOperator{registerErr: vaultBoardOperatorRejection{status: http.StatusBadRequest, reason: "input already spent"}}
 	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
 	result, err := e.svc.registerBitcoinPayment(t.Context(), request)

@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Service) loadBitcoinPayment(ctx context.Context, vault, id string) (*policy.LightRenewalSnapshot, bitcoinPaymentPlan, bitcoinPaymentContext, error) {
-	c, err := s.bitcoinPaymentContext(vault, true)
+	c, err := s.bitcoinPaymentContext(vault)
 	if err != nil {
 		return nil, bitcoinPaymentPlan{}, c, err
 	}
@@ -20,13 +20,7 @@ func (s *Service) loadBitcoinPayment(ctx context.Context, vault, id string) (*po
 	}
 	snapshot, err := s.Stores.LightRenewal.GetLightRenewal(ctx, id)
 	if err != nil || snapshot == nil || snapshot.Operation.VaultID != vault {
-		return nil, bitcoinPaymentPlan{}, c, fmt.Errorf("Savings setup operation unavailable")
-	}
-	if snapshot.Operation.Kind == policy.SavingsSetupBatchKind {
-		c, err = s.bitcoinPaymentContext(vault)
-		if err != nil {
-			return nil, bitcoinPaymentPlan{}, c, err
-		}
+		return nil, bitcoinPaymentPlan{}, c, fmt.Errorf("Bitcoin payment operation unavailable")
 	}
 	prepared, err := bitcoinPaymentSnapshot(snapshot, c)
 	return snapshot, prepared.Plan, c, err
@@ -54,7 +48,7 @@ func (s *Service) registerBitcoinPayment(ctx context.Context, r lightRenewalRegi
 	}
 	requestDigest := hex.EncodeToString(verified.RequestDigest)
 	if prior, ok := snapshot.Events["register_authorized"]; ok && prior.RequestDigest != requestDigest {
-		return lightRenewalResponse{}, fmt.Errorf("Savings setup registration changed")
+		return lightRenewalResponse{}, fmt.Errorf("Bitcoin payment registration changed")
 	}
 	for _, phase := range []string{"confirmed", "released", "cancelled", "final_result", "final_dispatched", "final_authorized"} {
 		if _, ok := snapshot.Events[phase]; ok {
@@ -118,7 +112,7 @@ func (s *Service) registerBitcoinPayment(ctx context.Context, r lightRenewalRegi
 func bitcoinPaymentStoredRegistration(snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext) (verifiedLightRenewalRegistration, error) {
 	event, ok := snapshot.Events["register_authorized"]
 	if !ok {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Savings setup registration missing")
+		return verifiedLightRenewalRegistration{}, fmt.Errorf("Bitcoin payment registration missing")
 	}
 	var evidence lightRenewalRegistrationEvidence
 	if err := json.Unmarshal([]byte(event.Evidence), &evidence); err != nil {
@@ -126,7 +120,7 @@ func bitcoinPaymentStoredRegistration(snapshot *policy.LightRenewalSnapshot, p b
 	}
 	verified, err := verifyBitcoinPaymentRegistration(evidence.PSBT, evidence.Message, p, c)
 	if err != nil || hex.EncodeToString(verified.RequestDigest) != event.RequestDigest {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Savings setup registration evidence changed")
+		return verifiedLightRenewalRegistration{}, fmt.Errorf("Bitcoin payment registration evidence changed")
 	}
 	return verified, nil
 }
@@ -155,7 +149,7 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r lightRenewalFina
 	digest := hex.EncodeToString(verified.RequestDigest)
 	response := lightRenewalResponse{CommitmentTxid: verified.CommitmentTxid, ReceiverTxid: verified.ReceiverTxid, ReceiverVout: verified.ReceiverVout}
 	if previous, ok := snapshot.Events["final_authorized"]; ok && previous.RequestDigest != digest {
-		return lightRenewalResponse{}, fmt.Errorf("Savings setup final request changed")
+		return lightRenewalResponse{}, fmt.Errorf("Bitcoin payment final request changed")
 	}
 	if _, ok := snapshot.Events["confirmed"]; ok {
 		response.State = "confirmed"

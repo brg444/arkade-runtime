@@ -47,6 +47,52 @@ func newEnv(t *testing.T) *env {
 
 func newEnvForNetwork(t *testing.T, network string) *env {
 	t.Helper()
+	e := newUnenrolledEnvForNetwork(t, network)
+	service, ledger := e.svc, e.ledger
+	credentialID, passkey, direct := e.credID, e.p256, e.direct
+	hot, externalOwner, boarding := e.hot, e.externalOwner, e.boarding
+	var err error
+	tokenHash := bytes.Repeat([]byte{0x42}, 32)
+	now := time.Now().UTC()
+	if err := ledger.PutInvite(tokenHash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	request := RegisterRequest{
+		CredentialID:             hex.EncodeToString(credentialID),
+		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passkey)),
+		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(externalOwner.PubKey())),
+		VtxoBoardingProgram:      program.VaultBoardV1,
+		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
+		ProtectionTier:           program.ProtectionTierStandard,
+	}
+	request.SpendingPolicy, err = program.DefaultSpendingPolicyFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHexFor(network, request.SpendingPolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := service.previewVaultBoardEnrollmentDescriptor(fixture.VaultID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.DescriptorHash = preview.DescriptorHash
+	if err := service.CreateTenantVault(fixture.VaultID, tokenHash, request); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := service.snapshot(fixture.VaultID)
+	if snapshot.Savings == nil {
+		t.Fatal("current Vault enrollment was not published")
+	}
+	e.savings = snapshot.Savings
+	return e
+}
+
+func newUnenrolledEnvForNetwork(t *testing.T, network string) *env {
+	t.Helper()
 	identity, err := deployment.IdentityFor(network)
 	if err != nil {
 		t.Fatal(err)
@@ -95,46 +141,10 @@ func newEnvForNetwork(t *testing.T, network string) *env {
 	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
 		t.Fatal(err)
 	}
-	credentialID := []byte{0x11}
-	tokenHash := bytes.Repeat([]byte{0x42}, 32)
-	now := time.Now().UTC()
-	if err := ledger.PutInvite(tokenHash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
-		t.Fatal(err)
-	}
-	request := RegisterRequest{
-		CredentialID:             hex.EncodeToString(credentialID),
-		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passkey)),
-		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
-		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(externalOwner.PubKey())),
-		VtxoBoardingProgram:      program.VaultBoardV1,
-		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
-		ProtectionTier:           program.ProtectionTierStandard,
-	}
-	request.SpendingPolicy, err = program.DefaultSpendingPolicyFor(network)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHexFor(network, request.SpendingPolicy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	preview, err := service.previewVaultBoardEnrollmentDescriptor(fixture.VaultID, request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.DescriptorHash = preview.DescriptorHash
-	if err := service.CreateTenantVault(fixture.VaultID, tokenHash, request); err != nil {
-		t.Fatal(err)
-	}
-	snapshot := service.snapshot(fixture.VaultID)
-	if snapshot.Savings == nil {
-		t.Fatal("current Vault enrollment was not published")
-	}
 	return &env{
-		svc: service, ledger: ledger, savings: snapshot.Savings,
+		svc: service, ledger: ledger,
 		hot: hot, externalOwner: externalOwner, master: master, operator: operator, boarding: boarding,
-		p256: passkey, direct: direct, credID: credentialID, dbPath: dbPath,
+		p256: passkey, direct: direct, credID: []byte{0x11}, dbPath: dbPath,
 	}
 }
 

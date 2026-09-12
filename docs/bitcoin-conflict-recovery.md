@@ -4,7 +4,7 @@ A Bitcoin payment whose final response was lost can retain a Spending input
 and its allowance indefinitely. Status reconciliation now releases that
 reservation when the pinned Bitcoin chain service establishes that a different
 transaction spent a funding input of the retained commitment, with at least six
-confirmations. Both `savings-setup-v1` and `spending-bitcoin-v1` use this path.
+confirmations. `spending-bitcoin-v1` operations use this path.
 Ordinary Spending renewals retain their existing release rules.
 
 The Guardian first verifies the retained owner registration, complete final
@@ -67,7 +67,7 @@ only binaries compatible with the current database schema for subsequent rollbac
 Boarding conflict recovery adds schema 9 and its own authenticated conflict history. Never clear the
 pending record or rewind the policy sequence manually.
 
-Tests cover canonical and legacy payments, persisted final evidence across a
+Tests cover one- and two-output Bitcoin payments, persisted final evidence across a
 ledger restart, missing original inputs, ended-batch ordering, equal timestamp
 ambiguity, shallow or changing confirmations, raw transaction substitution,
 terminal races, replay, allowance release, and preservation of existing

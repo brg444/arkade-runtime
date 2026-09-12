@@ -83,12 +83,6 @@ for the service and tenant access boundaries.
 | `POST /v1/vtxo/bitcoin/final` | Verify recovery paths and submit the exact forfeit. |
 | `POST /v1/vtxo/bitcoin/status` | Reconcile payment submission and Bitcoin confirmation. |
 | `POST /v1/vtxo/bitcoin/release` | Release a safely cancelled Bitcoin payment. |
-| `GET /v1/vtxo/savings-setup/info` | Read signer setup capability for the enrolled vault. |
-| `POST /v1/vtxo/savings-setup/prepare` | Reserve the signer funding amount and Operator fee. |
-| `POST /v1/vtxo/savings-setup/register` | Authorize the exact signer funding batch. |
-| `POST /v1/vtxo/savings-setup/final` | Verify replacement recovery paths before submitting the forfeit. |
-| `POST /v1/vtxo/savings-setup/status` | Check signer funding and Bitcoin confirmation. |
-| `POST /v1/vtxo/savings-setup/release` | Release a safely cancelled signer setup. |
 | `POST /v1/vtxo/delegate/info` | Read native renewal capabilities for the enrolled Spending program. |
 | `POST /v1/vtxo/delegate/schedule` | Atomically authorize 1–50 exact Spending renewal plans. |
 | `POST /v1/vtxo/delegate/status` | Read a Spending renewal and its verified recovery paths. |

@@ -12,7 +12,7 @@ import (
 )
 
 // LightRenewalOperation is the durable batch journal. Existing renewal rows
-// remain fee-only. Savings setup uses an explicit kind and charges its recipient
+// remain fee-only. Bitcoin payments use an explicit kind and charge the recipient
 // amount as well. Plan contains a compiled program plan, never executable data.
 type LightRenewalOperation struct {
 	OperationID string `json:"operationId"`
@@ -50,17 +50,15 @@ func canonicalRenewalHex(value string, n int) bool {
 	return err == nil && len(raw) == n && hex.EncodeToString(raw) == value
 }
 
-const SavingsSetupBatchKind = "savings-setup-v1"
 const SpendingBitcoinBatchKind = "spending-bitcoin-v1"
 
 func isBitcoinBatch(kind string) bool {
-	return kind == SavingsSetupBatchKind || kind == SpendingBitcoinBatchKind
+	return kind == SpendingBitcoinBatchKind
 }
 
 func validateLightRenewalOperation(r LightRenewalOperation) error {
 	if r.Kind != "" && !isBitcoinBatch(r.Kind) ||
 		r.Kind == "" && r.AmountSats != 0 ||
-		r.Kind == SavingsSetupBatchKind && r.AmountSats != 500 && r.AmountSats != 1000 ||
 		r.Kind == SpendingBitcoinBatchKind && (r.AmountSats < 330 || r.AmountSats > 21_000_000*100_000_000) {
 		return fmt.Errorf("invalid batch operation kind or amount")
 	}

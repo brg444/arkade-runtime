@@ -51,10 +51,9 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 
 		"SpendingBitcoinPrepareRequest":   reflect.TypeOf(spendingBitcoinPrepareRequest{}),
 		"BitcoinPaymentOutput":            reflect.TypeOf(bitcoinPaymentOutput{}),
-		"SavingsSetupReleaseRequest":      reflect.TypeOf(bitcoinPaymentReleaseRequest{}),
-		"SavingsSetupPrepareRequest":      reflect.TypeOf(savingsSetupPrepareRequest{}),
-		"SavingsSetupPrepared":            reflect.TypeOf(bitcoinPaymentPrepared{}),
-		"SavingsSetupPlan":                reflect.TypeOf(bitcoinPaymentPlan{}),
+		"BitcoinPaymentReleaseRequest":    reflect.TypeOf(bitcoinPaymentReleaseRequest{}),
+		"BitcoinPaymentPrepared":          reflect.TypeOf(bitcoinPaymentPrepared{}),
+		"BitcoinPaymentPlan":              reflect.TypeOf(bitcoinPaymentPlan{}),
 		"SpendingRenewalBinding":          reflect.TypeOf(spendingRenewalBinding{}),
 		"SpendingDelegationInput":         reflect.TypeOf(spendingDelegationInput{}),
 		"SpendingDelegationSetRequest":    reflect.TypeOf(spendingDelegationSetRequest{}),
