@@ -5,7 +5,7 @@ import "testing"
 func TestRetiredSavingsSetupCannotReserveAllowance(t *testing.T) {
 	l, _, op := renewalFixture(t)
 	op.Kind, op.AmountSats = "savings-setup-v1", 1000
-	if _, err := l.ReserveLightRenewal(t.Context(), op, 10000); err == nil {
+	if _, err := l.ReserveSpendingRenewal(t.Context(), op, 10000); err == nil {
 		t.Fatal("retired operation admitted")
 	}
 	var rows int

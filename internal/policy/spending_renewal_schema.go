@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const createLightRenewalSchema = `
+const createSpendingRenewalSchema = `
 CREATE TABLE light_renewal_operation (
  operation_id TEXT PRIMARY KEY,
  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
@@ -21,8 +21,8 @@ CREATE TABLE light_renewal_event (
 );
 `
 
-func validateLightRenewalSchema(db schemaQuerier) error {
-	for _, statement := range strings.Split(strings.TrimSpace(createLightRenewalSchema), ";") {
+func validateSpendingRenewalSchema(db schemaQuerier) error {
+	for _, statement := range strings.Split(strings.TrimSpace(createSpendingRenewalSchema), ";") {
 		statement = strings.TrimSpace(statement)
 		if statement == "" {
 			continue

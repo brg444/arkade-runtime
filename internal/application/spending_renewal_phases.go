@@ -20,7 +20,7 @@ func (o *stockVaultBoardOperator) submitLightForfeit(ctx context.Context, signed
 		SignedCommitmentTx string   `json:"signedCommitmentTx"`
 	}{[]string{signed}, ""}, nil)
 }
-func (s *Service) dialLightRenewalOperator(ctx context.Context) (spendingRenewalOperator, error) {
+func (s *Service) dialSpendingRenewalOperator(ctx context.Context) (spendingRenewalOperator, error) {
 	if s.spendingRenewalOperatorDial != nil {
 		return s.spendingRenewalOperatorDial(ctx)
 	}
@@ -61,9 +61,9 @@ type spendingRenewalFinalRequest struct {
 	Evidence    spendingRenewalFinalEvidence `json:"evidence"`
 }
 
-func (s *Service) persistLightRenewalEvent(e policy.LightRenewalEvent) error {
+func (s *Service) persistSpendingRenewalEvent(e policy.SpendingRenewalEvent) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, e, nil, 0)
+	_, _, err := s.Stores.SpendingRenewal.AppendSpendingRenewalEvent(ctx, e, nil, 0)
 	return err
 }

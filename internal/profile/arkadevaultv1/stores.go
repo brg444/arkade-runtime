@@ -73,17 +73,17 @@ type VaultBoardStore interface {
 	AppendVaultBoardConflict(context.Context, policy.VaultBoardConflict, policy.VaultBoardChainState) error
 }
 
-// LightRenewalStore shares the ledger's atomic allowance and sequence boundary.
-type LightRenewalStore interface {
-	ReserveLightRenewal(context.Context, policy.LightRenewalOperation, int64) (*policy.LightRenewalSnapshot, error)
-	GetLightRenewal(context.Context, string) (*policy.LightRenewalSnapshot, error)
-	AppendLightRenewalEvent(context.Context, policy.LightRenewalEvent, []byte, uint32) (policy.LightRenewalEvent, bool, error)
+// SpendingRenewalStore shares the ledger's atomic allowance and sequence boundary.
+type SpendingRenewalStore interface {
+	ReserveSpendingRenewal(context.Context, policy.SpendingRenewalOperation, int64) (*policy.SpendingRenewalSnapshot, error)
+	GetSpendingRenewal(context.Context, string) (*policy.SpendingRenewalSnapshot, error)
+	AppendSpendingRenewalEvent(context.Context, policy.SpendingRenewalEvent, []byte, uint32) (policy.SpendingRenewalEvent, bool, error)
 }
 
-type LightDelegationStore interface {
-	ListLightDelegations(context.Context) ([]policy.LightDelegationSnapshot, error)
-	ScheduleVtxoDelegationSet(context.Context, []policy.LightDelegation, []byte, uint32) ([]policy.LightDelegationSnapshot, error)
-	AdvanceLightDelegation(context.Context, policy.LightDelegationEvent, int64) (*policy.LightDelegationSnapshot, error)
+type SpendingDelegationStore interface {
+	ListSpendingDelegations(context.Context) ([]policy.SpendingDelegationSnapshot, error)
+	ScheduleVtxoDelegationSet(context.Context, []policy.SpendingDelegation, []byte, uint32) ([]policy.SpendingDelegationSnapshot, error)
+	AdvanceSpendingDelegation(context.Context, policy.SpendingDelegationEvent, int64) (*policy.SpendingDelegationSnapshot, error)
 }
 
 // RecoveryBackupStore stores client-encrypted recovery snapshots independently of spending authority.
@@ -95,15 +95,15 @@ type RecoveryBackupStore interface {
 // Stores is the complete persistence capability set compiled into the
 // arkade-vault-v1 profile.
 type Stores struct {
-	Identity        IdentityStore
-	LedgerSavings   LedgerSavingsStore
-	Allowance       AllowanceStore
-	VtxoOperations  VtxoOperationStore
-	Maps            MapStore
-	VaultBoard      VaultBoardStore
-	LightRenewal    LightRenewalStore
-	LightDelegation LightDelegationStore
-	RecoveryBackup  RecoveryBackupStore
+	Identity           IdentityStore
+	LedgerSavings      LedgerSavingsStore
+	Allowance          AllowanceStore
+	VtxoOperations     VtxoOperationStore
+	Maps               MapStore
+	VaultBoard         VaultBoardStore
+	SpendingRenewal    SpendingRenewalStore
+	SpendingDelegation SpendingDelegationStore
+	RecoveryBackup     RecoveryBackupStore
 }
 
 func (s Stores) Validate() error {
@@ -120,7 +120,7 @@ func (s Stores) Validate() error {
 		return fmt.Errorf("arkade-vault-v1 map store required")
 	case s.RecoveryBackup == nil:
 		return fmt.Errorf("Recovery backup store required")
-	case s.LightRenewal == nil:
+	case s.SpendingRenewal == nil:
 		return fmt.Errorf("Light renewal store required")
 	case s.VaultBoard == nil:
 		return fmt.Errorf("arkade-vault-v1 Vault Board store required")
@@ -137,14 +137,14 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		return Stores{}, fmt.Errorf("arkade-vault-v1 ledger required")
 	}
 	return Stores{
-		Identity:        ledger,
-		LedgerSavings:   ledger,
-		Allowance:       ledger,
-		VtxoOperations:  ledger,
-		Maps:            ledger,
-		VaultBoard:      ledger,
-		LightRenewal:    ledger,
-		LightDelegation: ledger,
-		RecoveryBackup:  ledger,
+		Identity:           ledger,
+		LedgerSavings:      ledger,
+		Allowance:          ledger,
+		VtxoOperations:     ledger,
+		Maps:               ledger,
+		VaultBoard:         ledger,
+		SpendingRenewal:    ledger,
+		SpendingDelegation: ledger,
+		RecoveryBackup:     ledger,
 	}, nil
 }

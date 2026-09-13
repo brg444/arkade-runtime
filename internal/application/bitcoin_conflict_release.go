@@ -9,7 +9,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) releaseConflictedBitcoinPayment(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, evidence spendingRenewalFinalEvidence, final verifiedSpendingRenewalFinal) (bool, error) {
+func (s *Service) releaseConflictedBitcoinPayment(ctx context.Context, snapshot *policy.SpendingRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, evidence spendingRenewalFinalEvidence, final verifiedSpendingRenewalFinal) (bool, error) {
 	chain, err := s.spendingRenewalChain()
 	if err != nil {
 		return false, err
@@ -49,7 +49,7 @@ func (s *Service) releaseConflictedBitcoinPayment(ctx context.Context, snapshot 
 	// The ledger's existing mutex/sequence transaction makes release atomic
 	// against confirmation or any late final-result callback, retaining all
 	// original signed evidence and the new canonical-chain evidence.
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "released", RequestDigest: digest, Evidence: string(raw)}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: p.OperationID, Phase: "released", RequestDigest: digest, Evidence: string(raw)}); err != nil {
 		return false, err
 	}
 	return true, nil

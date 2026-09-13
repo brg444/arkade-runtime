@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func delegationFixture(t *testing.T) (*Ledger, *time.Time, LightDelegation) {
+func delegationFixture(t *testing.T) (*Ledger, *time.Time, SpendingDelegation) {
 	t.Helper()
 	l, now, r := renewalFixture(t)
 	o := setTestPlans(t, r.VaultID, delegationSetVaultProgram, 1, *now)[0]
@@ -26,19 +26,19 @@ func delegationFixture(t *testing.T) (*Ledger, *time.Time, LightDelegation) {
 // One-member sets use the same authenticated API as every current schedule.
 // A zero counter models the supported counterless passkey; dedicated tests
 // below exercise strictly increasing counters and exact retry after advancement.
-func scheduleOneDelegation(l *Ledger, ctx context.Context, o LightDelegation) (*LightDelegationSnapshot, error) {
+func scheduleOneDelegation(l *Ledger, ctx context.Context, o SpendingDelegation) (*SpendingDelegationSnapshot, error) {
 	credential, err := delegationEnrolledCredentialID(ctx, l.db, o.VaultID, testIntegrityKey())
 	if err != nil {
 		return nil, err
 	}
-	saved, err := l.ScheduleVtxoDelegationSet(ctx, []LightDelegation{o}, credential, 0)
+	saved, err := l.ScheduleVtxoDelegationSet(ctx, []SpendingDelegation{o}, credential, 0)
 	if err != nil {
 		return nil, err
 	}
 	return &saved[0], nil
 }
 
-func stageDelegation(t *testing.T, l *Ledger, o LightDelegation, through string) *LightDelegationSnapshot {
+func stageDelegation(t *testing.T, l *Ledger, o SpendingDelegation, through string) *SpendingDelegationSnapshot {
 	t.Helper()
 	s, err := scheduleOneDelegation(l, t.Context(), o)
 	if err != nil {
@@ -51,7 +51,7 @@ func stageDelegation(t *testing.T, l *Ledger, o LightDelegation, through string)
 		if strings.HasPrefix(phase, "cleanup_") {
 			continue
 		}
-		s, err = l.AdvanceLightDelegation(t.Context(), LightDelegationEvent{o.OperationID, phase, `{}`, ""}, 100000)
+		s, err = l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, phase, `{}`, ""}, 100000)
 		if err != nil {
 			t.Fatal(phase, err)
 		}
@@ -88,7 +88,7 @@ func TestSpendingDelegationPaymentInvalidationAndOverlap(t *testing.T) {
 					t.Fatal("unrelated schedule", err)
 				}
 			} else {
-				all, err := l.ListLightDelegations(t.Context())
+				all, err := l.ListSpendingDelegations(t.Context())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -102,7 +102,7 @@ func TestSpendingDelegationPaymentInvalidationAndOverlap(t *testing.T) {
 					}
 				}
 			}
-			if _, err := l.AdvanceLightDelegation(t.Context(), LightDelegationEvent{unrelated.OperationID, "claimed", `{}`, ""}, 100000); !errors.Is(err, ErrVtxoOperationActive) {
+			if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{unrelated.OperationID, "claimed", `{}`, ""}, 100000); !errors.Is(err, ErrVtxoOperationActive) {
 				t.Fatal("claim while payment", err)
 			}
 		})
@@ -122,7 +122,7 @@ func TestSpendingDelegationClaimAndPaymentAtomicWinner(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := l.AdvanceLightDelegation(context.Background(), LightDelegationEvent{o.OperationID, "claimed", `{}`, ""}, 100000)
+			_, err := l.AdvanceSpendingDelegation(context.Background(), SpendingDelegationEvent{o.OperationID, "claimed", `{}`, ""}, 100000)
 			results <- err
 		}()
 		go func() {
@@ -153,23 +153,23 @@ func TestSpendingDelegationBoundedExpiryAndFinalFence(t *testing.T) {
 		t.Run(phase, func(t *testing.T) {
 			l, now, o := delegationFixture(t)
 			stageDelegation(t, l, o, phase)
-			e := LightDelegationEvent{o.OperationID, "expired", `{"inputLive":true}`, ""}
+			e := SpendingDelegationEvent{o.OperationID, "expired", `{"inputLive":true}`, ""}
 			*now = time.Unix(o.ExpiresAt, 0)
-			if _, err := l.AdvanceLightDelegation(t.Context(), e, 0); err == nil {
+			if _, err := l.AdvanceSpendingDelegation(t.Context(), e, 0); err == nil {
 				t.Fatal("quarantine skipped")
 			}
 			*now = now.Add(31 * time.Second)
 			if phase != "armed" && phase != "claimed" && !strings.HasPrefix(phase, "final_") {
-				if _, err := l.AdvanceLightDelegation(t.Context(), e, 0); err == nil {
+				if _, err := l.AdvanceSpendingDelegation(t.Context(), e, 0); err == nil {
 					t.Fatal("Operator cleanup bypassed")
 				}
 				for _, cleanup := range []string{"cleanup_pending", "cleanup_authorized", "cleanup_dispatched", "cleanup_result"} {
-					if _, err := l.AdvanceLightDelegation(t.Context(), LightDelegationEvent{o.OperationID, cleanup, `{}`, ""}, 0); err != nil {
+					if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, cleanup, `{}`, ""}, 0); err != nil {
 						t.Fatal(cleanup, err)
 					}
 				}
 			}
-			_, err := l.AdvanceLightDelegation(t.Context(), e, 0)
+			_, err := l.AdvanceSpendingDelegation(t.Context(), e, 0)
 			final := strings.HasPrefix(phase, "final_")
 			if final && err == nil {
 				t.Fatal("released final authority")
@@ -189,7 +189,7 @@ func TestSpendingDelegationBoundedExpiryAndFinalFence(t *testing.T) {
 				t.Fatal("fee hold", used, want)
 			}
 			if !final {
-				if _, err := l.AdvanceLightDelegation(t.Context(), LightDelegationEvent{o.OperationID, "final_authorized", `{}`, ""}, 0); err == nil {
+				if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "final_authorized", `{}`, ""}, 0); err == nil {
 					t.Fatal("final signed after terminal")
 				}
 			}
@@ -211,7 +211,7 @@ func TestSpendingDelegationFinalVersusExpiryRace(t *testing.T) {
 			go func(phase string) {
 				defer wg.Done()
 				<-start
-				_, err := l.AdvanceLightDelegation(context.Background(), LightDelegationEvent{o.OperationID, phase, `{}`, ""}, 0)
+				_, err := l.AdvanceSpendingDelegation(context.Background(), SpendingDelegationEvent{o.OperationID, phase, `{}`, ""}, 0)
 				if err == nil {
 					results <- phase
 				}
@@ -239,11 +239,11 @@ func TestSpendingDelegationAllowanceAndImmutableTranscript(t *testing.T) {
 	if used, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err != nil || used != 0 {
 		t.Fatal(used, err)
 	}
-	if _, err := l.AdvanceLightDelegation(t.Context(), LightDelegationEvent{o.OperationID, "claimed", `{}`, ""}, o.FeeSats-1); !errors.Is(err, ErrPeriodAllowanceExceeded) {
+	if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "claimed", `{}`, ""}, o.FeeSats-1); !errors.Is(err, ErrPeriodAllowanceExceeded) {
 		t.Fatal(err)
 	}
 	stageDelegation(t, l, o, "nonces_committed")
-	if _, err := l.AdvanceLightDelegation(t.Context(), LightDelegationEvent{o.OperationID, "nonces_committed", `{"changed":true}`, ""}, 0); err == nil {
+	if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "nonces_committed", `{"changed":true}`, ""}, 0); err == nil {
 		t.Fatal("nonce transcript overwritten")
 	}
 	stageDelegation(t, l, o, "confirmed")
@@ -276,7 +276,7 @@ func TestSpendingDelegationTamperCannotHideOwnership(t *testing.T) {
 			if _, err := l.db.Exec(query); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := l.ListLightDelegations(t.Context()); err == nil {
+			if _, err := l.ListSpendingDelegations(t.Context()); err == nil {
 				t.Fatal("tamper accepted")
 			}
 			if _, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err == nil {
@@ -314,10 +314,10 @@ func TestSpendingDelegationRestartRetainsSingleTranscript(t *testing.T) {
 	if err := reopened.SetIntegrityKey(testIntegrityKey()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reopened.AdvanceLightDelegation(t.Context(), LightDelegationEvent{o.OperationID, "nonces_committed", `{"peer":"changed"}`, ""}, 0); err == nil {
+	if _, err := reopened.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "nonces_committed", `{"peer":"changed"}`, ""}, 0); err == nil {
 		t.Fatal("restart reused nonce")
 	}
-	all, err := reopened.ListLightDelegations(t.Context())
+	all, err := reopened.ListSpendingDelegations(t.Context())
 	if err != nil || len(all) != 1 || all[0].State() != "nonces_committed" {
 		t.Fatal(all, err)
 	}
@@ -340,12 +340,12 @@ func TestSpendingDelegationDeletedNonceRecordCannotBeReplacedAtSameSequence(t *t
 	if _, err := l.db.Exec(`DELETE FROM light_delegation_event WHERE phase='nonces_committed'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := l.ListLightDelegations(t.Context()); err == nil {
+	if _, err := l.ListSpendingDelegations(t.Context()); err == nil {
 		t.Fatal("deleted transcript trusted")
 	}
 	// The new peer transcript would bring the SQL count back to the old value.
 	// It must fail on the pre-mutation sequence, before any new signature can use it.
-	if _, err := l.AdvanceLightDelegation(t.Context(), LightDelegationEvent{o.OperationID, "nonces_committed", `{"peer":"changed"}`, ""}, 0); err == nil {
+	if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "nonces_committed", `{"peer":"changed"}`, ""}, 0); err == nil {
 		t.Fatal("removed nonce record replaced")
 	}
 	after, _, err := sequence.read()

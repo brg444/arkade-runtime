@@ -127,7 +127,7 @@ func TestSpendingDelegationStockTreeEventDerivesTransactionID(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var event spendingDelegationEvent
+			var event spendingDelegationStreamEvent
 			err = json.Unmarshal(raw, &event)
 			if supplied != "" && supplied != node.Txid {
 				if err == nil {
@@ -144,7 +144,7 @@ func TestSpendingDelegationStockTreeEventDerivesTransactionID(t *testing.T) {
 			}
 		}
 	}
-	var event spendingDelegationEvent
+	var event spendingDelegationStreamEvent
 	if json.Unmarshal([]byte(`{"treeTx":{"id":"batch","tx":"invalid"}}`), &event) == nil {
 		t.Fatal("malformed transaction accepted")
 	}

@@ -9,7 +9,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p spendingDelegationPlan, c renewalContract) (bool, error) {
+func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy.SpendingDelegationSnapshot, p spendingDelegationPlan, c renewalContract) (bool, error) {
 	tree := c.Tree
 
 	if _, ok := saved.Events["confirmed"]; ok {

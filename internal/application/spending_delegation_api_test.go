@@ -175,7 +175,7 @@ func TestSpendingDelegationAPIAllVaultPrograms(t *testing.T) {
 				bad := set
 				bad.Authorization = nil
 				spendingDelegationHTTP(t, e, "schedule", bad, 400)
-				all, err := e.ledger.ListLightDelegations(t.Context())
+				all, err := e.ledger.ListSpendingDelegations(t.Context())
 				if err != nil || len(all) != 0 {
 					t.Fatal("unauthorized plans persisted")
 				}
@@ -215,7 +215,7 @@ func TestSpendingDelegationAPIAllVaultPrograms(t *testing.T) {
 				if _, err := e.svc.scheduleSpendingDelegationSet(t.Context(), changed); err == nil || !strings.Contains(err.Error(), "sign count") {
 					t.Fatalf("new set reused old counter: %v", err)
 				}
-				all, err = e.ledger.ListLightDelegations(t.Context())
+				all, err = e.ledger.ListSpendingDelegations(t.Context())
 				if err != nil || len(all) != 2 {
 					t.Fatalf("changed membership: %v", err)
 				}
@@ -334,7 +334,7 @@ func TestSpendingDelegationRejectsNewAuthorityWithoutCompleteAuthorization(t *te
 			r.Authorization = &authorization
 			mutate(&r)
 			spendingDelegationHTTP(t, e, "schedule", r, 400)
-			all, err := e.ledger.ListLightDelegations(t.Context())
+			all, err := e.ledger.ListSpendingDelegations(t.Context())
 			if err != nil || len(all) != 0 {
 				t.Fatalf("rejected set persisted: %v", err)
 			}
@@ -342,7 +342,7 @@ func TestSpendingDelegationRejectsNewAuthorityWithoutCompleteAuthorization(t *te
 	}
 	// Rejections leave the original assertion usable for its exact bounded set.
 	spendingDelegationHTTP(t, e, "schedule", set, 200)
-	all, err := e.ledger.ListLightDelegations(t.Context())
+	all, err := e.ledger.ListSpendingDelegations(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func TestSpendingDelegationFinalizedRetryKeepsRecoveryOnStatusOnly(t *testing.T)
 			}
 			payload = string(raw)
 		}
-		if _, err := e.ledger.AdvanceLightDelegation(t.Context(), policy.LightDelegationEvent{OperationID: request.OperationID, Phase: phase, Evidence: payload}, c.Binding.SpendingPolicy.PeriodAllowanceSats); err != nil {
+		if _, err := e.ledger.AdvanceSpendingDelegation(t.Context(), policy.SpendingDelegationEvent{OperationID: request.OperationID, Phase: phase, Evidence: payload}, c.Binding.SpendingPolicy.PeriodAllowanceSats); err != nil {
 			t.Fatal(phase, err)
 		}
 	}

@@ -130,7 +130,7 @@ func TestSpendingBitcoinLostRegisterResponseDoesNotDispatchAgain(t *testing.T) {
 	if err := intent.Verify(operator.signedProof, request.Message, []*btcec.PublicKey{c.spending.Tree.ArkdPub}); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := e.svc.Stores.LightRenewal.GetLightRenewal(t.Context(), prepared.Plan.OperationID)
+	snapshot, err := e.svc.Stores.SpendingRenewal.GetSpendingRenewal(t.Context(), prepared.Plan.OperationID)
 	if err != nil || snapshot.Operation.Kind != policy.SpendingBitcoinBatchKind {
 		t.Fatal("wrong journal")
 	}
@@ -195,7 +195,7 @@ func TestSpendingBitcoinRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "batch already ended") {
 				t.Fatalf("lost ended batch failure: %v", err)
 			}
-			saved, err := e.ledger.GetLightRenewal(t.Context(), request.OperationID)
+			saved, err := e.ledger.GetSpendingRenewal(t.Context(), request.OperationID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -414,7 +414,7 @@ func TestSpendingBitcoinExpiredAbsentIntentReleasesOnlyUndispatchedFinal(t *test
 				}
 				return
 			}
-			snapshot, err := ledger.GetLightRenewal(t.Context(), r.OperationID)
+			snapshot, err := ledger.GetSpendingRenewal(t.Context(), r.OperationID)
 			if err != nil || snapshot.Events["delete_result"].Outcome != "released" {
 				t.Fatalf("absence not retained: %v", err)
 			}

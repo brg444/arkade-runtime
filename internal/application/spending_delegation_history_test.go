@@ -171,7 +171,7 @@ func TestSpendingDelegationAPIListAuthenticatesCursorAndPaginatesHistory(t *test
 		if _, err := f.f.env.svc.scheduleSpendingDelegationSet(t.Context(), delegatedSetFixture(t, copyFixture, uint32(i+7))); err != nil {
 			t.Fatal(err)
 		}
-		_, err = f.f.env.ledger.AdvanceLightDelegation(t.Context(), policy.LightDelegationEvent{OperationID: p.Request.OperationID, Phase: "cancelled", Evidence: `{}`}, 0)
+		_, err = f.f.env.ledger.AdvanceSpendingDelegation(t.Context(), policy.SpendingDelegationEvent{OperationID: p.Request.OperationID, Phase: "cancelled", Evidence: `{}`}, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -272,7 +272,7 @@ func bindDelegationTestTranscript(t *testing.T, fixture delegatedFixture, prepar
 			evidence = all
 		}
 		raw, _ := json.Marshal(evidence)
-		if _, err := s.Stores.LightDelegation.AdvanceLightDelegation(t.Context(), policy.LightDelegationEvent{OperationID: p.Request.OperationID, Phase: phase, Evidence: string(raw)}, 100000); err != nil {
+		if _, err := s.Stores.SpendingDelegation.AdvanceSpendingDelegation(t.Context(), policy.SpendingDelegationEvent{OperationID: p.Request.OperationID, Phase: phase, Evidence: string(raw)}, 100000); err != nil {
 			t.Fatal(phase, err)
 		}
 	}

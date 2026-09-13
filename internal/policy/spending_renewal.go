@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-// LightRenewalOperation is the retained Bitcoin payment batch journal.
+// SpendingRenewalOperation is the retained Bitcoin payment batch journal.
 // The signed kind and principal remain in their existing serialized positions.
 // Plan contains a compiled program plan, never executable data.
-type LightRenewalOperation struct {
+type SpendingRenewalOperation struct {
 	OperationID string `json:"operationId"`
 	VaultID     string `json:"vaultId"`
 	InputTxid   string `json:"inputTxid"`
@@ -30,7 +30,7 @@ type LightRenewalOperation struct {
 
 // Phases are append-only. A dispatched phase with no result stays uncertain;
 // neither a client retry nor elapsed time implicitly unlocks its old output.
-type LightRenewalEvent struct {
+type SpendingRenewalEvent struct {
 	OperationID   string `json:"operationId"`
 	Phase         string `json:"phase"`
 	RequestDigest string `json:"requestDigest"`
@@ -40,9 +40,9 @@ type LightRenewalEvent struct {
 	CreatedAt     string `json:"createdAt"`
 }
 
-type LightRenewalSnapshot struct {
-	Operation LightRenewalOperation
-	Events    map[string]LightRenewalEvent
+type SpendingRenewalSnapshot struct {
+	Operation SpendingRenewalOperation
+	Events    map[string]SpendingRenewalEvent
 }
 
 func canonicalRenewalHex(value string, n int) bool {
@@ -56,7 +56,7 @@ func isBitcoinBatch(kind string) bool {
 	return kind == SpendingBitcoinBatchKind
 }
 
-func validateLightRenewalOperation(r LightRenewalOperation) error {
+func validateSpendingRenewalOperation(r SpendingRenewalOperation) error {
 	if !isBitcoinBatch(r.Kind) || r.AmountSats < 330 || r.AmountSats > 21_000_000*100_000_000 {
 		return fmt.Errorf("invalid batch operation kind or amount")
 	}
@@ -70,7 +70,7 @@ func validateLightRenewalOperation(r LightRenewalOperation) error {
 	}
 	return nil
 }
-func validateLightRenewalEvent(e LightRenewalEvent) error {
+func validateSpendingRenewalEvent(e SpendingRenewalEvent) error {
 	if !canonicalRenewalHex(e.OperationID, 16) || !canonicalRenewalHex(e.RequestDigest, 32) || len(e.Evidence) > 900000 || len(e.OperatorRef) > 256 {
 		return fmt.Errorf("invalid Light renewal phase")
 	}
@@ -124,12 +124,12 @@ func renewalMAC(key []byte, domain, payload string) []byte {
 
 // Scan and authenticate before partitioning. A tampered SQL correlation field
 // must not hide a reservation or a dispatched phase from conflict handling.
-func loadLightRenewals(ctx context.Context, q queryContext, key []byte) (map[string]*LightRenewalSnapshot, error) {
+func loadSpendingRenewals(ctx context.Context, q queryContext, key []byte) (map[string]*SpendingRenewalSnapshot, error) {
 	rows, err := q.QueryContext(ctx, `SELECT operation_id,vault_id,payload,integrity_mac FROM light_renewal_operation`)
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]*LightRenewalSnapshot{}
+	out := map[string]*SpendingRenewalSnapshot{}
 	for rows.Next() {
 		var id, vault, payload string
 		var mac []byte
@@ -141,17 +141,17 @@ func loadLightRenewals(ctx context.Context, q queryContext, key []byte) (map[str
 			rows.Close()
 			return nil, fmt.Errorf("Light renewal operation integrity")
 		}
-		var op LightRenewalOperation
+		var op SpendingRenewalOperation
 		if err := json.Unmarshal([]byte(payload), &op); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		canonical, _ := json.Marshal(op)
-		if string(canonical) != payload || op.OperationID != id || op.VaultID != vault || validateLightRenewalOperation(op) != nil {
+		if string(canonical) != payload || op.OperationID != id || op.VaultID != vault || validateSpendingRenewalOperation(op) != nil {
 			rows.Close()
 			return nil, fmt.Errorf("Light renewal operation binding")
 		}
-		out[id] = &LightRenewalSnapshot{Operation: op, Events: map[string]LightRenewalEvent{}}
+		out[id] = &SpendingRenewalSnapshot{Operation: op, Events: map[string]SpendingRenewalEvent{}}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -172,19 +172,19 @@ func loadLightRenewals(ctx context.Context, q queryContext, key []byte) (map[str
 		if len(payload) > 1048576 || !hmac.Equal(mac, renewalMAC(key, "vaulted-light/renewal-event/v1", payload)) {
 			return nil, fmt.Errorf("Light renewal event integrity")
 		}
-		var e LightRenewalEvent
+		var e SpendingRenewalEvent
 		if err := json.Unmarshal([]byte(payload), &e); err != nil {
 			return nil, err
 		}
 		canonical, _ := json.Marshal(e)
-		if string(canonical) != payload || e.OperationID != id || e.Phase != phase || out[id] == nil || validateLightRenewalEvent(e) != nil {
+		if string(canonical) != payload || e.OperationID != id || e.Phase != phase || out[id] == nil || validateSpendingRenewalEvent(e) != nil {
 			return nil, fmt.Errorf("Light renewal event binding")
 		}
 		out[id].Events[phase] = e
 	}
 	return out, rows.Err()
 }
-func renewalTerminal(s *LightRenewalSnapshot) bool {
+func renewalTerminal(s *SpendingRenewalSnapshot) bool {
 	if _, ok := s.Events["confirmed"]; ok {
 		return true
 	}
@@ -196,7 +196,7 @@ func renewalTerminal(s *LightRenewalSnapshot) bool {
 	}
 	return s.Events["register_result"].Outcome == "rejected"
 }
-func (l *Ledger) GetLightRenewal(ctx context.Context, id string) (*LightRenewalSnapshot, error) {
+func (l *Ledger) GetSpendingRenewal(ctx context.Context, id string) (*SpendingRenewalSnapshot, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	key, err := l.integrityKeyCopy()
@@ -204,13 +204,13 @@ func (l *Ledger) GetLightRenewal(ctx context.Context, id string) (*LightRenewalS
 		return nil, err
 	}
 	defer zeroBytes(key)
-	all, err := loadLightRenewals(ctx, l.db, key)
+	all, err := loadSpendingRenewals(ctx, l.db, key)
 	if err != nil {
 		return nil, err
 	}
 	return all[id], nil
 }
-func (l *Ledger) withLightRenewalTx(ctx context.Context, apply func(*sql.Conn, []byte) error) error {
+func (l *Ledger) withSpendingRenewalTx(ctx context.Context, apply func(*sql.Conn, []byte) error) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	key, err := l.integrityKeyCopy()
@@ -242,11 +242,11 @@ func (l *Ledger) withLightRenewalTx(ctx context.Context, apply func(*sql.Conn, [
 	committed = err == nil
 	return err
 }
-func (l *Ledger) ReserveLightRenewal(ctx context.Context, r LightRenewalOperation, allowance int64) (*LightRenewalSnapshot, error) {
+func (l *Ledger) ReserveSpendingRenewal(ctx context.Context, r SpendingRenewalOperation, allowance int64) (*SpendingRenewalSnapshot, error) {
 	r.CreatedAt = l.NowUTC().Format(time.RFC3339)
-	var result *LightRenewalSnapshot
-	err := l.withLightRenewalTx(ctx, func(tx *sql.Conn, key []byte) error {
-		all, err := loadLightRenewals(ctx, tx, key)
+	var result *SpendingRenewalSnapshot
+	err := l.withSpendingRenewalTx(ctx, func(tx *sql.Conn, key []byte) error {
+		all, err := loadSpendingRenewals(ctx, tx, key)
 		if err != nil {
 			return err
 		}
@@ -262,7 +262,7 @@ func (l *Ledger) ReserveLightRenewal(ctx context.Context, r LightRenewalOperatio
 		// A client may clear an absent setup only after its signed expiry.
 		// Check under the ledger lock so a delayed prepare cannot race that read.
 		r.CreatedAt = l.NowUTC().Format(time.RFC3339)
-		if err := validateLightRenewalOperation(r); err != nil {
+		if err := validateSpendingRenewalOperation(r); err != nil {
 			return err
 		}
 		for _, prior := range all {
@@ -287,20 +287,20 @@ func (l *Ledger) ReserveLightRenewal(ctx context.Context, r LightRenewalOperatio
 		if _, err := tx.ExecContext(ctx, `INSERT INTO light_renewal_operation(operation_id,vault_id,payload,integrity_mac) VALUES(?,?,?,?)`, r.OperationID, r.VaultID, string(payload), renewalMAC(key, "vaulted-light/renewal-operation/v1", string(payload))); err != nil {
 			return err
 		}
-		result = &LightRenewalSnapshot{Operation: r, Events: map[string]LightRenewalEvent{}}
+		result = &SpendingRenewalSnapshot{Operation: r, Events: map[string]SpendingRenewalEvent{}}
 		return nil
 	})
 	return result, err
 }
-func (l *Ledger) AppendLightRenewalEvent(ctx context.Context, e LightRenewalEvent, credentialID []byte, signCount uint32) (LightRenewalEvent, bool, error) {
+func (l *Ledger) AppendSpendingRenewalEvent(ctx context.Context, e SpendingRenewalEvent, credentialID []byte, signCount uint32) (SpendingRenewalEvent, bool, error) {
 	e.CreatedAt = l.NowUTC().Format(time.RFC3339)
-	if err := validateLightRenewalEvent(e); err != nil {
-		return LightRenewalEvent{}, false, err
+	if err := validateSpendingRenewalEvent(e); err != nil {
+		return SpendingRenewalEvent{}, false, err
 	}
-	var result LightRenewalEvent
+	var result SpendingRenewalEvent
 	created := false
-	err := l.withLightRenewalTx(ctx, func(tx *sql.Conn, key []byte) error {
-		all, err := loadLightRenewals(ctx, tx, key)
+	err := l.withSpendingRenewalTx(ctx, func(tx *sql.Conn, key []byte) error {
+		all, err := loadSpendingRenewals(ctx, tx, key)
 		if err != nil {
 			return err
 		}
@@ -345,7 +345,7 @@ func (l *Ledger) AppendLightRenewalEvent(ctx context.Context, e LightRenewalEven
 	})
 	return result, created, err
 }
-func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now time.Time) error {
+func validateRenewalTransition(s *SpendingRenewalSnapshot, e SpendingRenewalEvent, now time.Time) error {
 	if renewalTerminal(s) {
 		return fmt.Errorf("Light renewal already terminal")
 	}
@@ -444,8 +444,8 @@ func validateRenewalTransition(s *LightRenewalSnapshot, e LightRenewalEvent, now
 	}
 	return nil
 }
-func (l *Ledger) lightRenewalAllowance(ctx context.Context, q queryContext, vault string, key []byte) (int64, error) {
-	all, err := loadLightRenewals(ctx, q, key)
+func (l *Ledger) spendingRenewalAllowance(ctx context.Context, q queryContext, vault string, key []byte) (int64, error) {
+	all, err := loadSpendingRenewals(ctx, q, key)
 	if err != nil {
 		return 0, err
 	}
@@ -471,13 +471,13 @@ func (l *Ledger) lightRenewalAllowance(ctx context.Context, q queryContext, vaul
 	}
 	return total, nil
 }
-func (l *Ledger) rejectActiveLightRenewal(ctx context.Context, q queryContext, vault string) error {
+func (l *Ledger) rejectActiveSpendingRenewal(ctx context.Context, q queryContext, vault string) error {
 	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return err
 	}
 	defer zeroBytes(key)
-	all, err := loadLightRenewals(ctx, q, key)
+	all, err := loadSpendingRenewals(ctx, q, key)
 	if err != nil {
 		return err
 	}

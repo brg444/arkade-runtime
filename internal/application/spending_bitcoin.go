@@ -127,7 +127,7 @@ func (s *Service) prepareSpendingBitcoin(ctx context.Context, r spendingBitcoinP
 	if err != nil || !sig.Verify(digest, key) {
 		return bitcoinPaymentPrepared{}, fmt.Errorf("Bitcoin payment owner authorization required")
 	}
-	if prior, err := s.Stores.LightRenewal.GetLightRenewal(ctx, r.OperationID); err != nil {
+	if prior, err := s.Stores.SpendingRenewal.GetSpendingRenewal(ctx, r.OperationID); err != nil {
 		return bitcoinPaymentPrepared{}, err
 	} else if prior != nil {
 		prepared, err := bitcoinPaymentSnapshot(prior, c)

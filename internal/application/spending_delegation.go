@@ -67,11 +67,11 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		return out, err
 	}
 	setHash := hex.EncodeToString(digest)
-	all, err := s.Stores.LightDelegation.ListLightDelegations(ctx)
+	all, err := s.Stores.SpendingDelegation.ListSpendingDelegations(ctx)
 	if err != nil {
 		return out, err
 	}
-	prior := map[string]*policy.LightDelegationSnapshot{}
+	prior := map[string]*policy.SpendingDelegationSnapshot{}
 	for i := range all {
 		if all[i].Operation.SetID == r.SetID {
 			prior[all[i].Operation.OperationID] = &all[i]
@@ -109,7 +109,7 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 	if err != nil {
 		return out, err
 	}
-	operations := make([]policy.LightDelegation, len(plans))
+	operations := make([]policy.SpendingDelegation, len(plans))
 	now := s.vtxoNow().Unix()
 	for i, p := range plans {
 		if p.ValidAt < now || p.ValidAt > now+30*86400 {
@@ -131,9 +131,9 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		if err != nil {
 			return out, err
 		}
-		operations[i] = policy.LightDelegation{OperationID: p.Request.OperationID, VaultID: r.VaultID, InputTxid: p.Renewal.Txid, InputVout: p.Renewal.Vout, ValidAt: p.ValidAt, ExpiresAt: p.Request.ExpiresAt, FeeSats: p.Renewal.FeeSats, PlanDigest: hex.EncodeToString(planHash), Plan: string(raw), Program: r.Program, DescriptorHash: r.DescriptorHash, SetID: r.SetID, SetDigest: setHash, SetSize: len(plans), SetIndex: i}
+		operations[i] = policy.SpendingDelegation{OperationID: p.Request.OperationID, VaultID: r.VaultID, InputTxid: p.Renewal.Txid, InputVout: p.Renewal.Vout, ValidAt: p.ValidAt, ExpiresAt: p.Request.ExpiresAt, FeeSats: p.Renewal.FeeSats, PlanDigest: hex.EncodeToString(planHash), Plan: string(raw), Program: r.Program, DescriptorHash: r.DescriptorHash, SetID: r.SetID, SetDigest: setHash, SetSize: len(plans), SetIndex: i}
 	}
-	saved, err := s.Stores.LightDelegation.ScheduleVtxoDelegationSet(ctx, operations, credentialID, count)
+	saved, err := s.Stores.SpendingDelegation.ScheduleVtxoDelegationSet(ctx, operations, credentialID, count)
 	if err != nil {
 		return out, err
 	}
@@ -205,7 +205,7 @@ func (s *Service) verifySpendingDelegationRead(ctx context.Context, c renewalCon
 	return verifyRenewalOwner(c.Binding.OwnerPub, digest, r.OwnerSignature)
 }
 
-func (s *Service) spendingDelegationResponse(saved *policy.LightDelegationSnapshot, c renewalContract, withRecovery bool) (spendingDelegationOperationResponse, error) {
+func (s *Service) spendingDelegationResponse(saved *policy.SpendingDelegationSnapshot, c renewalContract, withRecovery bool) (spendingDelegationOperationResponse, error) {
 	response, err := s.delegationResponseForContract(saved, c, withRecovery)
 	if err != nil {
 		return response, err
@@ -263,7 +263,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 			}
 			if phase == "list" {
 				out := spendingDelegationOperationListResponse{Version: 1, Operations: []spendingDelegationOperationResponse{}}
-				all, err := s.Stores.LightDelegation.ListLightDelegations(r.Context())
+				all, err := s.Stores.SpendingDelegation.ListSpendingDelegations(r.Context())
 				if err != nil {
 					writeJSON(w, nil, err)
 					return

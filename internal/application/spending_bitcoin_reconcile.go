@@ -21,7 +21,7 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r spendingRenewal
 	if _, err := canonicalVtxoOperationID(r.OperationID); err != nil {
 		return spendingRenewalResponse{}, err
 	}
-	prior, err := s.Stores.LightRenewal.GetLightRenewal(ctx, r.OperationID)
+	prior, err := s.Stores.SpendingRenewal.GetSpendingRenewal(ctx, r.OperationID)
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
@@ -120,7 +120,7 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r spendingRenewal
 	if err != nil {
 		return response, err
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "confirmed", RequestDigest: hex.EncodeToString(final.RequestDigest), Outcome: "confirmed", OperatorRef: final.CommitmentTxid, Evidence: string(proof)}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "confirmed", RequestDigest: hex.EncodeToString(final.RequestDigest), Outcome: "confirmed", OperatorRef: final.CommitmentTxid, Evidence: string(proof)}); err != nil {
 		return response, err
 	}
 	response.State = "confirmed"
@@ -178,7 +178,7 @@ func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentRel
 		digest = dispatch.RequestDigest
 		proof = string(encoded)
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: r.OperationID, Phase: phase, RequestDigest: digest, Evidence: proof}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: phase, RequestDigest: digest, Evidence: proof}); err != nil {
 		return spendingRenewalResponse{}, err
 	}
 	return spendingRenewalResponse{State: phase}, nil
@@ -189,7 +189,7 @@ func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentRel
 // For this path only, expiry and the durable no-final-dispatch fence prevent
 // the old batch from acquiring its missing forfeit cosignature. The caller
 // additionally checks that the original input is still live before release.
-func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, supplied *spendingDelegateIntent) (bool, error) {
+func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *policy.SpendingRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, supplied *spendingDelegateIntent) (bool, error) {
 	if _, ok := snapshot.Events["delete_result"]; ok {
 		return true, nil
 	}
@@ -228,7 +228,7 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 	if saved, ok := snapshot.Events["delete_authorized"]; ok && saved.RequestDigest != digest {
 		return false, fmt.Errorf("Bitcoin payment cancellation changed")
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "delete_authorized", RequestDigest: digest, Evidence: string(encoded)}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: p.OperationID, Phase: "delete_authorized", RequestDigest: digest, Evidence: string(encoded)}); err != nil {
 		return false, err
 	}
 	release, err = s.acquireVerification(ctx)
@@ -240,7 +240,7 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 	if err != nil {
 		return false, err
 	}
-	operator, err := s.dialLightRenewalOperator(ctx)
+	operator, err := s.dialSpendingRenewalOperator(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -250,7 +250,7 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 	if !ok {
 		return false, fmt.Errorf("Bitcoin payment cancellation unavailable")
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "delete_dispatched", RequestDigest: digest}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: p.OperationID, Phase: "delete_dispatched", RequestDigest: digest}); err != nil {
 		return false, err
 	}
 	if err := deleter.deleteIntent(ctx, signed, deletion.Message); err != nil {
@@ -258,7 +258,7 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 			return false, nil
 		}
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "delete_result", RequestDigest: digest, Outcome: "released"}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: p.OperationID, Phase: "delete_result", RequestDigest: digest, Outcome: "released"}); err != nil {
 		return false, err
 	}
 	return true, nil

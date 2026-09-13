@@ -120,7 +120,7 @@ func New(d Deps) *Service {
 		ArkResolver:            d.ArkResolver,
 	}
 	if key, ok := s.keys.spendingDelegation.(*fileBackedVaultKeys); ok {
-		key.bindDelegationJournal(d.Stores.LightDelegation)
+		key.bindDelegationJournal(d.Stores.SpendingDelegation)
 	}
 	if raw, err := liveContractPackJSONFor(d.Deployment.Network); err == nil {
 		s.contractPackJSON = raw

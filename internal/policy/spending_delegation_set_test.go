@@ -13,11 +13,11 @@ import (
 	"time"
 )
 
-func setTestPlans(t *testing.T, vault, program string, n int, now time.Time) []LightDelegation {
+func setTestPlans(t *testing.T, vault, program string, n int, now time.Time) []SpendingDelegation {
 	t.Helper()
-	plans := make([]LightDelegation, n)
+	plans := make([]SpendingDelegation, n)
 	for i := range plans {
-		plans[i] = LightDelegation{
+		plans[i] = SpendingDelegation{
 			OperationID:    fmt.Sprintf("%032x", i+1),
 			VaultID:        vault,
 			InputTxid:      fmt.Sprintf("%064x", 0x1000+i),
@@ -179,7 +179,7 @@ func TestDelegationSetExactRetryAfterDeadline(t *testing.T) {
 		t.Fatalf("deadline retry allowance = %d %v", used, err)
 	}
 	// Changed membership still rejects after the deadline.
-	changed := make([]LightDelegation, len(plans))
+	changed := make([]SpendingDelegation, len(plans))
 	copy(changed, plans)
 	changed[1].FeeSats++
 	if _, err := l.ScheduleVtxoDelegationSet(ctx, changed, setTestCredential(), 1); err == nil {
@@ -207,50 +207,50 @@ func TestDelegationSetMutationsReject(t *testing.T) {
 	if _, err := l.ScheduleVtxoDelegationSet(ctx, base, setTestCredential(), 1); err != nil {
 		t.Fatal(err)
 	}
-	clone := func() []LightDelegation {
-		out := make([]LightDelegation, len(base))
+	clone := func() []SpendingDelegation {
+		out := make([]SpendingDelegation, len(base))
 		copy(out, base)
 		return out
 	}
-	cases := map[string]func([]LightDelegation) []LightDelegation{
-		"changed-fee": func(p []LightDelegation) []LightDelegation { p[1].FeeSats++; return p },
-		"changed-plan": func(p []LightDelegation) []LightDelegation {
+	cases := map[string]func([]SpendingDelegation) []SpendingDelegation{
+		"changed-fee": func(p []SpendingDelegation) []SpendingDelegation { p[1].FeeSats++; return p },
+		"changed-plan": func(p []SpendingDelegation) []SpendingDelegation {
 			p[0].Plan = `{"member":"changed"}`
 			return p
 		},
-		"changed-digest": func(p []LightDelegation) []LightDelegation {
+		"changed-digest": func(p []SpendingDelegation) []SpendingDelegation {
 			p[2].PlanDigest = strings.Repeat("ff", 32)
 			return p
 		},
-		"subset": func(p []LightDelegation) []LightDelegation { return p[:2] },
-		"superset": func(p []LightDelegation) []LightDelegation {
+		"subset": func(p []SpendingDelegation) []SpendingDelegation { return p[:2] },
+		"superset": func(p []SpendingDelegation) []SpendingDelegation {
 			extra := p[0]
 			extra.OperationID = strings.Repeat("09", 16)
 			extra.InputTxid = strings.Repeat("08", 32)
 			extra.SetIndex = 3
 			return append(p, extra)
 		},
-		"reorder":             func(p []LightDelegation) []LightDelegation { p[0], p[1] = p[1], p[0]; return p },
-		"duplicate-operation": func(p []LightDelegation) []LightDelegation { p[2].OperationID = p[0].OperationID; return p },
-		"duplicate-input": func(p []LightDelegation) []LightDelegation {
+		"reorder":             func(p []SpendingDelegation) []SpendingDelegation { p[0], p[1] = p[1], p[0]; return p },
+		"duplicate-operation": func(p []SpendingDelegation) []SpendingDelegation { p[2].OperationID = p[0].OperationID; return p },
+		"duplicate-input": func(p []SpendingDelegation) []SpendingDelegation {
 			p[2].InputTxid, p[2].InputVout = p[0].InputTxid, p[0].InputVout
 			return p
 		},
-		"cross-vault": func(p []LightDelegation) []LightDelegation { p[1].VaultID = strings.Repeat("cd", 32); return p },
-		"changed-context": func(p []LightDelegation) []LightDelegation {
+		"cross-vault": func(p []SpendingDelegation) []SpendingDelegation { p[1].VaultID = strings.Repeat("cd", 32); return p },
+		"changed-context": func(p []SpendingDelegation) []SpendingDelegation {
 			p[1].DescriptorHash = strings.Repeat("dd", 32)
 			return p
 		},
-		"changed-program": func(p []LightDelegation) []LightDelegation {
+		"changed-program": func(p []SpendingDelegation) []SpendingDelegation {
 			p[0].Program = "vault-light-policy-v1"
 			return p
 		},
-		"changed-set": func(p []LightDelegation) []LightDelegation { p[0].SetID = strings.Repeat("ee", 16); return p },
-		"changed-set-digest": func(p []LightDelegation) []LightDelegation {
+		"changed-set": func(p []SpendingDelegation) []SpendingDelegation { p[0].SetID = strings.Repeat("ee", 16); return p },
+		"changed-set-digest": func(p []SpendingDelegation) []SpendingDelegation {
 			p[0].SetDigest = strings.Repeat("ee", 32)
 			return p
 		},
-		"changed-operation": func(p []LightDelegation) []LightDelegation {
+		"changed-operation": func(p []SpendingDelegation) []SpendingDelegation {
 			p[0].OperationID = strings.Repeat("09", 16)
 			return p
 		},
@@ -406,7 +406,7 @@ func TestDelegationSetVsPaymentRace(t *testing.T) {
 		if n != 0 && n != 2 {
 			t.Fatalf("partial set rows = %d", n)
 		}
-		if _, err := l.ListLightDelegations(t.Context()); err != nil {
+		if _, err := l.ListSpendingDelegations(t.Context()); err != nil {
 			t.Fatal("set incomplete", err)
 		}
 	}
@@ -418,7 +418,7 @@ func TestDelegationSetOverlapAndAllowance(t *testing.T) {
 	armed := setTestPlans(t, op.VaultID, delegationSetVaultProgram, 1, *now)[0]
 	armed.OperationID, armed.SetID = strings.Repeat("06", 16), strings.Repeat("06", 16)
 	armed.InputTxid, armed.FeeSats = strings.Repeat("07", 32), 50
-	if _, err := l.ScheduleVtxoDelegationSet(ctx, []LightDelegation{armed}, setTestCredential(), 1); err != nil {
+	if _, err := l.ScheduleVtxoDelegationSet(ctx, []SpendingDelegation{armed}, setTestCredential(), 1); err != nil {
 		t.Fatal(err)
 	}
 	overlap := setTestPlans(t, op.VaultID, delegationSetVaultProgram, 1, *now)
@@ -503,7 +503,7 @@ func TestDelegationSetTamperFailsClosed(t *testing.T) {
 			if _, err := l2.db.Exec(q); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := l2.ListLightDelegations(ctx); err == nil {
+			if _, err := l2.ListSpendingDelegations(ctx); err == nil {
 				t.Fatal("tamper accepted")
 			}
 		})
@@ -546,7 +546,7 @@ func TestRetiredDelegationRowsCannotBecomeCurrentAuthority(t *testing.T) {
 			if _, err := l.db.Exec(`INSERT INTO light_delegation_operation VALUES(?,?,?,?)`, row.OperationID, row.VaultID, string(raw), renewalMAC(testIntegrityKey(), "vaulted-light/delegation-operation/v1", string(raw))); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := l.ListLightDelegations(t.Context()); err == nil {
+			if _, err := l.ListSpendingDelegations(t.Context()); err == nil {
 				t.Fatal("retired delegation became live authority")
 			}
 			if _, err := l.SpentInPeriod(t.Context(), op.VaultID, ""); err == nil {

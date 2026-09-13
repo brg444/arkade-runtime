@@ -301,7 +301,7 @@ func (k *fileBackedVaultKeys) prepareSpendingDelegationTree(ctx context.Context,
 // itself checks the persisted session and peer transcript before opening secrets;
 // callers cannot reuse a capsule against a second MuSig challenge.
 type spendingDelegationJournal interface {
-	ListLightDelegations(context.Context) ([]policy.LightDelegationSnapshot, error)
+	ListSpendingDelegations(context.Context) ([]policy.SpendingDelegationSnapshot, error)
 }
 
 func (k *fileBackedVaultKeys) bindDelegationJournal(store spendingDelegationJournal) {
@@ -319,7 +319,7 @@ func (k *fileBackedVaultKeys) verifyRenewalTranscript(ctx context.Context, c ren
 	if isNilInterface(store) {
 		return fmt.Errorf("Light delegation signing journal unavailable")
 	}
-	snapshots, err := store.ListLightDelegations(ctx)
+	snapshots, err := store.ListSpendingDelegations(ctx)
 	if err != nil {
 		return err
 	}
@@ -451,7 +451,7 @@ func (k *fileBackedVaultKeys) authorizeSpendingDelegationDelete(ctx context.Cont
 	if isNilInterface(store) {
 		return "", fmt.Errorf("Light delegation signing journal unavailable")
 	}
-	all, err := store.ListLightDelegations(ctx)
+	all, err := store.ListSpendingDelegations(ctx)
 	if err != nil {
 		return "", err
 	}

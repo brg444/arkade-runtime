@@ -55,7 +55,7 @@ func (s *Service) spendingRenewalFee(ctx context.Context, v ports.ResolvedVtxo, 
 	return fee, hex.EncodeToString(digest), err
 }
 
-func spendingRenewalState(s *policy.LightRenewalSnapshot) string {
+func spendingRenewalState(s *policy.SpendingRenewalSnapshot) string {
 	for _, phase := range []string{"confirmed", "released", "cancelled", "final_result", "final_dispatched", "final_authorized", "delete_result", "delete_dispatched", "delete_authorized", "register_result", "register_dispatched", "register_authorized"} {
 		if e, ok := s.Events[phase]; ok {
 			if e.Outcome != "" {

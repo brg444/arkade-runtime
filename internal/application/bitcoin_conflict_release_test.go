@@ -101,7 +101,7 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			if used, err := ledger.SpentInPeriod(t.Context(), request.VaultID, ""); err != nil || used != 0 {
 				t.Fatalf("allowance %d %v", used, err)
 			}
-			saved, err := ledger.GetLightRenewal(t.Context(), request.OperationID)
+			saved, err := ledger.GetSpendingRenewal(t.Context(), request.OperationID)
 			if err != nil || saved.Events["released"].Evidence == "" || saved.Events["final_dispatched"].Phase == "" {
 				t.Fatalf("missing retained evidence: %v", err)
 			}
@@ -129,7 +129,7 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {
 		t.Fatalf("final %+v %v", result, err)
 	}
-	snapshot, err := e.ledger.GetLightRenewal(t.Context(), request.OperationID)
+	snapshot, err := e.ledger.GetSpendingRenewal(t.Context(), request.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	if used, err := e.ledger.SpentInPeriod(t.Context(), request.VaultID, ""); err != nil || used != 0 {
 		t.Fatalf("allowance %d %v", used, err)
 	}
-	snapshot, err = e.ledger.GetLightRenewal(t.Context(), request.OperationID)
+	snapshot, err = e.ledger.GetSpendingRenewal(t.Context(), request.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}

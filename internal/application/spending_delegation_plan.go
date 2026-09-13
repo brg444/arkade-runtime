@@ -58,7 +58,7 @@ func delegationRecoveryWire(e spendingRenewalFinalEvidence) *spendingDelegationR
 	return &spendingDelegationRecovery{e.BatchID, e.BatchExpiry, e.CommitmentPSBT, convert(e.VtxoTree), convert(e.Connectors)}
 }
 
-func delegationStoredPlanForContract(saved *policy.LightDelegationSnapshot, c renewalContract) (spendingDelegationPlan, error) {
+func delegationStoredPlanForContract(saved *policy.SpendingDelegationSnapshot, c renewalContract) (spendingDelegationPlan, error) {
 	if saved.Operation.Program != c.Binding.Program || saved.Operation.DescriptorHash != c.DescriptorHash || saved.Operation.SetID == "" {
 		return spendingDelegationPlan{}, fmt.Errorf("renewal journal context")
 	}
@@ -83,8 +83,8 @@ func delegationStoredPlanForContract(saved *policy.LightDelegationSnapshot, c re
 	}
 	return p, nil
 }
-func (s *Service) getDelegation(ctx context.Context, vault, id string) (*policy.LightDelegationSnapshot, error) {
-	all, err := s.Stores.LightDelegation.ListLightDelegations(ctx)
+func (s *Service) getDelegation(ctx context.Context, vault, id string) (*policy.SpendingDelegationSnapshot, error) {
+	all, err := s.Stores.SpendingDelegation.ListSpendingDelegations(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (s *Service) getDelegation(ctx context.Context, vault, id string) (*policy.
 	return nil, nil
 }
 
-func (s *Service) delegationResponseForContract(saved *policy.LightDelegationSnapshot, c renewalContract, withRecovery bool) (spendingDelegationOperationResponse, error) {
+func (s *Service) delegationResponseForContract(saved *policy.SpendingDelegationSnapshot, c renewalContract, withRecovery bool) (spendingDelegationOperationResponse, error) {
 	d := c.Binding
 
 	p, err := delegationStoredPlanForContract(saved, c)

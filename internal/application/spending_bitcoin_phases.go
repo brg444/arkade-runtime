@@ -10,7 +10,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) loadBitcoinPayment(ctx context.Context, vault, id string) (*policy.LightRenewalSnapshot, bitcoinPaymentPlan, bitcoinPaymentContext, error) {
+func (s *Service) loadBitcoinPayment(ctx context.Context, vault, id string) (*policy.SpendingRenewalSnapshot, bitcoinPaymentPlan, bitcoinPaymentContext, error) {
 	c, err := s.bitcoinPaymentContext(vault)
 	if err != nil {
 		return nil, bitcoinPaymentPlan{}, c, err
@@ -18,7 +18,7 @@ func (s *Service) loadBitcoinPayment(ctx context.Context, vault, id string) (*po
 	if _, err := canonicalVtxoOperationID(id); err != nil {
 		return nil, bitcoinPaymentPlan{}, c, err
 	}
-	snapshot, err := s.Stores.LightRenewal.GetLightRenewal(ctx, id)
+	snapshot, err := s.Stores.SpendingRenewal.GetSpendingRenewal(ctx, id)
 	if err != nil || snapshot == nil || snapshot.Operation.VaultID != vault {
 		return nil, bitcoinPaymentPlan{}, c, fmt.Errorf("Bitcoin payment operation unavailable")
 	}
@@ -68,7 +68,7 @@ func (s *Service) registerBitcoinPayment(ctx context.Context, r spendingRenewalR
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
-	if _, _, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "register_authorized", RequestDigest: requestDigest, Evidence: string(evidence)}, credential, count); err != nil {
+	if _, _, err := s.Stores.SpendingRenewal.AppendSpendingRenewalEvent(ctx, policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "register_authorized", RequestDigest: requestDigest, Evidence: string(evidence)}, credential, count); err != nil {
 		return spendingRenewalResponse{}, err
 	}
 	release, err = s.acquireVerification(ctx)
@@ -80,14 +80,14 @@ func (s *Service) registerBitcoinPayment(ctx context.Context, r spendingRenewalR
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
-	operator, err := s.dialLightRenewalOperator(ctx)
+	operator, err := s.dialSpendingRenewalOperator(ctx)
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
 	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return spendingRenewalResponse{}, err
 	}
-	_, created, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "register_dispatched", RequestDigest: requestDigest}, nil, 0)
+	_, created, err := s.Stores.SpendingRenewal.AppendSpendingRenewalEvent(ctx, policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "register_dispatched", RequestDigest: requestDigest}, nil, 0)
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
@@ -97,19 +97,19 @@ func (s *Service) registerBitcoinPayment(ctx context.Context, r spendingRenewalR
 	intent, err := operator.registerIntent(ctx, signed, verified.Message)
 	if err != nil {
 		if isDefiniteVaultBoardRegisterRejection(err) {
-			if persistErr := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "register_result", RequestDigest: requestDigest, Outcome: "rejected"}); persistErr == nil {
+			if persistErr := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "register_result", RequestDigest: requestDigest, Outcome: "rejected"}); persistErr == nil {
 				log.Printf("Bitcoin payment registration rejected: %s", err.Error())
 				return spendingRenewalResponse{State: "rejected", Reason: err.Error()}, nil
 			}
 		}
 		return spendingRenewalResponse{State: "uncertain"}, nil
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "register_result", RequestDigest: requestDigest, Outcome: "registered", OperatorRef: intent}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "register_result", RequestDigest: requestDigest, Outcome: "registered", OperatorRef: intent}); err != nil {
 		return spendingRenewalResponse{State: "uncertain"}, nil
 	}
 	return spendingRenewalResponse{State: "registered", IntentID: intent}, nil
 }
-func bitcoinPaymentStoredRegistration(snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext) (verifiedSpendingRenewalRegistration, error) {
+func bitcoinPaymentStoredRegistration(snapshot *policy.SpendingRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext) (verifiedSpendingRenewalRegistration, error) {
 	event, ok := snapshot.Events["register_authorized"]
 	if !ok {
 		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Bitcoin payment registration missing")
@@ -166,7 +166,7 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r spendingRenewalF
 	if err := s.requireFreshBitcoinPayment(ctx, p, c); err != nil {
 		return spendingRenewalResponse{}, err
 	}
-	operator, err := s.dialLightRenewalOperator(ctx)
+	operator, err := s.dialSpendingRenewalOperator(ctx)
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
@@ -179,7 +179,7 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r spendingRenewalF
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
-	if _, _, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "final_authorized", RequestDigest: digest, Evidence: string(raw)}, nil, 0); err != nil {
+	if _, _, err := s.Stores.SpendingRenewal.AppendSpendingRenewalEvent(ctx, policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "final_authorized", RequestDigest: digest, Evidence: string(raw)}, nil, 0); err != nil {
 		return spendingRenewalResponse{}, err
 	}
 	release, err = s.acquireVerification(ctx)
@@ -199,7 +199,7 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r spendingRenewalF
 	if err := operator.requireUnendedCommitment(ctx, verified.CommitmentTxid); err != nil {
 		return spendingRenewalResponse{}, err
 	}
-	_, created, err := s.Stores.LightRenewal.AppendLightRenewalEvent(ctx, policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "final_dispatched", RequestDigest: digest}, nil, 0)
+	_, created, err := s.Stores.SpendingRenewal.AppendSpendingRenewalEvent(ctx, policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "final_dispatched", RequestDigest: digest}, nil, 0)
 	if err != nil {
 		return spendingRenewalResponse{}, err
 	}
@@ -211,7 +211,7 @@ func (s *Service) finalizeBitcoinPayment(ctx context.Context, r spendingRenewalF
 		response.State = "uncertain"
 		return response, nil
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: r.OperationID, Phase: "final_result", RequestDigest: digest, Outcome: "submitted"}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: r.OperationID, Phase: "final_result", RequestDigest: digest, Outcome: "submitted"}); err != nil {
 		response.State = "uncertain"
 		return response, nil
 	}

@@ -185,18 +185,18 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 			if err := l.AppendVaultBoardConflict(t.Context(), conflict, vaultBoardTestChainState(l)); err != nil {
 				t.Fatal(err)
 			}
-			delegation := LightDelegation{OperationID: strings.Repeat("a1", 16), VaultID: delegationID, InputTxid: strings.Repeat("a2", 32), ValidAt: l.NowUTC().Unix(), ExpiresAt: l.NowUTC().Add(time.Hour).Unix(), FeeSats: 123, PlanDigest: strings.Repeat("a3", 32), Plan: `{"owner":"signed"}`}
+			delegation := SpendingDelegation{OperationID: strings.Repeat("a1", 16), VaultID: delegationID, InputTxid: strings.Repeat("a2", 32), ValidAt: l.NowUTC().Unix(), ExpiresAt: l.NowUTC().Add(time.Hour).Unix(), FeeSats: 123, PlanDigest: strings.Repeat("a3", 32), Plan: `{"owner":"signed"}`}
 			delegation.Program, delegation.DescriptorHash = delegationSetVaultProgram, strings.Repeat("ac", 32)
 			delegation.SetID, delegation.SetDigest, delegation.SetSize = delegation.OperationID, strings.Repeat("ad", 32), 1
-			if _, err := l.ScheduleVtxoDelegationSet(t.Context(), []LightDelegation{delegation}, []byte{0x54, 0x55}, 2); err != nil {
+			if _, err := l.ScheduleVtxoDelegationSet(t.Context(), []SpendingDelegation{delegation}, []byte{0x54, 0x55}, 2); err != nil {
 				t.Fatal(err)
 			}
 			stageDelegation(t, l, delegation, "claimed")
-			renewal := LightRenewalOperation{OperationID: strings.Repeat("b1", 16), VaultID: renewalID, Kind: SpendingBitcoinBatchKind, AmountSats: 1000, InputTxid: strings.Repeat("b2", 32), FeeSats: 123, PlanDigest: strings.Repeat("b3", 32), Plan: `{"renewal":true}`, ExpiresAt: l.NowUTC().Add(5 * time.Minute).Format(time.RFC3339)}
-			if _, err := l.ReserveLightRenewal(t.Context(), renewal, 10000); err != nil {
+			renewal := SpendingRenewalOperation{OperationID: strings.Repeat("b1", 16), VaultID: renewalID, Kind: SpendingBitcoinBatchKind, AmountSats: 1000, InputTxid: strings.Repeat("b2", 32), FeeSats: 123, PlanDigest: strings.Repeat("b3", 32), Plan: `{"renewal":true}`, ExpiresAt: l.NowUTC().Add(5 * time.Minute).Format(time.RFC3339)}
+			if _, err := l.ReserveSpendingRenewal(t.Context(), renewal, 10000); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := l.AppendLightRenewalEvent(t.Context(), LightRenewalEvent{OperationID: renewal.OperationID, Phase: "register_authorized", RequestDigest: renewal.PlanDigest, Evidence: `{"owner":"verified"}`}, []byte{0x55, 0x56}, 2); err != nil {
+			if _, _, err := l.AppendSpendingRenewalEvent(t.Context(), SpendingRenewalEvent{OperationID: renewal.OperationID, Phase: "register_authorized", RequestDigest: renewal.PlanDigest, Evidence: `{"owner":"verified"}`}, []byte{0x55, 0x56}, 2); err != nil {
 				t.Fatal(err)
 			}
 			appendRenewal(t, l, renewal, "register_dispatched")
@@ -272,10 +272,10 @@ func TestSchemaRetirementPreservesCurrentRowsAndSequence(t *testing.T) {
 			if snapshot, err := current.GetCurrentVaultBoardAttempt(t.Context(), boardOp.OperationID); err != nil || len(snapshot.Conflicts) != 1 || snapshot.FinalDispatch == nil {
 				t.Fatal("lost boarding authority", err)
 			}
-			if snapshots, err := current.ListLightDelegations(t.Context()); err != nil || len(snapshots) != 1 || snapshots[0].State() != "claimed" {
+			if snapshots, err := current.ListSpendingDelegations(t.Context()); err != nil || len(snapshots) != 1 || snapshots[0].State() != "claimed" {
 				t.Fatal("lost delegation", err)
 			}
-			if snapshot, err := current.GetLightRenewal(t.Context(), renewal.OperationID); err != nil || snapshot.Events["register_dispatched"].Phase == "" {
+			if snapshot, err := current.GetSpendingRenewal(t.Context(), renewal.OperationID); err != nil || snapshot.Events["register_dispatched"].Phase == "" {
 				t.Fatal("lost uncertain renewal", err)
 			}
 			if err := current.AdvanceSignCount(renewalID, []byte{0x55, 0x56}, 2); err == nil {

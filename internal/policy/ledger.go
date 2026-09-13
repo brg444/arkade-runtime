@@ -257,7 +257,7 @@ func (l *Ledger) spentInWindow(ctx context.Context, q queryContext, vaultID stri
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
-	renewal, err := l.lightRenewalAllowance(ctx, q, vaultID, key)
+	renewal, err := l.spendingRenewalAllowance(ctx, q, vaultID, key)
 	if err != nil {
 		return 0, err
 	}

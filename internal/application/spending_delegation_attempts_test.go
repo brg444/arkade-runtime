@@ -18,7 +18,7 @@ import (
 
 type delegatedTestOperator struct {
 	f                                                            delegatedFixture
-	channel                                                      chan spendingDelegationEvent
+	channel                                                      chan spendingDelegationStreamEvent
 	deleteError, registerError, errorFinal, commitmentError      error
 	deletes, registers, finals, acks, nonceCalls, signatureCalls int
 	commitmentChecks                                             int
@@ -50,9 +50,9 @@ func (o *delegatedTestOperator) deleteIntent(_ context.Context, proof, message s
 	}
 	return o.deleteError
 }
-func (o *delegatedTestOperator) events(context.Context, []string) (<-chan spendingDelegationEvent, <-chan error, error) {
-	o.channel = make(chan spendingDelegationEvent, 128)
-	o.channel <- spendingDelegationEvent{StreamStarted: json.RawMessage(`{}`)}
+func (o *delegatedTestOperator) events(context.Context, []string) (<-chan spendingDelegationStreamEvent, <-chan error, error) {
+	o.channel = make(chan spendingDelegationStreamEvent, 128)
+	o.channel <- spendingDelegationStreamEvent{StreamStarted: json.RawMessage(`{}`)}
 	return o.channel, nil, nil
 }
 func (o *delegatedTestOperator) registerIntent(ctx context.Context, proof, message string) (string, error) {
@@ -65,11 +65,11 @@ func (o *delegatedTestOperator) registerIntent(ctx context.Context, proof, messa
 	}
 	hash := sha256.Sum256([]byte("intent-id"))
 	id := o.f.tree.BatchID
-	o.channel <- spendingDelegationEvent{BatchStarted: &delegationBatchStarted{id, []string{hex.EncodeToString(hash[:])}, json.Number(fmt.Sprint(o.f.tree.BatchExpiry))}}
+	o.channel <- spendingDelegationStreamEvent{BatchStarted: &delegationBatchStarted{id, []string{hex.EncodeToString(hash[:])}, json.Number(fmt.Sprint(o.f.tree.BatchExpiry))}}
 	for _, node := range o.f.tree.VtxoTree {
-		o.channel <- spendingDelegationEvent{TreeTx: &delegationTreeTx{id, 0, node.Txid, node.Tx, node.Children}}
+		o.channel <- spendingDelegationStreamEvent{TreeTx: &delegationTreeTx{id, 0, node.Txid, node.Tx, node.Children}}
 	}
-	o.channel <- spendingDelegationEvent{TreeSigningStarted: &delegationSigningStarted{id, []string{"02" + o.f.f.contract.Binding.CosignerPub}, o.f.tree.CommitmentPSBT}}
+	o.channel <- spendingDelegationStreamEvent{TreeSigningStarted: &delegationSigningStarted{id, []string{"02" + o.f.f.contract.Binding.CosignerPub}, o.f.tree.CommitmentPSBT}}
 	return "intent-id", nil
 }
 func (o *delegatedTestOperator) ack(context.Context, string) error { o.acks++; return nil }
@@ -103,7 +103,7 @@ func (o *delegatedTestOperator) nonces(ctx context.Context, batch, key string, r
 	}
 	coordinator.AddNonce(f.operator.PubKey(), peers)
 	for txid, n := range own {
-		o.channel <- spendingDelegationEvent{TreeNonces: &delegationTreeNonces{batch, txid, map[string]string{f.f.contract.Binding.CosignerPub: hex.EncodeToString(n.PubNonce[:]), hex.EncodeToString(schnorr.SerializePubKey(f.operator.PubKey())): hex.EncodeToString(peers[txid].PubNonce[:])}}}
+		o.channel <- spendingDelegationStreamEvent{TreeNonces: &delegationTreeNonces{batch, txid, map[string]string{f.f.contract.Binding.CosignerPub: hex.EncodeToString(n.PubNonce[:]), hex.EncodeToString(schnorr.SerializePubKey(f.operator.PubKey())): hex.EncodeToString(peers[txid].PubNonce[:])}}}
 	}
 	return nil
 }
@@ -141,12 +141,12 @@ func (o *delegatedTestOperator) signatures(ctx context.Context, batch, key strin
 		if err != nil {
 			return err
 		}
-		o.channel <- spendingDelegationEvent{TreeSignature: &delegationTreeSignature{batch, node.Txid, hex.EncodeToString(packet.Inputs[0].TaprootKeySpendSig), 0}}
+		o.channel <- spendingDelegationStreamEvent{TreeSignature: &delegationTreeSignature{batch, node.Txid, hex.EncodeToString(packet.Inputs[0].TaprootKeySpendSig), 0}}
 	}
 	for _, node := range o.f.final.Connectors {
-		o.channel <- spendingDelegationEvent{TreeTx: &delegationTreeTx{batch, 1, node.Txid, node.Tx, node.Children}}
+		o.channel <- spendingDelegationStreamEvent{TreeTx: &delegationTreeTx{batch, 1, node.Txid, node.Tx, node.Children}}
 	}
-	o.channel <- spendingDelegationEvent{BatchFinalization: &delegationFinalization{batch, o.f.final.CommitmentPSBT}}
+	o.channel <- spendingDelegationStreamEvent{BatchFinalization: &delegationFinalization{batch, o.f.final.CommitmentPSBT}}
 	return nil
 }
 func (o *delegatedTestOperator) submitLightForfeit(ctx context.Context, raw string) error {
@@ -156,18 +156,18 @@ func (o *delegatedTestOperator) submitLightForfeit(ctx context.Context, raw stri
 		return o.errorFinal
 	}
 	o.resolver.settled = true
-	o.channel <- spendingDelegationEvent{BatchFinalized: &delegationBatchFinalized{o.f.tree.BatchID, "ignored-untrusted-id"}}
+	o.channel <- spendingDelegationStreamEvent{BatchFinalized: &delegationBatchFinalized{o.f.tree.BatchID, "ignored-untrusted-id"}}
 	return nil
 }
 func (o *delegatedTestOperator) requireUnendedCommitment(context.Context, string) error {
 	o.commitmentChecks++
 	return o.commitmentError
 }
-func setupDelegatedRuntime(t *testing.T) (delegatedFixture, *delegatedTestOperator, *policy.LightDelegationSnapshot) {
+func setupDelegatedRuntime(t *testing.T) (delegatedFixture, *delegatedTestOperator, *policy.SpendingDelegationSnapshot) {
 	t.Helper()
 	return setupDelegatedRuntimeForAccount(t, "mutinynet", "light")
 }
-func setupDelegatedRuntimeForAccount(t *testing.T, network, tier string) (delegatedFixture, *delegatedTestOperator, *policy.LightDelegationSnapshot) {
+func setupDelegatedRuntimeForAccount(t *testing.T, network, tier string) (delegatedFixture, *delegatedTestOperator, *policy.SpendingDelegationSnapshot) {
 	t.Helper()
 	f := newDelegatedFixtureForAccount(t, network, tier)
 	s := f.f.env.svc
@@ -383,7 +383,7 @@ func TestSpendingDelegationCleanupRetainsOwnershipOnNoMatchOrLostReply(t *testin
 				t.Fatal(saved.State(), op.deletes)
 			}
 			exact := saved.Events["cleanup_authorized"].Evidence
-			if _, err := s.Stores.LightDelegation.AdvanceLightDelegation(t.Context(), policy.LightDelegationEvent{OperationID: f.p.Request.OperationID, Phase: "final_authorized", Evidence: `{}`}, 0); err == nil {
+			if _, err := s.Stores.SpendingDelegation.AdvanceSpendingDelegation(t.Context(), policy.SpendingDelegationEvent{OperationID: f.p.Request.OperationID, Phase: "final_authorized", Evidence: `{}`}, 0); err == nil {
 				t.Fatal("cleanup raced final authority")
 			}
 			if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err == nil {

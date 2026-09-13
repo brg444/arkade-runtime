@@ -20,7 +20,7 @@ func initializeOrValidateSchema(db *sql.DB, boardSchema string) error {
 		}
 		defer tx.Rollback()
 		for _, ddl := range []string{createMultiTenantSchema, createVtxoSchema, boardSchema,
-			createLightRenewalSchema, createRecoveryBackupSchema, createLightDelegationSchema,
+			createSpendingRenewalSchema, createRecoveryBackupSchema, createSpendingDelegationSchema,
 			createVaultBoardConflictSchema, createLedgerSavingsSchema, createPolicySequenceBaseSchema} {
 			if _, err := tx.Exec(ddl); err != nil {
 				return fmt.Errorf("create vault schema: %w", err)
@@ -51,9 +51,9 @@ func validateRetainedSchema(q schemaQuerier, boardSchema string, version int) er
 	for _, check := range []func() error{
 		func() error { return validateMultiTenantSchemaOn(q) },
 		func() error { return validateBoardingTables(q, boardSchema) },
-		func() error { return validateLightRenewalSchema(q) },
+		func() error { return validateSpendingRenewalSchema(q) },
 		func() error { return validateRecoveryBackupSchema(q) },
-		func() error { return validateLightDelegationSchema(q) },
+		func() error { return validateSpendingDelegationSchema(q) },
 		func() error { return validateVaultBoardConflictSchema(q) },
 		func() error { return validateLedgerSavingsSchema(q) },
 		func() error { return requireForeignKeysEnabled(q) },

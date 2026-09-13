@@ -74,7 +74,7 @@ type delegationBatchFailed struct {
 	ID     string `json:"id"`
 	Reason string `json:"reason"`
 }
-type spendingDelegationEvent struct {
+type spendingDelegationStreamEvent struct {
 	StreamStarted      json.RawMessage           `json:"streamStarted"`
 	BatchStarted       *delegationBatchStarted   `json:"batchStarted"`
 	TreeTx             *delegationTreeTx         `json:"treeTx"`
@@ -88,7 +88,7 @@ type spendingDelegationEvent struct {
 type spendingDelegationOperator interface {
 	spendingRenewalOperator
 	deleteIntent(context.Context, string, string) error
-	events(context.Context, []string) (<-chan spendingDelegationEvent, <-chan error, error)
+	events(context.Context, []string) (<-chan spendingDelegationStreamEvent, <-chan error, error)
 	ack(context.Context, string) error
 	nonces(context.Context, string, string, map[string]string) error
 	signatures(context.Context, string, string, map[string]string) error
@@ -103,7 +103,7 @@ func (o *stockVaultBoardOperator) nonces(ctx context.Context, batch, key string,
 func (o *stockVaultBoardOperator) signatures(ctx context.Context, batch, key string, sigs map[string]string) error {
 	return o.post(ctx, "/v1/batch/tree/submitSignatures", map[string]any{"batchId": batch, "pubkey": key, "treeSignatures": sigs}, nil)
 }
-func (o *stockVaultBoardOperator) events(ctx context.Context, topics []string) (<-chan spendingDelegationEvent, <-chan error, error) {
+func (o *stockVaultBoardOperator) events(ctx context.Context, topics []string) (<-chan spendingDelegationStreamEvent, <-chan error, error) {
 	query := url.Values{}
 	for _, topic := range topics {
 		query.Add("topics", topic)
@@ -134,7 +134,7 @@ func (o *stockVaultBoardOperator) events(ctx context.Context, topics []string) (
 		res.Body.Close()
 		return nil, nil, fmt.Errorf("Light delegation event stream content type")
 	}
-	events := make(chan spendingDelegationEvent, 8)
+	events := make(chan spendingDelegationStreamEvent, 8)
 	failures := make(chan error, 1)
 	go func() {
 		defer close(events)
@@ -147,7 +147,7 @@ func (o *stockVaultBoardOperator) events(ctx context.Context, topics []string) (
 			if !strings.HasPrefix(line, "data:") {
 				continue
 			}
-			var event spendingDelegationEvent
+			var event spendingDelegationStreamEvent
 			if err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &event); err != nil {
 				failures <- err
 				return

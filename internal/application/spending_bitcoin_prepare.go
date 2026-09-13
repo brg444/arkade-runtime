@@ -85,15 +85,15 @@ func (s *Service) reserveBitcoinPlan(ctx context.Context, v ports.ResolvedVtxo, 
 	if err != nil {
 		return bitcoinPaymentPrepared{}, err
 	}
-	op := policy.LightRenewalOperation{OperationID: p.OperationID, VaultID: p.VaultID, InputTxid: p.Txid, InputVout: p.Vout, FeeSats: p.FeeSats, PlanDigest: hex.EncodeToString(digest), Plan: string(raw), ExpiresAt: time.Unix(p.RegisterExpireAt, 0).UTC().Format(time.RFC3339), Kind: policy.SpendingBitcoinBatchKind, AmountSats: p.principal()}
-	saved, err := s.Stores.LightRenewal.ReserveLightRenewal(ctx, op, c.spending.Binding.SpendingPolicy.PeriodAllowanceSats)
+	op := policy.SpendingRenewalOperation{OperationID: p.OperationID, VaultID: p.VaultID, InputTxid: p.Txid, InputVout: p.Vout, FeeSats: p.FeeSats, PlanDigest: hex.EncodeToString(digest), Plan: string(raw), ExpiresAt: time.Unix(p.RegisterExpireAt, 0).UTC().Format(time.RFC3339), Kind: policy.SpendingBitcoinBatchKind, AmountSats: p.principal()}
+	saved, err := s.Stores.SpendingRenewal.ReserveSpendingRenewal(ctx, op, c.spending.Binding.SpendingPolicy.PeriodAllowanceSats)
 	if err != nil {
 		return bitcoinPaymentPrepared{}, mapLedgerBusy(err)
 	}
 	return bitcoinPaymentSnapshot(saved, c)
 }
 
-func bitcoinPaymentSnapshot(s *policy.LightRenewalSnapshot, c bitcoinPaymentContext) (bitcoinPaymentPrepared, error) {
+func bitcoinPaymentSnapshot(s *policy.SpendingRenewalSnapshot, c bitcoinPaymentContext) (bitcoinPaymentPrepared, error) {
 	var p bitcoinPaymentPlan
 	if s == nil || s.Operation.Kind != policy.SpendingBitcoinBatchKind || json.Unmarshal([]byte(s.Operation.Plan), &p) != nil {
 		return bitcoinPaymentPrepared{}, fmt.Errorf("Bitcoin payment operation required")

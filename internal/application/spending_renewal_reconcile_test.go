@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestLightRenewalIndexerRejectsSubstitutedSettlement(t *testing.T) {
+func TestSpendingRenewalIndexerRejectsSubstitutedSettlement(t *testing.T) {
 	p := spendingRenewalPlan{Txid: strings.Repeat("01", 32), ValueSats: 80000, ReceiverSats: 79900}
 	f := verifiedSpendingRenewalFinal{CommitmentTxid: strings.Repeat("02", 32), ReceiverTxid: strings.Repeat("03", 32)}
 	zero := uint32(0)

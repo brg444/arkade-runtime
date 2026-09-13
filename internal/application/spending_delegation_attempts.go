@@ -45,7 +45,7 @@ func (s *Service) StartSpendingDelegation() error {
 	if !s.LightDelegationEnabled {
 		return nil
 	}
-	if s.Stores.LightDelegation == nil || isNilInterface(s.keys.spendingDelegation) {
+	if s.Stores.SpendingDelegation == nil || isNilInterface(s.keys.spendingDelegation) {
 		return fmt.Errorf("Light delegation execution unavailable")
 	}
 	if s.delegationAttempts != nil {
@@ -85,18 +85,18 @@ func (s *Service) StopSpendingDelegation() {
 // evidence; this method owns event construction and the store call, so no
 // caller can bypass the journal with a differently shaped write. The policy
 // ledger remains the sole transition authority.
-func (s *Service) writeDelegationAttemptEvent(ctx context.Context, id, phase string, evidence any, allowance int64) (*policy.LightDelegationSnapshot, error) {
+func (s *Service) writeDelegationAttemptEvent(ctx context.Context, id, phase string, evidence any, allowance int64) (*policy.SpendingDelegationSnapshot, error) {
 	raw, err := json.Marshal(evidence)
 	if err != nil {
 		return nil, err
 	}
-	return s.Stores.LightDelegation.AdvanceLightDelegation(ctx, policy.LightDelegationEvent{OperationID: id, Phase: phase, Evidence: string(raw)}, allowance)
+	return s.Stores.SpendingDelegation.AdvanceSpendingDelegation(ctx, policy.SpendingDelegationEvent{OperationID: id, Phase: phase, Evidence: string(raw)}, allowance)
 }
 
 // advanceSpendingDelegationAttempt records post-accept executor evidence on a
 // detached context, so a cancelled executor still durably records the phase
 // it reached instead of abandoning an uncertain dispatch.
-func (s *Service) advanceSpendingDelegationAttempt(id, phase string, evidence any) (*policy.LightDelegationSnapshot, error) {
+func (s *Service) advanceSpendingDelegationAttempt(id, phase string, evidence any) (*policy.SpendingDelegationSnapshot, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.writeDelegationAttemptEvent(ctx, id, phase, evidence, 0)
@@ -105,18 +105,18 @@ func (s *Service) advanceSpendingDelegationAttempt(id, phase string, evidence an
 // claimSpendingDelegationAttempt records the pre-signing claim on the
 // caller's context: claim precedes signing and dispatch, so a cancelled
 // caller must not acquire an allowance hold or append a claim event.
-func (s *Service) claimSpendingDelegationAttempt(ctx context.Context, id string, allowance int64) (*policy.LightDelegationSnapshot, error) {
+func (s *Service) claimSpendingDelegationAttempt(ctx context.Context, id string, allowance int64) (*policy.SpendingDelegationSnapshot, error) {
 	return s.writeDelegationAttemptEvent(ctx, id, "claimed", struct{}{}, allowance)
 }
 
 // cancelSpendingDelegationAttempt records owner-authenticated cancellation
 // through the same write boundary as executor phases, preserving the
 // request-scoped context and the current allowance semantics.
-func (s *Service) cancelSpendingDelegationAttempt(ctx context.Context, operationID string, allowance int64) (*policy.LightDelegationSnapshot, error) {
+func (s *Service) cancelSpendingDelegationAttempt(ctx context.Context, operationID string, allowance int64) (*policy.SpendingDelegationSnapshot, error) {
 	return s.writeDelegationAttemptEvent(ctx, operationID, "cancelled", struct{}{}, allowance)
 }
 func (s *Service) dispatchDueSpendingDelegationAttempts(ctx context.Context, rt *spendingDelegationAttemptOwner) {
-	all, err := s.Stores.LightDelegation.ListLightDelegations(ctx)
+	all, err := s.Stores.SpendingDelegation.ListSpendingDelegations(ctx)
 	if err != nil {
 		log.Printf("Light delegation journal unavailable: %v", err)
 		return
@@ -134,7 +134,7 @@ func (s *Service) dispatchDueSpendingDelegationAttempts(ctx context.Context, rt 
 		rt.active[saved.Operation.VaultID] = true
 		rt.wg.Add(1)
 		rt.mu.Unlock()
-		go func(snapshot policy.LightDelegationSnapshot) {
+		go func(snapshot policy.SpendingDelegationSnapshot) {
 			defer rt.wg.Done()
 			defer func() { rt.mu.Lock(); delete(rt.active, snapshot.Operation.VaultID); rt.mu.Unlock() }()
 			run, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -145,7 +145,7 @@ func (s *Service) dispatchDueSpendingDelegationAttempts(ctx context.Context, rt 
 		}(saved)
 	}
 }
-func (s *Service) executeSpendingDelegationAttempt(ctx context.Context, saved *policy.LightDelegationSnapshot) error {
+func (s *Service) executeSpendingDelegationAttempt(ctx context.Context, saved *policy.SpendingDelegationSnapshot) error {
 	c, err := s.delegationContract(saved.Operation.VaultID)
 	d, tree := c.Binding, c.Tree
 	if err != nil {
@@ -311,7 +311,7 @@ func (s *Service) dialDelegationOperator(ctx context.Context) (spendingDelegatio
 	}
 	return o.(*stockVaultBoardOperator), nil
 }
-func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op spendingDelegationOperator, saved *policy.LightDelegationSnapshot, p spendingDelegationPlan, c renewalContract, events <-chan spendingDelegationEvent, failures <-chan error, intentID string) error {
+func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op spendingDelegationOperator, saved *policy.SpendingDelegationSnapshot, p spendingDelegationPlan, c renewalContract, events <-chan spendingDelegationStreamEvent, failures <-chan error, intentID string) error {
 	d := c.Binding
 
 	replayed, err := replayDelegationStream(ctx, saved, events)
@@ -600,7 +600,7 @@ func (s *Service) prepareSpendingDelegationFinal(ctx context.Context, p spending
 	return spendingDelegationFinal{evidence, signed}, nil
 }
 
-func (s *Service) dispatchDelegationFinal(ctx context.Context, op spendingDelegationOperator, saved *policy.LightDelegationSnapshot) (*policy.LightDelegationSnapshot, error) {
+func (s *Service) dispatchDelegationFinal(ctx context.Context, op spendingDelegationOperator, saved *policy.SpendingDelegationSnapshot) (*policy.SpendingDelegationSnapshot, error) {
 	if _, ok := saved.Events["final_result"]; ok {
 		return saved, nil
 	}
@@ -625,7 +625,7 @@ func (s *Service) dispatchDelegationFinal(ctx context.Context, op spendingDelega
 	return s.advanceSpendingDelegationAttempt(saved.Operation.OperationID, "final_result", struct{}{})
 }
 
-func (s *Service) cleanupSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p spendingDelegationPlan, c renewalContract) error {
+func (s *Service) cleanupSpendingDelegation(ctx context.Context, saved *policy.SpendingDelegationSnapshot, p spendingDelegationPlan, c renewalContract) error {
 
 	id := p.Request.OperationID
 	var err error

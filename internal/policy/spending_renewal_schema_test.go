@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestLightRenewalSchemaRejectsDriftOnRestart(t *testing.T) {
+func TestSpendingRenewalSchemaRejectsDriftOnRestart(t *testing.T) {
 	for _, mutation := range []string{
 		`ALTER TABLE light_renewal_event ADD COLUMN junk TEXT`,
 		`DROP TABLE light_renewal_event`,
