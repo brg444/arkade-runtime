@@ -9,8 +9,8 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) releaseConflictedBitcoinPayment(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, evidence lightRenewalFinalEvidence, final verifiedLightRenewalFinal) (bool, error) {
-	chain, err := s.lightRenewalChain()
+func (s *Service) releaseConflictedBitcoinPayment(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, evidence spendingRenewalFinalEvidence, final verifiedSpendingRenewalFinal) (bool, error) {
+	chain, err := s.spendingRenewalChain()
 	if err != nil {
 		return false, err
 	}

@@ -62,7 +62,7 @@ func stageDelegation(t *testing.T, l *Ledger, o LightDelegation, through string)
 	t.Fatal("unknown phase", through)
 	return nil
 }
-func TestLightDelegationPaymentInvalidationAndOverlap(t *testing.T) {
+func TestSpendingDelegationPaymentInvalidationAndOverlap(t *testing.T) {
 	for _, paymentFirst := range []bool{false, true} {
 		t.Run(map[bool]string{true: "payment-first", false: "armed-first"}[paymentFirst], func(t *testing.T) {
 			l, now, o := delegationFixture(t)
@@ -108,7 +108,7 @@ func TestLightDelegationPaymentInvalidationAndOverlap(t *testing.T) {
 		})
 	}
 }
-func TestLightDelegationClaimAndPaymentAtomicWinner(t *testing.T) {
+func TestSpendingDelegationClaimAndPaymentAtomicWinner(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		l, now, o := delegationFixture(t)
 		stageDelegation(t, l, o, "armed")
@@ -148,7 +148,7 @@ func TestLightDelegationClaimAndPaymentAtomicWinner(t *testing.T) {
 		}
 	}
 }
-func TestLightDelegationBoundedExpiryAndFinalFence(t *testing.T) {
+func TestSpendingDelegationBoundedExpiryAndFinalFence(t *testing.T) {
 	for _, phase := range []string{"armed", "claimed", "register_dispatched", "register_result", "tree_prepared", "nonces_committed", "tree_signed", "final_authorized", "final_dispatched", "final_result"} {
 		t.Run(phase, func(t *testing.T) {
 			l, now, o := delegationFixture(t)
@@ -196,7 +196,7 @@ func TestLightDelegationBoundedExpiryAndFinalFence(t *testing.T) {
 		})
 	}
 }
-func TestLightDelegationFinalVersusExpiryRace(t *testing.T) {
+func TestSpendingDelegationFinalVersusExpiryRace(t *testing.T) {
 	for _, late := range []bool{false, true} {
 		l, now, o := delegationFixture(t)
 		stageDelegation(t, l, o, "tree_signed")
@@ -233,7 +233,7 @@ func TestLightDelegationFinalVersusExpiryRace(t *testing.T) {
 		}
 	}
 }
-func TestLightDelegationAllowanceAndImmutableTranscript(t *testing.T) {
+func TestSpendingDelegationAllowanceAndImmutableTranscript(t *testing.T) {
 	l, now, o := delegationFixture(t)
 	stageDelegation(t, l, o, "armed")
 	if used, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err != nil || used != 0 {
@@ -262,7 +262,7 @@ func TestLightDelegationAllowanceAndImmutableTranscript(t *testing.T) {
 		t.Fatal("changed plan retry")
 	}
 }
-func TestLightDelegationTamperCannotHideOwnership(t *testing.T) {
+func TestSpendingDelegationTamperCannotHideOwnership(t *testing.T) {
 	for _, query := range []string{
 		`UPDATE light_delegation_operation SET vault_id='other'`,
 		`UPDATE light_delegation_operation SET payload=replace(payload,'123','0')`,
@@ -286,7 +286,7 @@ func TestLightDelegationTamperCannotHideOwnership(t *testing.T) {
 	}
 }
 
-func TestLightDelegationRestartRetainsSingleTranscript(t *testing.T) {
+func TestSpendingDelegationRestartRetainsSingleTranscript(t *testing.T) {
 	l, now, o := delegationFixture(t)
 	stageDelegation(t, l, o, "nonces_committed")
 	var path string
@@ -323,7 +323,7 @@ func TestLightDelegationRestartRetainsSingleTranscript(t *testing.T) {
 	}
 }
 
-func TestLightDelegationDeletedNonceRecordCannotBeReplacedAtSameSequence(t *testing.T) {
+func TestSpendingDelegationDeletedNonceRecordCannotBeReplacedAtSameSequence(t *testing.T) {
 	l, _, o := delegationFixture(t)
 	sequence, err := OpenMonotonic(filepath.Join(t.TempDir(), "independent-sequence"), testIntegrityKey())
 	if err != nil {

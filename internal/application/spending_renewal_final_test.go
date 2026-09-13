@@ -19,7 +19,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-func newSpendingRenewalFinalFixture(t *testing.T) (spendingRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+func newSpendingRenewalFinalFixture(t *testing.T) (spendingRenewalProofFixture, verifiedSpendingRenewalRegistration, spendingRenewalFinalEvidence) {
 	t.Helper()
 	f := newSpendingRenewalProofFixture(t)
 	sessionKey, _ := btcec.NewPrivateKey()
@@ -27,7 +27,7 @@ func newSpendingRenewalFinalFixture(t *testing.T) (spendingRenewalProofFixture, 
 	return buildSpendingRenewalFinalFixture(t, f, sessionKey, operatorSessionKey)
 }
 
-func buildSpendingRenewalFinalFixture(t *testing.T, f spendingRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+func buildSpendingRenewalFinalFixture(t *testing.T, f spendingRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedSpendingRenewalRegistration, spendingRenewalFinalEvidence) {
 	t.Helper()
 	f.message, _ = (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ExpireAt: f.plan.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(sessionKey.PubKey().SerializeCompressed())}}).Encode()
 	raw, _ := f.proof(t).B64Encode()
@@ -38,7 +38,7 @@ func buildSpendingRenewalFinalFixture(t *testing.T, f spendingRenewalProofFixtur
 	return buildSpendingBatchEvidenceFixture(t, f, registered, sessionKey, operatorSessionKey, nil, otherSessions...)
 }
 
-func buildSpendingBatchEvidenceFixture(t *testing.T, f spendingRenewalProofFixture, registered verifiedLightRenewalRegistration, sessionKey, operatorSessionKey *btcec.PrivateKey, onchain []*wire.TxOut, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedLightRenewalRegistration, lightRenewalFinalEvidence) {
+func buildSpendingBatchEvidenceFixture(t *testing.T, f spendingRenewalProofFixture, registered verifiedSpendingRenewalRegistration, sessionKey, operatorSessionKey *btcec.PrivateKey, onchain []*wire.TxOut, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedSpendingRenewalRegistration, spendingRenewalFinalEvidence) {
 	t.Helper()
 	pins, err := deployment.IdentityFor(f.contract.Binding.Network)
 	if err != nil {
@@ -140,7 +140,7 @@ func buildSpendingBatchEvidenceFixture(t *testing.T, f spendingRenewalProofFixtu
 	forfeit.Inputs[0].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{sig}
 	forfeitRaw, _ := forfeit.B64Encode()
 	commitmentRaw, _ := commitment.B64Encode()
-	evidence := lightRenewalFinalEvidence{BatchID: "renewal-batch", BatchExpiry: pins.VtxoTreeExpirySeconds, CommitmentPSBT: commitmentRaw, VtxoTree: flat, Connectors: arktree.FlatTxTree{{Txid: connector.UnsignedTx.TxID(), Tx: connectorRaw, Children: map[uint32]string{}}}, OwnerForfeitPSBT: forfeitRaw}
+	evidence := spendingRenewalFinalEvidence{BatchID: "renewal-batch", BatchExpiry: pins.VtxoTreeExpirySeconds, CommitmentPSBT: commitmentRaw, VtxoTree: flat, Connectors: arktree.FlatTxTree{{Txid: connector.UnsignedTx.TxID(), Tx: connectorRaw, Children: map[uint32]string{}}}, OwnerForfeitPSBT: forfeitRaw}
 	return f, registered, evidence
 }
 
@@ -161,45 +161,47 @@ func TestSpendingRenewalForfeitRequiresSignedProtectedReplacement(t *testing.T) 
 
 func TestSpendingRenewalForfeitRejectsIncompleteOrChangedBatch(t *testing.T) {
 	f, registered, original := newSpendingRenewalFinalFixture(t)
-	for name, mutate := range map[string]func(*lightRenewalFinalEvidence){
-		"missing replacement signatures": func(e *lightRenewalFinalEvidence) {
+	for name, mutate := range map[string]func(*spendingRenewalFinalEvidence){
+		"missing replacement signatures": func(e *spendingRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.VtxoTree[0].Tx)
 			p.Inputs[0].TaprootKeySpendSig = nil
 			e.VtxoTree[0].Tx, _ = p.B64Encode()
 		},
-		"invalid replacement signatures": func(e *lightRenewalFinalEvidence) {
+		"invalid replacement signatures": func(e *spendingRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.VtxoTree[0].Tx)
 			p.Inputs[0].TaprootKeySpendSig = bytes.Repeat([]byte{7}, 64)
 			e.VtxoTree[0].Tx, _ = p.B64Encode()
 		},
-		"wrong expiry": func(e *lightRenewalFinalEvidence) { e.BatchExpiry++ },
-		"different commitment": func(e *lightRenewalFinalEvidence) {
+		"wrong expiry": func(e *spendingRenewalFinalEvidence) { e.BatchExpiry++ },
+		"different commitment": func(e *spendingRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.CommitmentPSBT)
 			p.UnsignedTx.TxIn[0].PreviousOutPoint.Index++
 			e.CommitmentPSBT, _ = p.B64Encode()
 		},
-		"missing connector": func(e *lightRenewalFinalEvidence) { e.Connectors = nil },
-		"forfeit receiver": func(e *lightRenewalFinalEvidence) {
+		"missing connector": func(e *spendingRenewalFinalEvidence) { e.Connectors = nil },
+		"forfeit receiver": func(e *spendingRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.OwnerForfeitPSBT)
 			p.UnsignedTx.TxOut[0].PkScript = f.tree.PkScript
 			e.OwnerForfeitPSBT, _ = p.B64Encode()
 		},
-		"forfeit fee": func(e *lightRenewalFinalEvidence) {
+		"forfeit fee": func(e *spendingRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.OwnerForfeitPSBT)
 			p.UnsignedTx.TxOut[0].Value--
 			e.OwnerForfeitPSBT, _ = p.B64Encode()
 		},
-		"forfeit outpoint": func(e *lightRenewalFinalEvidence) {
+		"forfeit outpoint": func(e *spendingRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.OwnerForfeitPSBT)
 			p.UnsignedTx.TxIn[0].PreviousOutPoint.Index++
 			e.OwnerForfeitPSBT, _ = p.B64Encode()
 		},
-		"forfeit owner": func(e *lightRenewalFinalEvidence) {
+		"forfeit owner": func(e *spendingRenewalFinalEvidence) {
 			p, _ := parsePSBT(e.OwnerForfeitPSBT)
 			p.Inputs[0].TaprootScriptSpendSig = nil
 			e.OwnerForfeitPSBT, _ = p.B64Encode()
 		},
-		"tree self reference": func(e *lightRenewalFinalEvidence) { e.VtxoTree[0].Children = map[uint32]string{0: e.VtxoTree[0].Txid} },
+		"tree self reference": func(e *spendingRenewalFinalEvidence) {
+			e.VtxoTree[0].Children = map[uint32]string{0: e.VtxoTree[0].Txid}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := original

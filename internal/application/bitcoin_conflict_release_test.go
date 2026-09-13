@@ -30,8 +30,8 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			session, _ := btcec.NewPrivateKey()
 			operatorSession, _ := btcec.NewPrivateKey()
 			request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-			operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
-			e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+			operator := &spendingRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
+			e.svc.spendingRenewalOperatorDial = func(context.Context) (spendingRenewalOperator, error) { return operator, nil }
 			if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
 				t.Fatalf("register %+v %v", result, err)
 			}
@@ -41,11 +41,11 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			}
 			f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 			_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
-			final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
+			final := spendingRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 			if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {
 				t.Fatalf("final %+v %v", result, err)
 			}
-			e.svc.ArkResolver = &lightRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
+			e.svc.ArkResolver = &spendingRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
 			packet, err := parsePSBT(evidence.CommitmentPSBT)
 			if err != nil {
 				t.Fatal(err)
@@ -53,7 +53,7 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			proof := conflictFixture(t, packet.UnsignedTx)
 			chain := &bitcoinConflictProofChain{}
 			e.svc.vaultBoardRuntime = &vaultBoardRuntime{chain: chain}
-			op := lightRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
+			op := spendingRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
 			if result, err := e.svc.reconcileBitcoinPayment(t.Context(), op); err != nil || result.State != "uncertain" {
 				t.Fatalf("no conflict %+v %v", result, err)
 			}
@@ -64,7 +64,7 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 				t.Fatal("shallow proof released")
 			}
 			chain.proof = &proof
-			resolver := e.svc.ArkResolver.(*lightRenewalSettledResolver)
+			resolver := e.svc.ArkResolver.(*spendingRenewalSettledResolver)
 			coins := resolver.vtxos
 			resolver.vtxos = nil
 			if result, err := e.svc.reconcileBitcoinPayment(t.Context(), op); err != nil || result.State != "uncertain" {
@@ -114,8 +114,8 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	session, _ := btcec.NewPrivateKey()
 	operatorSession, _ := btcec.NewPrivateKey()
 	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-	operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("Operator rejected final after batch ended")}
-	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+	operator := &spendingRenewalTestOperator{finalErr: fmt.Errorf("Operator rejected final after batch ended")}
+	e.svc.spendingRenewalOperatorDial = func(context.Context) (spendingRenewalOperator, error) { return operator, nil }
 	if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
 		t.Fatalf("register %+v %v", result, err)
 	}
@@ -125,7 +125,7 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	}
 	f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 	_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
-	final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
+	final := spendingRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 	if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {
 		t.Fatalf("final %+v %v", result, err)
 	}
@@ -137,9 +137,9 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.svc.ArkResolver = &lightRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
+	e.svc.ArkResolver = &spendingRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
 	e.svc.vaultBoardRuntime = &vaultBoardRuntime{chain: &bitcoinConflictProofChain{}}
-	op := lightRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
+	op := spendingRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
 	operator.endedAt = dispatchedAt.Unix()
 	if result, err := e.svc.reconcileBitcoinPayment(t.Context(), op); err != nil || result.State != "uncertain" {
 		t.Fatalf("ambiguous ordering %+v %v", result, err)

@@ -9,7 +9,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, c renewalContract) (bool, error) {
+func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p spendingDelegationPlan, c renewalContract) (bool, error) {
 	tree := c.Tree
 
 	if _, ok := saved.Events["confirmed"]; ok {
@@ -19,7 +19,7 @@ func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy
 	if !ok {
 		return false, nil
 	}
-	var final lightDelegationFinal
+	var final spendingDelegationFinal
 	if err := json.Unmarshal([]byte(event.Evidence), &final); err != nil {
 		return false, err
 	}
@@ -31,15 +31,15 @@ func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy
 	if err != nil {
 		return false, err
 	}
-	indexer, ok := s.ArkResolver.(lightRenewalIndexer)
+	indexer, ok := s.ArkResolver.(spendingRenewalIndexer)
 	if !ok {
 		return false, fmt.Errorf("Light delegation settlement reconciliation unavailable")
 	}
-	settled, err := indexer.lightRenewalSettled(ctx, p.Renewal, verified, tree.PkScript)
+	settled, err := indexer.spendingRenewalSettled(ctx, p.Renewal, verified, tree.PkScript)
 	if err != nil || !settled {
 		return false, err
 	}
-	chain, err := s.lightRenewalChain()
+	chain, err := s.spendingRenewalChain()
 	if err != nil {
 		return false, err
 	}
@@ -67,7 +67,7 @@ func (s *Service) reconcileSpendingDelegation(ctx context.Context, saved *policy
 	// A subsequently spent replacement is still a successful renewal. The
 	// independent settled() check above already verifies both exact outputs;
 	// expiry may be unavailable to the spendable-only listing in that case.
-	_, err = s.persistDelegation(p.Request.OperationID, "confirmed", struct {
+	_, err = s.advanceSpendingDelegationAttempt(p.Request.OperationID, "confirmed", struct {
 		CommitmentTxid    string `json:"commitmentTxid"`
 		ReceiverTxid      string `json:"receiverTxid"`
 		ReceiverVout      uint32 `json:"receiverVout"`

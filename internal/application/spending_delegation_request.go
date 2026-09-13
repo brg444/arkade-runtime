@@ -12,12 +12,12 @@ import (
 const maxSpendingRenewalPlans = 50
 
 type spendingDelegationInput struct {
-	OperationID    string              `json:"operationId"`
-	Intent         lightDelegateIntent `json:"intent"`
-	ForfeitTxs     []string            `json:"forfeitTxs"`
-	DeleteIntent   lightDelegateIntent `json:"deleteIntent"`
-	ExpiresAt      int64               `json:"expiresAt"`
-	OwnerSignature string              `json:"ownerSignature"`
+	OperationID    string                 `json:"operationId"`
+	Intent         spendingDelegateIntent `json:"intent"`
+	ForfeitTxs     []string               `json:"forfeitTxs"`
+	DeleteIntent   spendingDelegateIntent `json:"deleteIntent"`
+	ExpiresAt      int64                  `json:"expiresAt"`
+	OwnerSignature string                 `json:"ownerSignature"`
 }
 
 type spendingDelegationAuthorization struct {
@@ -56,14 +56,14 @@ func (r spendingDelegationSetRequest) digest() ([]byte, error) {
 
 func (r spendingDelegationSetRequest) planDigest(p spendingDelegationInput) ([]byte, error) {
 	return spendingDelegationDigest("schedule", struct {
-		Program        string              `json:"program"`
-		DescriptorHash string              `json:"descriptorHash"`
-		VaultID        string              `json:"vaultId"`
-		OperationID    string              `json:"operationId"`
-		Intent         lightDelegateIntent `json:"intent"`
-		ForfeitTxs     []string            `json:"forfeitTxs"`
-		DeleteIntent   lightDelegateIntent `json:"deleteIntent"`
-		ExpiresAt      int64               `json:"expiresAt"`
+		Program        string                 `json:"program"`
+		DescriptorHash string                 `json:"descriptorHash"`
+		VaultID        string                 `json:"vaultId"`
+		OperationID    string                 `json:"operationId"`
+		Intent         spendingDelegateIntent `json:"intent"`
+		ForfeitTxs     []string               `json:"forfeitTxs"`
+		DeleteIntent   spendingDelegateIntent `json:"deleteIntent"`
+		ExpiresAt      int64                  `json:"expiresAt"`
 	}{r.Program, r.DescriptorHash, r.VaultID, p.OperationID, p.Intent, p.ForfeitTxs, p.DeleteIntent, p.ExpiresAt})
 }
 

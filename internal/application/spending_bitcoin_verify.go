@@ -49,8 +49,8 @@ func bitcoinPaymentDigest(phase string, body any) ([]byte, error) {
 	return digest[:], nil
 }
 
-func (p bitcoinPaymentPlan) batchInput() lightRenewalPlan {
-	return lightRenewalPlan{bitcoinPayment: true, Txid: p.Txid, Vout: p.Vout, ValueSats: p.ValueSats, ReceiverSats: p.ChangeSats}
+func (p bitcoinPaymentPlan) batchInput() spendingRenewalPlan {
+	return spendingRenewalPlan{bitcoinPayment: true, Txid: p.Txid, Vout: p.Vout, ValueSats: p.ValueSats, ReceiverSats: p.ChangeSats}
 }
 
 func (p bitcoinPaymentPlan) outputs(c bitcoinPaymentContext) []*wire.TxOut {
@@ -61,43 +61,43 @@ func (p bitcoinPaymentPlan) outputs(c bitcoinPaymentContext) []*wire.TxOut {
 	return outputs
 }
 
-func verifyBitcoinPaymentRegistration(raw, message string, p bitcoinPaymentPlan, c bitcoinPaymentContext) (verifiedLightRenewalRegistration, error) {
+func verifyBitcoinPaymentRegistration(raw, message string, p bitcoinPaymentPlan, c bitcoinPaymentContext) (verifiedSpendingRenewalRegistration, error) {
 	digest, err := p.digest(c)
 	if err != nil {
-		return verifiedLightRenewalRegistration{}, err
+		return verifiedSpendingRenewalRegistration{}, err
 	}
 	var registration intent.RegisterMessage
 	if err := registration.Decode(message); err != nil {
-		return verifiedLightRenewalRegistration{}, err
+		return verifiedSpendingRenewalRegistration{}, err
 	}
 	canonical, err := registration.Encode()
 	if err != nil || canonical != message || registration.ValidAt != 0 || registration.ExpireAt != p.RegisterExpireAt ||
 		len(registration.CosignersPublicKeys) != 1 || len(registration.OnchainOutputIndexes) != len(p.Outputs) {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Bitcoin payment register conditions")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Bitcoin payment register conditions")
 	}
 	for i, index := range registration.OnchainOutputIndexes {
 		if index != i+1 {
-			return verifiedLightRenewalRegistration{}, fmt.Errorf("Bitcoin payment onchain output indexes")
+			return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Bitcoin payment onchain output indexes")
 		}
 	}
 	session, err := hex.DecodeString(registration.CosignersPublicKeys[0])
 	if err != nil || len(session) != 33 || hex.EncodeToString(session) != registration.CosignersPublicKeys[0] {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Bitcoin payment tree session")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Bitcoin payment tree session")
 	}
 	if _, err := btcec.ParsePubKey(session); err != nil {
-		return verifiedLightRenewalRegistration{}, err
+		return verifiedSpendingRenewalRegistration{}, err
 	}
 	if err := verifySpendingBatchIntentProof(raw, message, p.batchInput(), c.spending, p.outputs(c)); err != nil {
-		return verifiedLightRenewalRegistration{}, err
+		return verifiedSpendingRenewalRegistration{}, err
 	}
-	request, err := bitcoinPaymentDigest("register", lightRenewalRegistrationEvidence{raw, message})
-	return verifiedLightRenewalRegistration{PlanDigest: digest, RequestDigest: request, TreeSession: session, CanonicalPSBT: raw, Message: message}, err
+	request, err := bitcoinPaymentDigest("register", spendingRenewalRegistrationEvidence{raw, message})
+	return verifiedSpendingRenewalRegistration{PlanDigest: digest, RequestDigest: request, TreeSession: session, CanonicalPSBT: raw, Message: message}, err
 }
 
-func verifyBitcoinPaymentFinal(e lightRenewalFinalEvidence, p bitcoinPaymentPlan, c bitcoinPaymentContext, r verifiedLightRenewalRegistration) (verifiedLightRenewalFinal, error) {
+func verifyBitcoinPaymentFinal(e spendingRenewalFinalEvidence, p bitcoinPaymentPlan, c bitcoinPaymentContext, r verifiedSpendingRenewalRegistration) (verifiedSpendingRenewalFinal, error) {
 	digest, err := p.digest(c)
 	if err != nil {
-		return verifiedLightRenewalFinal{}, err
+		return verifiedSpendingRenewalFinal{}, err
 	}
 	return verifySpendingBatchFinal(e, p.batchInput(), c.spending, r, txscript.SigHashDefault, digest, bitcoinPaymentDomain+"final/v1:", p.outputs(c)[1:])
 }

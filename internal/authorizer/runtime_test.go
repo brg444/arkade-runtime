@@ -260,11 +260,11 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	// Construction has not checked the live chain or installed boarding yet.
 	// Starting successfully here proves it did not already launch the worker;
 	// production Open starts it only after those checks and initial readiness.
-	if err := runtime.service.StartLightDelegation(); err != nil {
+	if err := runtime.service.StartSpendingDelegation(); err != nil {
 		_ = runtime.Close()
 		t.Fatalf("background worker started before production checks: %v", err)
 	}
-	runtime.service.StopLightDelegation()
+	runtime.service.StopSpendingDelegation()
 	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
 	}

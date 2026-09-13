@@ -14,46 +14,46 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-type lightDelegateIntent struct {
+type spendingDelegateIntent struct {
 	Proof   string `json:"proof"`
 	Message string `json:"message"`
 }
-type lightDelegationRequest struct {
-	VaultID        string              `json:"vaultId"`
-	OperationID    string              `json:"operationId"`
-	Intent         lightDelegateIntent `json:"intent"`
-	ForfeitTxs     []string            `json:"forfeitTxs"`
-	DeleteIntent   lightDelegateIntent `json:"deleteIntent"`
-	ExpiresAt      int64               `json:"expiresAt"`
-	OwnerSignature string              `json:"ownerSignature"`
-	Program        string              `json:"program,omitempty"`
-	DescriptorHash string              `json:"descriptorHash,omitempty"`
+type spendingDelegationRequest struct {
+	VaultID        string                 `json:"vaultId"`
+	OperationID    string                 `json:"operationId"`
+	Intent         spendingDelegateIntent `json:"intent"`
+	ForfeitTxs     []string               `json:"forfeitTxs"`
+	DeleteIntent   spendingDelegateIntent `json:"deleteIntent"`
+	ExpiresAt      int64                  `json:"expiresAt"`
+	OwnerSignature string                 `json:"ownerSignature"`
+	Program        string                 `json:"program,omitempty"`
+	DescriptorHash string                 `json:"descriptorHash,omitempty"`
 }
-type lightDelegationPlan struct {
-	Request        lightDelegationRequest `json:"request"`
-	Renewal        lightRenewalPlan       `json:"renewal"`
-	ValidAt        int64                  `json:"validAt"`
-	InputExpiresAt int64                  `json:"inputExpiresAt"`
+type spendingDelegationPlan struct {
+	Request        spendingDelegationRequest `json:"request"`
+	Renewal        spendingRenewalPlan       `json:"renewal"`
+	ValidAt        int64                     `json:"validAt"`
+	InputExpiresAt int64                     `json:"inputExpiresAt"`
 }
 
-func lightDelegationRequestDigest(r lightDelegationRequest) ([]byte, error) {
+func spendingDelegationRequestDigest(r spendingDelegationRequest) ([]byte, error) {
 	shared := spendingDelegationSetRequest{Program: r.Program, DescriptorHash: r.DescriptorHash, VaultID: r.VaultID}
 	return shared.planDigest(spendingDelegationInput{OperationID: r.OperationID, Intent: r.Intent, ForfeitTxs: r.ForfeitTxs, DeleteIntent: r.DeleteIntent, ExpiresAt: r.ExpiresAt, OwnerSignature: r.OwnerSignature})
 }
-func verifyDelegationRequest(r lightDelegationRequest, c renewalContract, forfeitScript []byte) (lightDelegationPlan, error) {
+func verifyDelegationRequest(r spendingDelegationRequest, c renewalContract, forfeitScript []byte) (spendingDelegationPlan, error) {
 	d := c.Binding
 	if r.Program != d.Program || r.DescriptorHash != c.DescriptorHash {
-		return lightDelegationPlan{}, fmt.Errorf("renewal request context")
+		return spendingDelegationPlan{}, fmt.Errorf("renewal request context")
 	}
 
-	var out lightDelegationPlan
+	var out spendingDelegationPlan
 	if _, err := canonicalVtxoOperationID(r.OperationID); err != nil {
 		return out, err
 	}
 	if r.VaultID != d.VaultID || r.ExpiresAt <= 0 || r.ExpiresAt > (1<<53)-1 || len(r.ForfeitTxs) != 1 {
 		return out, fmt.Errorf("Light delegation scope")
 	}
-	digest, err := lightDelegationRequestDigest(r)
+	digest, err := spendingDelegationRequestDigest(r)
 	if err != nil {
 		return out, err
 	}
@@ -81,7 +81,7 @@ func verifyDelegationRequest(r lightDelegationRequest, c renewalContract, forfei
 	if err != nil {
 		return out, err
 	}
-	plan := lightRenewalPlan{OperationID: r.OperationID, VaultID: r.VaultID, DescriptorHash: hash, Txid: previous.Hash.String(), Vout: previous.Index, ValueSats: value, ReceiverSats: receiver, FeeSats: value - receiver, FeePolicyDigest: hex.EncodeToString(make([]byte, 32)), RegisterExpireAt: r.ExpiresAt}
+	plan := spendingRenewalPlan{OperationID: r.OperationID, VaultID: r.VaultID, DescriptorHash: hash, Txid: previous.Hash.String(), Vout: previous.Index, ValueSats: value, ReceiverSats: receiver, FeeSats: value - receiver, FeePolicyDigest: hex.EncodeToString(make([]byte, 32)), RegisterExpireAt: r.ExpiresAt}
 	// x-only contracts use the even lift, which must also be the MuSig identity.
 	if _, err := verifyRenewalRegistration(r.Intent.Proof, r.Intent.Message, plan, c, message.ValidAt, r.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...)); err != nil {
 		return out, err
@@ -92,7 +92,7 @@ func verifyDelegationRequest(r lightDelegationRequest, c renewalContract, forfei
 	if err := verifyRenewalDelete(r.DeleteIntent, plan, c); err != nil {
 		return out, err
 	}
-	return lightDelegationPlan{Request: r, Renewal: plan, ValidAt: message.ValidAt}, nil
+	return spendingDelegationPlan{Request: r, Renewal: plan, ValidAt: message.ValidAt}, nil
 }
 func delegationForfeitScript(network string) ([]byte, error) {
 	pins, err := deployment.IdentityFor(network)
@@ -102,7 +102,7 @@ func delegationForfeitScript(network string) ([]byte, error) {
 	pub := mustDecodeRenewalHex(pins.CheckpointForfeitPubHex)
 	return append([]byte{txscript.OP_0, 0x14}, btcutil.Hash160(pub)...), nil
 }
-func verifyRenewalPartialForfeit(raw string, p lightRenewalPlan, c renewalContract, forfeitScript []byte) error {
+func verifyRenewalPartialForfeit(raw string, p spendingRenewalPlan, c renewalContract, forfeitScript []byte) error {
 	if err := c.validateTree(); err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ func verifyRenewalPartialForfeit(raw string, p lightRenewalPlan, c renewalContra
 
 // Delete authorization is BIP-322, with no monetary destination. Zero expiry
 // permits queue cleanup after downtime, but only for this exact original input.
-func verifyRenewalDelete(r lightDelegateIntent, p lightRenewalPlan, c renewalContract) error {
+func verifyRenewalDelete(r spendingDelegateIntent, p spendingRenewalPlan, c renewalContract) error {
 
 	var message intent.DeleteMessage
 	if err := message.Decode(r.Message); err != nil {

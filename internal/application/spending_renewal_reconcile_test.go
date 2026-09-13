@@ -9,8 +9,8 @@ import (
 )
 
 func TestLightRenewalIndexerRejectsSubstitutedSettlement(t *testing.T) {
-	p := lightRenewalPlan{Txid: strings.Repeat("01", 32), ValueSats: 80000, ReceiverSats: 79900}
-	f := verifiedLightRenewalFinal{CommitmentTxid: strings.Repeat("02", 32), ReceiverTxid: strings.Repeat("03", 32)}
+	p := spendingRenewalPlan{Txid: strings.Repeat("01", 32), ValueSats: 80000, ReceiverSats: 79900}
+	f := verifiedSpendingRenewalFinal{CommitmentTxid: strings.Repeat("02", 32), ReceiverTxid: strings.Repeat("03", 32)}
 	zero := uint32(0)
 	swept := false
 	commitments := []string{f.CommitmentTxid}
@@ -38,7 +38,7 @@ func TestLightRenewalIndexerRejectsSubstitutedSettlement(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := &arkResolver{origin: "https://mutinynet.arkade.sh", hc: rpcDoerFunc(func(req *http.Request) (*http.Response, error) { return jsonResponse(200, string(body)), nil })}
-			ok, err := r.lightRenewalSettled(context.Background(), p, f, []byte{0x51})
+			ok, err := r.spendingRenewalSettled(context.Background(), p, f, []byte{0x51})
 			if name == "valid" {
 				if err != nil || !ok {
 					t.Fatalf("valid replacement: %v", err)
@@ -49,7 +49,7 @@ func TestLightRenewalIndexerRejectsSubstitutedSettlement(t *testing.T) {
 			// A payment must preserve its exact protected change, but is not a renewal.
 			// A fresh batch may have the same expiry as an input created moments earlier.
 			p.bitcoinPayment = true
-			ok, err = r.lightRenewalSettled(context.Background(), p, f, []byte{0x51})
+			ok, err = r.spendingRenewalSettled(context.Background(), p, f, []byte{0x51})
 			if name == "valid" || name == "same expiry" {
 				if err != nil || !ok {
 					t.Fatalf("Bitcoin payment replacement: %v", err)

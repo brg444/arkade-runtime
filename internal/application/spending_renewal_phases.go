@@ -8,7 +8,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-type lightRenewalOperator interface {
+type spendingRenewalOperator interface {
 	registerIntent(context.Context, string, string) (string, error)
 	submitLightForfeit(context.Context, string) error
 	requireUnendedCommitment(context.Context, string) error
@@ -20,9 +20,9 @@ func (o *stockVaultBoardOperator) submitLightForfeit(ctx context.Context, signed
 		SignedCommitmentTx string   `json:"signedCommitmentTx"`
 	}{[]string{signed}, ""}, nil)
 }
-func (s *Service) dialLightRenewalOperator(ctx context.Context) (lightRenewalOperator, error) {
-	if s.lightRenewalOperatorDial != nil {
-		return s.lightRenewalOperatorDial(ctx)
+func (s *Service) dialLightRenewalOperator(ctx context.Context) (spendingRenewalOperator, error) {
+	if s.spendingRenewalOperatorDial != nil {
+		return s.spendingRenewalOperatorDial(ctx)
 	}
 	operator, err := dialVaultBoardOperator(ctx, s.runtimeConfig().Network)
 	if err != nil {
@@ -35,7 +35,7 @@ func (s *Service) dialLightRenewalOperator(ctx context.Context) (lightRenewalOpe
 	return stock, nil
 }
 
-type lightRenewalRegisterRequest struct {
+type spendingRenewalRegisterRequest struct {
 	VaultID     string                   `json:"vaultId"`
 	OperationID string                   `json:"operationId"`
 	PSBT        string                   `json:"psbt"`
@@ -43,11 +43,11 @@ type lightRenewalRegisterRequest struct {
 	Assertion   WebAuthnAssertionRequest `json:"assertion"`
 	DirectSig   string                   `json:"directSig"`
 }
-type lightRenewalRegistrationEvidence struct {
+type spendingRenewalRegistrationEvidence struct {
 	PSBT    string `json:"psbt"`
 	Message string `json:"message"`
 }
-type lightRenewalResponse struct {
+type spendingRenewalResponse struct {
 	State          string `json:"state"`
 	Reason         string `json:"reason,omitempty"`
 	IntentID       string `json:"intentId,omitempty"`
@@ -55,10 +55,10 @@ type lightRenewalResponse struct {
 	ReceiverTxid   string `json:"receiverTxid,omitempty"`
 	ReceiverVout   uint32 `json:"receiverVout,omitempty"`
 }
-type lightRenewalFinalRequest struct {
-	VaultID     string                    `json:"vaultId"`
-	OperationID string                    `json:"operationId"`
-	Evidence    lightRenewalFinalEvidence `json:"evidence"`
+type spendingRenewalFinalRequest struct {
+	VaultID     string                       `json:"vaultId"`
+	OperationID string                       `json:"operationId"`
+	Evidence    spendingRenewalFinalEvidence `json:"evidence"`
 }
 
 func (s *Service) persistLightRenewalEvent(e policy.LightRenewalEvent) error {

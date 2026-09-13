@@ -13,7 +13,7 @@ func (c renewalContract) identityHash() (string, error) {
 	return c.DescriptorHash, nil
 }
 func (s *Service) delegationContract(vault string) (renewalContract, error) {
-	if !s.LightDelegationEnabled || s.Stores.LightDelegation == nil || isNilInterface(s.keys.lightDelegation) {
+	if !s.LightDelegationEnabled || s.Stores.LightDelegation == nil || isNilInterface(s.keys.spendingDelegation) {
 		return renewalContract{}, fmt.Errorf("Spending delegation disabled")
 	}
 	c, err := s.spendingRenewalContext(vault)

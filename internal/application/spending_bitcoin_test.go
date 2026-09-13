@@ -142,8 +142,8 @@ func TestSpendingBitcoinRejectedRegistrationReportsReasonAndReleasesAllowance(t 
 	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
 	session, _ := btcec.NewPrivateKey()
 	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-	operator := &lightRenewalTestOperator{registerErr: vaultBoardOperatorRejection{status: http.StatusBadRequest, reason: "input already spent"}}
-	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+	operator := &spendingRenewalTestOperator{registerErr: vaultBoardOperatorRejection{status: http.StatusBadRequest, reason: "input already spent"}}
+	e.svc.spendingRenewalOperatorDial = func(context.Context) (spendingRenewalOperator, error) { return operator, nil }
 	result, err := e.svc.registerBitcoinPayment(t.Context(), request)
 	if err != nil || result.State != "rejected" || result.Reason != "input already spent" {
 		t.Fatalf("result %+v, %v", result, err)

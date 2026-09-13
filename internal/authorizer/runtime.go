@@ -107,7 +107,7 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 	}
 	// Background authorizations must not race the production chain and
 	// readiness checks, including when resuming a persisted operation.
-	if err := rt.service.StartLightDelegation(); err != nil {
+	if err := rt.service.StartSpendingDelegation(); err != nil {
 		_ = rt.Close()
 		return nil, err
 	}

@@ -102,7 +102,7 @@ func bitcoinPaymentSnapshot(s *policy.LightRenewalSnapshot, c bitcoinPaymentCont
 	if err != nil || hex.EncodeToString(digest) != s.Operation.PlanDigest || p.OperationID != s.Operation.OperationID || p.VaultID != s.Operation.VaultID || p.Txid != s.Operation.InputTxid || p.Vout != s.Operation.InputVout || p.FeeSats != s.Operation.FeeSats || p.principal() != s.Operation.AmountSats || time.Unix(p.RegisterExpireAt, 0).UTC().Format(time.RFC3339) != s.Operation.ExpiresAt {
 		return bitcoinPaymentPrepared{}, fmt.Errorf("Bitcoin payment stored plan mismatch")
 	}
-	return bitcoinPaymentPrepared{p, s.Operation.PlanDigest, lightRenewalState(s)}, nil
+	return bitcoinPaymentPrepared{p, s.Operation.PlanDigest, spendingRenewalState(s)}, nil
 }
 
 func (s *Service) requireFreshBitcoinPayment(ctx context.Context, p bitcoinPaymentPlan, c bitcoinPaymentContext) error {

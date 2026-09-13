@@ -33,7 +33,7 @@ type Service struct {
 	Stores                 arkadevaultv1.Stores
 	Deployment             deployment.Config
 	LightDelegationEnabled bool
-	delegationRuntime      *lightDelegationRuntime
+	delegationAttempts     *spendingDelegationAttemptOwner
 	LedgerSavingsEnabled   bool
 	LightOnlyEnrollment    bool
 	LightEnabled           bool // admits new Light wallets only; existing wallets remain usable
@@ -54,30 +54,30 @@ type Service struct {
 	MaxConcurrentVerifications int
 	// MaxConcurrentFeeSelections bounds authenticated but potentially
 	// adversarial Operator CEL evaluation. Zero uses the conservative default.
-	MaxConcurrentFeeSelections  int
-	ArkResolver                 ports.ArkResolver
-	contractPackJSON            []byte
-	vaultPolicyHasExit          *bool
-	mu                          sync.Mutex
-	published                   atomic.Pointer[publishedIndex]
-	verificationOnce            sync.Once
-	verificationSlots           chan struct{}
-	feeSelectionOnce            sync.Once
-	feeSelectionSlots           chan struct{}
-	transitionRateMu            sync.Mutex
-	transitionRateHits          map[string][]time.Time
-	sessionMu                   sync.Mutex
-	sessionChallengeKey         []byte
-	consumedPasskeyChallenges   map[[32]byte]consumedPasskeyChallenge
-	backupSessions              map[[32]byte]backupSession
-	SessionNow                  func() time.Time
-	afterLoadPending            func()
-	vaultBoardRuntime           *vaultBoardRuntime
-	lightRenewalOperatorDial    func(context.Context) (lightRenewalOperator, error)
-	lightDelegationOperatorDial func(context.Context) (lightDelegationOperator, error)
-	resolverReadyMu             sync.Mutex
-	resolverReadyAt             time.Time
-	resolverReadyErr            error
+	MaxConcurrentFeeSelections     int
+	ArkResolver                    ports.ArkResolver
+	contractPackJSON               []byte
+	vaultPolicyHasExit             *bool
+	mu                             sync.Mutex
+	published                      atomic.Pointer[publishedIndex]
+	verificationOnce               sync.Once
+	verificationSlots              chan struct{}
+	feeSelectionOnce               sync.Once
+	feeSelectionSlots              chan struct{}
+	transitionRateMu               sync.Mutex
+	transitionRateHits             map[string][]time.Time
+	sessionMu                      sync.Mutex
+	sessionChallengeKey            []byte
+	consumedPasskeyChallenges      map[[32]byte]consumedPasskeyChallenge
+	backupSessions                 map[[32]byte]backupSession
+	SessionNow                     func() time.Time
+	afterLoadPending               func()
+	vaultBoardRuntime              *vaultBoardRuntime
+	spendingRenewalOperatorDial    func(context.Context) (spendingRenewalOperator, error)
+	spendingDelegationOperatorDial func(context.Context) (spendingDelegationOperator, error)
+	resolverReadyMu                sync.Mutex
+	resolverReadyAt                time.Time
+	resolverReadyErr               error
 }
 
 // Deps is the constructor input. Private keys stay behind scoped capabilities.
@@ -119,7 +119,7 @@ func New(d Deps) *Service {
 		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
 	}
-	if key, ok := s.keys.lightDelegation.(*fileBackedVaultKeys); ok {
+	if key, ok := s.keys.spendingDelegation.(*fileBackedVaultKeys); ok {
 		key.bindDelegationJournal(d.Stores.LightDelegation)
 	}
 	if raw, err := liveContractPackJSONFor(d.Deployment.Network); err == nil {
@@ -149,7 +149,7 @@ func (s *Service) WipeSecrets() {
 	if s == nil {
 		return
 	}
-	s.StopLightDelegation()
+	s.StopSpendingDelegation()
 	s.sessionMu.Lock()
 	zeroServiceBytes(s.sessionChallengeKey)
 	s.sessionChallengeKey = nil

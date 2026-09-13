@@ -56,9 +56,9 @@ type KeyCapabilities struct {
 	vtxoCheckpoint  vtxoCheckpointAuthorizer
 	vaultBoard      vaultBoardAuthorizer
 
-	bitcoinPayment  bitcoinPaymentAuthorizer
-	lightDelegation lightDelegationAuthorizer
-	lifecycle       keyLifecycle
+	bitcoinPayment     bitcoinPaymentAuthorizer
+	spendingDelegation spendingDelegationAuthorizer
+	lifecycle          keyLifecycle
 }
 
 func (k KeyCapabilities) Validate() error {
@@ -150,7 +150,7 @@ func NewFileBackedKeyCapabilities(master *btcec.PrivateKey) (KeyCapabilities, er
 		enrollment:      keys,
 		ledgerSavings:   &fileBackedLedgerSavingsAuthorizer{keys: keys},
 		vtxoTransaction: keys, vtxoCheckpoint: keys,
-		vaultBoard: keys, bitcoinPayment: keys, lightDelegation: keys, lifecycle: keys,
+		vaultBoard: keys, bitcoinPayment: keys, spendingDelegation: keys, lifecycle: keys,
 	}
 	if err := capabilities.Validate(); err != nil {
 		return KeyCapabilities{}, err
@@ -161,7 +161,7 @@ func NewFileBackedKeyCapabilities(master *btcec.PrivateKey) (KeyCapabilities, er
 type fileBackedVaultKeys struct {
 	mu              sync.RWMutex
 	master          *btcec.PrivateKey
-	delegationStore lightDelegationJournal
+	delegationStore spendingDelegationJournal
 }
 
 func (k *fileBackedVaultKeys) withMaster(fn func(*btcec.PrivateKey) error) error {

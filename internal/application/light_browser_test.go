@@ -138,7 +138,7 @@ func TestLightBrowserHarness(t *testing.T) {
 		if err := svc.InstallVaultBoardAuthorization(ctx); err != nil {
 			t.Fatal(err)
 		}
-		svc.lightRenewalOperatorDial = func(ctx context.Context) (lightRenewalOperator, error) {
+		svc.spendingRenewalOperatorDial = func(ctx context.Context) (spendingRenewalOperator, error) {
 			op, err := dialVaultBoardOperator(ctx, "mutinynet")
 			if err != nil {
 				return nil, err

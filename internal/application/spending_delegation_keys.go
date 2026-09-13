@@ -28,31 +28,31 @@ import (
 
 const delegatedOwnerSighash = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
 
-type lightDelegationTree struct {
+type spendingDelegationTree struct {
 	BatchID        string             `json:"batchId"`
 	BatchExpiry    uint32             `json:"batchExpiry"`
 	CommitmentPSBT string             `json:"commitmentPsbt"`
 	VtxoTree       arktree.FlatTxTree `json:"vtxoTree"`
 }
-type lightDelegationNonceCapsule struct {
+type spendingDelegationNonceCapsule struct {
 	Binding    string            `json:"binding"`
 	Nonces     map[string]string `json:"nonces"`
 	IV         string            `json:"iv"`
 	Ciphertext string            `json:"ciphertext"`
 }
-type lightDelegationPreparedTree struct {
-	Tree    lightDelegationTree         `json:"tree"`
-	Capsule lightDelegationNonceCapsule `json:"capsule"`
+type spendingDelegationPreparedTree struct {
+	Tree    spendingDelegationTree         `json:"tree"`
+	Capsule spendingDelegationNonceCapsule `json:"capsule"`
 }
-type lightDelegationFinal struct {
-	Evidence      lightRenewalFinalEvidence `json:"evidence"`
-	SignedForfeit string                    `json:"signedForfeit"`
+type spendingDelegationFinal struct {
+	Evidence      spendingRenewalFinalEvidence `json:"evidence"`
+	SignedForfeit string                       `json:"signedForfeit"`
 }
-type lightDelegationAuthorizer interface {
-	authorizeSpendingDelegationDelete(context.Context, renewalContract, lightDelegationPlan) (string, error)
-	authorizeSpendingDelegation(context.Context, renewalContract, lightDelegationPlan, *lightRenewalFinalEvidence) (string, error)
-	prepareSpendingDelegationTree(context.Context, renewalContract, lightDelegationPlan, lightDelegationTree) (lightDelegationNonceCapsule, error)
-	signSpendingDelegationTree(context.Context, renewalContract, lightDelegationPlan, lightDelegationPreparedTree, map[string]map[string]string) (map[string]string, error)
+type spendingDelegationAuthorizer interface {
+	authorizeSpendingDelegationDelete(context.Context, renewalContract, spendingDelegationPlan) (string, error)
+	authorizeSpendingDelegation(context.Context, renewalContract, spendingDelegationPlan, *spendingRenewalFinalEvidence) (string, error)
+	prepareSpendingDelegationTree(context.Context, renewalContract, spendingDelegationPlan, spendingDelegationTree) (spendingDelegationNonceCapsule, error)
+	signSpendingDelegationTree(context.Context, renewalContract, spendingDelegationPlan, spendingDelegationPreparedTree, map[string]map[string]string) (map[string]string, error)
 }
 
 func (k *fileBackedVaultKeys) withRenewalKey(ctx context.Context, c renewalContract, run func(*btcec.PrivateKey) error) error {
@@ -82,29 +82,29 @@ func (k *fileBackedVaultKeys) withRenewalKey(ctx context.Context, c renewalContr
 		return run(key)
 	})
 }
-func validateRenewalDelegationCapability(c renewalContract, p lightDelegationPlan) (*vtxoPolicyTree, verifiedLightRenewalRegistration, error) {
+func validateRenewalDelegationCapability(c renewalContract, p spendingDelegationPlan) (*vtxoPolicyTree, verifiedSpendingRenewalRegistration, error) {
 	d := c.Binding
 
 	if err := c.validateTree(); err != nil {
-		return nil, verifiedLightRenewalRegistration{}, err
+		return nil, verifiedSpendingRenewalRegistration{}, err
 	}
 	tree := c.Tree
 	script, err := delegationForfeitScript(d.Network)
 	if err != nil {
-		return nil, verifiedLightRenewalRegistration{}, err
+		return nil, verifiedSpendingRenewalRegistration{}, err
 	}
 	expected, err := verifyDelegationRequest(p.Request, c, script)
 	if err != nil {
-		return nil, verifiedLightRenewalRegistration{}, err
+		return nil, verifiedSpendingRenewalRegistration{}, err
 	}
 	if !sameDelegationBytes(expected.Renewal, p.Renewal) || p.ValidAt != expected.ValidAt {
-		return nil, verifiedLightRenewalRegistration{}, fmt.Errorf("Light delegation plan changed")
+		return nil, verifiedSpendingRenewalRegistration{}, fmt.Errorf("Light delegation plan changed")
 	}
 	registration, err := verifyRenewalRegistration(p.Request.Intent.Proof, p.Request.Intent.Message, p.Renewal, c, p.ValidAt, p.Request.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...))
 	return tree, registration, err
 }
 
-func (k *fileBackedVaultKeys) authorizeSpendingDelegation(ctx context.Context, c renewalContract, p lightDelegationPlan, final *lightRenewalFinalEvidence) (string, error) {
+func (k *fileBackedVaultKeys) authorizeSpendingDelegation(ctx context.Context, c renewalContract, p spendingDelegationPlan, final *spendingRenewalFinalEvidence) (string, error) {
 	d := c.Binding
 
 	tree, registration, err := validateRenewalDelegationCapability(c, p)
@@ -140,7 +140,7 @@ func (k *fileBackedVaultKeys) authorizeSpendingDelegation(ctx context.Context, c
 	return result, err
 }
 
-func verifyRenewalSigningTree(c renewalContract, p lightDelegationPlan, e lightDelegationTree) (*arktree.TxTree, *psbt.Packet, []byte, error) {
+func verifyRenewalSigningTree(c renewalContract, p spendingDelegationPlan, e spendingDelegationTree) (*arktree.TxTree, *psbt.Packet, []byte, error) {
 	d := c.Binding
 
 	tree, _, err := validateRenewalDelegationCapability(c, p)
@@ -155,7 +155,7 @@ func verifyRenewalSigningTree(c renewalContract, p lightDelegationPlan, e lightD
 	if err != nil || commitment.UnsignedTx.Version != 2 || len(commitment.UnsignedTx.TxOut) < 2 {
 		return nil, nil, nil, fmt.Errorf("Light delegation commitment")
 	}
-	_, graph, err := canonicalLightRenewalTree(e.VtxoTree)
+	_, graph, err := canonicalSpendingRenewalTree(e.VtxoTree)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -200,10 +200,10 @@ func verifyRenewalSigningTree(c renewalContract, p lightDelegationPlan, e lightD
 	root := txscript.NewBaseTapLeaf(script).TapHash()
 	return graph, commitment, root[:], nil
 }
-func delegationTreeBinding(p lightDelegationPlan, e lightDelegationTree) (string, error) {
+func delegationTreeBinding(p spendingDelegationPlan, e spendingDelegationTree) (string, error) {
 	raw, err := json.Marshal(struct {
-		Plan lightDelegationPlan `json:"plan"`
-		Tree lightDelegationTree `json:"tree"`
+		Plan spendingDelegationPlan `json:"plan"`
+		Tree spendingDelegationTree `json:"tree"`
 	}{p, e})
 	if err != nil {
 		return "", err
@@ -253,9 +253,9 @@ func delegationSigningNodes(graph *arktree.TxTree, key *btcec.PublicKey) (map[st
 	return out, walk(graph)
 }
 
-func (k *fileBackedVaultKeys) prepareSpendingDelegationTree(ctx context.Context, c renewalContract, p lightDelegationPlan, e lightDelegationTree) (lightDelegationNonceCapsule, error) {
+func (k *fileBackedVaultKeys) prepareSpendingDelegationTree(ctx context.Context, c renewalContract, p spendingDelegationPlan, e spendingDelegationTree) (spendingDelegationNonceCapsule, error) {
 
-	var result lightDelegationNonceCapsule
+	var result spendingDelegationNonceCapsule
 	graph, _, _, err := verifyRenewalSigningTree(c, p, e)
 	if err != nil {
 		return result, err
@@ -291,7 +291,7 @@ func (k *fileBackedVaultKeys) prepareSpendingDelegationTree(ctx context.Context,
 			nonces[txid] = hex.EncodeToString(nonce.PubNonce[:])
 			zeroServiceBytes(nonce.SecNonce[:])
 		}
-		result = lightDelegationNonceCapsule{binding, nonces, hex.EncodeToString(iv), hex.EncodeToString(aead.Seal(nil, iv, seed, []byte(binding)))}
+		result = spendingDelegationNonceCapsule{binding, nonces, hex.EncodeToString(iv), hex.EncodeToString(aead.Seal(nil, iv, seed, []byte(binding)))}
 		return nil
 	})
 	return result, err
@@ -300,18 +300,18 @@ func (k *fileBackedVaultKeys) prepareSpendingDelegationTree(ctx context.Context,
 // A fixed authenticated journal is bound by the composition root. The signer
 // itself checks the persisted session and peer transcript before opening secrets;
 // callers cannot reuse a capsule against a second MuSig challenge.
-type lightDelegationJournal interface {
+type spendingDelegationJournal interface {
 	ListLightDelegations(context.Context) ([]policy.LightDelegationSnapshot, error)
 }
 
-func (k *fileBackedVaultKeys) bindDelegationJournal(store lightDelegationJournal) {
+func (k *fileBackedVaultKeys) bindDelegationJournal(store spendingDelegationJournal) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if k.delegationStore == nil {
 		k.delegationStore = store
 	}
 }
-func (k *fileBackedVaultKeys) verifyRenewalTranscript(ctx context.Context, c renewalContract, p lightDelegationPlan, prepared lightDelegationPreparedTree, all map[string]map[string]string) error {
+func (k *fileBackedVaultKeys) verifyRenewalTranscript(ctx context.Context, c renewalContract, p spendingDelegationPlan, prepared spendingDelegationPreparedTree, all map[string]map[string]string) error {
 
 	k.mu.RLock()
 	store := k.delegationStore
@@ -331,7 +331,7 @@ func (k *fileBackedVaultKeys) verifyRenewalTranscript(ctx context.Context, c ren
 		if err != nil || !sameDelegationBytes(persisted, p) {
 			return fmt.Errorf("Light delegation signing plan not committed")
 		}
-		var tree lightDelegationPreparedTree
+		var tree spendingDelegationPreparedTree
 		var peers map[string]map[string]string
 		if json.Unmarshal([]byte(snapshot.Events["tree_prepared"].Evidence), &tree) != nil || json.Unmarshal([]byte(snapshot.Events["nonces_committed"].Evidence), &peers) != nil || !sameDelegationBytes(tree, prepared) || !sameDelegationBytes(peers, all) {
 			return fmt.Errorf("Light delegation signing transcript not committed")
@@ -346,7 +346,7 @@ func (k *fileBackedVaultKeys) verifyRenewalTranscript(ctx context.Context, c ren
 	return fmt.Errorf("Light delegation signing operation unavailable")
 }
 
-func (k *fileBackedVaultKeys) signSpendingDelegationTree(ctx context.Context, c renewalContract, p lightDelegationPlan, prepared lightDelegationPreparedTree, all map[string]map[string]string) (map[string]string, error) {
+func (k *fileBackedVaultKeys) signSpendingDelegationTree(ctx context.Context, c renewalContract, p spendingDelegationPlan, prepared spendingDelegationPreparedTree, all map[string]map[string]string) (map[string]string, error) {
 
 	if err := k.verifyRenewalTranscript(ctx, c, p, prepared, all); err != nil {
 		return nil, err
@@ -438,7 +438,7 @@ func (k *fileBackedVaultKeys) signSpendingDelegationTree(ctx context.Context, c 
 	return result, err
 }
 
-func (k *fileBackedVaultKeys) authorizeSpendingDelegationDelete(ctx context.Context, c renewalContract, p lightDelegationPlan) (string, error) {
+func (k *fileBackedVaultKeys) authorizeSpendingDelegationDelete(ctx context.Context, c renewalContract, p spendingDelegationPlan) (string, error) {
 	d := c.Binding
 
 	tree, _, err := validateRenewalDelegationCapability(c, p)

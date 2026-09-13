@@ -18,7 +18,7 @@ type endedCommitmentOperator interface {
 // fence was crossed only after the exact Operator batch had already ended.
 // The ended batch is irreversible, and the original VTXO must independently
 // remain live before the ledger releases its reservation.
-func (s *Service) releaseEndedBitcoinPayment(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, final verifiedLightRenewalFinal) (bool, error) {
+func (s *Service) releaseEndedBitcoinPayment(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, final verifiedSpendingRenewalFinal) (bool, error) {
 	if snapshot.Events["final_result"].Phase != "" {
 		return false, nil
 	}

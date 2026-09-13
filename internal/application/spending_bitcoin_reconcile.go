@@ -12,28 +12,28 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOperationRequest) (lightRenewalResponse, error) {
+func (s *Service) reconcileBitcoinPayment(ctx context.Context, r spendingRenewalOperationRequest) (spendingRenewalResponse, error) {
 	// An absent operation is useful only to a client holding an expired, signed
 	// prepare request. It never proves that a dispatched transaction failed.
 	if _, err := s.bitcoinPaymentContext(r.VaultID); err != nil {
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
 	if _, err := canonicalVtxoOperationID(r.OperationID); err != nil {
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
 	prior, err := s.Stores.LightRenewal.GetLightRenewal(ctx, r.OperationID)
 	if err != nil {
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
 	if prior == nil {
-		return lightRenewalResponse{State: "not_found"}, nil
+		return spendingRenewalResponse{State: "not_found"}, nil
 	}
 	snapshot, p, c, err := s.loadBitcoinPayment(ctx, r.VaultID, r.OperationID)
 	if err != nil {
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
 	if _, ok := snapshot.Events["released"]; ok {
-		return lightRenewalResponse{State: "released"}, nil
+		return spendingRenewalResponse{State: "released"}, nil
 	}
 	if _, ok := snapshot.Events["final_dispatched"]; !ok {
 		// delete_result means the queue was cleared; its "released" outcome
@@ -42,28 +42,28 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 		if _, deleted := snapshot.Events["delete_result"]; deleted {
 			return s.releaseBitcoinPayment(ctx, bitcoinPaymentReleaseRequest{VaultID: r.VaultID, OperationID: r.OperationID})
 		}
-		return lightRenewalResponse{State: lightRenewalState(snapshot), IntentID: snapshot.Events["register_result"].OperatorRef}, nil
+		return spendingRenewalResponse{State: spendingRenewalState(snapshot), IntentID: snapshot.Events["register_result"].OperatorRef}, nil
 	}
 	release, err := s.acquireVerification(ctx)
 	if err != nil {
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
 	registration, err := bitcoinPaymentStoredRegistration(snapshot, p, c)
 	if err != nil {
 		release()
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
-	var evidence lightRenewalFinalEvidence
+	var evidence spendingRenewalFinalEvidence
 	if err := json.Unmarshal([]byte(snapshot.Events["final_authorized"].Evidence), &evidence); err != nil {
 		release()
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
 	final, err := verifyBitcoinPaymentFinal(evidence, p, c, registration)
 	release()
 	if err != nil || hex.EncodeToString(final.RequestDigest) != snapshot.Events["final_dispatched"].RequestDigest {
-		return lightRenewalResponse{}, fmt.Errorf("Bitcoin payment persisted final mismatch")
+		return spendingRenewalResponse{}, fmt.Errorf("Bitcoin payment persisted final mismatch")
 	}
-	response := lightRenewalResponse{State: "uncertain", CommitmentTxid: final.CommitmentTxid, ReceiverTxid: final.ReceiverTxid, ReceiverVout: final.ReceiverVout}
+	response := spendingRenewalResponse{State: "uncertain", CommitmentTxid: final.CommitmentTxid, ReceiverTxid: final.ReceiverTxid, ReceiverVout: final.ReceiverVout}
 	if _, ok := snapshot.Events["final_result"]; ok {
 		response.State = "submitted"
 	}
@@ -71,11 +71,11 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 		response.State = "confirmed"
 		return response, nil
 	}
-	indexer, ok := s.ArkResolver.(lightRenewalIndexer)
+	indexer, ok := s.ArkResolver.(spendingRenewalIndexer)
 	if !ok {
-		return lightRenewalResponse{}, fmt.Errorf("Bitcoin payment reconciliation unavailable")
+		return spendingRenewalResponse{}, fmt.Errorf("Bitcoin payment reconciliation unavailable")
 	}
-	settled, err := indexer.lightRenewalSettled(ctx, p.batchInput(), final, c.spending.Tree.PkScript)
+	settled, err := indexer.spendingRenewalSettled(ctx, p.batchInput(), final, c.spending.Tree.PkScript)
 	if err != nil {
 		return response, err
 	}
@@ -85,20 +85,20 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 			return response, err
 		}
 		if released {
-			return lightRenewalResponse{State: "released"}, nil
+			return spendingRenewalResponse{State: "released"}, nil
 		}
 		released, err = s.releaseConflictedBitcoinPayment(ctx, snapshot, p, c, evidence, final)
 		if err != nil {
 			return response, err
 		}
 		if released {
-			return lightRenewalResponse{State: "released"}, nil
+			return spendingRenewalResponse{State: "released"}, nil
 		}
 		return response, nil
 	}
 	// A projected VTXO alone is insufficient: independently check the exact
 	// Bitcoin commitment output backing the signed replacement tree.
-	chain, err := s.lightRenewalChain()
+	chain, err := s.spendingRenewalChain()
 	if err != nil {
 		return response, err
 	}
@@ -128,24 +128,24 @@ func (s *Service) reconcileBitcoinPayment(ctx context.Context, r lightRenewalOpe
 }
 
 type bitcoinPaymentReleaseRequest struct {
-	VaultID      string               `json:"vaultId"`
-	OperationID  string               `json:"operationId"`
-	DeleteIntent *lightDelegateIntent `json:"deleteIntent,omitempty"`
+	VaultID      string                  `json:"vaultId"`
+	OperationID  string                  `json:"operationId"`
+	DeleteIntent *spendingDelegateIntent `json:"deleteIntent,omitempty"`
 }
 
-func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentReleaseRequest) (lightRenewalResponse, error) {
+func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentReleaseRequest) (spendingRenewalResponse, error) {
 	snapshot, p, c, err := s.loadBitcoinPayment(ctx, r.VaultID, r.OperationID)
 	if err != nil {
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
 	if _, ok := snapshot.Events["released"]; ok {
-		return lightRenewalResponse{State: "released"}, nil
+		return spendingRenewalResponse{State: "released"}, nil
 	}
 	if _, ok := snapshot.Events["cancelled"]; ok {
-		return lightRenewalResponse{State: "cancelled"}, nil
+		return spendingRenewalResponse{State: "cancelled"}, nil
 	}
 	if _, ok := snapshot.Events["final_dispatched"]; ok {
-		return lightRenewalResponse{State: "uncertain"}, nil
+		return spendingRenewalResponse{State: "uncertain"}, nil
 	}
 	// No cosignature leaves this process before the durable final-dispatch CAS.
 	// Fence even a prepared final after expiry if it never reached that boundary.
@@ -155,33 +155,33 @@ func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentRel
 	proof := ""
 	if dispatch, ok := snapshot.Events["register_dispatched"]; ok {
 		if s.vtxoNow().Before(time.Unix(p.RegisterExpireAt, 0).Add(15 * time.Second)) {
-			return lightRenewalResponse{State: "waiting_expiry"}, nil
+			return spendingRenewalResponse{State: "waiting_expiry"}, nil
 		}
 		// Registration expiry does not remove the Operator's queued intent.
 		// Require deletion or an exact, verified absence response for the owner proof.
 		cleared, err := s.deleteBitcoinPaymentIntent(ctx, snapshot, p, c, r.DeleteIntent)
 		if err != nil {
-			return lightRenewalResponse{}, err
+			return spendingRenewalResponse{}, err
 		}
 		if !cleared {
-			return lightRenewalResponse{State: "uncertain"}, nil
+			return spendingRenewalResponse{State: "uncertain"}, nil
 		}
 		input, err := s.liveRenewalInput(ctx, c.spending.Tree, p.Txid, p.Vout)
 		if err != nil || input.ValueSats != uint64(p.ValueSats) {
-			return lightRenewalResponse{State: "uncertain"}, nil
+			return spendingRenewalResponse{State: "uncertain"}, nil
 		}
 		encoded, err := json.Marshal(input)
 		if err != nil {
-			return lightRenewalResponse{}, err
+			return spendingRenewalResponse{}, err
 		}
 		phase = "released"
 		digest = dispatch.RequestDigest
 		proof = string(encoded)
 	}
 	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: r.OperationID, Phase: phase, RequestDigest: digest, Evidence: proof}); err != nil {
-		return lightRenewalResponse{}, err
+		return spendingRenewalResponse{}, err
 	}
-	return lightRenewalResponse{State: phase}, nil
+	return spendingRenewalResponse{State: phase}, nil
 }
 
 // Cancellation is non-monetary and may be retried from its durable evidence.
@@ -189,7 +189,7 @@ func (s *Service) releaseBitcoinPayment(ctx context.Context, r bitcoinPaymentRel
 // For this path only, expiry and the durable no-final-dispatch fence prevent
 // the old batch from acquiring its missing forfeit cosignature. The caller
 // additionally checks that the original input is still live before release.
-func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, supplied *lightDelegateIntent) (bool, error) {
+func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, supplied *spendingDelegateIntent) (bool, error) {
 	if _, ok := snapshot.Events["delete_result"]; ok {
 		return true, nil
 	}
@@ -202,7 +202,7 @@ func (s *Service) deleteBitcoinPaymentIntent(ctx context.Context, snapshot *poli
 		release()
 		return false, err
 	}
-	var deletion lightDelegateIntent
+	var deletion spendingDelegateIntent
 	if saved, ok := snapshot.Events["delete_authorized"]; ok {
 		if err := json.Unmarshal([]byte(saved.Evidence), &deletion); err != nil {
 			release()

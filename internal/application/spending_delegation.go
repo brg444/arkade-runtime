@@ -11,12 +11,12 @@ import (
 )
 
 type spendingDelegationSetResponse struct {
-	SetID      string                    `json:"setId"`
-	Operations []lightDelegationResponse `json:"operations"`
+	SetID      string                                `json:"setId"`
+	Operations []spendingDelegationOperationResponse `json:"operations"`
 }
 
-func (r spendingDelegationSetRequest) request(p spendingDelegationInput) lightDelegationRequest {
-	return lightDelegationRequest{VaultID: r.VaultID, OperationID: p.OperationID, Intent: p.Intent, ForfeitTxs: p.ForfeitTxs, DeleteIntent: p.DeleteIntent, ExpiresAt: p.ExpiresAt, OwnerSignature: p.OwnerSignature, Program: r.Program, DescriptorHash: r.DescriptorHash}
+func (r spendingDelegationSetRequest) request(p spendingDelegationInput) spendingDelegationRequest {
+	return spendingDelegationRequest{VaultID: r.VaultID, OperationID: p.OperationID, Intent: p.Intent, ForfeitTxs: p.ForfeitTxs, DeleteIntent: p.DeleteIntent, ExpiresAt: p.ExpiresAt, OwnerSignature: p.OwnerSignature, Program: r.Program, DescriptorHash: r.DescriptorHash}
 }
 
 func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingDelegationSetRequest) (spendingDelegationSetResponse, error) {
@@ -33,7 +33,7 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		return out, err
 	}
 	var digest []byte
-	plans := make([]lightDelegationPlan, len(r.Plans))
+	plans := make([]spendingDelegationPlan, len(r.Plans))
 	err = func() error {
 		release, err := s.acquireVerification(ctx)
 		if err != nil {
@@ -78,7 +78,7 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		}
 	}
 	out.SetID = r.SetID
-	out.Operations = make([]lightDelegationResponse, 0, len(plans))
+	out.Operations = make([]spendingDelegationOperationResponse, 0, len(plans))
 	if len(prior) > 0 {
 		if len(prior) != len(plans) {
 			return spendingDelegationSetResponse{}, fmt.Errorf("renewal set membership changed")
@@ -127,7 +127,7 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		if err != nil {
 			return out, err
 		}
-		planHash, err := lightDelegationRequestDigest(p.Request)
+		planHash, err := spendingDelegationRequestDigest(p.Request)
 		if err != nil {
 			return out, err
 		}
@@ -205,7 +205,7 @@ func (s *Service) verifySpendingDelegationRead(ctx context.Context, c renewalCon
 	return verifyRenewalOwner(c.Binding.OwnerPub, digest, r.OwnerSignature)
 }
 
-func (s *Service) spendingDelegationResponse(saved *policy.LightDelegationSnapshot, c renewalContract, withRecovery bool) (lightDelegationResponse, error) {
+func (s *Service) spendingDelegationResponse(saved *policy.LightDelegationSnapshot, c renewalContract, withRecovery bool) (spendingDelegationOperationResponse, error) {
 	response, err := s.delegationResponseForContract(saved, c, withRecovery)
 	if err != nil {
 		return response, err
@@ -262,7 +262,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 				return
 			}
 			if phase == "list" {
-				out := lightDelegationListResponse{Version: 1, Operations: []lightDelegationResponse{}}
+				out := spendingDelegationOperationListResponse{Version: 1, Operations: []spendingDelegationOperationResponse{}}
 				all, err := s.Stores.LightDelegation.ListLightDelegations(r.Context())
 				if err != nil {
 					writeJSON(w, nil, err)
@@ -299,7 +299,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 				return
 			}
 			if phase == "cancel" {
-				saved, err = s.Stores.LightDelegation.AdvanceLightDelegation(r.Context(), policy.LightDelegationEvent{OperationID: req.OperationID, Phase: "cancelled", Evidence: `{}`}, c.Binding.SpendingPolicy.PeriodAllowanceSats)
+				saved, err = s.cancelSpendingDelegationAttempt(r.Context(), req.OperationID, c.Binding.SpendingPolicy.PeriodAllowanceSats)
 				if err != nil {
 					writeJSON(w, nil, err)
 					return

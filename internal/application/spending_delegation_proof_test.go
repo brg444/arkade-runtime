@@ -21,17 +21,17 @@ func TestSpendingDelegationOwnerProofSubstitution(t *testing.T) {
 			if _, err := verifyDelegationRequest(original, c, forfeitScript); err != nil {
 				t.Fatal(err)
 			}
-			clone := func() lightDelegationRequest {
+			clone := func() spendingDelegationRequest {
 				raw, _ := json.Marshal(original)
-				var r lightDelegationRequest
+				var r spendingDelegationRequest
 				if err := json.Unmarshal(raw, &r); err != nil {
 					t.Fatal(err)
 				}
 				return r
 			}
 			// Re-sign the outer envelope so it cannot mask missing inner proof checks.
-			resign := func(r *lightDelegationRequest) {
-				digest, err := lightDelegationRequestDigest(*r)
+			resign := func(r *spendingDelegationRequest) {
+				digest, err := spendingDelegationRequestDigest(*r)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -41,12 +41,12 @@ func TestSpendingDelegationOwnerProofSubstitution(t *testing.T) {
 				}
 				r.OwnerSignature = hex.EncodeToString(sig.Serialize())
 			}
-			for name, mutate := range map[string]func(*lightDelegationRequest){
-				"delete wrong message": func(r *lightDelegationRequest) {
+			for name, mutate := range map[string]func(*spendingDelegationRequest){
+				"delete wrong message": func(r *spendingDelegationRequest) {
 					r.DeleteIntent.Message = `{"type":"delete","expire_at":123}`
 					resign(r)
 				},
-				"delete wrong input": func(r *lightDelegationRequest) {
+				"delete wrong input": func(r *spendingDelegationRequest) {
 					p, err := parsePSBT(r.DeleteIntent.Proof)
 					if err != nil {
 						t.Fatal(err)
@@ -55,7 +55,7 @@ func TestSpendingDelegationOwnerProofSubstitution(t *testing.T) {
 					r.DeleteIntent.Proof, _ = p.B64Encode()
 					resign(r)
 				},
-				"delete monetary output": func(r *lightDelegationRequest) {
+				"delete monetary output": func(r *spendingDelegationRequest) {
 					p, err := parsePSBT(r.DeleteIntent.Proof)
 					if err != nil {
 						t.Fatal(err)
@@ -64,7 +64,7 @@ func TestSpendingDelegationOwnerProofSubstitution(t *testing.T) {
 					r.DeleteIntent.Proof, _ = p.B64Encode()
 					resign(r)
 				},
-				"delete missing owner": func(r *lightDelegationRequest) {
+				"delete missing owner": func(r *spendingDelegationRequest) {
 					p, err := parsePSBT(r.DeleteIntent.Proof)
 					if err != nil {
 						t.Fatal(err)
@@ -73,12 +73,12 @@ func TestSpendingDelegationOwnerProofSubstitution(t *testing.T) {
 					r.DeleteIntent.Proof, _ = p.B64Encode()
 					resign(r)
 				},
-				"changed operation without owner authorization": func(r *lightDelegationRequest) { r.OperationID = "44444444444444444444444444444444" },
-				"wrong vault": func(r *lightDelegationRequest) {
+				"changed operation without owner authorization": func(r *spendingDelegationRequest) { r.OperationID = "44444444444444444444444444444444" },
+				"wrong vault": func(r *spendingDelegationRequest) {
 					r.VaultID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 					resign(r)
 				},
-				"changed intent schedule": func(r *lightDelegationRequest) {
+				"changed intent schedule": func(r *spendingDelegationRequest) {
 					var message map[string]any
 					_ = json.Unmarshal([]byte(r.Intent.Message), &message)
 					message["valid_at"] = message["valid_at"].(float64) + 1
@@ -86,7 +86,7 @@ func TestSpendingDelegationOwnerProofSubstitution(t *testing.T) {
 					r.Intent.Message = string(raw)
 					resign(r)
 				},
-				"missing owner partial": func(r *lightDelegationRequest) {
+				"missing owner partial": func(r *spendingDelegationRequest) {
 					p, err := parseCanonicalVaultBoardPSBT(r.ForfeitTxs[0], maxVaultBoardProofBytes)
 					if err != nil {
 						t.Fatal(err)
@@ -98,7 +98,7 @@ func TestSpendingDelegationOwnerProofSubstitution(t *testing.T) {
 					}
 					resign(r)
 				},
-				"changed forfeit destination": func(r *lightDelegationRequest) {
+				"changed forfeit destination": func(r *spendingDelegationRequest) {
 					p, err := parseCanonicalVaultBoardPSBT(r.ForfeitTxs[0], maxVaultBoardProofBytes)
 					if err != nil {
 						t.Fatal(err)

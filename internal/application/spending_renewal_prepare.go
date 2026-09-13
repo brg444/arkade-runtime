@@ -33,7 +33,7 @@ func (s *Service) liveRenewalInput(ctx context.Context, tree *vtxoPolicyTree, tx
 	}
 	return *found, nil
 }
-func (s *Service) lightRenewalFee(ctx context.Context, v ports.ResolvedVtxo, script []byte, receiver uint64) (uint64, string, error) {
+func (s *Service) spendingRenewalFee(ctx context.Context, v ports.ResolvedVtxo, script []byte, receiver uint64) (uint64, string, error) {
 	policy, err := s.ArkResolver.IntentFeePolicy(ctx)
 	if err != nil {
 		return 0, "", err
@@ -55,7 +55,7 @@ func (s *Service) lightRenewalFee(ctx context.Context, v ports.ResolvedVtxo, scr
 	return fee, hex.EncodeToString(digest), err
 }
 
-func lightRenewalState(s *policy.LightRenewalSnapshot) string {
+func spendingRenewalState(s *policy.LightRenewalSnapshot) string {
 	for _, phase := range []string{"confirmed", "released", "cancelled", "final_result", "final_dispatched", "final_authorized", "delete_result", "delete_dispatched", "delete_authorized", "register_result", "register_dispatched", "register_authorized"} {
 		if e, ok := s.Events[phase]; ok {
 			if e.Outcome != "" {

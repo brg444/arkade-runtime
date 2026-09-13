@@ -13,8 +13,8 @@ type bitcoinPaymentAuthorization struct {
 	plan                bitcoinPaymentPlan
 	registrationPSBT    string
 	registrationMessage string
-	final               *lightRenewalFinalEvidence
-	deletion            *lightDelegateIntent
+	final               *spendingRenewalFinalEvidence
+	deletion            *spendingDelegateIntent
 }
 type bitcoinPaymentAuthorizer interface {
 	authorizeBitcoinPayment(context.Context, bitcoinPaymentAuthorization) (string, error)

@@ -19,7 +19,7 @@ import (
 
 type spendingRenewalProofFixture struct {
 	env      *env
-	plan     lightRenewalPlan
+	plan     spendingRenewalPlan
 	contract renewalContract
 	tree     *vtxoPolicyTree
 	owner    *btcec.PrivateKey
@@ -56,7 +56,7 @@ func newSpendingRenewalProofFixtureForAccount(t *testing.T, network, tier string
 		t.Fatal(err)
 	}
 	c := renewalContract{context}
-	plan := lightRenewalPlan{OperationID: strings.Repeat("18", 16), VaultID: c.Binding.VaultID, DescriptorHash: c.DescriptorHash, Txid: strings.Repeat("51", 32), Vout: 3, ValueSats: 80000, ReceiverSats: 79900, FeeSats: 100, FeePolicyDigest: strings.Repeat("67", 32), RegisterExpireAt: time.Now().Add(time.Minute).Unix()}
+	plan := spendingRenewalPlan{OperationID: strings.Repeat("18", 16), VaultID: c.Binding.VaultID, DescriptorHash: c.DescriptorHash, Txid: strings.Repeat("51", 32), Vout: 3, ValueSats: 80000, ReceiverSats: 79900, FeeSats: 100, FeePolicyDigest: strings.Repeat("67", 32), RegisterExpireAt: time.Now().Add(time.Minute).Unix()}
 	session, _ := btcec.NewPrivateKey()
 	message, err := (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ExpireAt: plan.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(session.PubKey().SerializeCompressed())}}).Encode()
 	if err != nil {
@@ -107,14 +107,14 @@ func TestSpendingRenewalRegistrationBindsOwnerAndSameWallet(t *testing.T) {
 	if f.plan.ReceiverSats <= f.contract.Binding.SpendingPolicy.TxRecipientCapSats {
 		t.Fatal("fixture does not exercise full-balance renewal")
 	}
-	for name, mutate := range map[string]func(*lightRenewalPlan){
-		"wallet":     func(p *lightRenewalPlan) { p.VaultID = strings.Repeat("aa", 32) },
-		"descriptor": func(p *lightRenewalPlan) { p.DescriptorHash = strings.Repeat("aa", 32) },
-		"outpoint":   func(p *lightRenewalPlan) { p.Vout++ },
-		"principal":  func(p *lightRenewalPlan) { p.ValueSats++ },
-		"receiver":   func(p *lightRenewalPlan) { p.ReceiverSats--; p.FeeSats++ },
-		"expiry":     func(p *lightRenewalPlan) { p.RegisterExpireAt++ },
-		"fee cap":    func(p *lightRenewalPlan) { p.FeeSats = 5001; p.ReceiverSats = p.ValueSats - p.FeeSats },
+	for name, mutate := range map[string]func(*spendingRenewalPlan){
+		"wallet":     func(p *spendingRenewalPlan) { p.VaultID = strings.Repeat("aa", 32) },
+		"descriptor": func(p *spendingRenewalPlan) { p.DescriptorHash = strings.Repeat("aa", 32) },
+		"outpoint":   func(p *spendingRenewalPlan) { p.Vout++ },
+		"principal":  func(p *spendingRenewalPlan) { p.ValueSats++ },
+		"receiver":   func(p *spendingRenewalPlan) { p.ReceiverSats--; p.FeeSats++ },
+		"expiry":     func(p *spendingRenewalPlan) { p.RegisterExpireAt++ },
+		"fee cap":    func(p *spendingRenewalPlan) { p.FeeSats = 5001; p.ReceiverSats = p.ValueSats - p.FeeSats },
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := f.plan

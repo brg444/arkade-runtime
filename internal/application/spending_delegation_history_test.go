@@ -91,7 +91,7 @@ func TestSpendingDelegationAPIAuthenticationAndExactRetry(t *testing.T) {
 	if err := json.Unmarshal(raw, &info); err != nil || !info.Enabled || info.Pubkey != "02"+f.f.contract.Binding.CosignerPub || info.Address != f.f.tree.ArkAddress {
 		t.Fatalf("native identity: %s", raw)
 	}
-	var state lightDelegationResponse
+	var state spendingDelegationOperationResponse
 	decode := func(raw []byte) {
 		t.Helper()
 		if err := json.Unmarshal(raw, &state); err != nil {
@@ -157,7 +157,7 @@ func TestSpendingDelegationAPIListAuthenticatesCursorAndPaginatesHistory(t *test
 		p := f.p
 		p.Request.OperationID = fmt.Sprintf("%032x", i)
 		p.Renewal.OperationID = p.Request.OperationID
-		digest, err := lightDelegationRequestDigest(p.Request)
+		digest, err := spendingDelegationRequestDigest(p.Request)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,7 +177,7 @@ func TestSpendingDelegationAPIListAuthenticatesCursorAndPaginatesHistory(t *test
 		}
 	}
 	read := delegationAPIList(t, f, "", now.Unix()+120)
-	var page lightDelegationListResponse
+	var page spendingDelegationOperationListResponse
 	raw := delegationAPIPost(t, h, "list", read, 200)
 	if err := json.Unmarshal(raw, &page); err != nil {
 		t.Fatal(err)

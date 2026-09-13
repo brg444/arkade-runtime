@@ -6,11 +6,11 @@ import (
 	"strconv"
 )
 
-type lightRenewalIndexer interface {
-	lightRenewalSettled(context.Context, lightRenewalPlan, verifiedLightRenewalFinal, []byte) (bool, error)
+type spendingRenewalIndexer interface {
+	spendingRenewalSettled(context.Context, spendingRenewalPlan, verifiedSpendingRenewalFinal, []byte) (bool, error)
 }
 
-func (r *arkResolver) lightRenewalSettled(ctx context.Context, p lightRenewalPlan, final verifiedLightRenewalFinal, script []byte) (bool, error) {
+func (r *arkResolver) spendingRenewalSettled(ctx context.Context, p spendingRenewalPlan, final verifiedSpendingRenewalFinal, script []byte) (bool, error) {
 	oldKey := p.Txid + ":" + strconv.FormatUint(uint64(p.Vout), 10)
 	newKey := final.ReceiverTxid + ":" + strconv.FormatUint(uint64(final.ReceiverVout), 10)
 	listed, err := r.listVtxosByOutpoint(ctx, []string{oldKey, newKey})
@@ -65,12 +65,12 @@ func (r *arkResolver) lightRenewalSettled(ctx context.Context, p lightRenewalPla
 	return true, nil
 }
 
-type lightRenewalOperationRequest struct {
+type spendingRenewalOperationRequest struct {
 	VaultID     string `json:"vaultId"`
 	OperationID string `json:"operationId"`
 }
 
-func (s *Service) lightRenewalChain() (vaultBoardChain, error) {
+func (s *Service) spendingRenewalChain() (vaultBoardChain, error) {
 	if s.vaultBoardRuntime != nil {
 		return s.vaultBoardRuntime.chain, nil
 	}

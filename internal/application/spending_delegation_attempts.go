@@ -20,7 +20,19 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-type lightDelegationRuntime struct {
+// spendingDelegationAttemptOwner fences volatile delegated-execution
+// dispatch: one in-flight attempt per vault, at most four vaults. Durable
+// phases belong to the policy ledger, which MAC-validates rows before use and
+// enforces transition order under one connection, one mutex and a synchronous
+// policy sequence. Every application phase write funnels through
+// writeDelegationAttemptEvent: claim and cancellation keep the caller's
+// context so cancellation prevents the write, while later evidence persists
+// on a detached context so a cancelled executor still records the phase it
+// reached. An ambiguous dispatch never releases ownership and never mints a
+// new attempt identity. Scheduling stays with scheduleSpendingDelegationSet;
+// signing stays behind the scoped delegation key capability, which
+// re-verifies the persisted transcript before opening secrets.
+type spendingDelegationAttemptOwner struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	mu     sync.Mutex
@@ -28,25 +40,26 @@ type lightDelegationRuntime struct {
 	wg     sync.WaitGroup
 }
 
-func (s *Service) StartLightDelegation() error {
+// StartSpendingDelegation starts the single delegated-execution dispatcher.
+func (s *Service) StartSpendingDelegation() error {
 	if !s.LightDelegationEnabled {
 		return nil
 	}
-	if s.Stores.LightDelegation == nil || isNilInterface(s.keys.lightDelegation) {
+	if s.Stores.LightDelegation == nil || isNilInterface(s.keys.spendingDelegation) {
 		return fmt.Errorf("Light delegation execution unavailable")
 	}
-	if s.delegationRuntime != nil {
+	if s.delegationAttempts != nil {
 		return fmt.Errorf("Light delegation already started")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	rt := &lightDelegationRuntime{cancel: cancel, done: make(chan struct{}), active: map[string]bool{}}
-	s.delegationRuntime = rt
+	rt := &spendingDelegationAttemptOwner{cancel: cancel, done: make(chan struct{}), active: map[string]bool{}}
+	s.delegationAttempts = rt
 	go func() {
 		defer close(rt.done)
 		timer := time.NewTicker(30 * time.Second)
 		defer timer.Stop()
 		for {
-			s.dispatchDueDelegations(ctx, rt)
+			s.dispatchDueSpendingDelegationAttempts(ctx, rt)
 			select {
 			case <-ctx.Done():
 				rt.wg.Wait()
@@ -57,14 +70,52 @@ func (s *Service) StartLightDelegation() error {
 	}()
 	return nil
 }
-func (s *Service) StopLightDelegation() {
-	if s.delegationRuntime == nil {
+
+// StopSpendingDelegation drains in-flight attempts before ledger/key cleanup.
+func (s *Service) StopSpendingDelegation() {
+	if s.delegationAttempts == nil {
 		return
 	}
-	s.delegationRuntime.cancel()
-	<-s.delegationRuntime.done
+	s.delegationAttempts.cancel()
+	<-s.delegationAttempts.done
 }
-func (s *Service) dispatchDueDelegations(ctx context.Context, rt *lightDelegationRuntime) {
+
+// writeDelegationAttemptEvent is the single application boundary for
+// delegated-execution phase writes. Callers supply context, allowance and
+// evidence; this method owns event construction and the store call, so no
+// caller can bypass the journal with a differently shaped write. The policy
+// ledger remains the sole transition authority.
+func (s *Service) writeDelegationAttemptEvent(ctx context.Context, id, phase string, evidence any, allowance int64) (*policy.LightDelegationSnapshot, error) {
+	raw, err := json.Marshal(evidence)
+	if err != nil {
+		return nil, err
+	}
+	return s.Stores.LightDelegation.AdvanceLightDelegation(ctx, policy.LightDelegationEvent{OperationID: id, Phase: phase, Evidence: string(raw)}, allowance)
+}
+
+// advanceSpendingDelegationAttempt records post-accept executor evidence on a
+// detached context, so a cancelled executor still durably records the phase
+// it reached instead of abandoning an uncertain dispatch.
+func (s *Service) advanceSpendingDelegationAttempt(id, phase string, evidence any) (*policy.LightDelegationSnapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return s.writeDelegationAttemptEvent(ctx, id, phase, evidence, 0)
+}
+
+// claimSpendingDelegationAttempt records the pre-signing claim on the
+// caller's context: claim precedes signing and dispatch, so a cancelled
+// caller must not acquire an allowance hold or append a claim event.
+func (s *Service) claimSpendingDelegationAttempt(ctx context.Context, id string, allowance int64) (*policy.LightDelegationSnapshot, error) {
+	return s.writeDelegationAttemptEvent(ctx, id, "claimed", struct{}{}, allowance)
+}
+
+// cancelSpendingDelegationAttempt records owner-authenticated cancellation
+// through the same write boundary as executor phases, preserving the
+// request-scoped context and the current allowance semantics.
+func (s *Service) cancelSpendingDelegationAttempt(ctx context.Context, operationID string, allowance int64) (*policy.LightDelegationSnapshot, error) {
+	return s.writeDelegationAttemptEvent(ctx, operationID, "cancelled", struct{}{}, allowance)
+}
+func (s *Service) dispatchDueSpendingDelegationAttempts(ctx context.Context, rt *spendingDelegationAttemptOwner) {
 	all, err := s.Stores.LightDelegation.ListLightDelegations(ctx)
 	if err != nil {
 		log.Printf("Light delegation journal unavailable: %v", err)
@@ -88,13 +139,13 @@ func (s *Service) dispatchDueDelegations(ctx context.Context, rt *lightDelegatio
 			defer func() { rt.mu.Lock(); delete(rt.active, snapshot.Operation.VaultID); rt.mu.Unlock() }()
 			run, cancel := context.WithTimeout(ctx, 10*time.Minute)
 			defer cancel()
-			if err := s.executeLightDelegation(run, &snapshot); err != nil && ctx.Err() == nil {
+			if err := s.executeSpendingDelegationAttempt(run, &snapshot); err != nil && ctx.Err() == nil {
 				log.Printf("Light delegation %s retained at durable phase: %v", snapshot.Operation.OperationID, err)
 			}
 		}(saved)
 	}
 }
-func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot) error {
+func (s *Service) executeSpendingDelegationAttempt(ctx context.Context, saved *policy.LightDelegationSnapshot) error {
 	c, err := s.delegationContract(saved.Operation.VaultID)
 	d, tree := c.Binding, c.Tree
 	if err != nil {
@@ -120,7 +171,7 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 		if _, dispatched := saved.Events["register_dispatched"]; dispatched {
 			phase = "cleanup_pending"
 		}
-		saved, err = s.persistDelegation(id, phase, map[string]string{"reason": "finite owner authorization ended; input live; final authorization fenced"})
+		saved, err = s.advanceSpendingDelegationAttempt(id, phase, map[string]string{"reason": "finite owner authorization ended; input live; final authorization fenced"})
 		if err != nil {
 			return err
 		}
@@ -155,28 +206,28 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 			return fmt.Errorf("Light delegation input changed")
 		}
 		if s.vtxoNow().Unix() >= p.Request.ExpiresAt {
-			_, err = s.persistDelegation(id, "expired", map[string]string{"reason": "dispatch deadline passed before signing; input still live"})
+			_, err = s.advanceSpendingDelegationAttempt(id, "expired", map[string]string{"reason": "dispatch deadline passed before signing; input still live"})
 			return err
 		}
-		fee, _, err := s.lightRenewalFee(ctx, v, tree.PkScript, uint64(p.Renewal.ReceiverSats))
+		fee, _, err := s.spendingRenewalFee(ctx, v, tree.PkScript, uint64(p.Renewal.ReceiverSats))
 		if err != nil {
 			return err
 		}
 		if fee != uint64(p.Renewal.FeeSats) {
-			_, err = s.persistDelegation(id, "needs_authorization", map[string]string{"reason": "current Operator fee differs from signed fee"})
+			_, err = s.advanceSpendingDelegationAttempt(id, "needs_authorization", map[string]string{"reason": "current Operator fee differs from signed fee"})
 			return err
 		}
 		if _, ok := saved.Events["claimed"]; !ok {
-			saved, err = s.Stores.LightDelegation.AdvanceLightDelegation(ctx, policy.LightDelegationEvent{OperationID: id, Phase: "claimed", Evidence: `{}`}, d.SpendingPolicy.PeriodAllowanceSats)
+			saved, err = s.claimSpendingDelegationAttempt(ctx, id, d.SpendingPolicy.PeriodAllowanceSats)
 			if err != nil {
 				return err
 			}
 		}
-		signed, err := s.keys.lightDelegation.authorizeSpendingDelegation(ctx, c, p, nil)
+		signed, err := s.keys.spendingDelegation.authorizeSpendingDelegation(ctx, c, p, nil)
 		if err != nil {
 			return err
 		}
-		saved, err = s.persistDelegation(id, "register_authorized", map[string]string{"psbt": signed})
+		saved, err = s.advanceSpendingDelegationAttempt(id, "register_authorized", map[string]string{"psbt": signed})
 		if err != nil {
 			return err
 		}
@@ -212,7 +263,7 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 				failures = nil
 			}
 		}
-		saved, err = s.persistDelegation(id, "register_dispatched", struct{}{})
+		saved, err = s.advanceSpendingDelegationAttempt(id, "register_dispatched", struct{}{})
 		if err != nil {
 			return err
 		}
@@ -225,14 +276,14 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 		intentID, err := op.registerIntent(ctx, authorized.PSBT, p.Request.Intent.Message)
 		if err != nil {
 			if isDefiniteVaultBoardRegisterRejection(err) {
-				_, persistErr := s.persistDelegation(id, "rejected", map[string]string{"reason": "first registration conclusively rejected before acceptance"})
+				_, persistErr := s.advanceSpendingDelegationAttempt(id, "rejected", map[string]string{"reason": "first registration conclusively rejected before acceptance"})
 				if persistErr != nil {
 					return persistErr
 				}
 			}
 			return err
 		}
-		saved, err = s.persistDelegation(id, "register_result", map[string]string{"intentId": intentID})
+		saved, err = s.advanceSpendingDelegationAttempt(id, "register_result", map[string]string{"intentId": intentID})
 		if err != nil {
 			return err
 		}
@@ -250,9 +301,9 @@ func (s *Service) executeLightDelegation(ctx context.Context, saved *policy.Ligh
 	}
 	return s.joinSpendingDelegatedBatch(ctx, op, saved, p, c, events, failures, registration.IntentID)
 }
-func (s *Service) dialDelegationOperator(ctx context.Context) (lightDelegationOperator, error) {
-	if s.lightDelegationOperatorDial != nil {
-		return s.lightDelegationOperatorDial(ctx)
+func (s *Service) dialDelegationOperator(ctx context.Context) (spendingDelegationOperator, error) {
+	if s.spendingDelegationOperatorDial != nil {
+		return s.spendingDelegationOperatorDial(ctx)
 	}
 	o, err := dialVaultBoardOperator(ctx, s.runtimeConfig().Network)
 	if err != nil {
@@ -260,7 +311,7 @@ func (s *Service) dialDelegationOperator(ctx context.Context) (lightDelegationOp
 	}
 	return o.(*stockVaultBoardOperator), nil
 }
-func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelegationOperator, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, c renewalContract, events <-chan lightDelegationEvent, failures <-chan error, intentID string) error {
+func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op spendingDelegationOperator, saved *policy.LightDelegationSnapshot, p spendingDelegationPlan, c renewalContract, events <-chan spendingDelegationEvent, failures <-chan error, intentID string) error {
 	d := c.Binding
 
 	replayed, err := replayDelegationStream(ctx, saved, events)
@@ -273,7 +324,7 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 	expiry := uint32(0)
 	intentHash := sha256.Sum256([]byte(intentID))
 	expectedHash := hex.EncodeToString(intentHash[:])
-	var prepared lightDelegationPreparedTree
+	var prepared spendingDelegationPreparedTree
 	vtxos := map[string]arktree.TxTreeNode{}
 	connectors := map[string]arktree.TxTreeNode{}
 	allNonces := map[string]map[string]string{}
@@ -315,7 +366,7 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 				return err
 			}
 			if phase != "" {
-				saved, err = s.persistDelegation(id, phase, event)
+				saved, err = s.advanceSpendingDelegationAttempt(id, phase, event)
 				if err != nil {
 					return err
 				}
@@ -341,7 +392,7 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 				batch = start.ID
 				expiry = uint32(n)
 				// Store only the matched id/hash, never the unbounded unrelated membership list.
-				saved, err = s.persistDelegation(id, "batch_started", delegationBatchStarted{batch, []string{expectedHash}, start.BatchExpiry})
+				saved, err = s.advanceSpendingDelegationAttempt(id, "batch_started", delegationBatchStarted{batch, []string{expectedHash}, start.BatchExpiry})
 				if err != nil {
 					return err
 				}
@@ -383,18 +434,18 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 				if !owns {
 					return fmt.Errorf("Light delegation tree session missing")
 				}
-				flat, _, err := canonicalLightRenewalTree(delegationFlat(vtxos))
+				flat, _, err := canonicalSpendingRenewalTree(delegationFlat(vtxos))
 				if err != nil {
 					return err
 				}
-				unsigned := lightDelegationTree{batch, expiry, start.Commitment, flat}
+				unsigned := spendingDelegationTree{batch, expiry, start.Commitment, flat}
 				if _, ok := saved.Events["tree_prepared"]; !ok {
-					capsule, err := s.keys.lightDelegation.prepareSpendingDelegationTree(ctx, c, p, unsigned)
+					capsule, err := s.keys.spendingDelegation.prepareSpendingDelegationTree(ctx, c, p, unsigned)
 					if err != nil {
 						return err
 					}
-					prepared = lightDelegationPreparedTree{unsigned, capsule}
-					saved, err = s.persistDelegation(id, "tree_prepared", prepared)
+					prepared = spendingDelegationPreparedTree{unsigned, capsule}
+					saved, err = s.advanceSpendingDelegationAttempt(id, "tree_prepared", prepared)
 					if err != nil {
 						return err
 					}
@@ -420,7 +471,7 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 				allNonces[n.Txid] = n.Nonces
 				if len(allNonces) == len(prepared.Capsule.Nonces) {
 					var err error
-					saved, err = s.persistDelegation(id, "nonces_committed", allNonces)
+					saved, err = s.advanceSpendingDelegationAttempt(id, "nonces_committed", allNonces)
 					if err != nil {
 						return err
 					}
@@ -430,11 +481,11 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 							return err
 						}
 					} else {
-						sigs, err = s.keys.lightDelegation.signSpendingDelegationTree(ctx, c, p, prepared, allNonces)
+						sigs, err = s.keys.spendingDelegation.signSpendingDelegationTree(ctx, c, p, prepared, allNonces)
 						if err != nil {
 							return err
 						}
-						saved, err = s.persistDelegation(id, "tree_signed", sigs)
+						saved, err = s.advanceSpendingDelegationAttempt(id, "tree_signed", sigs)
 						if err != nil {
 							return err
 						}
@@ -482,7 +533,7 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 					if err != nil {
 						return err
 					}
-					saved, err = s.persistDelegation(id, "final_authorized", proof)
+					saved, err = s.advanceSpendingDelegationAttempt(id, "final_authorized", proof)
 					if err != nil {
 						return err
 					}
@@ -508,9 +559,9 @@ func (s *Service) joinSpendingDelegatedBatch(ctx context.Context, op lightDelega
 	}
 }
 
-func (s *Service) prepareSpendingDelegationFinal(ctx context.Context, p lightDelegationPlan, c renewalContract, prepared lightDelegationPreparedTree, commitment string, vtxos, connectors arktree.FlatTxTree) (lightDelegationFinal, error) {
+func (s *Service) prepareSpendingDelegationFinal(ctx context.Context, p spendingDelegationPlan, c renewalContract, prepared spendingDelegationPreparedTree, commitment string, vtxos, connectors arktree.FlatTxTree) (spendingDelegationFinal, error) {
 
-	var out lightDelegationFinal
+	var out spendingDelegationFinal
 	prior, err := parsePSBT(prepared.Tree.CommitmentPSBT)
 	if err != nil {
 		return out, err
@@ -519,7 +570,7 @@ func (s *Service) prepareSpendingDelegationFinal(ctx context.Context, p lightDel
 	if err != nil || current.UnsignedTx.TxHash() != prior.UnsignedTx.TxHash() {
 		return out, fmt.Errorf("Light delegation final commitment changed")
 	}
-	flat, graph, err := canonicalLightRenewalTree(connectors)
+	flat, graph, err := canonicalSpendingRenewalTree(connectors)
 	if err != nil {
 		return out, err
 	}
@@ -541,19 +592,19 @@ func (s *Service) prepareSpendingDelegationFinal(ctx context.Context, p lightDel
 	if err != nil {
 		return out, err
 	}
-	evidence := lightRenewalFinalEvidence{BatchID: prepared.Tree.BatchID, BatchExpiry: prepared.Tree.BatchExpiry, CommitmentPSBT: commitment, VtxoTree: vtxos, Connectors: flat, OwnerForfeitPSBT: forfeit}
-	signed, err := s.keys.lightDelegation.authorizeSpendingDelegation(ctx, c, p, &evidence)
+	evidence := spendingRenewalFinalEvidence{BatchID: prepared.Tree.BatchID, BatchExpiry: prepared.Tree.BatchExpiry, CommitmentPSBT: commitment, VtxoTree: vtxos, Connectors: flat, OwnerForfeitPSBT: forfeit}
+	signed, err := s.keys.spendingDelegation.authorizeSpendingDelegation(ctx, c, p, &evidence)
 	if err != nil {
 		return out, err
 	}
-	return lightDelegationFinal{evidence, signed}, nil
+	return spendingDelegationFinal{evidence, signed}, nil
 }
 
-func (s *Service) dispatchDelegationFinal(ctx context.Context, op lightDelegationOperator, saved *policy.LightDelegationSnapshot) (*policy.LightDelegationSnapshot, error) {
+func (s *Service) dispatchDelegationFinal(ctx context.Context, op spendingDelegationOperator, saved *policy.LightDelegationSnapshot) (*policy.LightDelegationSnapshot, error) {
 	if _, ok := saved.Events["final_result"]; ok {
 		return saved, nil
 	}
-	var proof lightDelegationFinal
+	var proof spendingDelegationFinal
 	if err := json.Unmarshal([]byte(saved.Events["final_authorized"].Evidence), &proof); err != nil {
 		return nil, err
 	}
@@ -564,35 +615,35 @@ func (s *Service) dispatchDelegationFinal(ctx context.Context, op lightDelegatio
 	if err := op.requireUnendedCommitment(ctx, packet.UnsignedTx.TxHash().String()); err != nil {
 		return nil, err
 	}
-	saved, err = s.persistDelegation(saved.Operation.OperationID, "final_dispatched", struct{}{})
+	saved, err = s.advanceSpendingDelegationAttempt(saved.Operation.OperationID, "final_dispatched", struct{}{})
 	if err != nil {
 		return nil, err
 	}
 	if err := op.submitLightForfeit(ctx, proof.SignedForfeit); err != nil {
 		return saved, err
 	}
-	return s.persistDelegation(saved.Operation.OperationID, "final_result", struct{}{})
+	return s.advanceSpendingDelegationAttempt(saved.Operation.OperationID, "final_result", struct{}{})
 }
 
-func (s *Service) cleanupSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p lightDelegationPlan, c renewalContract) error {
+func (s *Service) cleanupSpendingDelegation(ctx context.Context, saved *policy.LightDelegationSnapshot, p spendingDelegationPlan, c renewalContract) error {
 
 	id := p.Request.OperationID
 	var err error
 	if _, cleared := saved.Events["cleanup_result"]; cleared {
-		_, err = s.persistDelegation(id, "expired", struct{}{})
+		_, err = s.advanceSpendingDelegationAttempt(id, "expired", struct{}{})
 		return err
 	}
 	if _, authorized := saved.Events["cleanup_authorized"]; !authorized {
-		raw, err := s.keys.lightDelegation.authorizeSpendingDelegationDelete(ctx, c, p)
+		raw, err := s.keys.spendingDelegation.authorizeSpendingDelegationDelete(ctx, c, p)
 		if err != nil {
 			return err
 		}
-		saved, err = s.persistDelegation(id, "cleanup_authorized", lightDelegateIntent{raw, p.Request.DeleteIntent.Message})
+		saved, err = s.advanceSpendingDelegationAttempt(id, "cleanup_authorized", spendingDelegateIntent{raw, p.Request.DeleteIntent.Message})
 		if err != nil {
 			return err
 		}
 	}
-	var deletion lightDelegateIntent
+	var deletion spendingDelegateIntent
 	if err := json.Unmarshal([]byte(saved.Events["cleanup_authorized"].Evidence), &deletion); err != nil {
 		return err
 	}
@@ -600,7 +651,7 @@ func (s *Service) cleanupSpendingDelegation(ctx context.Context, saved *policy.L
 	if err != nil {
 		return err
 	}
-	saved, err = s.persistDelegation(id, "cleanup_dispatched", struct{}{})
+	saved, err = s.advanceSpendingDelegationAttempt(id, "cleanup_dispatched", struct{}{})
 	if err != nil {
 		return err
 	}
@@ -609,9 +660,9 @@ func (s *Service) cleanupSpendingDelegation(ctx context.Context, saved *policy.L
 	if err := op.deleteIntent(ctx, deletion.Proof, deletion.Message); err != nil {
 		return err
 	}
-	if _, err := s.persistDelegation(id, "cleanup_result", struct{}{}); err != nil {
+	if _, err := s.advanceSpendingDelegationAttempt(id, "cleanup_result", struct{}{}); err != nil {
 		return err
 	}
-	_, err = s.persistDelegation(id, "expired", struct{}{})
+	_, err = s.advanceSpendingDelegationAttempt(id, "expired", struct{}{})
 	return err
 }

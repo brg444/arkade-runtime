@@ -18,14 +18,14 @@ import (
 
 type delegatedTestOperator struct {
 	f                                                            delegatedFixture
-	channel                                                      chan lightDelegationEvent
+	channel                                                      chan spendingDelegationEvent
 	deleteError, registerError, errorFinal, commitmentError      error
 	deletes, registers, finals, acks, nonceCalls, signatureCalls int
 	commitmentChecks                                             int
 	submitted                                                    []string
 	coordinator                                                  arktree.CoordinatorSession
 	peer                                                         arktree.SignerSession
-	resolver                                                     *lightRenewalSettledResolver
+	resolver                                                     *spendingRenewalSettledResolver
 	stopAt                                                       string
 }
 
@@ -50,9 +50,9 @@ func (o *delegatedTestOperator) deleteIntent(_ context.Context, proof, message s
 	}
 	return o.deleteError
 }
-func (o *delegatedTestOperator) events(context.Context, []string) (<-chan lightDelegationEvent, <-chan error, error) {
-	o.channel = make(chan lightDelegationEvent, 128)
-	o.channel <- lightDelegationEvent{StreamStarted: json.RawMessage(`{}`)}
+func (o *delegatedTestOperator) events(context.Context, []string) (<-chan spendingDelegationEvent, <-chan error, error) {
+	o.channel = make(chan spendingDelegationEvent, 128)
+	o.channel <- spendingDelegationEvent{StreamStarted: json.RawMessage(`{}`)}
 	return o.channel, nil, nil
 }
 func (o *delegatedTestOperator) registerIntent(ctx context.Context, proof, message string) (string, error) {
@@ -65,11 +65,11 @@ func (o *delegatedTestOperator) registerIntent(ctx context.Context, proof, messa
 	}
 	hash := sha256.Sum256([]byte("intent-id"))
 	id := o.f.tree.BatchID
-	o.channel <- lightDelegationEvent{BatchStarted: &delegationBatchStarted{id, []string{hex.EncodeToString(hash[:])}, json.Number(fmt.Sprint(o.f.tree.BatchExpiry))}}
+	o.channel <- spendingDelegationEvent{BatchStarted: &delegationBatchStarted{id, []string{hex.EncodeToString(hash[:])}, json.Number(fmt.Sprint(o.f.tree.BatchExpiry))}}
 	for _, node := range o.f.tree.VtxoTree {
-		o.channel <- lightDelegationEvent{TreeTx: &delegationTreeTx{id, 0, node.Txid, node.Tx, node.Children}}
+		o.channel <- spendingDelegationEvent{TreeTx: &delegationTreeTx{id, 0, node.Txid, node.Tx, node.Children}}
 	}
-	o.channel <- lightDelegationEvent{TreeSigningStarted: &delegationSigningStarted{id, []string{"02" + o.f.f.contract.Binding.CosignerPub}, o.f.tree.CommitmentPSBT}}
+	o.channel <- spendingDelegationEvent{TreeSigningStarted: &delegationSigningStarted{id, []string{"02" + o.f.f.contract.Binding.CosignerPub}, o.f.tree.CommitmentPSBT}}
 	return "intent-id", nil
 }
 func (o *delegatedTestOperator) ack(context.Context, string) error { o.acks++; return nil }
@@ -103,7 +103,7 @@ func (o *delegatedTestOperator) nonces(ctx context.Context, batch, key string, r
 	}
 	coordinator.AddNonce(f.operator.PubKey(), peers)
 	for txid, n := range own {
-		o.channel <- lightDelegationEvent{TreeNonces: &delegationTreeNonces{batch, txid, map[string]string{f.f.contract.Binding.CosignerPub: hex.EncodeToString(n.PubNonce[:]), hex.EncodeToString(schnorr.SerializePubKey(f.operator.PubKey())): hex.EncodeToString(peers[txid].PubNonce[:])}}}
+		o.channel <- spendingDelegationEvent{TreeNonces: &delegationTreeNonces{batch, txid, map[string]string{f.f.contract.Binding.CosignerPub: hex.EncodeToString(n.PubNonce[:]), hex.EncodeToString(schnorr.SerializePubKey(f.operator.PubKey())): hex.EncodeToString(peers[txid].PubNonce[:])}}}
 	}
 	return nil
 }
@@ -141,12 +141,12 @@ func (o *delegatedTestOperator) signatures(ctx context.Context, batch, key strin
 		if err != nil {
 			return err
 		}
-		o.channel <- lightDelegationEvent{TreeSignature: &delegationTreeSignature{batch, node.Txid, hex.EncodeToString(packet.Inputs[0].TaprootKeySpendSig), 0}}
+		o.channel <- spendingDelegationEvent{TreeSignature: &delegationTreeSignature{batch, node.Txid, hex.EncodeToString(packet.Inputs[0].TaprootKeySpendSig), 0}}
 	}
 	for _, node := range o.f.final.Connectors {
-		o.channel <- lightDelegationEvent{TreeTx: &delegationTreeTx{batch, 1, node.Txid, node.Tx, node.Children}}
+		o.channel <- spendingDelegationEvent{TreeTx: &delegationTreeTx{batch, 1, node.Txid, node.Tx, node.Children}}
 	}
-	o.channel <- lightDelegationEvent{BatchFinalization: &delegationFinalization{batch, o.f.final.CommitmentPSBT}}
+	o.channel <- spendingDelegationEvent{BatchFinalization: &delegationFinalization{batch, o.f.final.CommitmentPSBT}}
 	return nil
 }
 func (o *delegatedTestOperator) submitLightForfeit(ctx context.Context, raw string) error {
@@ -156,7 +156,7 @@ func (o *delegatedTestOperator) submitLightForfeit(ctx context.Context, raw stri
 		return o.errorFinal
 	}
 	o.resolver.settled = true
-	o.channel <- lightDelegationEvent{BatchFinalized: &delegationBatchFinalized{o.f.tree.BatchID, "ignored-untrusted-id"}}
+	o.channel <- spendingDelegationEvent{BatchFinalized: &delegationBatchFinalized{o.f.tree.BatchID, "ignored-untrusted-id"}}
 	return nil
 }
 func (o *delegatedTestOperator) requireUnendedCommitment(context.Context, string) error {
@@ -172,14 +172,14 @@ func setupDelegatedRuntimeForAccount(t *testing.T, network, tier string) (delega
 	f := newDelegatedFixtureForAccount(t, network, tier)
 	s := f.f.env.svc
 	expiry := f.p.InputExpiresAt
-	resolver := &lightRenewalSettledResolver{stubArkResolver: stubArkResolver{network: network, signer: s.operatorSignerPub(), feePolicy: ports.IntentFeePolicy{OffchainInput: fmt.Sprint(f.p.Renewal.FeeSats) + ".0"}, vtxos: []ports.ResolvedVtxo{{Txid: f.p.Renewal.Txid, Vout: f.p.Renewal.Vout, ValueSats: uint64(f.p.Renewal.ValueSats), Script: f.f.tree.PkScript, ExpiresAt: &expiry, CommitmentTxids: []string{strings.Repeat("aa", 32)}}}}}
+	resolver := &spendingRenewalSettledResolver{stubArkResolver: stubArkResolver{network: network, signer: s.operatorSignerPub(), feePolicy: ports.IntentFeePolicy{OffchainInput: fmt.Sprint(f.p.Renewal.FeeSats) + ".0"}, vtxos: []ports.ResolvedVtxo{{Txid: f.p.Renewal.Txid, Vout: f.p.Renewal.Vout, ValueSats: uint64(f.p.Renewal.ValueSats), Script: f.f.tree.PkScript, ExpiresAt: &expiry, CommitmentTxids: []string{strings.Repeat("aa", 32)}}}}}
 	s.ArkResolver = resolver
 	if _, err := s.scheduleSpendingDelegationSet(t.Context(), delegatedSetFixture(t, f, 7)); err != nil {
 		t.Fatal(err)
 	}
 	*f.now = time.Unix(f.p.ValidAt, 0)
 	op := &delegatedTestOperator{f: f, resolver: resolver}
-	s.lightDelegationOperatorDial = func(context.Context) (lightDelegationOperator, error) { return op, nil }
+	s.spendingDelegationOperatorDial = func(context.Context) (spendingDelegationOperator, error) { return op, nil }
 	commitment, err := parsePSBT(f.final.CommitmentPSBT)
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func assertSpendingDelegationNativeExecutor(t *testing.T, network, tier string) 
 	f, op, saved := setupDelegatedRuntimeForAccount(t, network, tier)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if err := f.f.env.svc.executeLightDelegation(ctx, saved); err != nil {
+	if err := f.f.env.svc.executeSpendingDelegationAttempt(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := f.f.env.svc.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -233,7 +233,7 @@ func TestSpendingDelegationRejectsEndedBatchBeforeFinalDispatch(t *testing.T) {
 	op.commitmentError = fmt.Errorf("batch already ended")
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if err := f.f.env.svc.executeLightDelegation(ctx, saved); err == nil || !strings.Contains(err.Error(), "batch already ended") {
+	if err := f.f.env.svc.executeSpendingDelegationAttempt(ctx, saved); err == nil || !strings.Contains(err.Error(), "batch already ended") {
 		t.Fatalf("lost ended batch failure: %v", err)
 	}
 	saved, err := f.f.env.svc.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -248,21 +248,21 @@ func TestSpendingDelegationLostRegistrationNeverRedispatches(t *testing.T) {
 	f, op, saved := setupDelegatedRuntime(t)
 	s := f.f.env.svc
 	op.registerError = fmt.Errorf("lost reply")
-	if err := s.executeLightDelegation(t.Context(), saved); err == nil {
+	if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err == nil {
 		t.Fatal("lost response succeeded")
 	}
 	saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
 	if saved.State() != "register_dispatched" {
 		t.Fatal(saved.State())
 	}
-	if err := s.executeLightDelegation(t.Context(), saved); err == nil {
+	if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err == nil {
 		t.Fatal("missing UUID accepted")
 	}
 	if op.registers != 1 {
 		t.Fatal("duplicate registration", op.registers)
 	}
 	*f.now = time.Unix(f.p.Request.ExpiresAt+31, 0)
-	if err := s.executeLightDelegation(t.Context(), saved); err != nil {
+	if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err != nil {
 		t.Fatal(err)
 	}
 	saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -278,7 +278,7 @@ func TestSpendingDelegationLostFinalResponseRetriesExactBytes(t *testing.T) {
 			op.errorFinal = fmt.Errorf("lost final response")
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
-			if err := s.executeLightDelegation(ctx, saved); err == nil {
+			if err := s.executeSpendingDelegationAttempt(ctx, saved); err == nil {
 				t.Fatal("lost response succeeded")
 			}
 			saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -289,7 +289,7 @@ func TestSpendingDelegationLostFinalResponseRetriesExactBytes(t *testing.T) {
 			*f.now = time.Unix(f.p.Request.ExpiresAt+31, 0)
 			op.errorFinal = nil
 			op.resolver.settled = accepted
-			if err := s.executeLightDelegation(ctx, saved); err != nil {
+			if err := s.executeSpendingDelegationAttempt(ctx, saved); err != nil {
 				t.Fatal(err)
 			}
 			if accepted {
@@ -302,7 +302,7 @@ func TestSpendingDelegationLostFinalResponseRetriesExactBytes(t *testing.T) {
 				}
 			}
 			saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
-			if err := s.executeLightDelegation(ctx, saved); err != nil {
+			if err := s.executeSpendingDelegationAttempt(ctx, saved); err != nil {
 				t.Fatal(err)
 			}
 			saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -315,7 +315,7 @@ func TestSpendingDelegationLostFinalResponseRetriesExactBytes(t *testing.T) {
 func TestSpendingDelegationFeeDriftStopsBeforeKeyAuthority(t *testing.T) {
 	f, op, saved := setupDelegatedRuntime(t)
 	op.resolver.feePolicy = ports.IntentFeePolicy{OffchainInput: "200.0"}
-	if err := f.f.env.svc.executeLightDelegation(t.Context(), saved); err != nil {
+	if err := f.f.env.svc.executeSpendingDelegationAttempt(t.Context(), saved); err != nil {
 		t.Fatal(err)
 	}
 	saved, _ = f.f.env.svc.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -327,12 +327,12 @@ func TestSpendingDelegationStopCancelsActiveStream(t *testing.T) {
 	f, op, _ := setupDelegatedRuntime(t)
 	op.stopAt = "registered"
 	s := f.f.env.svc
-	if err := s.StartLightDelegation(); err != nil {
+	if err := s.StartSpendingDelegation(); err != nil {
 		t.Fatal(err)
 	}
-	s.StopLightDelegation()
+	s.StopSpendingDelegation()
 	// Idempotent shutdown must finish before ledger/key cleanup.
-	s.StopLightDelegation()
+	s.StopSpendingDelegation()
 }
 
 func TestSpendingDelegationRestartReplaysOwnDurableTree(t *testing.T) {
@@ -341,7 +341,7 @@ func TestSpendingDelegationRestartReplaysOwnDurableTree(t *testing.T) {
 	op.stopAt = "nonces"
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	if err := s.executeLightDelegation(ctx, saved); err == nil {
+	if err := s.executeSpendingDelegationAttempt(ctx, saved); err == nil {
 		t.Fatal("lost nonce response succeeded")
 	}
 	saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -354,7 +354,7 @@ func TestSpendingDelegationRestartReplaysOwnDurableTree(t *testing.T) {
 	// The upstream supplies no historical events; all prior chunks and signing
 	// start must come from the Guardian journal. Only replies to new submissions
 	// are emitted by the simulated Operator on this new stream.
-	if err := s.executeLightDelegation(ctx, saved); err != nil {
+	if err := s.executeSpendingDelegationAttempt(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
 	saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -369,13 +369,13 @@ func TestSpendingDelegationCleanupRetainsOwnershipOnNoMatchOrLostReply(t *testin
 			f, op, saved := setupDelegatedRuntime(t)
 			s := f.f.env.svc
 			op.registerError = fmt.Errorf("lost registration UUID")
-			if err := s.executeLightDelegation(t.Context(), saved); err == nil {
+			if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err == nil {
 				t.Fatal("registration should be uncertain")
 			}
 			saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
 			*f.now = time.Unix(f.p.Request.ExpiresAt+31, 0)
 			op.deleteError = fmt.Errorf("%s", failure)
-			if err := s.executeLightDelegation(t.Context(), saved); err == nil {
+			if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err == nil {
 				t.Fatal("uncertain cleanup released")
 			}
 			saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -386,7 +386,7 @@ func TestSpendingDelegationCleanupRetainsOwnershipOnNoMatchOrLostReply(t *testin
 			if _, err := s.Stores.LightDelegation.AdvanceLightDelegation(t.Context(), policy.LightDelegationEvent{OperationID: f.p.Request.OperationID, Phase: "final_authorized", Evidence: `{}`}, 0); err == nil {
 				t.Fatal("cleanup raced final authority")
 			}
-			if err := s.executeLightDelegation(t.Context(), saved); err == nil {
+			if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err == nil {
 				t.Fatal("retry no-match released")
 			}
 			held, _ := s.Stores.Allowance.SpentInPeriod(t.Context(), f.p.Request.VaultID, "")
@@ -394,7 +394,7 @@ func TestSpendingDelegationCleanupRetainsOwnershipOnNoMatchOrLostReply(t *testin
 				t.Fatal("released hold", held)
 			}
 			op.deleteError = nil
-			if err := s.executeLightDelegation(t.Context(), saved); err != nil {
+			if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err != nil {
 				t.Fatal(err)
 			}
 			terminal, _ := s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
@@ -403,12 +403,75 @@ func TestSpendingDelegationCleanupRetainsOwnershipOnNoMatchOrLostReply(t *testin
 			}
 			// A delayed stale executor cannot resend a deletion after the generation ends.
 			before := op.deletes
-			if err := s.executeLightDelegation(t.Context(), saved); err == nil {
+			if err := s.executeSpendingDelegationAttempt(t.Context(), saved); err == nil {
 				t.Fatal("stale cleanup dispatcher not fenced")
 			}
 			if op.deletes != before {
 				t.Fatal("stale cleanup deleted a later generation")
 			}
 		})
+	}
+}
+
+func TestSpendingDelegationAttemptOwnerRejectsUnknownPhase(t *testing.T) {
+	f, _, saved := setupDelegatedRuntime(t)
+	s := f.f.env.svc
+	// The durable ledger is the sole transition authority; the owner funnels
+	// the write there unchanged and the journal stays untouched.
+	if _, err := s.advanceSpendingDelegationAttempt(saved.Operation.OperationID, "final_dispatch", struct{}{}); err == nil {
+		t.Fatal("unknown phase accepted")
+	}
+	after, err := s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Events) != len(saved.Events) {
+		t.Fatal("unknown phase changed the journal")
+	}
+}
+
+func TestSpendingDelegationCanceledClaimAcquiresNothing(t *testing.T) {
+	f, _, _ := setupDelegatedRuntime(t)
+	s := f.f.env.svc
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	// Claim precedes signing and dispatch, so a cancelled caller must not
+	// acquire an allowance hold or append a claim event.
+	if _, err := s.claimSpendingDelegationAttempt(ctx, f.p.Request.OperationID, 100000); err == nil {
+		t.Fatal("cancelled claim succeeded")
+	}
+	saved, err := s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := saved.Events["claimed"]; ok {
+		t.Fatal("cancelled claim appended")
+	}
+	held, err := s.Stores.Allowance.SpentInPeriod(t.Context(), f.p.Request.VaultID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held != 0 {
+		t.Fatal("cancelled claim holds allowance", held)
+	}
+}
+
+func TestSpendingDelegationCancelThroughAttemptOwner(t *testing.T) {
+	f, _, saved := setupDelegatedRuntime(t)
+	s := f.f.env.svc
+	cancelled, err := s.cancelSpendingDelegationAttempt(t.Context(), f.p.Request.OperationID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancelled.State() != "cancelled" {
+		t.Fatal("cancel state", cancelled.State())
+	}
+	// A cancelled attempt stays terminal: the executor must not advance it.
+	saved, _ = s.getDelegation(t.Context(), f.p.Request.VaultID, f.p.Request.OperationID)
+	if saved.State() != "cancelled" {
+		t.Fatal("cancel not durable", saved.State())
+	}
+	if _, err := s.advanceSpendingDelegationAttempt(f.p.Request.OperationID, "claimed", struct{}{}); err == nil {
+		t.Fatal("cancelled attempt advanced")
 	}
 }

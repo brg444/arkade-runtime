@@ -10,7 +10,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 )
 
-func delegationStreamPhase(e lightDelegationEvent, batch string) (string, error) {
+func delegationStreamPhase(e spendingDelegationEvent, batch string) (string, error) {
 	if batch == "" {
 		return "", nil
 	}
@@ -44,7 +44,7 @@ func delegationStreamPhase(e lightDelegationEvent, batch string) (string, error)
 // Resume from our authenticated transcript, not a presumed Operator replay.
 // Events never received before disconnect remain unavailable and ownership is
 // retained. A completed signature or final forfeit is reused byte-for-byte.
-func replayDelegationStream(ctx context.Context, saved *policy.LightDelegationSnapshot, live <-chan lightDelegationEvent) (<-chan lightDelegationEvent, error) {
+func replayDelegationStream(ctx context.Context, saved *policy.LightDelegationSnapshot, live <-chan spendingDelegationEvent) (<-chan spendingDelegationEvent, error) {
 	names := []string{}
 	for phase := range saved.Events {
 		if strings.HasPrefix(phase, "stream_") {
@@ -72,15 +72,15 @@ func replayDelegationStream(ctx context.Context, saved *policy.LightDelegationSn
 		}
 		return names[i] < names[j]
 	})
-	replay := make([]lightDelegationEvent, 0, len(names))
+	replay := make([]spendingDelegationEvent, 0, len(names))
 	for _, name := range names {
-		var e lightDelegationEvent
+		var e spendingDelegationEvent
 		if err := json.Unmarshal([]byte(saved.Events[name].Evidence), &e); err != nil {
 			return nil, err
 		}
 		replay = append(replay, e)
 	}
-	out := make(chan lightDelegationEvent, 8)
+	out := make(chan spendingDelegationEvent, 8)
 	go func() {
 		defer close(out)
 		for _, e := range replay {

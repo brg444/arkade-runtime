@@ -25,9 +25,9 @@ import (
 
 type delegatedFixture struct {
 	f        spendingRenewalProofFixture
-	p        lightDelegationPlan
-	tree     lightDelegationTree
-	final    lightRenewalFinalEvidence
+	p        spendingDelegationPlan
+	tree     spendingDelegationTree
+	final    spendingRenewalFinalEvidence
 	operator *btcec.PrivateKey
 	guardian *btcec.PrivateKey
 	now      *time.Time
@@ -41,7 +41,7 @@ func newDelegatedFixtureForAccount(t *testing.T, network, tier string, otherSess
 	t.Helper()
 	f := newSpendingRenewalProofFixtureForAccount(t, network, tier)
 	f.env.svc.LightDelegationEnabled = true
-	keys := f.env.svc.keys.lightDelegation.(*fileBackedVaultKeys)
+	keys := f.env.svc.keys.spendingDelegation.(*fileBackedVaultKeys)
 	var guardian *btcec.PrivateKey
 	if err := keys.withRenewalKey(context.Background(), f.contract, func(key *btcec.PrivateKey) error { guardian, _ = btcec.PrivKeyFromBytes(key.Serialize()); return nil }); err != nil {
 		t.Fatal(err)
@@ -67,8 +67,8 @@ func newDelegatedFixtureForAccount(t *testing.T, network, tier string, otherSess
 	}
 	partial.Inputs[0].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{signature}
 	forfeit, _ := partial.B64Encode()
-	r := lightDelegationRequest{Program: f.contract.Binding.Program, DescriptorHash: f.contract.DescriptorHash, VaultID: f.contract.Binding.VaultID, OperationID: f.plan.OperationID, Intent: lightDelegateIntent{proof, f.message}, ForfeitTxs: []string{forfeit}, DeleteIntent: delegatedDeleteFixture(t, f), ExpiresAt: expires}
-	digest, _ := lightDelegationRequestDigest(r)
+	r := spendingDelegationRequest{Program: f.contract.Binding.Program, DescriptorHash: f.contract.DescriptorHash, VaultID: f.contract.Binding.VaultID, OperationID: f.plan.OperationID, Intent: spendingDelegateIntent{proof, f.message}, ForfeitTxs: []string{forfeit}, DeleteIntent: delegatedDeleteFixture(t, f), ExpiresAt: expires}
+	digest, _ := spendingDelegationRequestDigest(r)
 	ownerSig, err := schnorr.Sign(f.owner, digest)
 	if err != nil {
 		t.Fatal(err)
@@ -92,11 +92,11 @@ func newDelegatedFixtureForAccount(t *testing.T, network, tier string, otherSess
 		tx.Inputs[0].TaprootKeySpendSig = nil
 		unsigned[i].Tx, _ = tx.B64Encode()
 	}
-	unsigned, _, err = canonicalLightRenewalTree(unsigned)
+	unsigned, _, err = canonicalSpendingRenewalTree(unsigned)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := delegatedFixture{f, p, lightDelegationTree{final.BatchID, final.BatchExpiry, final.CommitmentPSBT, unsigned}, final, operator, guardian, &now}
+	fixture := delegatedFixture{f, p, spendingDelegationTree{final.BatchID, final.BatchExpiry, final.CommitmentPSBT, unsigned}, final, operator, guardian, &now}
 	expiry := p.InputExpiresAt
 	f.env.svc.ArkResolver = stubArkResolver{network: f.contract.Binding.Network, signer: f.tree.ArkdPub.SerializeCompressed(), feePolicy: ports.IntentFeePolicy{OffchainInput: "100.0"}, vtxos: []ports.ResolvedVtxo{{Txid: p.Renewal.Txid, Vout: p.Renewal.Vout, ValueSats: uint64(p.Renewal.ValueSats), Script: f.tree.PkScript, ExpiresAt: &expiry, CommitmentTxids: []string{strings.Repeat("aa", 32)}}}}
 	reopenDelegatedFixture(t, fixture)
@@ -114,7 +114,7 @@ func TestSpendingDelegationNativeMuSigAndRecovery(t *testing.T) {
 func assertSpendingDelegationNativeMuSigAndRecovery(t *testing.T, fixture delegatedFixture) {
 	t.Helper()
 	f, p := fixture.f, fixture.p
-	keys := f.env.svc.keys.lightDelegation
+	keys := f.env.svc.keys.spendingDelegation
 	capsule, err := keys.prepareSpendingDelegationTree(t.Context(), f.contract, p, fixture.tree)
 	if err != nil {
 		t.Fatal(err)
@@ -145,14 +145,14 @@ func assertSpendingDelegationNativeMuSigAndRecovery(t *testing.T, fixture delega
 	for txid, n := range ours {
 		all[txid] = map[string]string{f.contract.Binding.CosignerPub: hex.EncodeToString(n.PubNonce[:]), hex.EncodeToString(schnorr.SerializePubKey(fixture.operator.PubKey())): hex.EncodeToString(peer[txid].PubNonce[:])}
 	}
-	prepared := lightDelegationPreparedTree{fixture.tree, capsule}
+	prepared := spendingDelegationPreparedTree{fixture.tree, capsule}
 	bindDelegationTestTranscript(t, fixture, prepared, all)
 	sigs, err := keys.signSpendingDelegationTree(t.Context(), f.contract, p, prepared, all)
 	if err != nil {
 		t.Fatal(err)
 	}
 	reopenDelegatedFixture(t, fixture)
-	keys = f.env.svc.keys.lightDelegation
+	keys = f.env.svc.keys.spendingDelegation
 	replay, err := keys.signSpendingDelegationTree(t.Context(), f.contract, p, prepared, all)
 	if err != nil || !sameDelegationBytes(sigs, replay) {
 		t.Fatal("nonce capsule restart changed signature", err)
@@ -224,9 +224,9 @@ func assertSpendingDelegationNativeMuSigAndRecovery(t *testing.T, fixture delega
 	}
 	if path := os.Getenv("VAULT_DELEGATION_PUBLIC_FIXTURE"); path != "" {
 		raw, _ := json.MarshalIndent(struct {
-			Descriptor any                      `json:"descriptor"`
-			Plan       lightDelegationPlan      `json:"plan"`
-			Recovery   *lightDelegationRecovery `json:"recovery"`
+			Descriptor any                         `json:"descriptor"`
+			Plan       spendingDelegationPlan      `json:"plan"`
+			Recovery   *spendingDelegationRecovery `json:"recovery"`
 		}{f.contract, p, delegationRecoveryWire(final.Evidence)}, "", "  ")
 		if err := os.WriteFile(path, raw, 0600); err != nil {
 			t.Fatal(err)
@@ -236,13 +236,13 @@ func assertSpendingDelegationNativeMuSigAndRecovery(t *testing.T, fixture delega
 func TestSpendingDelegationNonceCapsuleRejectsWrongWalletAndTamper(t *testing.T) {
 	a := newDelegatedFixture(t)
 	b := newDelegatedFixture(t)
-	keys := a.f.env.svc.keys.lightDelegation
+	keys := a.f.env.svc.keys.spendingDelegation
 	capsule, err := keys.prepareSpendingDelegationTree(t.Context(), a.f.contract, a.p, a.tree)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared := lightDelegationPreparedTree{a.tree, capsule}
-	if _, err := b.f.env.svc.keys.lightDelegation.signSpendingDelegationTree(t.Context(), b.f.contract, b.p, prepared, nil); err == nil {
+	prepared := spendingDelegationPreparedTree{a.tree, capsule}
+	if _, err := b.f.env.svc.keys.spendingDelegation.signSpendingDelegationTree(t.Context(), b.f.contract, b.p, prepared, nil); err == nil {
 		t.Fatal("cross-wallet capsule accepted")
 	}
 	raw, _ := hex.DecodeString(capsule.Ciphertext)
@@ -256,7 +256,7 @@ func TestSpendingDelegationNonceCapsuleRejectsWrongWalletAndTamper(t *testing.T)
 	}
 }
 
-func bindDelegationTestTranscript(t *testing.T, fixture delegatedFixture, prepared lightDelegationPreparedTree, all map[string]map[string]string) {
+func bindDelegationTestTranscript(t *testing.T, fixture delegatedFixture, prepared spendingDelegationPreparedTree, all map[string]map[string]string) {
 	t.Helper()
 	s, p := fixture.f.env.svc, fixture.p
 	if _, err := s.scheduleSpendingDelegationSet(t.Context(), delegatedSetFixture(t, fixture, 7)); err != nil {
@@ -294,19 +294,19 @@ func reopenDelegatedFixture(t *testing.T, f delegatedFixture) {
 	}
 	e.ledger = ledger
 	e.svc.Stores = testStores(t, ledger)
-	oldKeys := e.svc.keys.lightDelegation.(*fileBackedVaultKeys)
+	oldKeys := e.svc.keys.spendingDelegation.(*fileBackedVaultKeys)
 	var master *btcec.PrivateKey
 	if err := oldKeys.withMaster(func(key *btcec.PrivateKey) error { master, _ = btcec.PrivKeyFromBytes(key.Serialize()); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	newKeys := &fileBackedVaultKeys{master: master}
 	newKeys.bindDelegationJournal(ledger)
-	e.svc.keys.lightDelegation = newKeys
+	e.svc.keys.spendingDelegation = newKeys
 	t.Cleanup(newKeys.wipe)
 	e.svc.SessionNow = func() time.Time { return *f.now }
 }
 
-func delegatedDeleteFixture(t *testing.T, f spendingRenewalProofFixture) lightDelegateIntent {
+func delegatedDeleteFixture(t *testing.T, f spendingRenewalProofFixture) spendingDelegateIntent {
 	t.Helper()
 	message, err := (intent.DeleteMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeDelete}, ExpireAt: 0}).Encode()
 	if err != nil {
@@ -337,7 +337,7 @@ func delegatedDeleteFixture(t *testing.T, f spendingRenewalProofFixture) lightDe
 	if err != nil {
 		t.Fatal(err)
 	}
-	return lightDelegateIntent{raw, message}
+	return spendingDelegateIntent{raw, message}
 }
 
 func delegatedSetFixture(t *testing.T, f delegatedFixture, count uint32) spendingDelegationSetRequest {

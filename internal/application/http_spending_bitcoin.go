@@ -33,7 +33,7 @@ func attachSpendingBitcoinRoutes(mux *http.ServeMux, svc *Service, origin string
 	})
 
 	mux.HandleFunc("POST /v1/vtxo/bitcoin/register", func(w http.ResponseWriter, r *http.Request) {
-		var request lightRenewalRegisterRequest
+		var request spendingRenewalRegisterRequest
 		if err := decodeMutation(r, &request, origin); err != nil {
 			writeMutationError(w, err)
 			return
@@ -42,7 +42,7 @@ func attachSpendingBitcoinRoutes(mux *http.ServeMux, svc *Service, origin string
 		writeJSON(w, response, err)
 	})
 	mux.HandleFunc("POST /v1/vtxo/bitcoin/final", func(w http.ResponseWriter, r *http.Request) {
-		var request lightRenewalFinalRequest
+		var request spendingRenewalFinalRequest
 		if err := decodeMutation(r, &request, origin); err != nil {
 			writeMutationError(w, err)
 			return
@@ -51,7 +51,7 @@ func attachSpendingBitcoinRoutes(mux *http.ServeMux, svc *Service, origin string
 		writeJSON(w, response, err)
 	})
 	mux.HandleFunc("POST /v1/vtxo/bitcoin/status", func(w http.ResponseWriter, r *http.Request) {
-		var request lightRenewalOperationRequest
+		var request spendingRenewalOperationRequest
 		if err := decodeMutation(r, &request, origin); err != nil {
 			writeMutationError(w, err)
 			return

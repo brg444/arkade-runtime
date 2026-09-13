@@ -31,7 +31,7 @@ func verifyBitcoinSDKVector(t *testing.T, path string) {
 		Context      spendingRenewalBinding `json:"context"`
 		Prepared     bitcoinPaymentPrepared `json:"prepared"`
 		Prepare      json.RawMessage        `json:"prepare"`
-		DeleteIntent lightDelegateIntent    `json:"deleteIntent"`
+		DeleteIntent spendingDelegateIntent `json:"deleteIntent"`
 		PSBT         string                 `json:"psbt"`
 		Message      string                 `json:"message"`
 	}

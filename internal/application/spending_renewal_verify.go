@@ -18,7 +18,7 @@ import (
 // A renewal replaces exactly one live output with the same enrolled script.
 // Amounts and the fee policy are pinned from the indexer before this plan is
 // persisted. This verifier alone grants no signing capability or HTTP route.
-type lightRenewalPlan struct {
+type spendingRenewalPlan struct {
 	// Derived by the Bitcoin-payment adapter, never accepted from a signed request.
 	bitcoinPayment   bool   `json:"-"`
 	OperationID      string `json:"operationId"`
@@ -33,7 +33,7 @@ type lightRenewalPlan struct {
 	RegisterExpireAt int64  `json:"registerExpireAt"`
 }
 
-func (p lightRenewalPlan) digestForContract(c renewalContract) ([]byte, error) {
+func (p spendingRenewalPlan) digestForContract(c renewalContract) ([]byte, error) {
 	d := c.Binding
 	hash, err := c.identityHash()
 	if err != nil || hash != p.DescriptorHash || p.VaultID != d.VaultID || requireTxid(p.Txid) != nil || requireTxid(p.FeePolicyDigest) != nil {
@@ -51,7 +51,7 @@ func (p lightRenewalPlan) digestForContract(c renewalContract) ([]byte, error) {
 	return sum[:], nil
 }
 
-type verifiedLightRenewalRegistration struct {
+type verifiedSpendingRenewalRegistration struct {
 	PlanDigest    []byte
 	RequestDigest []byte
 	TreeSession   []byte
@@ -59,36 +59,36 @@ type verifiedLightRenewalRegistration struct {
 	Message       string
 }
 
-func verifyRenewalRegistration(raw, message string, plan lightRenewalPlan, c renewalContract, validAt, expireAt int64, expectedSession []byte) (verifiedLightRenewalRegistration, error) {
+func verifyRenewalRegistration(raw, message string, plan spendingRenewalPlan, c renewalContract, validAt, expireAt int64, expectedSession []byte) (verifiedSpendingRenewalRegistration, error) {
 	tree := c.Tree
 
 	digest, err := plan.digestForContract(c)
 	if err != nil {
-		return verifiedLightRenewalRegistration{}, err
+		return verifiedSpendingRenewalRegistration{}, err
 	}
 	if err := c.validateTree(); err != nil {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light renewal script required")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Light renewal script required")
 	}
 	var register intent.RegisterMessage
 	if err := register.Decode(message); err != nil {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light renewal register message")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Light renewal register message")
 	}
 	canonical, err := register.Encode()
 	if err != nil || canonical != message || register.ExpireAt != expireAt || register.ValidAt != validAt || register.OnchainOutputIndexes == nil || len(register.OnchainOutputIndexes) != 0 || len(register.CosignersPublicKeys) != 1 {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light renewal registration conditions")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Light renewal registration conditions")
 	}
 	session, err := hex.DecodeString(register.CosignersPublicKeys[0])
 	if err != nil || len(session) != 33 || hex.EncodeToString(session) != register.CosignersPublicKeys[0] {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light renewal tree session")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Light renewal tree session")
 	}
 	if len(expectedSession) > 0 && !bytes.Equal(session, expectedSession) {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light delegated tree signer changed")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Light delegated tree signer changed")
 	}
 	if _, err := btcec.ParsePubKey(session); err != nil {
-		return verifiedLightRenewalRegistration{}, fmt.Errorf("Light renewal tree session")
+		return verifiedSpendingRenewalRegistration{}, fmt.Errorf("Light renewal tree session")
 	}
 	if err := verifyRenewalIntentProof(raw, message, plan, c, &wire.TxOut{Value: plan.ReceiverSats, PkScript: tree.PkScript}); err != nil {
-		return verifiedLightRenewalRegistration{}, err
+		return verifiedSpendingRenewalRegistration{}, err
 	}
 
 	encoded, err := json.Marshal(struct {
@@ -97,17 +97,17 @@ func verifyRenewalRegistration(raw, message string, plan lightRenewalPlan, c ren
 		Message string `json:"message"`
 	}{hex.EncodeToString(digest), raw, message})
 	if err != nil {
-		return verifiedLightRenewalRegistration{}, err
+		return verifiedSpendingRenewalRegistration{}, err
 	}
 	request := sha256.Sum256(append([]byte(c.domain("renewal-register")), encoded...))
-	return verifiedLightRenewalRegistration{PlanDigest: digest, RequestDigest: request[:], TreeSession: session, CanonicalPSBT: raw, Message: message}, nil
+	return verifiedSpendingRenewalRegistration{PlanDigest: digest, RequestDigest: request[:], TreeSession: session, CanonicalPSBT: raw, Message: message}, nil
 }
 
-func verifyRenewalIntentProof(raw, message string, plan lightRenewalPlan, c renewalContract, receiver *wire.TxOut) error {
+func verifyRenewalIntentProof(raw, message string, plan spendingRenewalPlan, c renewalContract, receiver *wire.TxOut) error {
 	return verifySpendingBatchIntentProof(raw, message, plan, c, []*wire.TxOut{receiver})
 }
 
-func verifySpendingBatchIntentProof(raw, message string, plan lightRenewalPlan, c renewalContract, outputs []*wire.TxOut) error {
+func verifySpendingBatchIntentProof(raw, message string, plan spendingRenewalPlan, c renewalContract, outputs []*wire.TxOut) error {
 	if err := c.validateTree(); err != nil {
 		return err
 	}

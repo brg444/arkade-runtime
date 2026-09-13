@@ -33,7 +33,7 @@ func spendingDelegationFixture(t *testing.T, network, tier string) (*env, renewa
 		t.Fatal(err)
 	}
 	e := &env{svc: f.svc, ledger: f.ledger, dbPath: f.dbPath, hot: f.hot, p256: f.pass, direct: f.signer.direct, credID: credID}
-	e.svc.keys.lightDelegation.(*fileBackedVaultKeys).bindDelegationJournal(e.ledger)
+	e.svc.keys.spendingDelegation.(*fileBackedVaultKeys).bindDelegationJournal(e.ledger)
 	id := enrolled.VaultID
 	if id != f.start.VaultID || len(id) != 32 {
 		t.Fatal("fixture must use real enrollment-assigned vault ID unchanged")
@@ -107,7 +107,7 @@ func spendingDelegationFixture(t *testing.T, network, tier string) (*env, renewa
 		if err != nil {
 			t.Fatal(err)
 		}
-		plan := spendingDelegationInput{OperationID: fmt.Sprintf("%032x", i+1), Intent: lightDelegateIntent{Proof: proof(message, &wire.TxOut{Value: value - 100, PkScript: c.Tree.PkScript}), Message: message}, ForfeitTxs: []string{forfeit}, DeleteIntent: lightDelegateIntent{Proof: proof(deletion, &wire.TxOut{PkScript: []byte{txscript.OP_RETURN}}), Message: deletion}, ExpiresAt: now + 3600}
+		plan := spendingDelegationInput{OperationID: fmt.Sprintf("%032x", i+1), Intent: spendingDelegateIntent{Proof: proof(message, &wire.TxOut{Value: value - 100, PkScript: c.Tree.PkScript}), Message: message}, ForfeitTxs: []string{forfeit}, DeleteIntent: spendingDelegateIntent{Proof: proof(deletion, &wire.TxOut{PkScript: []byte{txscript.OP_RETURN}}), Message: deletion}, ExpiresAt: now + 3600}
 		digest, err := set.planDigest(plan)
 		if err != nil {
 			t.Fatal(err)
@@ -223,7 +223,7 @@ func TestSpendingDelegationAPIAllVaultPrograms(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				signed, err := e.svc.keys.lightDelegation.authorizeSpendingDelegation(t.Context(), c, plan, nil)
+				signed, err := e.svc.keys.spendingDelegation.authorizeSpendingDelegation(t.Context(), c, plan, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -232,7 +232,7 @@ func TestSpendingDelegationAPIAllVaultPrograms(t *testing.T) {
 				}
 				altered := c
 				altered.KeyScope.vaultID = strings.Repeat("fe", 16)
-				if _, err := e.svc.keys.lightDelegation.authorizeSpendingDelegation(t.Context(), altered, plan, nil); err == nil {
+				if _, err := e.svc.keys.spendingDelegation.authorizeSpendingDelegation(t.Context(), altered, plan, nil); err == nil {
 					t.Fatal("cross-account key scope substituted")
 				}
 			})
@@ -279,7 +279,7 @@ func TestSpendingDelegationSharedLightAndReadBoundaries(t *testing.T) {
 		r.OwnerSignature = hex.EncodeToString(sig.Serialize())
 	}
 	sign("list")
-	var listed lightDelegationListResponse
+	var listed spendingDelegationOperationListResponse
 	if err := json.Unmarshal(spendingDelegationHTTP(t, e, "list", r, 200), &listed); err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestSpendingDelegationRejectsNewAuthorityWithoutCompleteAuthorization(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	keys := e.svc.keys.lightDelegation
+	keys := e.svc.keys.spendingDelegation
 	for name, mutate := range map[string]func(*renewalContract){
 		"cooperative leaf": func(v *renewalContract) { v.Tree.SpendLeaf = []byte{txscript.OP_TRUE} },
 		"control block":    func(v *renewalContract) { v.Tree.SpendControl = append(bytes.Clone(v.Tree.SpendControl), 0) },
@@ -414,7 +414,7 @@ func TestSpendingDelegationFinalizedRetryKeepsRecoveryOnStatusOnly(t *testing.T)
 	}
 	// Use a real signed graph and the common final verifier; only the already
 	// tested Operator transport is omitted from this response-size regression.
-	final, err := e.svc.prepareSpendingDelegationFinal(t.Context(), p, c, lightDelegationPreparedTree{Tree: f.tree}, f.final.CommitmentPSBT, f.final.VtxoTree, f.final.Connectors)
+	final, err := e.svc.prepareSpendingDelegationFinal(t.Context(), p, c, spendingDelegationPreparedTree{Tree: f.tree}, f.final.CommitmentPSBT, f.final.VtxoTree, f.final.Connectors)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestSpendingDelegationFinalizedRetryKeepsRecoveryOnStatusOnly(t *testing.T)
 		OperationID    string `json:"operationId"`
 		ExpiresAt      int64  `json:"expiresAt"`
 	}{r.Program, r.DescriptorHash, r.VaultID, r.OperationID, r.ExpiresAt}))
-	var status lightDelegationResponse
+	var status spendingDelegationOperationResponse
 	if err := json.Unmarshal(spendingDelegationHTTP(t, e, "status", r, 200), &status); err != nil {
 		t.Fatal(err)
 	}

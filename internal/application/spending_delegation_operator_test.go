@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func TestLightDelegationStockEventStreamAndCancellation(t *testing.T) {
+func TestSpendingDelegationStockEventStreamAndCancellation(t *testing.T) {
 	closed := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/batch/events" || len(r.URL.Query()["topics"]) != 2 {
@@ -52,7 +52,7 @@ func TestLightDelegationStockEventStreamAndCancellation(t *testing.T) {
 	for range errs {
 	}
 }
-func TestLightDelegationStockRejectsMalformedAndOversizedStream(t *testing.T) {
+func TestSpendingDelegationStockRejectsMalformedAndOversizedStream(t *testing.T) {
 	for _, body := range []string{"data:{broken}\n", "data:" + strings.Repeat("a", 2_000_001) + "\n"} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -71,7 +71,7 @@ func TestLightDelegationStockRejectsMalformedAndOversizedStream(t *testing.T) {
 		server.Close()
 	}
 }
-func TestLightDelegationStockBatchPostsUsePublicWire(t *testing.T) {
+func TestSpendingDelegationStockBatchPostsUsePublicWire(t *testing.T) {
 	routes := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]json.RawMessage
@@ -118,7 +118,7 @@ type delegationTestDoer func(*http.Request) (*http.Response, error)
 
 func (d delegationTestDoer) Do(r *http.Request) (*http.Response, error) { return d(r) }
 
-func TestLightDelegationStockTreeEventDerivesTransactionID(t *testing.T) {
+func TestSpendingDelegationStockTreeEventDerivesTransactionID(t *testing.T) {
 	f := newDelegatedFixture(t)
 	for index, flat := range []arktree.FlatTxTree{f.tree.VtxoTree, f.final.Connectors} {
 		node := flat[0]
@@ -127,7 +127,7 @@ func TestLightDelegationStockTreeEventDerivesTransactionID(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var event lightDelegationEvent
+			var event spendingDelegationEvent
 			err = json.Unmarshal(raw, &event)
 			if supplied != "" && supplied != node.Txid {
 				if err == nil {
@@ -144,7 +144,7 @@ func TestLightDelegationStockTreeEventDerivesTransactionID(t *testing.T) {
 			}
 		}
 	}
-	var event lightDelegationEvent
+	var event spendingDelegationEvent
 	if json.Unmarshal([]byte(`{"treeTx":{"id":"batch","tx":"invalid"}}`), &event) == nil {
 		t.Fatal("malformed transaction accepted")
 	}
