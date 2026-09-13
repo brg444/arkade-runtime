@@ -1,6 +1,6 @@
 # Encrypted recovery archives
 
-Shared Spending accounts, including Light and optional Ledger Savings, persist encrypted recovery data at `/v1/recovery-archive/{challenge,open,read,write}`. The historical Light backup API has been removed. Direct-hardware Savings remains an intermediate implementation path pending its retirement.
+Shared Spending accounts, including Light and optional Ledger Savings, persist encrypted recovery data at `/v1/recovery-archive/{challenge,open,read,write}`. Historical Light, direct-hardware Savings and both connector generations are excluded from archive admission; their former backup and recovery paths are removed.
 
 The archive transport grants no signing, payment or recovery authority. Clients
 must encrypt and verify their recovery data; the runtime cannot establish that
