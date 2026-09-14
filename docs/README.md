@@ -1,4 +1,4 @@
-# Arkade Runtime documentation
+# Guardian documentation
 
 These documents describe the contracts implemented by this checkout. The
 wallet independently reconstructs the corresponding programs and controls
@@ -11,7 +11,6 @@ transaction review, owner ceremonies, and external signing.
 | [Storage](storage.md)                                        | Authenticated state, migrations, and rollback detection           |
 | [Spending](vault-policy-v1-spend.md)                         | Reservation, policy, transaction verification, and reconciliation |
 | [Boarding](boarding.md)                                      | Confirmed Bitcoin input settlement into protected Spending        |
-| [Light contract](../internal/vault/light/README.md)          | Cooperative Spending and delayed owner exit                       |
 | [Delegated renewal](delegated-renewal-lifecycle.md)              | Owner authority and native execution lifecycle                    |
 | [Shared Spending renewal API](spending-delegated-renewal.md) | Light, Standard, and Advanced authorization sets                  |
 | [Recovery archives](recovery-archive.md)                     | Passkey sessions, encryption envelope, and revision checks        |

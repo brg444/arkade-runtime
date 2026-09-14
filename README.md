@@ -1,15 +1,37 @@
-# Arkade Runtime
+# Guardian
 
-Arkade Runtime provides constrained signing and durable policy enforcement for
-[Vaulted](https://github.com/brg444/vaulted-bitcoin-wallet). Its Guardian
-process validates enrolled programs, authorizes permitted operations, and
-retains the state needed to reconcile interrupted requests.
+Guardian is the policy and signing service for
+[Vaulted](https://github.com/brg444/vaulted-bitcoin-wallet). It verifies the
+transactions an enrolled account is allowed to make, enforces Spending limits,
+and records enough authenticated state to reconcile interrupted operations.
+The wallet coordinates transactions through the Arkade SDK; Guardian supplies
+constrained authorization and signatures for the enrolled program.
 
-The source supports mainnet and Mutinynet through distinct compiled deployment
-parameters. The binary includes the `arkade-vault-v1`
-profile definition. Programs and key capabilities are compiled into the
-application; clients cannot upload executable policy or request arbitrary
-signatures.
+## Product scope
+
+Every account uses shared Spending, with optional Ledger Savings. The retained
+workflows cover enrollment, payments, boarding, recovery and renewal.
+
+Guardian runs one production process with the compiled `arkade-vault-v1`
+profile. Mainnet and Mutinynet use distinct compiled deployment parameters.
+Program identities, signing thresholds and key derivation remain explicit
+contracts shared with the wallet through the network-specific Contract Packs.
+Clients cannot upload executable policy or request arbitrary signatures.
+
+## Architecture
+
+`cmd/authorizer` starts the service and `internal/authorizer` assembles its
+configuration, scoped keys, persistence and dependencies. `internal/application`
+owns the enrollment and operation lifecycles, while `internal/profile` and
+`internal/runtime` define and validate the named capabilities available to the
+process. The authenticated ledger in `internal/policy` owns durable policy
+state and its independent sequence.
+
+The wallet owns foreground transaction coordination through the public Arkade
+SDK. Guardian verifies the submitted artifacts and retains operation identity
+across retries. Its optional renewal executor handles finite, durable,
+owner-presigned plans through the Operator's existing interfaces. The Operator
+and independent recovery application remain separate components.
 
 ## Supported workflows
 
@@ -35,9 +57,8 @@ retained operation state.
 
 The Guardian's allowance ledger and signing capability share one process.
 Rows are authenticated before use, and economic state changes advance an
-independent policy sequence. SQLite schema 12 removes connector storage through
-an authenticated upgrade from the exact schema 11 baseline; see the
-[retirement contract](docs/ledger-schema-migration.md).
+independent policy sequence. The SQLite ledger uses schema 12; see the
+[storage contract](docs/storage.md) for authentication and persistence requirements.
 
 Spending requires the owner and Arkade Operator in addition to the Guardian.
 Ledger Savings uses the enrolled phone, hardware and Guardian key origins;
@@ -103,7 +124,27 @@ for the service and tenant access boundaries.
 | `POST /v1/passkey/recover` | Recover a passkey credential envelope. |
 | `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
 
-## Build and test
+## Getting started
+
+Clone this repository and build the service with Go 1.26.6:
+
+```sh
+git clone https://github.com/brg444/arkade-runtime.git
+cd arkade-runtime
+go build -o guardian ./cmd/authorizer
+```
+
+Configure the wallet Origin, WebAuthn RP ID, gateway authentication, signing
+keys and persistent ledger/sequence paths using the
+[deployment guide](deploy/README.md). Use separate keys and state for each
+network. Mainnet requires additional infrastructure declarations and verified
+dependencies; a successful build alone does not qualify a deployment.
+
+Use `/health` for process liveness and `/ready` before routing signing traffic.
+The [security model](docs/security.md) and [storage contract](docs/storage.md)
+describe the trust assumptions and persistence requirements.
+
+## Validation
 
 Use Go 1.26.6, as pinned in [go.mod](go.mod):
 
@@ -128,6 +169,8 @@ covers the protocol and persistence contracts.
 | `internal/authorizer`  | Configuration, keys, storage, and dependency composition       |
 | `internal/application` | Enrollment, transaction, recovery, renewal, and HTTP workflows |
 | `internal/profile`     | Compiled profile declarations                                  |
+| `internal/runtime`     | Named capability and identifier validation                     |
+| `internal/program`     | Canonical program and Spending-policy values                   |
 | `internal/policy`      | Authenticated SQLite ledger, migrations, and policy sequence   |
 | `internal/vault`       | Savings and Spending program construction             |
 | `internal/deployment`  | Network-specific parameters and dependency checks              |

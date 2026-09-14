@@ -6,8 +6,7 @@ input discovery, intent construction, Batch Output participation, persistence,
 retries, and settlement. The Vault service supplies a narrow policy and
 cosigning adapter for this named program.
 
-There is no boarding selector, legacy compatibility path, or alternative
-enrollment flow. A fresh vault enrolls Savings and boarding together through
+A fresh vault enrolls its account and boarding program through
 `/v1/enroll/propose` and `/v1/enroll/finish`.
 
 ## Program

@@ -14,8 +14,8 @@ func TestLinuxGuardianEnvExamplePinsVaultedAndOmitsSecrets(t *testing.T) {
 	text := string(body)
 	for _, required := range []string{
 		"VAULT_NETWORK=mainnet",
-		"VAULT_CLIENT_ORIGIN=https://app.getvaulted.xyz",
-		"VAULT_RP_ID=app.getvaulted.xyz",
+		"VAULT_CLIENT_ORIGIN=https://rc.getvaulted.xyz",
+		"VAULT_RP_ID=rc.getvaulted.xyz",
 		"VAULT_AUTHORIZER_ADDR=127.0.0.1:8788",
 		"VAULT_COSIGNER_KEY_UNLINK=after-load",
 		"VAULT_STORAGE_ISOLATION=independent-authorities",

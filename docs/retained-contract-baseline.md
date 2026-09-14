@@ -7,7 +7,7 @@ pins; a pack from another network fails the runtime digest check.
 
 | Contract | Current declaration |
 | --- | --- |
-| Database | Schema 12, with authenticated retirement from the exact schema 11 baseline |
+| Database | Schema 12 |
 | Public enrollment and readiness template | `vaulted-spending-v1` |
 | Spending program | `vault-policy-v1` |
 | Boarding program | `vault-board-v1` |
@@ -16,21 +16,16 @@ pins; a pack from another network fails the runtime digest check.
 | Map backup | v3 |
 | Recovery bindings | Shared Spending v4 and Ledger v6 |
 
-The manifest removes `savings-recovery-v1`, `savings-connector-v1` and
-`savings-connector-dual-v2`, their retired recovery-session and connector-binding
-domain declarations, and the connector enrollment kit format. No parser or
-signer compatibility layer accompanies those removals. The Ledger format entry
-now identifies current runtime schema 12. The top-level Recovery Kit declaration
-names both retained account formats, replacing the obsolete v3 kit declaration.
+The Ledger format identifies runtime schema 12. The top-level Recovery Kit
+declaration names both supported account formats.
 
 Retained scripts, CSV delays, fee and allowance bounds, key derivation domains,
 enrollment encodings and recovery bindings preserve their existing values.
 Renewal fixtures retain four protected contexts across mainnet/Mutinynet and
 Standard/Advanced, with their exact context and digest expectations. Their
-account labels identify Ledger directly; historical Light and duplicate connector
-rows are removed. The fixed renewal set keeps its exact body, signatures,
+account labels identify Ledger directly. The fixed renewal set keeps its exact body, signatures,
 transaction bytes and digest. Expected signing outputs remain independently
-fixed throughout this change.
+fixed independently of the implementation.
 
 The runtime freezes both pack hashes in the embedded loader and compatibility
 barrier. Wallet tests freeze the same hashes and require the retained program
