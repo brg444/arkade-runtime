@@ -33,6 +33,11 @@ type ledgerTransitionFixture struct {
 
 func newLedgerTransitionFixture(t *testing.T, advanced bool) ledgerTransitionFixture {
 	t.Helper()
+	return newLedgerTransitionFixtureForNetwork(t, advanced, "mutinynet")
+}
+
+func newLedgerTransitionFixtureForNetwork(t *testing.T, advanced bool, network string) ledgerTransitionFixture {
+	t.Helper()
 	f := ledgerTransitionFixture{accounts: map[string]*hdkeychain.ExtendedKey{}}
 	master, _ := btcec.PrivKeyFromBytes(bytes.Repeat([]byte{0x31}, 32))
 	f.auth = &fileBackedLedgerSavingsAuthorizer{keys: &fileBackedVaultKeys{master: master}}
@@ -42,15 +47,15 @@ func newLedgerTransitionFixture(t *testing.T, advanced bool) ledgerTransitionFix
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.policy, err = program.DefaultSpendingPolicyFor("mutinynet")
+	f.policy, err = program.DefaultSpendingPolicyFor(network)
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := program.SpendingPolicyDigestHexFor("mutinynet", f.policy)
+	digest, err := program.SpendingPolicyDigestHexFor(network, f.policy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.in = savings.LedgerSavingsKeyContext{TemplateVersion: savings.LedgerNativeTemplate, Network: "mutinynet", VaultID: "aabbccddeeff00112233445566778899", PolicyDigest: digest, PhoneDirectP256: hex.EncodeToString(webauthn.CompressedP256(f.direct))}
+	f.in = savings.LedgerSavingsKeyContext{TemplateVersion: savings.LedgerNativeTemplate, Network: network, VaultID: "aabbccddeeff00112233445566778899", PolicyDigest: digest, PhoneDirectP256: hex.EncodeToString(webauthn.CompressedP256(f.direct))}
 	root, err := f.auth.guardianPublic(f.in.Network, f.in.VaultID)
 	if err != nil {
 		t.Fatal(err)
@@ -60,13 +65,17 @@ func newLedgerTransitionFixture(t *testing.T, advanced bool) ledgerTransitionFix
 	if advanced {
 		roles = append(roles, "recovery")
 	}
+	params, coin := &chaincfg.TestNet3Params, uint32(1)
+	if network == "mainnet" {
+		params, coin = &chaincfg.MainNetParams, 0
+	}
 	for i, role := range roles {
-		master, err := hdkeychain.NewMaster(bytes.Repeat([]byte{byte(51 + i)}, 32), &chaincfg.TestNet3Params)
+		master, err := hdkeychain.NewMaster(bytes.Repeat([]byte{byte(51 + i)}, 32), params)
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(master.Zero)
-		path := []uint32{hdkeychain.HardenedKeyStart + 86, hdkeychain.HardenedKeyStart + 1, hdkeychain.HardenedKeyStart}
+		path := []uint32{hdkeychain.HardenedKeyStart + 86, hdkeychain.HardenedKeyStart + coin, hdkeychain.HardenedKeyStart}
 		account := master
 		for _, index := range path {
 			account, err = account.Derive(index)
@@ -525,5 +534,41 @@ func TestLedgerSavingsWalletRecoveryVectors(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLedgerSavingsRejectsMalformedParentEvidence(t *testing.T) {
+	f := newLedgerTransitionFixture(t, false)
+	for name, mutate := range map[string]func(*psbt.Packet){
+		"missing witness": func(p *psbt.Packet) { p.Inputs[0].WitnessUtxo = nil },
+		"missing parent":  func(p *psbt.Packet) { p.Inputs[0].NonWitnessUtxo = nil },
+		"parent hash":     func(p *psbt.Packet) { p.UnsignedTx.TxIn[0].PreviousOutPoint.Hash[0] ^= 1 },
+		"parent index":    func(p *psbt.Packet) { p.UnsignedTx.TxIn[0].PreviousOutPoint.Index = 99 },
+		"witness value":   func(p *psbt.Packet) { p.Inputs[0].WitnessUtxo.Value++ },
+		"witness script":  func(p *psbt.Packet) { p.Inputs[0].WitnessUtxo.PkScript[0] ^= 1 },
+		"empty inputs":    func(p *psbt.Packet) { p.Inputs = nil; p.UnsignedTx.TxIn = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := f.request(t, "initiate", "hardware", "", 0)
+			packet, err := parsePSBT(req.retainedPSBT)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(packet)
+			req.retainedPSBT, err = packet.B64Encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.auth.authorizeTransition(t.Context(), req); err == nil {
+				t.Fatal("malformed parent evidence signed")
+			}
+		})
+	}
+	for _, raw := range []string{"", "not-a-psbt", "cHNid"} {
+		req := f.request(t, "initiate", "hardware", "", 0)
+		req.retainedPSBT = raw
+		if _, err := f.auth.authorizeTransition(t.Context(), req); err == nil {
+			t.Fatal("malformed PSBT signed")
+		}
 	}
 }

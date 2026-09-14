@@ -27,9 +27,6 @@ func TestFixtureDoesNotExportOfflinePrivateScalar(t *testing.T) {
 }
 
 func TestFrozenProductContract(t *testing.T) {
-	if TemplateVersion != "phone-hww-recovery-savings-v1" {
-		t.Fatalf("TemplateVersion = %s", TemplateVersion)
-	}
 	if PolicyVersion != "vault-spending-policy-v1" {
 		t.Fatalf("PolicyVersion = %s", PolicyVersion)
 	}

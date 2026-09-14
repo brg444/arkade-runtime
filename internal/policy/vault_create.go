@@ -19,11 +19,7 @@ type CreateVaultInput struct {
 	TokenHash  []byte
 	// Pending, when set, is consumed in the same transaction as the invite.
 	// The row must still match handle, token hash, vault id, challenge, and expiry.
-	Pending *PendingEnrollment
-	// Connector, when set, stages the sealed hardware origin row in the same
-	// transaction. A connector credential without its origin row (or vice
-	// versa) never commits. Nil for legacy vaults.
-	Connector     *ConnectorEnrollment
+	Pending       *PendingEnrollment
 	LedgerSavings *LedgerSavingsEnrollment
 }
 
@@ -78,16 +74,8 @@ func (l *Ledger) createVault(in CreateVaultInput, board *VaultBoardEnrollment) e
 			return fmt.Errorf("create vault board: %w", err)
 		}
 	}
-	if in.Connector != nil {
-		if in.Connector.VaultID != in.Record.VaultID {
-			return fmt.Errorf("connector enrollment vault id mismatch")
-		}
-		if err := putConnectorEnrollmentTx(tx, *in.Connector); err != nil {
-			return fmt.Errorf("create vault connector: %w", err)
-		}
-	}
 	if in.LedgerSavings != nil {
-		if in.LedgerSavings.VaultID != in.Record.VaultID || in.Record.TemplateVersion != "phone-ledger-guardian-savings-v1" || in.Connector != nil {
+		if in.LedgerSavings.VaultID != in.Record.VaultID || in.Record.TemplateVersion != "phone-ledger-guardian-savings-v1" {
 			return fmt.Errorf("Ledger Savings enrollment identity mismatch")
 		}
 		if err := putLedgerSavingsEnrollmentTx(tx, *in.LedgerSavings); err != nil {

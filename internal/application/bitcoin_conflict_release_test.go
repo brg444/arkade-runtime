@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/wire"
 )
@@ -25,21 +24,14 @@ func (c *bitcoinConflictProofChain) confirmedBitcoinConflict(context.Context, st
 }
 
 func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
-	for _, kind := range []string{"legacy", "canonical"} {
-		t.Run(kind, func(t *testing.T) {
-			var e *env
-			var c bitcoinPaymentContext
-			var prepared bitcoinPaymentPrepared
-			if kind == "legacy" {
-				e, c, prepared, _ = setupFundingFixture(t, "mainnet", "standard")
-			} else {
-				e, c, prepared, _ = bitcoinFundingFixture(t, "mainnet", "standard", 1)
-			}
+	for _, count := range []int{1, 2} {
+		t.Run(fmt.Sprintf("outputs-%d", count), func(t *testing.T) {
+			e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", count)
 			session, _ := btcec.NewPrivateKey()
 			operatorSession, _ := btcec.NewPrivateKey()
-			request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-			operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
-			e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+			request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+			operator := &spendingRenewalTestOperator{finalErr: fmt.Errorf("response lost")}
+			e.svc.spendingRenewalOperatorDial = func(context.Context) (spendingRenewalOperator, error) { return operator, nil }
 			if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
 				t.Fatalf("register %+v %v", result, err)
 			}
@@ -47,13 +39,13 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+			f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 			_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
-			final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
+			final := spendingRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 			if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {
 				t.Fatalf("final %+v %v", result, err)
 			}
-			e.svc.ArkResolver = &lightRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
+			e.svc.ArkResolver = &spendingRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
 			packet, err := parsePSBT(evidence.CommitmentPSBT)
 			if err != nil {
 				t.Fatal(err)
@@ -61,7 +53,7 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			proof := conflictFixture(t, packet.UnsignedTx)
 			chain := &bitcoinConflictProofChain{}
 			e.svc.vaultBoardRuntime = &vaultBoardRuntime{chain: chain}
-			op := lightRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
+			op := spendingRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
 			if result, err := e.svc.reconcileBitcoinPayment(t.Context(), op); err != nil || result.State != "uncertain" {
 				t.Fatalf("no conflict %+v %v", result, err)
 			}
@@ -72,7 +64,7 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 				t.Fatal("shallow proof released")
 			}
 			chain.proof = &proof
-			resolver := e.svc.ArkResolver.(*lightRenewalSettledResolver)
+			resolver := e.svc.ArkResolver.(*spendingRenewalSettledResolver)
 			coins := resolver.vtxos
 			resolver.vtxos = nil
 			if result, err := e.svc.reconcileBitcoinPayment(t.Context(), op); err != nil || result.State != "uncertain" {
@@ -109,7 +101,7 @@ func TestBitcoinConflictReleasesLostFinalWithoutSigningAgain(t *testing.T) {
 			if used, err := ledger.SpentInPeriod(t.Context(), request.VaultID, ""); err != nil || used != 0 {
 				t.Fatalf("allowance %d %v", used, err)
 			}
-			saved, err := ledger.GetLightRenewal(t.Context(), request.OperationID)
+			saved, err := ledger.GetSpendingRenewal(t.Context(), request.OperationID)
 			if err != nil || saved.Events["released"].Evidence == "" || saved.Events["final_dispatched"].Phase == "" {
 				t.Fatalf("missing retained evidence: %v", err)
 			}
@@ -121,9 +113,9 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	e, c, prepared, _ := bitcoinFundingFixture(t, "mainnet", "standard", 1)
 	session, _ := btcec.NewPrivateKey()
 	operatorSession, _ := btcec.NewPrivateKey()
-	request := setupRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
-	operator := &lightRenewalTestOperator{finalErr: fmt.Errorf("Operator rejected final after batch ended")}
-	e.svc.lightRenewalOperatorDial = func(context.Context) (lightRenewalOperator, error) { return operator, nil }
+	request := bitcoinRegistrationFixture(t, e, c, prepared.Plan, session, prepared.Plan.outputs(c))
+	operator := &spendingRenewalTestOperator{finalErr: fmt.Errorf("Operator rejected final after batch ended")}
+	e.svc.spendingRenewalOperatorDial = func(context.Context) (spendingRenewalOperator, error) { return operator, nil }
 	if result, err := e.svc.registerBitcoinPayment(t.Context(), request); err != nil || result.State != "registered" {
 		t.Fatalf("register %+v %v", result, err)
 	}
@@ -131,13 +123,13 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := lightRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), descriptor: light.Descriptor{Params: light.Params{Network: c.spending.Binding.Network}}, tree: c.spending.Tree, owner: e.hot}
+	f := spendingRenewalProofFixture{env: e, plan: prepared.Plan.batchInput(), contract: c.spending, tree: c.spending.Tree, owner: e.hot}
 	_, _, evidence := buildSpendingBatchEvidenceFixture(t, f, registration, session, operatorSession, prepared.Plan.outputs(c)[1:])
-	final := lightRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
+	final := spendingRenewalFinalRequest{VaultID: request.VaultID, OperationID: request.OperationID, Evidence: evidence}
 	if result, err := e.svc.finalizeBitcoinPayment(t.Context(), final); err != nil || result.State != "uncertain" {
 		t.Fatalf("final %+v %v", result, err)
 	}
-	snapshot, err := e.ledger.GetLightRenewal(t.Context(), request.OperationID)
+	snapshot, err := e.ledger.GetSpendingRenewal(t.Context(), request.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,9 +137,9 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.svc.ArkResolver = &lightRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
+	e.svc.ArkResolver = &spendingRenewalSettledResolver{stubArkResolver: e.svc.ArkResolver.(stubArkResolver)}
 	e.svc.vaultBoardRuntime = &vaultBoardRuntime{chain: &bitcoinConflictProofChain{}}
-	op := lightRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
+	op := spendingRenewalOperationRequest{VaultID: request.VaultID, OperationID: request.OperationID}
 	operator.endedAt = dispatchedAt.Unix()
 	if result, err := e.svc.reconcileBitcoinPayment(t.Context(), op); err != nil || result.State != "uncertain" {
 		t.Fatalf("ambiguous ordering %+v %v", result, err)
@@ -164,7 +156,7 @@ func TestEndedOperatorBatchReleasesLateFinalWithLiveInput(t *testing.T) {
 	if used, err := e.ledger.SpentInPeriod(t.Context(), request.VaultID, ""); err != nil || used != 0 {
 		t.Fatalf("allowance %d %v", used, err)
 	}
-	snapshot, err = e.ledger.GetLightRenewal(t.Context(), request.OperationID)
+	snapshot, err = e.ledger.GetSpendingRenewal(t.Context(), request.OperationID)
 	if err != nil {
 		t.Fatal(err)
 	}

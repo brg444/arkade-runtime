@@ -10,7 +10,6 @@ func TestFrozenProtocolDomains(t *testing.T) {
 	}{
 		{vaultRecordMACDomain, "arkade-vault/vault-record/v2"},
 		{vaultCredentialMACDomain, "arkade-vault/vault-credential/v1"},
-		{sessionMACDomain, "arkade-2fa-vault/recovery-session/v2"},
 		{vaultEnvelopeDomain, "arkade-vault/vault-envelope/v2"},
 		{vaultEnvelopeMACSalt, "arkade-vault/vault-envelope-mac/v2"},
 		{vaultCosignerHKDFSalt, "arkade-2fa-vault/vault-cosigner/hkdf-sha256-v1"},

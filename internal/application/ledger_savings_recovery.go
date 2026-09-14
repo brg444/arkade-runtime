@@ -88,7 +88,7 @@ func (s *Service) signLedgerSavingsRecovery(ctx context.Context, req TransitionR
 		if len(result.Inputs) != 1 || len(result.Inputs[0].TaprootScriptSpendSig) != 2 {
 			return nil, fmt.Errorf("Ledger Savings stored signature shape")
 		}
-		if err := requirePresentConnectorSig(result, 0, plan.guardianXOnly, plan.leaf); err != nil {
+		if err := requirePresentDefaultTaprootSignature(result, 0, plan.guardianXOnly, plan.leaf); err != nil {
 			return nil, err
 		}
 		return &TransitionResponse{SignedPSBT: string(stored.Signature), Replay: true}, nil

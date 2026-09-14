@@ -114,7 +114,7 @@ func TestLightBrowserHarness(t *testing.T) {
 			t.Fatal(err)
 		}
 		svc.keys.Wipe()
-		svc.keys = testKeys(t, master, unavailableSigner{})
+		svc.keys = testKeys(t, master)
 		svc.VaultCosignerPub = master.PubKey()
 		sequence, err := policy.OpenMonotonic(filepath.Join(directory, "policy-sequence"), testCredentialIntegrityKey)
 		if err != nil {
@@ -138,7 +138,7 @@ func TestLightBrowserHarness(t *testing.T) {
 		if err := svc.InstallVaultBoardAuthorization(ctx); err != nil {
 			t.Fatal(err)
 		}
-		svc.lightRenewalOperatorDial = func(ctx context.Context) (lightRenewalOperator, error) {
+		svc.spendingRenewalOperatorDial = func(ctx context.Context) (spendingRenewalOperator, error) {
 			op, err := dialVaultBoardOperator(ctx, "mutinynet")
 			if err != nil {
 				return nil, err

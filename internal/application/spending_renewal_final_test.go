@@ -1,0 +1,216 @@
+package application
+
+import (
+	"bytes"
+	"encoding/hex"
+	"testing"
+
+	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
+	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
+	arktree "github.com/arkade-os/arkd/pkg/ark-lib/tree"
+	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
+	"github.com/brg444/arkade-runtime/internal/deployment"
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/btcutil/psbt"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
+)
+
+func newSpendingRenewalFinalFixture(t *testing.T) (spendingRenewalProofFixture, verifiedSpendingRenewalRegistration, spendingRenewalFinalEvidence) {
+	t.Helper()
+	f := newSpendingRenewalProofFixture(t)
+	sessionKey, _ := btcec.NewPrivateKey()
+	operatorSessionKey, _ := btcec.NewPrivateKey()
+	return buildSpendingRenewalFinalFixture(t, f, sessionKey, operatorSessionKey)
+}
+
+func buildSpendingRenewalFinalFixture(t *testing.T, f spendingRenewalProofFixture, sessionKey, operatorSessionKey *btcec.PrivateKey, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedSpendingRenewalRegistration, spendingRenewalFinalEvidence) {
+	t.Helper()
+	f.message, _ = (intent.RegisterMessage{BaseMessage: intent.BaseMessage{Type: intent.IntentMessageTypeRegister}, OnchainOutputIndexes: []int{}, ExpireAt: f.plan.RegisterExpireAt, CosignersPublicKeys: []string{hex.EncodeToString(sessionKey.PubKey().SerializeCompressed())}}).Encode()
+	raw, _ := f.proof(t).B64Encode()
+	registered, err := verifyRenewalRegistration(raw, f.message, f.plan, f.contract, 0, f.plan.RegisterExpireAt, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return buildSpendingBatchEvidenceFixture(t, f, registered, sessionKey, operatorSessionKey, nil, otherSessions...)
+}
+
+func buildSpendingBatchEvidenceFixture(t *testing.T, f spendingRenewalProofFixture, registered verifiedSpendingRenewalRegistration, sessionKey, operatorSessionKey *btcec.PrivateKey, onchain []*wire.TxOut, otherSessions ...*btcec.PrivateKey) (spendingRenewalProofFixture, verifiedSpendingRenewalRegistration, spendingRenewalFinalEvidence) {
+	t.Helper()
+	pins, err := deployment.IdentityFor(f.contract.Binding.Network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forfeitPub, err := btcec.ParsePubKey(mustDecodeRenewalHex(pins.CheckpointForfeitPubHex))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiry := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: pins.VtxoTreeExpirySeconds}
+	sweep := &arkscript.CSVMultisigClosure{MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{forfeitPub}}, Locktime: expiry}
+	sweepScript, err := sweep.Script()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := txscript.NewBaseTapLeaf(sweepScript).TapHash()
+	leaves := []arktree.Leaf{{Outputs: []arktree.LeafOutput{{Amount: uint64(f.plan.ReceiverSats), Script: hex.EncodeToString(f.tree.PkScript)}}, CosignersPublicKeys: []string{hex.EncodeToString(sessionKey.PubKey().SerializeCompressed()), hex.EncodeToString(operatorSessionKey.PubKey().SerializeCompressed())}}}
+	for _, other := range otherSessions {
+		script, err := txscript.PayToTaprootScript(txscript.ComputeTaprootKeyNoScript(other.PubKey()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaves = append(leaves, arktree.Leaf{Outputs: []arktree.LeafOutput{{Amount: 1111, Script: hex.EncodeToString(script)}}, CosignersPublicKeys: []string{hex.EncodeToString(other.PubKey().SerializeCompressed()), hex.EncodeToString(operatorSessionKey.PubKey().SerializeCompressed())}})
+	}
+	batchScript, batchAmount, err := arktree.BuildBatchOutput(leaves, root[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	connectorKey, _ := btcec.NewPrivateKey()
+	connectorScript, err := txscript.PayToTaprootScript(txscript.ComputeTaprootKeyNoScript(connectorKey.PubKey()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitment, err := psbt.New([]*wire.OutPoint{{Hash: chainhash.Hash{7}, Index: 0}}, append([]*wire.TxOut{{Value: batchAmount, PkScript: batchScript}, {Value: 330, PkScript: connectorScript}}, onchain...), 2, 0, []uint32{wire.MaxTxInSequenceNum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vtxos, err := arktree.BuildVtxoTree(&wire.OutPoint{Hash: commitment.UnsignedTx.TxHash(), Index: 0}, leaves, root[:], expiry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	coordinator, err := arktree.NewTreeCoordinatorSession(root[:], batchAmount, vtxos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := map[*btcec.PrivateKey]arktree.SignerSession{}
+	for _, key := range append([]*btcec.PrivateKey{sessionKey, operatorSessionKey}, otherSessions...) {
+		session := arktree.NewTreeSignerSession(key)
+		if err := session.Init(root[:], batchAmount, vtxos); err != nil {
+			t.Fatal(err)
+		}
+		nonces, err := session.GetNonces()
+		if err != nil {
+			t.Fatal(err)
+		}
+		coordinator.AddNonce(key.PubKey(), nonces)
+		sessions[key] = session
+	}
+	aggregate, err := coordinator.AggregateNonces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, session := range sessions {
+		session.SetAggregatedNonces(aggregate)
+		signatures, err := session.Sign()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := coordinator.AddSignatures(key.PubKey(), signatures); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signed, err := coordinator.SignTree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat, err := signed.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	connector, err := psbt.New([]*wire.OutPoint{{Hash: commitment.UnsignedTx.TxHash(), Index: 1}}, []*wire.TxOut{{Value: 330, PkScript: connectorScript}, txutils.AnchorOutput()}, 3, 0, []uint32{wire.MaxTxInSequenceNum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	connector.Inputs[0].WitnessUtxo = &wire.TxOut{Value: 330, PkScript: connectorScript}
+	connectorRaw, _ := connector.B64Encode()
+	old, _ := chainhash.NewHashFromStr(f.plan.Txid)
+	forfeitScript := append([]byte{txscript.OP_0, 0x14}, btcutil.Hash160(forfeitPub.SerializeCompressed())...)
+	forfeit, err := arktree.BuildForfeitTx([]*wire.OutPoint{{Hash: *old, Index: f.plan.Vout}, {Hash: connector.UnsignedTx.TxHash(), Index: 0}}, []uint32{wire.MaxTxInSequenceNum, wire.MaxTxInSequenceNum}, []*wire.TxOut{{Value: f.plan.ValueSats, PkScript: f.tree.PkScript}, {Value: 330, PkScript: connectorScript}}, forfeitScript, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forfeit.Inputs[0].TaprootLeafScript = []*psbt.TaprootTapLeafScript{{Script: f.tree.SpendLeaf, ControlBlock: f.tree.SpendControl, LeafVersion: txscript.BaseLeafVersion}}
+	sig, err := signTapLeafAt(forfeit, 0, f.owner, f.tree.SpendLeaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forfeit.Inputs[0].TaprootScriptSpendSig = []*psbt.TaprootScriptSpendSig{sig}
+	forfeitRaw, _ := forfeit.B64Encode()
+	commitmentRaw, _ := commitment.B64Encode()
+	evidence := spendingRenewalFinalEvidence{BatchID: "renewal-batch", BatchExpiry: pins.VtxoTreeExpirySeconds, CommitmentPSBT: commitmentRaw, VtxoTree: flat, Connectors: arktree.FlatTxTree{{Txid: connector.UnsignedTx.TxID(), Tx: connectorRaw, Children: map[uint32]string{}}}, OwnerForfeitPSBT: forfeitRaw}
+	return f, registered, evidence
+}
+
+func TestSpendingRenewalForfeitRequiresSignedProtectedReplacement(t *testing.T) {
+	f, registered, e := newSpendingRenewalFinalFixture(t)
+	result, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.RequestDigest) != 32 || result.CommitmentTxid == "" || result.ReceiverTxid == "" || result.CanonicalForfeitPSBT != e.OwnerForfeitPSBT {
+		t.Fatal("missing final binding")
+	}
+	replay, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault)
+	if err != nil || !bytes.Equal(replay.RequestDigest, result.RequestDigest) {
+		t.Fatal("final replay changed")
+	}
+}
+
+func TestSpendingRenewalForfeitRejectsIncompleteOrChangedBatch(t *testing.T) {
+	f, registered, original := newSpendingRenewalFinalFixture(t)
+	for name, mutate := range map[string]func(*spendingRenewalFinalEvidence){
+		"missing replacement signatures": func(e *spendingRenewalFinalEvidence) {
+			p, _ := parsePSBT(e.VtxoTree[0].Tx)
+			p.Inputs[0].TaprootKeySpendSig = nil
+			e.VtxoTree[0].Tx, _ = p.B64Encode()
+		},
+		"invalid replacement signatures": func(e *spendingRenewalFinalEvidence) {
+			p, _ := parsePSBT(e.VtxoTree[0].Tx)
+			p.Inputs[0].TaprootKeySpendSig = bytes.Repeat([]byte{7}, 64)
+			e.VtxoTree[0].Tx, _ = p.B64Encode()
+		},
+		"wrong expiry": func(e *spendingRenewalFinalEvidence) { e.BatchExpiry++ },
+		"different commitment": func(e *spendingRenewalFinalEvidence) {
+			p, _ := parsePSBT(e.CommitmentPSBT)
+			p.UnsignedTx.TxIn[0].PreviousOutPoint.Index++
+			e.CommitmentPSBT, _ = p.B64Encode()
+		},
+		"missing connector": func(e *spendingRenewalFinalEvidence) { e.Connectors = nil },
+		"forfeit receiver": func(e *spendingRenewalFinalEvidence) {
+			p, _ := parsePSBT(e.OwnerForfeitPSBT)
+			p.UnsignedTx.TxOut[0].PkScript = f.tree.PkScript
+			e.OwnerForfeitPSBT, _ = p.B64Encode()
+		},
+		"forfeit fee": func(e *spendingRenewalFinalEvidence) {
+			p, _ := parsePSBT(e.OwnerForfeitPSBT)
+			p.UnsignedTx.TxOut[0].Value--
+			e.OwnerForfeitPSBT, _ = p.B64Encode()
+		},
+		"forfeit outpoint": func(e *spendingRenewalFinalEvidence) {
+			p, _ := parsePSBT(e.OwnerForfeitPSBT)
+			p.UnsignedTx.TxIn[0].PreviousOutPoint.Index++
+			e.OwnerForfeitPSBT, _ = p.B64Encode()
+		},
+		"forfeit owner": func(e *spendingRenewalFinalEvidence) {
+			p, _ := parsePSBT(e.OwnerForfeitPSBT)
+			p.Inputs[0].TaprootScriptSpendSig = nil
+			e.OwnerForfeitPSBT, _ = p.B64Encode()
+		},
+		"tree self reference": func(e *spendingRenewalFinalEvidence) {
+			e.VtxoTree[0].Children = map[uint32]string{0: e.VtxoTree[0].Txid}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := original
+			e.VtxoTree = append(arktree.FlatTxTree(nil), original.VtxoTree...)
+			e.Connectors = append(arktree.FlatTxTree(nil), original.Connectors...)
+			mutate(&e)
+			if _, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault); err == nil {
+				t.Fatal("invalid final authorization accepted")
+			}
+		})
+	}
+}

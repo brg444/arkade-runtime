@@ -30,10 +30,7 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 			name: "VTXO operation", typ: reflect.TypeOf((*arkadevaultv1.VtxoOperationStore)(nil)).Elem(),
 			want: []string{"CommitSignedVtxoOperation", "GetVtxoOperation", "GetVtxoOperationInputs", "NowUTC", "TransitionVtxoOperation", "VerifySignedVtxoReplay"},
 		},
-		{
-			name: "recovery operation", typ: reflect.TypeOf((*arkadevaultv1.RecoveryOperationStore)(nil)).Elem(),
-			want: []string{"ApplyRecoveryReplay"},
-		},
+
 		{name: "Ledger Savings", typ: reflect.TypeOf((*arkadevaultv1.LedgerSavingsStore)(nil)).Elem(), want: []string{"ApplyLedgerSavingsRecovery", "GetLedgerSavingsEnrollment"}},
 		{name: "Recovery backup", typ: reflect.TypeOf((*arkadevaultv1.RecoveryBackupStore)(nil)).Elem(), want: []string{"GetRecoveryBackup", "PutRecoveryBackup"}},
 		{
@@ -41,11 +38,11 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 			want: []string{"GetVaultMap", "PutVaultMap"},
 		},
 		{
-			name: "Light delegation", typ: reflect.TypeOf((*arkadevaultv1.LightDelegationStore)(nil)).Elem(),
-			want: []string{"AdvanceLightDelegation", "ListLightDelegations", "ScheduleLightDelegation", "ScheduleVtxoDelegationSet"},
+			name: "Spending delegation", typ: reflect.TypeOf((*arkadevaultv1.SpendingDelegationStore)(nil)).Elem(),
+			want: []string{"AdvanceSpendingDelegation", "ListSpendingDelegations", "ScheduleVtxoDelegationSet"},
 		}, {
-			name: "Light renewal", typ: reflect.TypeOf((*arkadevaultv1.LightRenewalStore)(nil)).Elem(),
-			want: []string{"AppendLightRenewalEvent", "GetLightRenewal", "ReserveLightRenewal"},
+			name: "Spending renewal", typ: reflect.TypeOf((*arkadevaultv1.SpendingRenewalStore)(nil)).Elem(),
+			want: []string{"AppendSpendingRenewalEvent", "GetSpendingRenewal", "ReserveSpendingRenewal"},
 		},
 		{
 			name: "Vault Board", typ: reflect.TypeOf((*arkadevaultv1.VaultBoardStore)(nil)).Elem(),
@@ -53,13 +50,6 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 				"AppendVaultBoardAuthorizationAndDispatch", "AppendVaultBoardConflict", "AppendVaultBoardDispatch",
 				"AppendVaultBoardSubmission", "BeginVaultBoardAttempt", "CreateVaultWithBoard",
 				"GetCurrentVaultBoardAttempt", "GetVaultBoardEnrollment",
-			},
-		},
-		{
-			name: "connector", typ: reflect.TypeOf((*arkadevaultv1.ConnectorStore)(nil)).Elem(),
-			want: []string{
-				"ApplyConnectorReplay", "GetConnectorEnrollment", "GetConnectorOperation",
-				"ListConnectorConflicts", "ResolveConnectorOperation", "StoreConnectorStage",
 			},
 		},
 	}
@@ -76,9 +66,9 @@ func TestStorePortsExposeOnlyNamedVaultOperations(t *testing.T) {
 	}
 }
 
-func TestStoresBundleContainsExactlyElevenNarrowPorts(t *testing.T) {
+func TestStoresBundleContainsExactlyNineNarrowPorts(t *testing.T) {
 	typ := reflect.TypeOf(arkadevaultv1.Stores{})
-	want := []string{"Identity", "LedgerSavings", "Allowance", "VtxoOperations", "RecoveryOperations", "Maps", "VaultBoard", "LightRenewal", "LightDelegation", "Connector", "RecoveryBackup"}
+	want := []string{"Identity", "LedgerSavings", "Allowance", "VtxoOperations", "Maps", "VaultBoard", "SpendingRenewal", "SpendingDelegation", "RecoveryBackup"}
 	got := make([]string, typ.NumField())
 	for i := range got {
 		got[i] = typ.Field(i).Name

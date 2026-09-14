@@ -31,11 +31,10 @@ type vaultBoardProofFixture struct {
 func newVaultBoardProofFixture(t *testing.T) vaultBoardProofFixture {
 	t.Helper()
 	master, _ := btcec.NewPrivateKey()
-	emulator, _ := btcec.NewPrivateKey()
 	operator, _ := btcec.NewPrivateKey()
 	boarding, _ := btcec.NewPrivateKey()
 	phone, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}

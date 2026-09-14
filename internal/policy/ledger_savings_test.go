@@ -132,71 +132,37 @@ func TestLedgerSavingsRecoveryJournalSequenceAndReplay(t *testing.T) {
 	}
 }
 func TestLedgerSavingsRecoveryJournalAuthenticatesBeforeFiltering(t *testing.T) {
-	l, rec := ledgerSavingsPolicyFixture(t)
-	next := ledgerSavingsRecoveryFixture(rec.VaultID)
-	if _, _, err := l.ApplyLedgerSavingsRecovery(next); err != nil {
-		t.Fatal(err)
-	}
-	var raw []byte
-	if err := l.db.QueryRow(`SELECT record FROM ledger_savings_recovery_event WHERE event_id=1`).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	var event LedgerSavingsRecovery
-	if err := json.Unmarshal(raw, &event); err != nil {
-		t.Fatal(err)
-	}
-	event.InputTxid = strings.Repeat("11", 32)
-	changed, err := json.Marshal(event)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := l.db.Exec(`UPDATE ledger_savings_recovery_event SET record=? WHERE event_id=1`, changed); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := l.ApplyLedgerSavingsRecovery(next); err == nil || !strings.Contains(err.Error(), "MAC mismatch") {
-		t.Fatal("hidden conflict was trusted", err)
-	}
-}
-func TestLedgerSavingsMigrationPreservesVersionNineRows(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "migration.sqlite")
-	l, err := OpenLedger(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := l.SetIntegrityKey(testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	createPolicyTestVault(t, l, "legacy-vault", 92)
-	before, _, err := l.LoadVerifiedVault("legacy-vault", testIntegrityKey())
-	if err != nil {
-		t.Fatal(err)
-	}
-	restoreSchemaTenConstraints(t, l)
-	for _, statement := range []string{`DROP TABLE ledger_savings_recovery_event`, `DROP TABLE ledger_savings_enrollment`, `UPDATE schema_meta SET version=9`} {
-		if _, err := l.db.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := l.Close(); err != nil {
-		t.Fatal(err)
-	}
-	migrated, err := OpenLedger(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer migrated.Close()
-	if err := migrated.SetIntegrityKey(testIntegrityKey()); err != nil {
-		t.Fatal(err)
-	}
-	after, _, err := migrated.LoadVerifiedVault("legacy-vault", testIntegrityKey())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(before.IntegrityMAC, after.IntegrityMAC) || VaultRecordsCanonicallyEqual(*before, *after) != nil {
-		t.Fatal("legacy vault changed during additive migration")
-	}
-	if version, err := migrated.SchemaVersion(); err != nil || version != schemaVersion {
-		t.Fatal("migration version", version, err)
+	for name, mutate := range map[string]func(*LedgerSavingsRecovery){
+		"input":     func(event *LedgerSavingsRecovery) { event.InputTxid = strings.Repeat("11", 32) },
+		"sighash":   func(event *LedgerSavingsRecovery) { event.LastSighash = strings.Repeat("11", 32) },
+		"signature": func(event *LedgerSavingsRecovery) { event.Signature = []byte("substituted signature") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			l, rec := ledgerSavingsPolicyFixture(t)
+			next := ledgerSavingsRecoveryFixture(rec.VaultID)
+			if _, _, err := l.ApplyLedgerSavingsRecovery(next); err != nil {
+				t.Fatal(err)
+			}
+			var raw []byte
+			if err := l.db.QueryRow(`SELECT record FROM ledger_savings_recovery_event WHERE event_id=1`).Scan(&raw); err != nil {
+				t.Fatal(err)
+			}
+			var event LedgerSavingsRecovery
+			if err := json.Unmarshal(raw, &event); err != nil {
+				t.Fatal(err)
+			}
+			mutate(&event)
+			changed, err := json.Marshal(event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := l.db.Exec(`UPDATE ledger_savings_recovery_event SET record=? WHERE event_id=1`, changed); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := l.ApplyLedgerSavingsRecovery(next); err == nil || !strings.Contains(err.Error(), "MAC mismatch") {
+				t.Fatal("hidden conflict was trusted", err)
+			}
+		})
 	}
 }
 
@@ -309,5 +275,72 @@ func TestLedgerSavingsEnrollmentSidecarFailureRollsBackAtomicCreate(t *testing.T
 	var vaults int
 	if err := l.db.QueryRow(`SELECT count(*) FROM vault WHERE vault_id=?`, create.Record.VaultID).Scan(&vaults); err != nil || vaults != 0 {
 		t.Fatal("partial vault survived", vaults, err)
+	}
+}
+
+func TestLedgerSavingsRecoveryReplacementSurvivesRestart(t *testing.T) {
+	for _, network := range []string{"mainnet", "mutinynet"} {
+		t.Run(network, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "policy.sqlite")
+			l, err := OpenLedgerForNetwork(path, nil, network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = l.Close() })
+			if err := l.SetIntegrityKey(testIntegrityKey()); err != nil {
+				t.Fatal(err)
+			}
+			retirementAccount(t, l, "retained", savings.LedgerNativeTemplate, 0x53)
+			sequence, err := OpenMonotonic(filepath.Join(t.TempDir(), "sequence"), testIntegrityKey())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := l.AttachMonotonic(sequence); err != nil {
+				t.Fatal(err)
+			}
+			first := ledgerSavingsRecoveryFixture("retained")
+			if _, _, err := l.ApplyLedgerSavingsRecovery(first); err != nil {
+				t.Fatal(err)
+			}
+			first.Signature = []byte("first signed transaction")
+			if _, _, err := l.ApplyLedgerSavingsRecovery(first); err != nil {
+				t.Fatal(err)
+			}
+			replacement := first
+			replacement.LastSighash = strings.Repeat("ac", 32)
+			replacement.CandidatePSBT = "replacement canonical transaction"
+			replacement.Signature = nil
+			for i := 0; i < 2; i++ {
+				action, stored, err := l.ApplyLedgerSavingsRecovery(replacement)
+				if err != nil || action != ReplayResign || stored == nil || len(stored.Signature) != 0 || stored.LastSighash != replacement.LastSighash {
+					t.Fatal("replacement retry carried a previous signature", action, err)
+				}
+			}
+			l = reopenRetirement(t, l, path)
+			if err := l.SetIntegrityKey(testIntegrityKey()); err != nil {
+				t.Fatal(err)
+			}
+			if err := l.AttachMonotonic(sequence); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := l.ApplyLedgerSavingsRecovery(first); err == nil {
+				t.Fatal("late signature overwrote the pending replacement after restart")
+			}
+			replacement.Signature = []byte("replacement signed transaction")
+			if _, _, err := l.ApplyLedgerSavingsRecovery(replacement); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := l.ApplyLedgerSavingsRecovery(first); err == nil {
+				t.Fatal("late signature overwrote the completed replacement")
+			}
+			replacement.Signature = nil
+			action, stored, err := l.ApplyLedgerSavingsRecovery(replacement)
+			if err != nil || action != ReplayReplay || stored == nil || string(stored.Signature) != "replacement signed transaction" {
+				t.Fatal("lost response did not replay the replacement", action, err)
+			}
+			if count, _, err := sequence.read(); err != nil || count != 4 {
+				t.Fatal("retries or rejected late completions changed the sequence", count, err)
+			}
+		})
 	}
 }

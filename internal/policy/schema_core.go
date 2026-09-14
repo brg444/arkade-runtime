@@ -8,7 +8,6 @@ import (
 var coreTables = []string{
 	"invite",
 	"pending_enrollment",
-	"recovery_session",
 	"schema_meta",
 	"vault",
 	"vault_credential",

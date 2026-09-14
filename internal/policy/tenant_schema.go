@@ -8,7 +8,6 @@ import (
 const (
 	vaultRecordMACDomain     = "arkade-vault/vault-record/v2"
 	vaultCredentialMACDomain = "arkade-vault/vault-credential/v1"
-	sessionMACDomain         = "arkade-2fa-vault/recovery-session/v2"
 	signCountMACDomain       = "arkade-2fa-vault/webauthn-sign-count/v1"
 	vaultMapMACDomain        = "arkade-2fa-vault/vault-map/v1"
 	monotonicMACDomain       = "arkade-vault/policy-sequence/v2"
@@ -26,7 +25,7 @@ CREATE TABLE IF NOT EXISTS vault (
   vault_id TEXT PRIMARY KEY,
   template_version TEXT NOT NULL,
   policy_version TEXT NOT NULL,
-  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('standard', 'advanced')),
+  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('light', 'standard', 'advanced')),
   network TEXT NOT NULL,
   rp_id TEXT NOT NULL,
   origin TEXT NOT NULL,
@@ -48,7 +47,7 @@ CREATE TABLE IF NOT EXISTS vault (
   feerate_cap_sat_vb INTEGER NOT NULL,
   integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
   CHECK (
-    (protection_tier = 'standard' AND recovery_key_compressed IS NULL)
+    (protection_tier IN ('light', 'standard') AND recovery_key_compressed IS NULL)
     OR (protection_tier = 'advanced' AND length(recovery_key_compressed) = 33)
   )
 );
@@ -81,25 +80,12 @@ CREATE TABLE IF NOT EXISTS pending_enrollment (
   vault_id TEXT NOT NULL UNIQUE,
   token_hash BLOB NOT NULL UNIQUE CHECK (length(token_hash) = 32) REFERENCES invite(token_hash),
   challenge BLOB NOT NULL,
-  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('standard', 'advanced')),
+  protection_tier TEXT NOT NULL CHECK (protection_tier IN ('light', 'standard', 'advanced')),
   policy_digest BLOB NOT NULL CHECK (length(policy_digest) = 32),
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS vault_credential_vault ON vault_credential(vault_id);
-CREATE TABLE IF NOT EXISTS recovery_session (
-  vault_id TEXT NOT NULL REFERENCES vault(vault_id),
-  purpose TEXT NOT NULL CHECK (purpose IN ('initiate', 'clawback')),
-  input_txid TEXT NOT NULL,
-  input_vout INTEGER NOT NULL,
-  dest_script TEXT NOT NULL,
-  last_sighash TEXT,
-  signature BLOB,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  integrity_mac BLOB NOT NULL CHECK (length(integrity_mac) = 32),
-  PRIMARY KEY (vault_id, input_txid, input_vout, purpose)
-);
 CREATE TABLE IF NOT EXISTS webauthn_sign_count (
   vault_id TEXT NOT NULL REFERENCES vault(vault_id),
   credential_id BLOB NOT NULL,
@@ -155,7 +141,7 @@ func (l *Ledger) SchemaVersion() (int, error) {
 	return ver, nil
 }
 
-func requireForeignKeysEnabled(db *sql.DB) error {
+func requireForeignKeysEnabled(db queryRower) error {
 	var enabled int
 	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&enabled); err != nil {
 		return err

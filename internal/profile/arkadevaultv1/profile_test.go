@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/brg444/arkade-runtime/internal/program"
@@ -17,25 +16,22 @@ func TestArkadeVaultV1IsOneComposedProfile(t *testing.T) {
 		t.Fatalf("profile composition = %+v", definition)
 	}
 	module := definition.Modules[0]
-	if want := []string{SavingsRecoveryProgram, LedgerSavingsProgram, SavingsConnectorProgram, SavingsConnectorDualProgram, program.VaultBoardV1, program.VaultPolicyV1}; !reflect.DeepEqual(module.Programs, want) {
+	if want := []string{LedgerSavingsProgram, program.VaultBoardV1, program.VaultPolicyV1}; !reflect.DeepEqual(module.Programs, want) {
 		t.Fatalf("programs = %v, want %v", module.Programs, want)
 	}
 	if !reflect.DeepEqual(module.Policies, []string{SpendingPolicy}) {
 		t.Fatalf("policies = %v", module.Policies)
 	}
-	if want := []string{"identity-store", "allowance-store", "vtxo-operation-store", "recovery-operation-store", "ledger-savings-store", "map-store", "vault-board-store", "connector-store", "recovery-archive-store", "vtxo-delegation-store"}; !reflect.DeepEqual(module.Stores, want) {
+	if want := []string{"identity-store", "allowance-store", "vtxo-operation-store", "ledger-savings-store", "map-store", "vault-board-store", "recovery-archive-store", "vtxo-delegation-store"}; !reflect.DeepEqual(module.Stores, want) {
 		t.Fatalf("stores = %v, want %v", module.Stores, want)
 	}
 	if want := []string{
 		"enrollment-derivation",
-		"savings-recovery-authorization",
 		"ledger-savings-recovery-authorization",
-		"savings-connector-authorization",
 		"vtxo-transaction-authorization",
 		"vtxo-checkpoint-authorization",
 		"vtxo-delegation-authorization",
 		"vault-board-authorization",
-		"public-emulator-operation",
 	}; !reflect.DeepEqual(module.KeyScopes, want) {
 		t.Fatalf("key scopes = %v, want %v", module.KeyScopes, want)
 	}
@@ -64,7 +60,7 @@ func TestArkadeVaultV1RoutesMatchCompatibilityGolden(t *testing.T) {
 		// Process liveness and lifecycle readiness are common runtime routes,
 		// not profile-owned routes. The mounted handler still serves their
 		// exact compatibility-frozen behavior.
-		if path == "/health" || path == "/ready" || strings.HasPrefix(path, "/v1/light/") {
+		if path == "/health" || path == "/ready" {
 			continue
 		}
 		for _, method := range methods {

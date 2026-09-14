@@ -36,7 +36,7 @@ func (p BitcoinConflictEvidence) Validate() error {
 	return nil
 }
 
-func validateBitcoinConflictRelease(s *LightRenewalSnapshot, e LightRenewalEvent) error {
+func validateBitcoinConflictRelease(s *SpendingRenewalSnapshot, e SpendingRenewalEvent) error {
 	if !isBitcoinBatch(s.Operation.Kind) || s.Events["final_dispatched"].Phase == "" ||
 		e.RequestDigest != s.Events["final_dispatched"].RequestDigest {
 		return fmt.Errorf("Bitcoin conflict does not bind the dispatched payment")

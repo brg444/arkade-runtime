@@ -85,7 +85,7 @@ func (s *Service) requireLedgerSavingsEnrollmentEnabled() error {
 	return nil
 }
 func (s *Service) ledgerSavingsEnrollmentDescriptor(vaultID string, req RegisterRequest, parsed parsedRegisterRequest) (ledgerSavingsEnrollmentDescriptor, *savings.LedgerNativeFamily, error) {
-	if req.LedgerSavings == nil || hasConnectorRequest(req) {
+	if req.LedgerSavings == nil {
 		return ledgerSavingsEnrollmentDescriptor{}, nil, fmt.Errorf("exclusive Ledger Savings enrollment required")
 	}
 	if req.LedgerSavings.TemplateVersion != savings.LedgerNativeTemplate {
@@ -178,15 +178,16 @@ func (s *Service) mintLedgerSavingsCredential(vaultID string, req RegisterReques
 	if req.DescriptorHash == "" || req.DescriptorHash != hash {
 		return policy.Credential{}, nil, nil, fmt.Errorf("Ledger Savings descriptor hash mismatch")
 	}
-	cred, snapshot, err := s.mintEnrollmentCredential(vaultID, parsed, legacy)
-	if err != nil {
-		return policy.Credential{}, nil, nil, err
+	cred := s.enrollmentCredential(vaultID, parsed, legacy)
+	cred.ExternalOwnerWallet = parsed.externalOwner.SerializeCompressed()
+	cred.ArkadeCosignerBase = s.ArkadeCosignerPub.SerializeCompressed()
+	cred.ArkadeCosignerOrigin, cred.ArkadeCosignerVersion = s.arkadeIdentity()
+	if parsed.recovery != nil {
+		cred.RecoveryKey = parsed.recovery.SerializeCompressed()
 	}
 	cred.TemplateVersion = savings.LedgerNativeTemplate
-	cred.SavingsAddress = family.Receive.Address
-	cred.SavingsScript = bytes.Clone(family.Receive.PkScript)
-	snapshot.Address = cred.SavingsAddress
-	snapshot.PkScript = bytes.Clone(cred.SavingsScript)
+	cred.SavingsAddress, cred.SavingsScript = family.Receive.Address, bytes.Clone(family.Receive.PkScript)
+	snapshot := &savingsSnapshot{Address: cred.SavingsAddress, PkScript: bytes.Clone(cred.SavingsScript), ExternalOwnerWallet: parsed.externalOwner, RecoveryKey: parsed.recovery, VaultCosignerBase: legacy, ArkadeCosignerBase: s.ArkadeCosignerPub}
 	raw, err := json.Marshal(desc.Savings.Context)
 	if err != nil {
 		return policy.Credential{}, nil, nil, err
@@ -279,7 +280,7 @@ func (s *Service) verifiedLedgerSavings(cred *policy.Credential) (LedgerSavingsS
 	if family.Receive.Address != cred.SavingsAddress || !bytes.Equal(family.Receive.PkScript, cred.SavingsScript) {
 		return LedgerSavingsStatus{}, nil, fmt.Errorf("Ledger Savings enrolled destination mismatch")
 	}
-	phone, hardware, recovery, _, _, parseErr := parseConnectorCredentialKeys(cred)
+	phone, hardware, recovery, _, _, parseErr := parseEnrolledSavingsKeys(cred)
 	if parseErr != nil {
 		return LedgerSavingsStatus{}, nil, parseErr
 	}
@@ -308,7 +309,7 @@ func (s *Service) rebuildLedgerSavings(cred *policy.Credential) (phone, hardware
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
-	phone, hardware, recovery, legacy, emulator, err = parseConnectorCredentialKeys(cred)
+	phone, hardware, recovery, legacy, emulator, err = parseEnrolledSavingsKeys(cred)
 	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
@@ -347,4 +348,33 @@ func (s *Service) acceptLedgerSavingsDuplicate(vaultID string, req RegisterReque
 		return nil, false
 	}
 	return &st, true
+}
+
+// parseEnrolledSavingsKeys parses public keys only. Callers must independently
+// verify the enrolled Ledger context and reconstruct its scripts.
+func parseEnrolledSavingsKeys(cred *policy.Credential) (phone, hardware, recovery, vaultBase, arkadeBase *btcec.PublicKey, err error) {
+	if cred == nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("Savings credential required")
+	}
+	if phone, err = btcec.ParsePubKey(cred.PhoneBIP340); err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("phone key")
+	}
+	if hardware, err = btcec.ParsePubKey(cred.ExternalOwnerWallet); err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("hardware key")
+	}
+	if len(cred.RecoveryKey) > 0 {
+		if recovery, err = btcec.ParsePubKey(cred.RecoveryKey); err != nil {
+			return nil, nil, nil, nil, nil, fmt.Errorf("recovery key")
+		}
+		if knownFixtureXOnly(schnorr.SerializePubKey(recovery)) {
+			recovery = nil
+		}
+	}
+	if vaultBase, err = btcec.ParsePubKey(cred.VaultCosignerBase); err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("vault cosigner key")
+	}
+	if arkadeBase, err = btcec.ParsePubKey(cred.ArkadeCosignerBase); err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("arkade cosigner key")
+	}
+	return phone, hardware, recovery, vaultBase, arkadeBase, nil
 }

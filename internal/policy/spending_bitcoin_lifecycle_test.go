@@ -1,0 +1,89 @@
+package policy
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestSpendingBitcoinChargesPrincipalAndRetainsUncertainOutflow(t *testing.T) {
+	l, now, op := renewalFixture(t)
+	op.Kind, op.AmountSats = SpendingBitcoinBatchKind, 1000
+	if _, err := l.ReserveSpendingRenewal(context.Background(), op, 1000); !errors.Is(err, ErrPeriodAllowanceExceeded) {
+		t.Fatalf("principal plus fee not checked: %v", err)
+	}
+	if _, err := l.ReserveSpendingRenewal(context.Background(), op, 1123); err != nil {
+		t.Fatal(err)
+	}
+	appendRenewal(t, l, op, "register_authorized")
+	appendRenewal(t, l, op, "register_dispatched")
+	*now = now.Add(48 * time.Hour)
+	used, err := l.SpentInPeriod(context.Background(), op.VaultID, "")
+	if err != nil || used != 1123 {
+		t.Fatalf("uncertain setup outflow: %d %v", used, err)
+	}
+	op.OperationID = strings.Repeat("91", 16)
+	op.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+	if _, err := l.ReserveSpendingRenewal(context.Background(), op, 100000); !errors.Is(err, ErrVtxoOperationActive) {
+		t.Fatalf("allowed another setup: %v", err)
+	}
+}
+
+func TestSpendingBitcoinKindAndAmountAreAuthenticated(t *testing.T) {
+	l, _, op := renewalFixture(t)
+	op.Kind, op.AmountSats = SpendingBitcoinBatchKind, 500
+	if _, err := l.ReserveSpendingRenewal(context.Background(), op, 10000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.db.Exec(`UPDATE light_renewal_operation SET payload=replace(payload,'"amountSats":500','"amountSats":0')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.SpentInPeriod(context.Background(), op.VaultID, ""); err == nil {
+		t.Fatal("tampered setup amount accepted")
+	}
+}
+
+func TestSpendingBitcoinCannotReleaseWithoutDeleteOrFinalizeAfterDelete(t *testing.T) {
+	for _, finalAuthorized := range []bool{false, true} {
+		t.Run(fmt.Sprint(finalAuthorized), func(t *testing.T) {
+			l, now, op := renewalFixture(t)
+			op.Kind, op.AmountSats = SpendingBitcoinBatchKind, 1000
+			if _, err := l.ReserveSpendingRenewal(t.Context(), op, 10000); err != nil {
+				t.Fatal(err)
+			}
+			for _, phase := range []string{"register_authorized", "register_dispatched", "register_result"} {
+				appendRenewal(t, l, op, phase)
+			}
+			if finalAuthorized {
+				appendRenewal(t, l, op, "final_authorized")
+			}
+			*now = now.Add(6 * time.Minute)
+			released := SpendingRenewalEvent{OperationID: op.OperationID, Phase: "released", RequestDigest: op.PlanDigest, Evidence: `{"input":"unspent"}`}
+			if _, _, err := l.AppendSpendingRenewalEvent(t.Context(), released, nil, 0); err == nil {
+				t.Fatal("expiry and unspent input released queued intent")
+			}
+			for _, phase := range []string{"delete_authorized", "delete_dispatched"} {
+				appendRenewal(t, l, op, phase)
+			}
+			if _, _, err := l.AppendSpendingRenewalEvent(t.Context(), released, nil, 0); err == nil {
+				t.Fatal("ambiguous delete released reservation")
+			}
+			for _, phase := range []string{"final_authorized", "final_dispatched"} {
+				event := SpendingRenewalEvent{OperationID: op.OperationID, Phase: phase, RequestDigest: op.PlanDigest}
+				if phase == "final_authorized" {
+					event.Evidence = `{"changed":true}`
+				}
+				if _, _, err := l.AppendSpendingRenewalEvent(t.Context(), event, nil, 0); err == nil {
+					t.Fatal("finalization raced deletion")
+				}
+			}
+			appendRenewal(t, l, op, "delete_result")
+			if _, _, err := l.AppendSpendingRenewalEvent(t.Context(), released, nil, 0); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

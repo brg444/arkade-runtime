@@ -239,11 +239,15 @@ func vaultCredentialMAC(c VaultCredential, key []byte) ([]byte, error) {
 
 // LoadVault returns the tenant descriptor and its primary WebAuthn credential.
 func (l *Ledger) LoadVault(vaultID string) (*VaultRecord, *VaultCredential, error) {
+	return loadVault(l.db, vaultID)
+}
+
+func loadVault(q queryRower, vaultID string) (*VaultRecord, *VaultCredential, error) {
 	if vaultID == "" {
 		return nil, nil, fmt.Errorf("vault id required")
 	}
 	var v VaultRecord
-	err := l.db.QueryRow(`
+	err := q.QueryRow(`
 SELECT vault_id, template_version, policy_version, protection_tier, network, rp_id, origin,
        phone_bip340_compressed, phone_direct_p256_compressed,
        external_owner_wallet_compressed, recovery_key_compressed,
@@ -270,7 +274,7 @@ SELECT vault_id, template_version, policy_version, protection_tier, network, rp_
 	var cred VaultCredential
 	var userHandle []byte
 	var resident int
-	err = l.db.QueryRow(`
+	err = q.QueryRow(`
 SELECT credential_id, vault_id, webauthn_p256_compressed, user_handle, resident, integrity_mac
   FROM vault_credential WHERE vault_id = ? ORDER BY resident DESC LIMIT 1`, vaultID).Scan(
 		&cred.CredentialID, &cred.VaultID, &cred.WebAuthnP256, &userHandle, &resident, &cred.IntegrityMAC,

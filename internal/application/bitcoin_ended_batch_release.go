@@ -18,7 +18,7 @@ type endedCommitmentOperator interface {
 // fence was crossed only after the exact Operator batch had already ended.
 // The ended batch is irreversible, and the original VTXO must independently
 // remain live before the ledger releases its reservation.
-func (s *Service) releaseEndedBitcoinPayment(ctx context.Context, snapshot *policy.LightRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, final verifiedLightRenewalFinal) (bool, error) {
+func (s *Service) releaseEndedBitcoinPayment(ctx context.Context, snapshot *policy.SpendingRenewalSnapshot, p bitcoinPaymentPlan, c bitcoinPaymentContext, final verifiedSpendingRenewalFinal) (bool, error) {
 	if snapshot.Events["final_result"].Phase != "" {
 		return false, nil
 	}
@@ -27,7 +27,7 @@ func (s *Service) releaseEndedBitcoinPayment(ctx context.Context, snapshot *poli
 	if err != nil {
 		return false, fmt.Errorf("Bitcoin payment dispatch time changed")
 	}
-	operator, err := s.dialLightRenewalOperator(ctx)
+	operator, err := s.dialSpendingRenewalOperator(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -66,7 +66,7 @@ func (s *Service) releaseEndedBitcoinPayment(ctx context.Context, snapshot *poli
 	if digest != dispatch.RequestDigest {
 		return false, fmt.Errorf("Bitcoin ended-batch dispatch changed")
 	}
-	if err := s.persistLightRenewalEvent(policy.LightRenewalEvent{OperationID: p.OperationID, Phase: "released", RequestDigest: digest, Evidence: string(raw)}); err != nil {
+	if err := s.persistSpendingRenewalEvent(policy.SpendingRenewalEvent{OperationID: p.OperationID, Phase: "released", RequestDigest: digest, Evidence: string(raw)}); err != nil {
 		return false, err
 	}
 	return true, nil

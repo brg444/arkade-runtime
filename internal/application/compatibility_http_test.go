@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
 type httpV1CompatibilityGolden struct {
@@ -51,10 +50,9 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 
 		"SpendingBitcoinPrepareRequest":   reflect.TypeOf(spendingBitcoinPrepareRequest{}),
 		"BitcoinPaymentOutput":            reflect.TypeOf(bitcoinPaymentOutput{}),
-		"SavingsSetupReleaseRequest":      reflect.TypeOf(bitcoinPaymentReleaseRequest{}),
-		"SavingsSetupPrepareRequest":      reflect.TypeOf(savingsSetupPrepareRequest{}),
-		"SavingsSetupPrepared":            reflect.TypeOf(bitcoinPaymentPrepared{}),
-		"SavingsSetupPlan":                reflect.TypeOf(bitcoinPaymentPlan{}),
+		"BitcoinPaymentReleaseRequest":    reflect.TypeOf(bitcoinPaymentReleaseRequest{}),
+		"BitcoinPaymentPrepared":          reflect.TypeOf(bitcoinPaymentPrepared{}),
+		"BitcoinPaymentPlan":              reflect.TypeOf(bitcoinPaymentPlan{}),
 		"SpendingRenewalBinding":          reflect.TypeOf(spendingRenewalBinding{}),
 		"SpendingDelegationInput":         reflect.TypeOf(spendingDelegationInput{}),
 		"SpendingDelegationSetRequest":    reflect.TypeOf(spendingDelegationSetRequest{}),
@@ -62,30 +60,23 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"SpendingDelegationReadRequest":   reflect.TypeOf(spendingDelegationReadRequest{}),
 		"SpendingDelegationSetResponse":   reflect.TypeOf(spendingDelegationSetResponse{}),
 
-		"LightDelegationRequest":     reflect.TypeOf(lightDelegationRequest{}),
-		"LightDelegateIntent":        reflect.TypeOf(lightDelegateIntent{}),
-		"LightDelegationReadRequest": reflect.TypeOf(lightDelegationReadRequest{}),
-		"LightDelegationListRequest": reflect.TypeOf(lightDelegationListRequest{}),
-		"LightDelegationRecovery":    reflect.TypeOf(lightDelegationRecovery{}),
-		"LightDelegationWireNode":    reflect.TypeOf(lightDelegationWireNode{}),
+		"LightDelegationRequest":  reflect.TypeOf(spendingDelegationRequest{}),
+		"LightDelegateIntent":     reflect.TypeOf(spendingDelegateIntent{}),
+		"LightDelegationRecovery": reflect.TypeOf(spendingDelegationRecovery{}),
+		"LightDelegationWireNode": reflect.TypeOf(spendingDelegationWireNode{}),
 
 		"RecoveryArchiveOpenResponse":  reflect.TypeOf(RecoveryArchiveOpenResponse{}),
 		"RecoveryArchiveBinding":       reflect.TypeOf(RecoveryArchiveBinding{}),
-		"LightBackupOpenRequest":       reflect.TypeOf(LightBackupOpenRequest{}),
-		"LightBackupRequest":           reflect.TypeOf(LightBackupRequest{}),
-		"LightBackupOpenResponse":      reflect.TypeOf(LightBackupOpenResponse{}),
+		"BackupOpenRequest":            reflect.TypeOf(BackupOpenRequest{}),
+		"BackupRequest":                reflect.TypeOf(BackupRequest{}),
+		"BackupOpenResponse":           reflect.TypeOf(BackupOpenResponse{}),
 		"LightBackup":                  reflect.TypeOf(policy.RecoveryBackup{}),
-		"LightRenewalPlan":             reflect.TypeOf(lightRenewalPlan{}),
-		"LightRenewalPrepareRequest":   reflect.TypeOf(lightRenewalPrepareRequest{}),
-		"LightRenewalPrepared":         reflect.TypeOf(lightRenewalPrepared{}),
-		"LightRenewalRegisterRequest":  reflect.TypeOf(lightRenewalRegisterRequest{}),
-		"LightRenewalFinalRequest":     reflect.TypeOf(lightRenewalFinalRequest{}),
-		"LightRenewalFinalEvidence":    reflect.TypeOf(lightRenewalFinalEvidence{}),
-		"LightRenewalOperationRequest": reflect.TypeOf(lightRenewalOperationRequest{}),
-		"LightRenewalResponse":         reflect.TypeOf(lightRenewalResponse{}),
-		"LightEnrollStartRequest":      reflect.TypeOf(LightEnrollStartRequest{}),
-		"LightEnrollFinishRequest":     reflect.TypeOf(LightEnrollFinishRequest{}),
-		"ProposedLightEnrollment":      reflect.TypeOf(ProposedLightEnrollment{}),
+		"LightRenewalPlan":             reflect.TypeOf(spendingRenewalPlan{}),
+		"LightRenewalRegisterRequest":  reflect.TypeOf(spendingRenewalRegisterRequest{}),
+		"LightRenewalFinalRequest":     reflect.TypeOf(spendingRenewalFinalRequest{}),
+		"LightRenewalFinalEvidence":    reflect.TypeOf(spendingRenewalFinalEvidence{}),
+		"LightRenewalOperationRequest": reflect.TypeOf(spendingRenewalOperationRequest{}),
+		"LightRenewalResponse":         reflect.TypeOf(spendingRenewalResponse{}),
 		"ReadyStatus":                  reflect.TypeOf(ReadyStatus{}),
 		"PublicStatus":                 reflect.TypeOf(PublicStatus{}),
 		"Status":                       reflect.TypeOf(Status{}),
@@ -99,9 +90,6 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"TransitionResponse":           reflect.TypeOf(TransitionResponse{}),
 		"PasskeyChallengeRequest":      reflect.TypeOf(PasskeyChallengeRequest{}),
 		"PasskeyChallengeResponse":     reflect.TypeOf(PasskeyChallengeResponse{}),
-		"ConnectorWithdrawRequest":     reflect.TypeOf(ConnectorWithdrawRequest{}),
-		"ConnectorWithdrawResponse":    reflect.TypeOf(ConnectorWithdrawResponse{}),
-		"ConnectorOperationView":       reflect.TypeOf(ConnectorOperationView{}),
 		"RecoveryBindingRouteRequest": reflect.TypeOf(struct {
 			VaultID string `json:"vaultId"`
 			RecoveryBindingRequest
@@ -123,17 +111,6 @@ func TestHTTPV1CompatibilityGolden(t *testing.T) {
 		"VtxoOperationView":                 reflect.TypeOf(VtxoOperationView{}),
 		"VtxoAbortRequest":                  reflect.TypeOf(VtxoAbortRequest{}),
 		"VtxoAbortResponse":                 reflect.TypeOf(VtxoAbortResponse{}),
-		"SavingsPublicDescriptor":           reflect.TypeOf(savings.PublicDescriptor{}),
-		"SavingsPublicKeys":                 reflect.TypeOf(savings.PublicKeys{}),
-		"SavingsPublicPair":                 reflect.TypeOf(savings.PublicPair{}),
-		"SavingsPublicTweaks":               reflect.TypeOf(savings.PublicTweaks{}),
-		"SavingsPublicArkade":               reflect.TypeOf(savings.PublicArkade{}),
-		"SavingsPublicCSV":                  reflect.TypeOf(savings.PublicCSV{}),
-		"SavingsPublicPolicy":               reflect.TypeOf(savings.PublicPolicy{}),
-		"SavingsPublicP2A":                  reflect.TypeOf(savings.PublicP2A{}),
-		"SavingsTreeRef":                    reflect.TypeOf(savings.TreeRef{}),
-		"SavingsPendingRef":                 reflect.TypeOf(savings.PendingRef{}),
-		"SavingsQuarantineRef":              reflect.TypeOf(savings.QuarantineRef{}),
 		"MutationSuccess": reflect.TypeOf(struct {
 			OK bool `json:"ok"`
 		}{}),

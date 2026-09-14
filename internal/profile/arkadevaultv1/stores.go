@@ -47,26 +47,11 @@ type VtxoOperationStore interface {
 	VerifySignedVtxoReplay(context.Context, string, string, []byte, uint32) error
 }
 
-// RecoveryOperationStore is the replay-safe Savings recovery operation store.
-type RecoveryOperationStore interface {
-	ApplyRecoveryReplay(policy.RecoverySession) (policy.ReplayAction, *policy.RecoverySession, error)
-}
-
 // LedgerSavingsStore owns authenticated Guardian-only enrollment and the
 // durable journal of named recovery signing reservations and completions.
 type LedgerSavingsStore interface {
 	GetLedgerSavingsEnrollment(string) (*policy.LedgerSavingsEnrollment, error)
 	ApplyLedgerSavingsRecovery(policy.LedgerSavingsRecovery) (policy.ReplayAction, *policy.LedgerSavingsRecovery, error)
-}
-
-// ConnectorStore is the authenticated connector enrollment and withdrawal store.
-type ConnectorStore interface {
-	GetConnectorEnrollment(string) (*policy.ConnectorEnrollment, error)
-	ApplyConnectorReplay(policy.ConnectorOperation) (policy.ConnectorReplayAction, *policy.ConnectorOperation, error)
-	GetConnectorOperation(string) (*policy.ConnectorOperation, error)
-	ListConnectorConflicts(string, string, uint32, string, uint32) ([]*policy.ConnectorOperation, error)
-	StoreConnectorStage(string, string, string) (*policy.ConnectorOperation, error)
-	ResolveConnectorOperation(string, policy.ConnectorChainEvidence) (*policy.ConnectorOperation, error)
 }
 
 // MapStore persists only the typed Recovery Kit map document.
@@ -88,18 +73,17 @@ type VaultBoardStore interface {
 	AppendVaultBoardConflict(context.Context, policy.VaultBoardConflict, policy.VaultBoardChainState) error
 }
 
-// LightRenewalStore shares the ledger's atomic allowance and sequence boundary.
-type LightRenewalStore interface {
-	ReserveLightRenewal(context.Context, policy.LightRenewalOperation, int64) (*policy.LightRenewalSnapshot, error)
-	GetLightRenewal(context.Context, string) (*policy.LightRenewalSnapshot, error)
-	AppendLightRenewalEvent(context.Context, policy.LightRenewalEvent, []byte, uint32) (policy.LightRenewalEvent, bool, error)
+// SpendingRenewalStore shares the ledger's atomic allowance and sequence boundary.
+type SpendingRenewalStore interface {
+	ReserveSpendingRenewal(context.Context, policy.SpendingRenewalOperation, int64) (*policy.SpendingRenewalSnapshot, error)
+	GetSpendingRenewal(context.Context, string) (*policy.SpendingRenewalSnapshot, error)
+	AppendSpendingRenewalEvent(context.Context, policy.SpendingRenewalEvent, []byte, uint32) (policy.SpendingRenewalEvent, bool, error)
 }
 
-type LightDelegationStore interface {
-	ListLightDelegations(context.Context) ([]policy.LightDelegationSnapshot, error)
-	ScheduleLightDelegation(context.Context, policy.LightDelegation) (*policy.LightDelegationSnapshot, error)
-	ScheduleVtxoDelegationSet(context.Context, []policy.LightDelegation, []byte, uint32) ([]policy.LightDelegationSnapshot, error)
-	AdvanceLightDelegation(context.Context, policy.LightDelegationEvent, int64) (*policy.LightDelegationSnapshot, error)
+type SpendingDelegationStore interface {
+	ListSpendingDelegations(context.Context) ([]policy.SpendingDelegationSnapshot, error)
+	ScheduleVtxoDelegationSet(context.Context, []policy.SpendingDelegation, []byte, uint32) ([]policy.SpendingDelegationSnapshot, error)
+	AdvanceSpendingDelegation(context.Context, policy.SpendingDelegationEvent, int64) (*policy.SpendingDelegationSnapshot, error)
 }
 
 // RecoveryBackupStore stores client-encrypted recovery snapshots independently of spending authority.
@@ -115,12 +99,10 @@ type Stores struct {
 	LedgerSavings      LedgerSavingsStore
 	Allowance          AllowanceStore
 	VtxoOperations     VtxoOperationStore
-	RecoveryOperations RecoveryOperationStore
 	Maps               MapStore
 	VaultBoard         VaultBoardStore
-	LightRenewal       LightRenewalStore
-	LightDelegation    LightDelegationStore
-	Connector          ConnectorStore
+	SpendingRenewal    SpendingRenewalStore
+	SpendingDelegation SpendingDelegationStore
 	RecoveryBackup     RecoveryBackupStore
 }
 
@@ -128,22 +110,20 @@ func (s Stores) Validate() error {
 	switch {
 	case s.Identity == nil:
 		return fmt.Errorf("arkade-vault-v1 identity store required")
+	case s.LedgerSavings == nil:
+		return fmt.Errorf("Ledger Savings store required")
 	case s.Allowance == nil:
 		return fmt.Errorf("arkade-vault-v1 allowance store required")
 	case s.VtxoOperations == nil:
 		return fmt.Errorf("arkade-vault-v1 VTXO operation store required")
-	case s.RecoveryOperations == nil:
-		return fmt.Errorf("arkade-vault-v1 recovery operation store required")
 	case s.Maps == nil:
 		return fmt.Errorf("arkade-vault-v1 map store required")
 	case s.RecoveryBackup == nil:
 		return fmt.Errorf("Recovery backup store required")
-	case s.LightRenewal == nil:
+	case s.SpendingRenewal == nil:
 		return fmt.Errorf("Light renewal store required")
 	case s.VaultBoard == nil:
 		return fmt.Errorf("arkade-vault-v1 Vault Board store required")
-	case s.Connector == nil:
-		return fmt.Errorf("arkade-vault-v1 connector store required")
 	default:
 		return nil
 	}
@@ -161,12 +141,10 @@ func StoresFromLedger(ledger *policy.Ledger) (Stores, error) {
 		LedgerSavings:      ledger,
 		Allowance:          ledger,
 		VtxoOperations:     ledger,
-		RecoveryOperations: ledger,
 		Maps:               ledger,
 		VaultBoard:         ledger,
-		LightRenewal:       ledger,
-		LightDelegation:    ledger,
-		Connector:          ledger,
+		SpendingRenewal:    ledger,
+		SpendingDelegation: ledger,
 		RecoveryBackup:     ledger,
 	}, nil
 }

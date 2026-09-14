@@ -14,8 +14,8 @@ import (
 )
 
 func TestLightReservationKeepsPolicyChangeAndScopedKeys(t *testing.T) {
-	svc, token, start, enroll, owner := lightEnrollmentFixture(t, true)
-	if _, err := svc.FinishLightEnrollment(context.Background(), token, enroll); err != nil {
+	svc, token, start, enroll, owner := spendingOnlyEnrollmentFixture(t, true)
+	if _, err := svc.FinishEnrollment(context.Background(), token, enroll); err != nil {
 		t.Fatal(err)
 	}
 	snap := svc.snapshot(start.VaultID)
@@ -75,13 +75,13 @@ func TestLightReservationKeepsPolicyChangeAndScopedKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx.lightProfile = false
+	ctx.vaultID = strings.Repeat("fe", 16)
 	legacyPub, err := svc.keys.vtxoPublic(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Equal(lightPub.SerializeCompressed(), legacyPub.SerializeCompressed()) {
-		t.Fatal("Light reused legacy signing domain")
+		t.Fatal("different accounts reused the same signing key")
 	}
 	if err := svc.LoadVaults(); err != nil {
 		t.Fatal(err)
@@ -93,8 +93,8 @@ func TestLightReservationKeepsPolicyChangeAndScopedKeys(t *testing.T) {
 }
 
 func TestLightSignedSpendAndLostResponse(t *testing.T) {
-	f := newLightEnrollmentFixture(t, true)
-	if _, err := f.env.svc.FinishLightEnrollment(context.Background(), f.token, f.request); err != nil {
+	f := newSpendingOnlyFixture(t, true)
+	if _, err := f.env.svc.FinishEnrollment(context.Background(), f.token, f.request); err != nil {
 		t.Fatal(err)
 	}
 	signer := f.env.svc.operatorSignerPub()

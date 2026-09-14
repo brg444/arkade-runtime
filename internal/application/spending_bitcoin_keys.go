@@ -13,8 +13,8 @@ type bitcoinPaymentAuthorization struct {
 	plan                bitcoinPaymentPlan
 	registrationPSBT    string
 	registrationMessage string
-	final               *lightRenewalFinalEvidence
-	deletion            *lightDelegateIntent
+	final               *spendingRenewalFinalEvidence
+	deletion            *spendingDelegateIntent
 }
 type bitcoinPaymentAuthorizer interface {
 	authorizeBitcoinPayment(context.Context, bitcoinPaymentAuthorization) (string, error)
@@ -22,13 +22,13 @@ type bitcoinPaymentAuthorizer interface {
 
 func (k KeyCapabilities) bitcoinPaymentAuthorization(ctx context.Context, r bitcoinPaymentAuthorization) (string, error) {
 	if isNilInterface(k.bitcoinPayment) {
-		return "", fmt.Errorf("Savings setup capability unavailable")
+		return "", fmt.Errorf("Bitcoin payment capability unavailable")
 	}
 	return k.bitcoinPayment.authorizeBitcoinPayment(ctx, r)
 }
 func (k *fileBackedVaultKeys) authorizeBitcoinPayment(ctx context.Context, r bitcoinPaymentAuthorization) (string, error) {
 	if r.final != nil && r.deletion != nil {
-		return "", fmt.Errorf("Savings setup signing phase conflict")
+		return "", fmt.Errorf("Bitcoin payment signing phase conflict")
 	}
 	registration, err := verifyBitcoinPaymentRegistration(r.registrationPSBT, r.registrationMessage, r.plan, r.context)
 	if err != nil {

@@ -14,11 +14,8 @@ const (
 	ProfileID = "arkade-vault-v1"
 	ModuleID  = "arkade-vault-v1"
 
-	LedgerSavingsProgram        = "phone-ledger-guardian-savings-v1"
-	SavingsRecoveryProgram      = "savings-recovery-v1"
-	SavingsConnectorProgram     = "savings-connector-v1"
-	SavingsConnectorDualProgram = "savings-connector-dual-v2"
-	SpendingPolicy              = "vault-spending-policy-v1"
+	LedgerSavingsProgram = "phone-ledger-guardian-savings-v1"
+	SpendingPolicy       = "vault-spending-policy-v1"
 )
 
 // Definition returns a fresh compile-time profile definition. Policy values,
@@ -29,10 +26,7 @@ func Definition() arkaderuntime.ProfileDefinition {
 		Modules: []arkaderuntime.ModuleDefinition{{
 			ID: ModuleID,
 			Programs: []string{
-				SavingsRecoveryProgram,
 				LedgerSavingsProgram,
-				SavingsConnectorProgram,
-				SavingsConnectorDualProgram,
 				program.VaultBoardV1,
 				program.VaultPolicyV1,
 			},
@@ -41,24 +35,19 @@ func Definition() arkaderuntime.ProfileDefinition {
 				"identity-store",
 				"allowance-store",
 				"vtxo-operation-store",
-				"recovery-operation-store",
 				"ledger-savings-store",
 				"map-store",
 				"vault-board-store",
-				"connector-store",
 				"recovery-archive-store",
 				"vtxo-delegation-store",
 			},
 			KeyScopes: []string{
 				"enrollment-derivation",
-				"savings-recovery-authorization",
 				"ledger-savings-recovery-authorization",
-				"savings-connector-authorization",
 				"vtxo-transaction-authorization",
 				"vtxo-checkpoint-authorization",
 				"vtxo-delegation-authorization",
 				"vault-board-authorization",
-				"public-emulator-operation",
 			},
 		}},
 		Routes: routes(),
@@ -74,29 +63,17 @@ func routes() []arkaderuntime.Route {
 		{Method: http.MethodPost, Path: "/v1/lnurl/revoke"},
 		{Method: http.MethodOptions, Path: "/v1/lnurl/revoke"},
 
-		{Method: http.MethodGet, Path: "/v1/vtxo/savings-setup/info"},
 		{Method: http.MethodGet, Path: "/v1/vtxo/bitcoin/info"},
-		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/info"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/bitcoin/info"},
-		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/prepare"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/bitcoin/prepare"},
-		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/prepare"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/bitcoin/prepare"},
-		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/register"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/bitcoin/register"},
-		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/register"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/bitcoin/register"},
-		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/final"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/bitcoin/final"},
-		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/final"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/bitcoin/final"},
-		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/status"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/bitcoin/status"},
-		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/status"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/bitcoin/status"},
-		{Method: http.MethodPost, Path: "/v1/vtxo/savings-setup/release"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/bitcoin/release"},
-		{Method: http.MethodOptions, Path: "/v1/vtxo/savings-setup/release"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/bitcoin/release"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/delegate/info"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/delegate/info"},
@@ -164,9 +141,5 @@ func routes() []arkaderuntime.Route {
 		{Method: http.MethodOptions, Path: "/v1/vtxo/board/release"},
 		{Method: http.MethodPost, Path: "/v1/vtxo/board/final"},
 		{Method: http.MethodOptions, Path: "/v1/vtxo/board/final"},
-		{Method: http.MethodPost, Path: "/v1/connector/withdraw/authorize"},
-		{Method: http.MethodOptions, Path: "/v1/connector/withdraw/authorize"},
-		{Method: http.MethodGet, Path: "/v1/connector/operation"},
-		{Method: http.MethodOptions, Path: "/v1/connector/operation"},
 	}
 }

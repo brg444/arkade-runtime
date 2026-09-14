@@ -34,7 +34,16 @@ func TestSpendingRenewalOpaqueWalletDigests(t *testing.T) {
 		Context spendingRenewalBinding `json:"context"`
 	}
 	read("renewal-context-v1.json", &contexts)
-	b := contexts[1].Context
+	var b spendingRenewalBinding
+	for _, v := range contexts {
+		if v.Context.Network == "mainnet" && v.Context.ProtectionTier == "standard" {
+			b = v.Context
+			break
+		}
+	}
+	if b.VaultID == "" {
+		t.Fatal("mainnet Standard renewal context missing")
+	}
 	b.VaultID = "vault<>&\u2028\u2029é"
 	hash, err := b.digest()
 	if err != nil || hash != expected["vaulted-vtxo/renewal-context/v1"] {

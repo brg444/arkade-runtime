@@ -10,7 +10,8 @@ import (
 )
 
 func TestMainnetPublicIdentityDoesNotContainTransportLocator(t *testing.T) {
-	e := newEnvForNetwork(t, deployment.NetworkMainnet)
+	e := ledgerEnrollmentReadyForNetwork(t, false, deployment.NetworkMainnet)
+	e.finish(t)
 	origin, _ := e.svc.arkadeIdentity()
 	if origin != deployment.MainnetSignerIdentity {
 		t.Fatal("public identity must be opaque")
@@ -36,7 +37,8 @@ func TestMainnetPublicIdentityDoesNotContainTransportLocator(t *testing.T) {
 }
 
 func TestMainnetLegacyIdentityFailsWithoutDisclosingLocator(t *testing.T) {
-	e := newEnvForNetwork(t, deployment.NetworkMainnet)
+	e := ledgerEnrollmentReadyForNetwork(t, false, deployment.NetworkMainnet)
+	e.finish(t)
 	ids, err := e.ledger.ListVaultIDs()
 	if err != nil || len(ids) != 1 {
 		t.Fatal("expected enrolled fixture")

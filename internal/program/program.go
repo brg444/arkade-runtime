@@ -10,8 +10,8 @@ const (
 	PhoneRecoveryCSVBlocks    uint32 = 144
 	RecoveryCSVBlocks         uint32 = 288
 
-	TxRecipientCapSats    int64 = 50_000
-	PeriodAllowanceSats   int64 = 100_000
+	TxRecipientCapSats  int64 = 50_000
+	PeriodAllowanceSats int64 = 100_000
 	// Mutinynet maxima. Operational L1 fees should follow the mempool at or
 	// below these values. Mainnet alpha ceilings are in pins.go.
 	AbsoluteFeeCeiling    int64 = 5_000

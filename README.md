@@ -6,8 +6,8 @@ process validates enrolled programs, authorizes permitted operations, and
 retains the state needed to reconcile interrupted requests.
 
 The source supports mainnet and Mutinynet through distinct compiled deployment
-parameters. The binary includes the `arkade-vault-v1` and `vaulted-light-v1`
-profile definitions. Programs and key capabilities are compiled into the
+parameters. The binary includes the `arkade-vault-v1`
+profile definition. Programs and key capabilities are compiled into the
 application; clients cannot upload executable policy or request arbitrary
 signatures.
 
@@ -17,15 +17,13 @@ signatures.
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Enrollment        | Verify passkeys and freeze the selected mode, keys, descriptor, and Spending policy                                                      |
 | Spending          | Reserve inputs, enforce payment and fee limits, verify transactions and checkpoints, and reconcile the same operation after interruption |
-| Savings connector | Verify the enrolled transaction family, signer approvals, protected outputs, and retained candidate before service signing               |
 | Boarding          | Verify and submit the SDK's program-specific registration, release, and finalization artifacts                                           |
 | Recovery          | Authorize the enrolled Savings transitions and retain authenticated encrypted archives                                                   |
 | Renewal           | Verify foreground renewals or execute finite owner-presigned requests when delegation is enabled                                         |
 
-New Savings connector enrollment uses `savings-connector-dual-v2`. Existing v1 and direct-hardware Savings records retain the programs and
-transaction requirements selected at enrollment. Light uses
-passkey-owned Spending and a delayed owner exit. Standard and Advanced retain
-their distinct hardware and recovery-key requirements.
+Shared Spending supports Spending-only accounts and accounts with Ledger
+Savings. Standard and Advanced retain their distinct hardware and recovery-key
+requirements.
 
 `VAULT_INVITE_ONLY` controls open or invitation-based admission, while
 `VAULT_LIGHT_ENABLED` controls new Light enrollment independently of admission.
@@ -37,15 +35,14 @@ retained operation state.
 
 The Guardian's allowance ledger and signing capability share one process.
 Rows are authenticated before use, and economic state changes advance an
-independent policy sequence. SQLite schema 6 includes validated forward
-migrations from supported earlier schemas.
+independent policy sequence. SQLite schema 12 removes connector storage through
+an authenticated upgrade from the exact schema 11 baseline; see the
+[retirement contract](docs/ledger-schema-migration.md).
 
 Spending requires the owner and Arkade Operator in addition to the Guardian.
-Connector Savings additionally relies on the enforcing online cosigners to
-verify external signer approval and transaction policy. The device key plus
-both online signing keys can bypass that connector policy; Bitcoin does not
-execute the Emulator's Arkade Script program. Older direct-hardware Savings
-has a different normal-spend leaf.
+Ledger Savings uses the enrolled phone, hardware and Guardian key origins;
+Advanced also includes the enrolled recovery key. Each transition verifies the
+exact committed scripts and required signatures.
 
 The supplied software does not establish an attested or hardware-isolated
 signing environment. Browser integrity, host key protection, storage
@@ -67,28 +64,12 @@ for the service and tenant access boundaries.
 | `GET /v1/status` | Public service status or one vault's status with `?vault=`. |
 | `GET /v1/invite` | Invitation availability. |
 | `POST /v1/enroll/session` | Issue a ten-minute, single-use setup session when invite-only admission is off. |
-| `POST /v1/light/renew/prepare` | Reserve the fee for renewing one Light output. |
-| `POST /v1/light/renew/register` | Verify owner and passkey approval, then register the exact Light renewal. |
-| `POST /v1/light/renew/final` | Verify signed replacement paths and submit the owner-authorized forfeit. |
-| `POST /v1/light/renew/status` | Reconcile the replacement output and confirmed Bitcoin commitment. |
-| `POST /v1/light/renew/release` | Cancel an unsent renewal or fence an expired registration after checking the old output. |
-| `POST /v1/light/delegate/info` | Read enrolled native delegate capabilities when enabled. |
-| `POST /v1/light/delegate/schedule` | Persist bounded owner authorization for one Light renewal. |
-| `POST /v1/light/delegate/status` | Read operation state and verified replacement recovery paths. |
-| `POST /v1/light/delegate/list` | Discover this vault’s scheduled operations with owner authorization. |
-| `POST /v1/light/delegate/cancel` | Cancel an armed renewal before dispatch claims its input. |
 | `GET /v1/vtxo/bitcoin/info` | Read the Spending-to-Bitcoin capability. |
 | `POST /v1/vtxo/bitcoin/prepare` | Reserve an owner-bound Bitcoin output plan and fee. |
 | `POST /v1/vtxo/bitcoin/register` | Approve the exact Bitcoin payment and protected Spending change. |
 | `POST /v1/vtxo/bitcoin/final` | Verify recovery paths and submit the exact forfeit. |
 | `POST /v1/vtxo/bitcoin/status` | Reconcile payment submission and Bitcoin confirmation. |
 | `POST /v1/vtxo/bitcoin/release` | Release a safely cancelled Bitcoin payment. |
-| `GET /v1/vtxo/savings-setup/info` | Read signer setup capability for the enrolled vault. |
-| `POST /v1/vtxo/savings-setup/prepare` | Reserve the signer funding amount and Operator fee. |
-| `POST /v1/vtxo/savings-setup/register` | Authorize the exact signer funding batch. |
-| `POST /v1/vtxo/savings-setup/final` | Verify replacement recovery paths before submitting the forfeit. |
-| `POST /v1/vtxo/savings-setup/status` | Check signer funding and Bitcoin confirmation. |
-| `POST /v1/vtxo/savings-setup/release` | Release a safely cancelled signer setup. |
 | `POST /v1/vtxo/delegate/info` | Read native renewal capabilities for the enrolled Spending program. |
 | `POST /v1/vtxo/delegate/schedule` | Atomically authorize 1–50 exact Spending renewal plans. |
 | `POST /v1/vtxo/delegate/status` | Read a Spending renewal and its verified recovery paths. |
@@ -101,13 +82,6 @@ for the service and tenant access boundaries.
 | `POST /v1/recovery-archive/open` | Authenticate a Savings passkey and pin the enrolled descriptor for eight hours. |
 | `POST /v1/recovery-archive/read` | Read the authenticated encrypted archive of recovery data. |
 | `POST /v1/recovery-archive/write` | Save an encrypted archive at the expected revision with its original header. |
-| `POST /v1/light/backup/challenge` | Issue a single-use discoverable passkey challenge. |
-| `POST /v1/light/backup/open` | Authenticate a Light passkey and open an eight-hour backup-only session. |
-| `POST /v1/light/backup/read` | Read the authenticated encrypted recovery snapshot. |
-| `POST /v1/light/backup/write` | Atomically replace an encrypted snapshot at the expected revision. |
-| `POST /v1/light/enroll/start` | Assign a Light identity and freeze its spending policy. |
-| `POST /v1/light/enroll/propose` | Return the Light descriptor for local verification and backup. |
-| `POST /v1/light/enroll/finish` | Verify the passkey ceremony and atomically consume admission. |
 | `POST /v1/enroll/start` | Freeze the protection tier and canonical policy digest, reserve a vault ID, and return the create-ceremony challenge. |
 | `POST /v1/enroll/propose` | Return the Savings and `vault-board-v1` descriptors for wallet review. |
 | `POST /v1/enroll/finish` | Verify the complete enrollment and consume the invitation. |
@@ -128,8 +102,6 @@ for the service and tenant access boundaries.
 | `POST /v1/passkey/install` | Install a passkey credential envelope. |
 | `POST /v1/passkey/recover` | Recover a passkey credential envelope. |
 | `GET`, `POST /v1/map` | Read or write authenticated encrypted Recovery Kit map data. |
-| `POST /v1/connector/withdraw/authorize` | Validate, durably authorize, and cosign one Savings connector withdrawal. |
-| `GET /v1/connector/operation` | Read one connector operation for retry reconciliation. |
 
 ## Build and test
 
@@ -157,7 +129,7 @@ covers the protocol and persistence contracts.
 | `internal/application` | Enrollment, transaction, recovery, renewal, and HTTP workflows |
 | `internal/profile`     | Compiled profile declarations                                  |
 | `internal/policy`      | Authenticated SQLite ledger, migrations, and policy sequence   |
-| `internal/vault`       | Savings, connector, and Light program construction             |
+| `internal/vault`       | Savings and Spending program construction             |
 | `internal/deployment`  | Network-specific parameters and dependency checks              |
 | `contract-pack*.json`  | Shared wallet/Guardian program parameters                      |
 

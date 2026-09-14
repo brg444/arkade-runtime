@@ -41,14 +41,14 @@ func TestDelegationSetCrossVaultSameSetIDLoadHealth(t *testing.T) {
 		t.Fatalf("cross-vault SetID: %v", err)
 	}
 
-	listed, err := l.ListLightDelegations(ctx)
+	listed, err := l.ListSpendingDelegations(ctx)
 	if err != nil {
 		t.Fatal("load after rejected collision", err)
 	}
 	if len(listed) != 2 {
 		t.Fatalf("listed = %d, want vault A set of 2", len(listed))
 	}
-	byOp := map[string]LightDelegation{}
+	byOp := map[string]SpendingDelegation{}
 	for _, s := range listed {
 		if s.Operation.VaultID != a.VaultID || s.Operation.SetID != first[0].Operation.SetID || s.Operation.SetSize != 2 || len(s.Events) != 0 {
 			t.Fatalf("listed member changed: %+v", s.Operation)

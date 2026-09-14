@@ -37,12 +37,14 @@ const (
 )
 
 // Identity is one frozen network deployment. Program delays live in package
-// program; this type owns Operator, Emulator, indexer, Esplora, and chain pins.
+// program; this type owns Operator, enrollment identity, indexer, Esplora and chain pins.
 type Identity struct {
-	Network                 string
-	OperatorGetInfoNetwork  string
-	OperatorOrigin          string
-	EsploraOrigin           string
+	Network                string
+	OperatorGetInfoNetwork string
+	OperatorOrigin         string
+	EsploraOrigin          string
+	// These three values remain committed by retained Ledger enrollment.
+	// They do not configure a runtime signing transport.
 	EmulatorOrigin          string
 	EmulatorPubHex          string
 	EmulatorVersion         string

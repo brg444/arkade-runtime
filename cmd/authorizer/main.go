@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	delegationEnabledDefault, err := parseLightDelegationEnabled(os.Getenv("VAULT_LIGHT_DELEGATION_ENABLED"))
+	delegationEnabledDefault, err := parseSpendingDelegationEnabled(os.Getenv("VAULT_LIGHT_DELEGATION_ENABLED"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -39,23 +39,23 @@ func main() {
 		log.Fatal(err)
 	}
 	var (
-		lightOnlyEnrollment    = flag.Bool("light-only-enrollment", lightOnlyDefault, "temporarily admit only new Light wallets")
-		ledgerSavingsEnabled   = flag.Bool("ledger-savings-enabled", ledgerSavingsDefault, "allow qualified Guardian-only Ledger Savings enrollment")
-		lightDelegationEnabled = flag.Bool("light-delegation-enabled", delegationEnabledDefault, "enable qualified native Light delegated renewal")
-		lightEnabled           = flag.Bool("light-enabled", lightEnabledDefault, "allow new Light wallet enrollment after lifecycle qualification")
-		inviteOnly             = flag.Bool("invite-only", inviteOnlyDefault, "require operator-issued invitations for new enrollment")
-		addr                   = flag.String("addr", envOr("VAULT_AUTHORIZER_ADDR", "127.0.0.1:8788"), "internal authorizer listen address")
-		dbPath                 = flag.String("db", os.Getenv("VAULT_DB_PATH"), "absolute authoritative SQLite path")
-		sequence               = flag.String("policy-sequence", os.Getenv("VAULT_POLICY_SEQUENCE_PATH"), "absolute external policy-sequence path")
-		keyFile                = flag.String("vault-cosigner-key-file", os.Getenv("VAULT_VAULT_COSIGNER_KEY_FILE"), "file containing the VaultCosigner private scalar")
-		tokenFile              = flag.String("enrollment-token-file", os.Getenv("VAULT_ENROLLMENT_TOKEN_FILE"), "offline-provisioned one-time enrollment token file")
-		origin                 = flag.String("client-origin", os.Getenv("VAULT_CLIENT_ORIGIN"), "exact HTTPS signing-client origin")
-		rpID                   = flag.String("rp-id", os.Getenv("VAULT_RP_ID"), "exact WebAuthn relying-party ID")
-		network                = flag.String("network", os.Getenv("VAULT_NETWORK"), "mutinynet or mainnet")
-		storageIsolation       = flag.String("storage-isolation", os.Getenv("VAULT_STORAGE_ISOLATION"), "mainnet storage control attestation")
-		edgeRateLimit          = flag.String("edge-rate-limit", os.Getenv("VAULT_EDGE_RATE_LIMIT"), "mainnet edge rate-limit attestation")
-		mainnetAcknowledged    = flag.String("mainnet-ack", os.Getenv("VAULT_MAINNET_ACK"), "mainnet fresh-state acknowledgement")
-		cosignerKeyUnlink      = flag.String("cosigner-key-unlink", os.Getenv("VAULT_COSIGNER_KEY_UNLINK"), "after-load deletes the plaintext VaultCosigner key file once it is in process memory")
+		lightOnlyEnrollment       = flag.Bool("light-only-enrollment", lightOnlyDefault, "temporarily admit only new Light wallets")
+		ledgerSavingsEnabled      = flag.Bool("ledger-savings-enabled", ledgerSavingsDefault, "allow qualified Guardian-only Ledger Savings enrollment")
+		spendingDelegationEnabled = flag.Bool("light-delegation-enabled", delegationEnabledDefault, "enable qualified native Light delegated renewal")
+		lightEnabled              = flag.Bool("light-enabled", lightEnabledDefault, "allow new Light wallet enrollment after lifecycle qualification")
+		inviteOnly                = flag.Bool("invite-only", inviteOnlyDefault, "require operator-issued invitations for new enrollment")
+		addr                      = flag.String("addr", envOr("VAULT_AUTHORIZER_ADDR", "127.0.0.1:8788"), "internal authorizer listen address")
+		dbPath                    = flag.String("db", os.Getenv("VAULT_DB_PATH"), "absolute authoritative SQLite path")
+		sequence                  = flag.String("policy-sequence", os.Getenv("VAULT_POLICY_SEQUENCE_PATH"), "absolute external policy-sequence path")
+		keyFile                   = flag.String("vault-cosigner-key-file", os.Getenv("VAULT_VAULT_COSIGNER_KEY_FILE"), "file containing the VaultCosigner private scalar")
+		tokenFile                 = flag.String("enrollment-token-file", os.Getenv("VAULT_ENROLLMENT_TOKEN_FILE"), "offline-provisioned one-time enrollment token file")
+		origin                    = flag.String("client-origin", os.Getenv("VAULT_CLIENT_ORIGIN"), "exact HTTPS signing-client origin")
+		rpID                      = flag.String("rp-id", os.Getenv("VAULT_RP_ID"), "exact WebAuthn relying-party ID")
+		network                   = flag.String("network", os.Getenv("VAULT_NETWORK"), "mutinynet or mainnet")
+		storageIsolation          = flag.String("storage-isolation", os.Getenv("VAULT_STORAGE_ISOLATION"), "mainnet storage control attestation")
+		edgeRateLimit             = flag.String("edge-rate-limit", os.Getenv("VAULT_EDGE_RATE_LIMIT"), "mainnet edge rate-limit attestation")
+		mainnetAcknowledged       = flag.String("mainnet-ack", os.Getenv("VAULT_MAINNET_ACK"), "mainnet fresh-state acknowledgement")
+		cosignerKeyUnlink         = flag.String("cosigner-key-unlink", os.Getenv("VAULT_COSIGNER_KEY_UNLINK"), "after-load deletes the plaintext VaultCosigner key file once it is in process memory")
 	)
 	flag.Parse()
 
@@ -71,12 +71,11 @@ func main() {
 		LightOnlyEnrollment:    *lightOnlyEnrollment,
 		LightEnabled:           *lightEnabled,
 		LedgerSavingsEnabled:   *ledgerSavingsEnabled,
-		LightDelegationEnabled: *lightDelegationEnabled,
+		LightDelegationEnabled: *spendingDelegationEnabled,
 		StorageIsolation:       *storageIsolation,
 		EdgeRateLimit:          *edgeRateLimit,
 		MainnetAcknowledged:    *mainnetAcknowledged,
 		CosignerKeyUnlink:      *cosignerKeyUnlink,
-		ArkadeCosignerOrigin:   os.Getenv("VAULT_ARKADE_COSIGNER_ORIGIN"),
 	}
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 40*time.Second)
 	runtime, err := authorizer.Open(startupCtx, cfg)
@@ -147,7 +146,7 @@ func parseLightEnabled(value string) (bool, error) {
 	}
 }
 
-func parseLightDelegationEnabled(value string) (bool, error) {
+func parseSpendingDelegationEnabled(value string) (bool, error) {
 	switch value {
 	case "", "false":
 		return false, nil

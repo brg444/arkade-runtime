@@ -1,7 +1,7 @@
 // Package authorizer assembles the protected software signing boundary.
 // This process is the sole owner of both the VaultCosigner private key and the
 // authoritative policy ledger. It exposes Service policy operations, never
-// the policy-agnostic LocalSigner primitive.
+// generic signing primitives.
 package authorizer
 
 import (
@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
@@ -26,7 +25,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/ports"
 	"github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
-	"github.com/brg444/arkade-runtime/internal/profile/vaultedlightv1"
+
 	"github.com/brg444/arkade-runtime/internal/program"
 	arkaderuntime "github.com/brg444/arkade-runtime/internal/runtime"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -54,7 +53,6 @@ type Config struct {
 	EdgeRateLimit          string
 	MainnetAcknowledged    string
 	CosignerKeyUnlink      string
-	ArkadeCosignerOrigin   string
 }
 
 // Runtime owns the Service and its SQLite connection for one process lifetime.
@@ -90,13 +88,12 @@ func (r *Runtime) Close() error {
 	return r.ledger.Close()
 }
 
-type arkadeSignerDialer func(context.Context, string, *btcec.PublicKey, []string, bool) (application.Signer, application.PublicEmulatorIdentity, error)
 type arkResolverDialer func(context.Context, string) (ports.ArkResolver, error)
 
 // Open constructs the Mutinynet authorizer and pins its external signing
 // identities before it serves traffic.
 func Open(ctx context.Context, cfg Config) (*Runtime, error) {
-	rt, err := openWithArkadeDialers(ctx, cfg, application.DialPublicEmulator, application.DialArkResolver)
+	rt, err := openWithResolver(ctx, cfg, application.DialArkResolver)
 	if err != nil {
 		return nil, err
 	}
@@ -110,14 +107,14 @@ func Open(ctx context.Context, cfg Config) (*Runtime, error) {
 	}
 	// Background authorizations must not race the production chain and
 	// readiness checks, including when resuming a persisted operation.
-	if err := rt.service.StartLightDelegation(); err != nil {
+	if err := rt.service.StartSpendingDelegation(); err != nil {
 		_ = rt.Close()
 		return nil, err
 	}
 	return rt, nil
 }
 
-func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSignerDialer, dialResolver arkResolverDialer) (*Runtime, error) {
+func openWithResolver(ctx context.Context, cfg Config, dialResolver arkResolverDialer) (*Runtime, error) {
 	if err := cfg.Deployment.Validate(); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -144,17 +141,6 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		if cfg.MainnetAcknowledged != "fresh-state-v1" {
 			return nil, fmt.Errorf("mainnet requires explicit fresh-state deployment acknowledgement")
 		}
-	}
-	if cfg.Deployment.Network == deployment.NetworkMainnet {
-		identity.EmulatorOrigin, err = application.CanonicalHTTPSOrigin(cfg.ArkadeCosignerOrigin)
-		if err != nil {
-			return nil, fmt.Errorf("mainnet signing endpoint configuration: %w", err)
-		}
-	} else if cfg.ArkadeCosignerOrigin != "" {
-		return nil, fmt.Errorf("signing endpoint configuration is mainnet-only")
-	}
-	if dialArkade == nil {
-		return nil, fmt.Errorf("public arkade emulator dialer required")
 	}
 	if err := contractpack.ValidateFor(cfg.Deployment.Network); err != nil {
 		return nil, fmt.Errorf("release Contract Pack: %w", err)
@@ -225,20 +211,11 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		return nil, err
 	}
 
-	arkadeSigner, arkadeIdentity, err := dialArkade(
-		ctx,
-		identity.EmulatorOrigin,
-		arkadeBase,
-		[]string{identity.EmulatorVersion},
-		false,
-	)
-	if err != nil {
-		zero(credentialIntegrityKey)
-		return nil, err
-	}
-	if err := validateArkadeDialResult(arkadeSigner, arkadeIdentity, arkadeBase, identity); err != nil {
-		zero(credentialIntegrityKey)
-		return nil, err
+	// These identity bytes remain committed by current Ledger enrollment.
+	// The retired Emulator contributes no signature or live startup dependency.
+	descriptorOrigin := identity.EmulatorOrigin
+	if cfg.Deployment.Network == deployment.NetworkMainnet {
+		descriptorOrigin = deployment.MainnetSignerIdentity
 	}
 	if dialResolver == nil {
 		zero(credentialIntegrityKey)
@@ -254,7 +231,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		zero(credentialIntegrityKey)
 		return nil, err
 	}
-	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey, arkadeSigner)
+	keys, err := application.NewFileBackedKeyCapabilities(vaultCosignerKey)
 	if err != nil {
 		zero(credentialIntegrityKey)
 		return nil, err
@@ -275,9 +252,9 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 		IntegrityKey:           credentialIntegrityKey,
 		Keys:                   keys,
 		VaultCosignerPub:       vaultCosignerKey.PubKey(),
-		ArkadeCosignerPub:      arkadeIdentity.BasePub,
-		ArkadeCosignerOrigin:   arkadeIdentity.Origin,
-		ArkadeCosignerVersion:  arkadeIdentity.Version,
+		ArkadeCosignerPub:      arkadeBase,
+		ArkadeCosignerOrigin:   descriptorOrigin,
+		ArkadeCosignerVersion:  identity.EmulatorVersion,
 		ArkResolver:            resolver,
 	}
 	svc := application.New(deps)
@@ -298,7 +275,7 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	if err != nil {
 		return nil, err
 	}
-	host, err := arkaderuntime.OpenProfiles(registry, []string{arkadevaultv1.ProfileID, vaultedlightv1.ProfileID}, arkaderuntime.Mount{
+	host, err := arkaderuntime.OpenProfiles(registry, []string{arkadevaultv1.ProfileID}, arkaderuntime.Mount{
 		Handler: httpapi.Authorizer(svc),
 		Readiness: func(ctx context.Context) error {
 			ready := svc.Ready(ctx)
@@ -320,37 +297,11 @@ func openWithArkadeDialers(ctx context.Context, cfg Config, dialArkade arkadeSig
 	return &Runtime{host: host, service: svc, ledger: ledger}, nil
 }
 
-func validateArkadeDialResult(signer application.Signer, identity application.PublicEmulatorIdentity, expected *btcec.PublicKey, pins deployment.Identity) error {
-	if signerUnavailable(signer) {
-		return fmt.Errorf("public arkade emulator signer capability required")
-	}
-	if identity.Origin != pins.EmulatorOrigin ||
-		identity.Version != pins.EmulatorVersion ||
-		identity.BasePub == nil || expected == nil ||
-		!bytes.Equal(identity.BasePub.SerializeCompressed(), expected.SerializeCompressed()) {
-		return fmt.Errorf("public arkade emulator identity does not match the release pin")
-	}
-	return nil
-}
-
-func signerUnavailable(signer application.Signer) bool {
-	if signer == nil {
-		return true
-	}
-	value := reflect.ValueOf(signer)
-	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return value.IsNil()
-	default:
-		return false
-	}
-}
-
 // compiledRegistry is the single production composition point. Profiles are
 // linked here at build time; there is no configuration or discovery path that
 // can add another profile at runtime.
 func compiledRegistry() (*arkaderuntime.Registry, error) {
-	return arkaderuntime.Compile(arkadevaultv1.Definition(), vaultedlightv1.Definition())
+	return arkaderuntime.Compile(arkadevaultv1.Definition())
 }
 
 // provisionEnrollmentInvite turns one operator-supplied secret file into one

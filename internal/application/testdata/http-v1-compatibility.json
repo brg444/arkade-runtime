@@ -18,18 +18,6 @@
       "OPTIONS",
       "POST"
     ],
-    "/v1/light/enroll/finish": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/enroll/propose": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/enroll/start": [
-      "OPTIONS",
-      "POST"
-    ],
     "/v1/enroll/start": [
       "OPTIONS",
       "POST"
@@ -63,26 +51,6 @@
       "POST"
     ],
     "/v1/passkey/recover": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/final": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/prepare": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/register": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/release": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/renew/status": [
       "OPTIONS",
       "POST"
     ],
@@ -131,30 +99,6 @@
       "OPTIONS",
       "POST"
     ],
-    "/v1/connector/withdraw/authorize": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/connector/operation": [
-      "GET",
-      "OPTIONS"
-    ],
-    "/v1/light/backup/challenge": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/backup/open": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/backup/read": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/backup/write": [
-      "OPTIONS",
-      "POST"
-    ],
     "/v1/recovery-archive/challenge": [
       "OPTIONS",
       "POST"
@@ -168,26 +112,6 @@
       "POST"
     ],
     "/v1/recovery-archive/write": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/cancel": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/info": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/list": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/schedule": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/light/delegate/status": [
       "OPTIONS",
       "POST"
     ],
@@ -208,30 +132,6 @@
       "POST"
     ],
     "/v1/vtxo/delegate/cancel": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/final": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/info": [
-      "GET",
-      "OPTIONS"
-    ],
-    "/v1/vtxo/savings-setup/prepare": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/register": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/release": [
-      "OPTIONS",
-      "POST"
-    ],
-    "/v1/vtxo/savings-setup/status": [
       "OPTIONS",
       "POST"
     ],
@@ -285,18 +185,6 @@
       "feePolicyDigest:string",
       "registerExpireAt:integer"
     ],
-    "LightRenewalPrepareRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "txid:string",
-      "vout:integer",
-      "ownerSignature:string"
-    ],
-    "LightRenewalPrepared": [
-      "plan:object",
-      "planDigest:string",
-      "state:string"
-    ],
     "LightRenewalRegisterRequest": [
       "vaultId:string",
       "operationId:string",
@@ -330,29 +218,6 @@
       "receiverTxid:string,omitempty",
       "receiverVout:integer,omitempty"
     ],
-    "ProposedLightEnrollment": [
-      "descriptor:object",
-      "descriptorHash:string"
-    ],
-    "LightEnrollStartRequest": [
-      "spendingPolicy:object",
-      "spendingPolicyDigest:string"
-    ],
-    "LightEnrollFinishRequest": [
-      "handle:string",
-      "vaultId:string",
-      "userHandle:string",
-      "clientDataJSON:string",
-      "authenticatorData:string",
-      "attestationObject:string,omitempty",
-      "credentialId:string",
-      "webauthnP256:string",
-      "phoneDirectP256:string",
-      "ownerPub:string",
-      "descriptorHash:string",
-      "spendingPolicy:object",
-      "spendingPolicyDigest:string"
-    ],
     "ReadyStatus": [
       "ok:boolean",
       "schema:integer",
@@ -364,7 +229,6 @@
     ],
     "PublicStatus": [
       "ledgerSavingsCapability:object|null,omitempty",
-      "connectorCapability:object|null,omitempty",
       "supportedSetups:array<string>",
       "network:string",
       "clientOrigin:string",
@@ -377,9 +241,6 @@
     ],
     "Status": [
       "ledgerSavings:object|null,omitempty",
-      "connectorEnrollment:object|null,omitempty",
-      "lightDescriptor:object|null,omitempty",
-      "lightDescriptorHash:string,omitempty",
       "enrolled:boolean",
       "network:string",
       "clientOrigin:string",
@@ -469,11 +330,7 @@
       "descriptorHash:string,omitempty",
       "protectionTier:string",
       "spendingPolicy:object",
-      "spendingPolicyDigest:string",
-      "connectorType:string,omitempty",
-      "connectorPub:string,omitempty",
-      "connectorFingerprint:integer,omitempty",
-      "connectorPath:array<integer>,omitempty"
+      "spendingPolicyDigest:string"
     ],
     "ProposedEnrollment": [
       "vaultId:string",
@@ -499,37 +356,13 @@
     ],
     "PasskeyChallengeRequest": [
       "purpose:string",
-      "vaultId:string,omitempty",
-      "candidateTxid:string,omitempty"
+      "vaultId:string,omitempty"
     ],
     "PasskeyChallengeResponse": [
       "challengeId:string",
       "challenge:string",
       "allowCredentialId:string",
       "expiresInSeconds:integer"
-    ],
-    "ConnectorWithdrawRequest": [
-      "vaultId:string",
-      "psbt:string",
-      "challengeId:string",
-      "credentialId:string",
-      "clientDataJSON:string",
-      "authenticatorData:string",
-      "signature:string",
-      "directProof:string"
-    ],
-    "ConnectorWithdrawResponse": [
-      "signedPsbt:string",
-      "replay:boolean",
-      "operationId:string"
-    ],
-    "ConnectorOperationView": [
-      "operationId:string",
-      "phase:string",
-      "resolution:string",
-      "candidateTxid:string",
-      "signedPsbt:string,omitempty",
-      "verified:boolean"
     ],
     "RecoveryBindingRouteRequest": [
       "vaultId:string",
@@ -681,105 +514,12 @@
       "operationId:string",
       "state:string"
     ],
-    "SavingsPublicDescriptor": [
-      "schema:string",
-      "network:string",
-      "vaultId:string",
-      "templateVersion:string",
-      "policyVersion:string",
-      "protectionTier:string",
-      "keys:object",
-      "tweaks:object",
-      "arkadeCosigner:object",
-      "csv:object",
-      "policy:object",
-      "p2a:object",
-      "transitionSequence:integer",
-      "savings:object",
-      "pending:object",
-      "quarantine:object"
-    ],
-    "SavingsPublicKeys": [
-      "phoneBip340:string",
-      "phoneDirectP256:string",
-      "hardware:string",
-      "recovery:string,omitempty",
-      "vaultCosignerBase:string",
-      "arkadeCosignerBase:string"
-    ],
-    "SavingsPublicPair": [
-      "vault:string",
-      "arkade:string"
-    ],
-    "SavingsPublicTweaks": [
-      "initiate:object",
-      "pending:object"
-    ],
-    "SavingsPublicArkade": [
-      "origin:string",
-      "version:string"
-    ],
-    "SavingsPublicCSV": [
-      "hardware:integer",
-      "phone:integer",
-      "recovery:integer"
-    ],
-    "SavingsPublicPolicy": [
-      "program:string",
-      "schema:string",
-      "period:string",
-      "digest:string",
-      "recipientDustSats:integer",
-      "recipientCapSats:integer",
-      "periodAllowanceSats:integer",
-      "absoluteFeeCapSats:integer",
-      "feerateCapSatVb:integer"
-    ],
-    "SavingsPublicP2A": [
-      "script:string",
-      "valueSats:integer",
-      "outputIndex:integer"
-    ],
-    "SavingsTreeRef": [
-      "script:string",
-      "address:string"
-    ],
-    "SavingsPendingRef": [
-      "script:string",
-      "address:string",
-      "delay:integer"
-    ],
-    "SavingsQuarantineRef": [
-      "script:string",
-      "address:string",
-      "guardians:array<string>"
-    ],
     "MutationSuccess": [
       "ok:boolean"
     ],
     "ErrorResponse": [
       "error:string",
       "code:string"
-    ],
-    "LightBackupOpenRequest": [
-      "vaultId:string",
-      "challengeId:string",
-      "credentialId:string",
-      "clientDataJSON:string",
-      "authenticatorData:string",
-      "signature:string",
-      "directProof:string"
-    ],
-    "LightBackupRequest": [
-      "token:string",
-      "revision:integer,omitempty",
-      "payload:string,omitempty"
-    ],
-    "LightBackupOpenResponse": [
-      "token:string",
-      "vaultId:string",
-      "expiresAt:string",
-      "backup:object|null"
     ],
     "LightBackup": [
       "revision:integer",
@@ -815,18 +555,6 @@
     "LightDelegateIntent": [
       "proof:string",
       "message:string"
-    ],
-    "LightDelegationReadRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "expiresAt:integer",
-      "ownerSignature:string"
-    ],
-    "LightDelegationListRequest": [
-      "vaultId:string",
-      "afterOperationId:string",
-      "expiresAt:integer",
-      "ownerSignature:string"
     ],
     "LightDelegationRecovery": [
       "batchId:string",
@@ -887,42 +615,6 @@
     "SpendingDelegationSetResponse": [
       "setId:string",
       "operations:array<object>"
-    ],
-    "SavingsSetupPlan": [
-      "operationId:string",
-      "vaultId:string",
-      "descriptorHash:string",
-      "enrollmentDigest:string",
-      "txid:string",
-      "vout:integer",
-      "valueSats:integer",
-      "changeSats:integer",
-      "reserveScript:string",
-      "reserveSats:integer",
-      "reserveCount:integer",
-      "feeSats:integer",
-      "feePolicyDigest:string",
-      "registerExpireAt:integer",
-      "outputs:array<object>,omitempty"
-    ],
-    "SavingsSetupReleaseRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "deleteIntent:object|null,omitempty"
-    ],
-    "SavingsSetupPrepareRequest": [
-      "vaultId:string",
-      "operationId:string",
-      "txid:string",
-      "vout:integer",
-      "reserveCount:integer",
-      "expiresAt:integer",
-      "ownerSignature:string"
-    ],
-    "SavingsSetupPrepared": [
-      "plan:object",
-      "planDigest:string",
-      "state:string"
     ],
     "SpendingBitcoinPrepareRequest": [
       "vaultId:string",
@@ -988,6 +680,53 @@
       "claimant:string",
       "remainingUser:string,omitempty",
       "change:integer|null"
+    ],
+    "BitcoinPaymentReleaseRequest": [
+      "vaultId:string",
+      "operationId:string",
+      "deleteIntent:object|null,omitempty"
+    ],
+    "BitcoinPaymentPrepared": [
+      "plan:object",
+      "planDigest:string",
+      "state:string"
+    ],
+    "BitcoinPaymentPlan": [
+      "operationId:string",
+      "vaultId:string",
+      "descriptorHash:string",
+      "enrollmentDigest:string",
+      "txid:string",
+      "vout:integer",
+      "valueSats:integer",
+      "changeSats:integer",
+      "reserveScript:string",
+      "reserveSats:integer",
+      "reserveCount:integer",
+      "feeSats:integer",
+      "feePolicyDigest:string",
+      "registerExpireAt:integer",
+      "outputs:array<object>,omitempty"
+    ],
+    "BackupOpenRequest": [
+      "vaultId:string",
+      "challengeId:string",
+      "credentialId:string",
+      "clientDataJSON:string",
+      "authenticatorData:string",
+      "signature:string",
+      "directProof:string"
+    ],
+    "BackupRequest": [
+      "token:string",
+      "revision:integer,omitempty",
+      "payload:string,omitempty"
+    ],
+    "BackupOpenResponse": [
+      "token:string",
+      "vaultId:string",
+      "expiresAt:string",
+      "backup:object|null"
     ]
   }
 }

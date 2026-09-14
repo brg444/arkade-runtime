@@ -12,15 +12,13 @@ import (
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 )
 
 const recoveryArchivePurpose = "recovery-archive-open"
 
 // These are enrolled public facts, never values selected by the archive writer.
-// DescriptorHash is the existing Savings+boarding composite for legacy Savings,
-// or connectorEnrollment.descriptorHash for the connector template.
+// DescriptorHash commits the complete enrolled account descriptor.
 type RecoveryArchiveBinding struct {
 	VaultID              string `json:"vaultId"`
 	Network              string `json:"network"`
@@ -31,7 +29,7 @@ type RecoveryArchiveBinding struct {
 	DescriptorHash       string `json:"descriptorHash"`
 }
 type RecoveryArchiveOpenResponse struct {
-	LightBackupOpenResponse
+	BackupOpenResponse
 	Binding RecoveryArchiveBinding `json:"binding"`
 }
 
@@ -39,7 +37,7 @@ func recoveryArchiveCredentialAllowed(cred *policy.Credential) bool {
 	if cred != nil && cred.TemplateVersion == program.SpendingOnlyTemplate {
 		return cred.ProtectionTier == program.ProtectionTierLight
 	}
-	return cred != nil && (cred.TemplateVersion == savings.Template || cred.TemplateVersion == savings.LedgerNativeTemplate || connector.IsTemplate(cred.TemplateVersion)) &&
+	return cred != nil && cred.TemplateVersion == savings.LedgerNativeTemplate &&
 		(cred.ProtectionTier == program.ProtectionTierStandard || cred.ProtectionTier == program.ProtectionTierAdvanced)
 }
 func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchiveBinding, error) {
@@ -69,17 +67,7 @@ func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchi
 			return RecoveryArchiveBinding{}, e
 		}
 		hash = enrolled.DescriptorHash
-	} else if isConnectorCredential(cred) {
-		identity, e := s.connectorEnrollmentStatus(cred, snap)
-		if e != nil {
-			return RecoveryArchiveBinding{}, e
-		}
-		hash = identity.DescriptorHash
-	} else {
-		_, hash, err = s.statusVaultBoardDescriptor(cred, snap)
-		if err != nil {
-			return RecoveryArchiveBinding{}, err
-		}
+
 	}
 	digest, err := program.SpendingPolicyDigestHexFor(cred.Network, spendingPolicyFromCredential(cred))
 	if err != nil {
@@ -90,7 +78,7 @@ func (s *Service) recoveryArchiveBinding(cred *policy.Credential) (RecoveryArchi
 func (s *Service) IssueRecoveryArchiveChallenge() (*PasskeyChallengeResponse, error) {
 	return s.issueBackupChallenge(recoveryArchivePurpose)
 }
-func (s *Service) OpenRecoveryArchive(ctx context.Context, req LightBackupOpenRequest) (*RecoveryArchiveOpenResponse, error) {
+func (s *Service) OpenRecoveryArchive(ctx context.Context, req BackupOpenRequest) (*RecoveryArchiveOpenResponse, error) {
 	return s.openBackup(ctx, req, recoveryArchivePurpose)
 }
 
@@ -165,7 +153,7 @@ func (s *Service) readArchiveLocked(session *backupSession) (*policy.RecoveryBac
 	session.HeaderDigest = digest
 	return backup, nil
 }
-func (s *Service) ReadRecoveryArchive(req LightBackupRequest) (*policy.RecoveryBackup, error) {
+func (s *Service) ReadRecoveryArchive(req BackupRequest) (*policy.RecoveryBackup, error) {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	key, session, err := s.verifiedArchiveSessionLocked(req.Token)
@@ -178,7 +166,7 @@ func (s *Service) ReadRecoveryArchive(req LightBackupRequest) (*policy.RecoveryB
 	}
 	return backup, err
 }
-func (s *Service) WriteRecoveryArchive(req LightBackupRequest) (*policy.RecoveryBackup, error) {
+func (s *Service) WriteRecoveryArchive(req BackupRequest) (*policy.RecoveryBackup, error) {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	key, session, err := s.verifiedArchiveSessionLocked(req.Token)
@@ -217,7 +205,7 @@ func attachRecoveryArchiveRoutes(mux *http.ServeMux, s *Service, origin string) 
 		writeJSON(w, v, err)
 	})
 	mux.HandleFunc("POST /v1/recovery-archive/open", func(w http.ResponseWriter, r *http.Request) {
-		var req LightBackupOpenRequest
+		var req BackupOpenRequest
 		if err := decodeMutation(r, &req, origin); err != nil {
 			writeMutationError(w, err)
 			return
@@ -227,7 +215,7 @@ func attachRecoveryArchiveRoutes(mux *http.ServeMux, s *Service, origin string) 
 	})
 	for _, phase := range []string{"read", "write"} {
 		mux.HandleFunc("POST /v1/recovery-archive/"+phase, func(w http.ResponseWriter, r *http.Request) {
-			var req LightBackupRequest
+			var req BackupRequest
 			if err := decodeMutation(r, &req, origin); err != nil {
 				writeMutationError(w, err)
 				return

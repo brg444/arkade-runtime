@@ -1,8 +1,6 @@
 # Encrypted recovery archives
 
-Standard and Advanced Savings wallets can persist encrypted recovery data at
-`/v1/recovery-archive/{challenge,open,read,write}`. Direct-hardware Savings and both connector template versions are supported. The existing
-`/v1/light/backup/*` routes remain restricted to Light enrollment.
+Shared Spending accounts, including Light and optional Ledger Savings, persist encrypted recovery data at `/v1/recovery-archive/{challenge,open,read,write}`. Historical Light, direct-hardware Savings and both connector generations are excluded from archive admission; their former backup and recovery paths are removed.
 
 The archive transport grants no signing, payment or recovery authority. Clients
 must encrypt and verify their recovery data; the runtime cannot establish that
@@ -16,24 +14,19 @@ without enumerating credentials. POST `open` accepts the existing backup request
 fields: `vaultId`, `challengeId`, `credentialId`, `clientDataJSON`,
 `authenticatorData`, `signature`, and `directProof`. User presence and verification
 are required. The direct proof uses the existing passkey proof encoding with
-purpose `recovery-archive-open`, distinct from Light and payment purposes.
+purpose `recovery-archive-open`, distinct from payment and Lightning-address purposes.
 
 The response contains `token`, `vaultId`, `expiresAt`, `backup`, and `binding`.
 The binding contains these enrolled public facts:
 
 - `vaultId`, `network`, `templateVersion`, and `protectionTier`;
 - `policyVersion` and `spendingPolicyDigest`;
-- `descriptorHash`: the Savings and boarding composite hash for existing
-  Savings, or `connectorEnrollment.descriptorHash` for the connector template.
+- `descriptorHash`: the shared Spending enrollment hash, or the Ledger Savings and boarding composite hash.
 
 The server derives these values from authenticated enrollment records. Every
 read and write rebuilds the binding and compares it with the session. The client
 must independently compare it with the verified wallet descriptor before use.
-Tokens expire after eight hours and disappear on process restart. Light and
-Savings share a bounded session map, but tokens cannot cross route families.
-There are at most 256 active sessions in total and 256 pending challenges per
-family. Either family can exhaust the shared session pool; opening another
-session then requires an existing session to expire.
+Tokens expire after eight hours and disappear on process restart. All retained accounts share a pool of at most 256 archive sessions, with every token bound to its authenticated account. Challenge issuance is stateless; successful authentication consumes a bounded replay entry before opening a session. Anonymous challenge requests cannot evict authenticated replay entries.
 
 ## Archive and write contract
 
@@ -66,6 +59,6 @@ separate MAC domain. Reads verify the MAC before returning data, and writes
 verify the prior row before testing its revision. Archive updates neither debit
 allowances nor advance the economic policy sequence.
 
-The current database is schema 6. Supported earlier schemas migrate through
-strictly validated structures. Archive transport does not prove that the client
+Schema 12 preserves retained-account archives through the authenticated
+[retirement contract](ledger-schema-migration.md). Archive transport does not prove that the client
 has captured a complete exit graph or retained a usable signing key.

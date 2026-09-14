@@ -41,7 +41,7 @@ func (p BitcoinEndedBatchEvidence) Validate() error {
 	return nil
 }
 
-func validateBitcoinEndedBatchRelease(s *LightRenewalSnapshot, e LightRenewalEvent) error {
+func validateBitcoinEndedBatchRelease(s *SpendingRenewalSnapshot, e SpendingRenewalEvent) error {
 	if !isBitcoinBatch(s.Operation.Kind) || s.Events["final_dispatched"].Phase == "" ||
 		s.Events["final_result"].Phase != "" || e.RequestDigest != s.Events["final_dispatched"].RequestDigest {
 		return fmt.Errorf("ended Operator batch does not bind the dispatched payment")
@@ -73,7 +73,7 @@ func bitcoinPlanChange(raw string) (int64, error) {
 	return plan.ChangeSats, nil
 }
 
-func validateBitcoinDispatchedRelease(s *LightRenewalSnapshot, e LightRenewalEvent) error {
+func validateBitcoinDispatchedRelease(s *SpendingRenewalSnapshot, e SpendingRenewalEvent) error {
 	var kind struct {
 		Kind string `json:"kind"`
 	}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
 
@@ -96,6 +95,11 @@ func (s *Service) StartEnrollment(token string, request EnrollStartRequest) (*En
 	}
 	if err := program.ValidateProtectionTier(request.ProtectionTier); err != nil {
 		return nil, err
+	}
+	if request.ProtectionTier != program.ProtectionTierLight {
+		if err := s.requireLedgerSavingsEnrollmentEnabled(); err != nil {
+			return nil, err
+		}
 	}
 	policyDigest, err := requireSpendingPolicyDigest(s.runtimeConfig().Network, request.SpendingPolicy, request.SpendingPolicyDigest)
 	if err != nil {
@@ -209,9 +213,6 @@ func (s *Service) ProposeEnrollment(token string, req EnrollFinishRequest) (*Pro
 	if req.LedgerSavings != nil {
 		return s.previewLedgerSavingsEnrollment(pending.VaultID, req.RegisterRequest)
 	}
-	if hasConnectorRequest(req.RegisterRequest) {
-		return s.previewConnectorEnrollmentDescriptor(pending.VaultID, req.RegisterRequest, connector.DualTemplate)
-	}
 	return s.previewVaultBoardEnrollmentDescriptor(pending.VaultID, req.RegisterRequest)
 }
 
@@ -276,6 +277,10 @@ func (s *Service) FinishEnrollment(ctx context.Context, token string, req Enroll
 // validateEnrollmentCreate verifies the same attested passkey ceremony for each
 // explicitly named enrollment profile. Profile keys and policy are checked separately.
 func (s *Service) validateEnrollmentCreate(pending *policy.PendingEnrollment, req EnrollFinishRequest) error {
+	if req.VaultID != "" && req.VaultID != pending.VaultID {
+		return fmt.Errorf("vault id does not match pending enrollment")
+	}
+
 	cfg := s.runtimeConfig()
 	clientData, err := decodeHex(req.ClientDataJSON)
 	if err != nil {
@@ -333,6 +338,10 @@ func (s *Service) acceptDuplicateFinishFromToken(tokenHash []byte, req EnrollFin
 }
 
 func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*Status, bool) {
+	if req.VaultID != "" && req.VaultID != vaultID {
+		return nil, false
+	}
+
 	key, err := s.credentialIntegrityKey()
 	if err != nil {
 		return nil, false
@@ -350,20 +359,10 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 	if err != nil {
 		return nil, false
 	}
-	parsed, err = applyConnectorEnrollmentRequest(parsed, req, s.runtimeConfig().Network)
-	if err != nil {
-		return nil, false
-	}
 	if req.LedgerSavings != nil {
 		return s.acceptLedgerSavingsDuplicate(vaultID, req, parsed, rec, cred)
 	}
 	if rec.TemplateVersion == "phone-ledger-guardian-savings-v1" {
-		return nil, false
-	}
-	if parsed.connectorOrigin != nil {
-		return s.acceptConnectorDuplicateFinish(vaultID, req, parsed, rec, cred)
-	}
-	if hasConnectorRequest(req) {
 		return nil, false
 	}
 	preview, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
@@ -398,13 +397,6 @@ func (s *Service) acceptDuplicateFinish(vaultID string, req RegisterRequest) (*S
 		storedBoard.ExitDelay != wantBoard.ExitDelay || storedBoard.ExitDelayUnit != wantBoard.ExitDelayUnit ||
 		!bytesEqualConst(storedBoard.PkScript, wantBoard.PkScript) || storedBoard.Address != wantBoard.Address {
 		return nil, false
-	}
-	// A legacy replay must not match a connector vault: any stored origin row
-	// rejects the legacy duplicate.
-	if s.Stores.Connector != nil {
-		if storedConnector, err := s.Stores.Connector.GetConnectorEnrollment(vaultID); err != nil || storedConnector != nil {
-			return nil, false
-		}
 	}
 	st, err := s.statusFor(context.Background(), vaultID)
 	if err != nil {

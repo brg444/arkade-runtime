@@ -23,27 +23,7 @@ type RecoveryBackup struct {
 	Payload  string `json:"payload"`
 }
 
-// Called only after the exact connector-v3 baseline has been validated.
-func applyRecoveryBackupMigration(db *sql.DB) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err = tx.Exec(createRecoveryBackupSchema); err != nil {
-		return err
-	}
-	result, err := tx.Exec(`UPDATE schema_meta SET version=? WHERE version=?`, recoveryBackupSchemaVersion, connectorSchemaVersion)
-	if err != nil {
-		return err
-	}
-	if n, err := result.RowsAffected(); err != nil || n != 1 {
-		return fmt.Errorf("Recovery backup migration requires connector schema 3")
-	}
-	return tx.Commit()
-}
-
-func validateRecoveryBackupSchema(db *sql.DB) error {
+func validateRecoveryBackupSchema(db schemaQuerier) error {
 	var actual string
 	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE name='recovery_backup' AND type='table'`).Scan(&actual); err != nil {
 		return err

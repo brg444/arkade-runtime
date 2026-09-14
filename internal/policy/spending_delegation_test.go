@@ -1,0 +1,355 @@
+package policy
+
+import (
+	"bytes"
+	"context"
+
+	"encoding/hex"
+	"errors"
+	"path/filepath"
+
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+func delegationFixture(t *testing.T) (*Ledger, *time.Time, SpendingDelegation) {
+	t.Helper()
+	l, now, r := renewalFixture(t)
+	o := setTestPlans(t, r.VaultID, delegationSetVaultProgram, 1, *now)[0]
+	o.OperationID, o.InputTxid, o.FeeSats, o.PlanDigest = r.OperationID, r.InputTxid, r.FeeSats, r.PlanDigest
+	o.ValidAt, o.ExpiresAt = now.Unix(), now.Add(time.Hour).Unix()
+	return l, now, o
+}
+
+// One-member sets use the same authenticated API as every current schedule.
+// A zero counter models the supported counterless passkey; dedicated tests
+// below exercise strictly increasing counters and exact retry after advancement.
+func scheduleOneDelegation(l *Ledger, ctx context.Context, o SpendingDelegation) (*SpendingDelegationSnapshot, error) {
+	credential, err := delegationEnrolledCredentialID(ctx, l.db, o.VaultID, testIntegrityKey())
+	if err != nil {
+		return nil, err
+	}
+	saved, err := l.ScheduleVtxoDelegationSet(ctx, []SpendingDelegation{o}, credential, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &saved[0], nil
+}
+
+func stageDelegation(t *testing.T, l *Ledger, o SpendingDelegation, through string) *SpendingDelegationSnapshot {
+	t.Helper()
+	s, err := scheduleOneDelegation(l, t.Context(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if through == "armed" {
+		return s
+	}
+	for _, phase := range delegationPhases {
+		if strings.HasPrefix(phase, "cleanup_") {
+			continue
+		}
+		s, err = l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, phase, `{}`, ""}, 100000)
+		if err != nil {
+			t.Fatal(phase, err)
+		}
+		if phase == through {
+			return s
+		}
+	}
+	t.Fatal("unknown phase", through)
+	return nil
+}
+func TestSpendingDelegationPaymentInvalidationAndOverlap(t *testing.T) {
+	for _, paymentFirst := range []bool{false, true} {
+		t.Run(map[bool]string{true: "payment-first", false: "armed-first"}[paymentFirst], func(t *testing.T) {
+			l, now, o := delegationFixture(t)
+			payment := testVtxoOperation(o.VaultID, "payment", vtxoPurposeSpend, vtxoStateReserved, 1000, 0, *now)
+			txid, _ := hex.DecodeString(o.InputTxid)
+			input := VtxoOperationInput{Txid: txid, ValueSats: 2000, Script: []byte{0x51}}
+			unrelated := o
+			unrelated.OperationID = strings.Repeat("06", 16)
+			unrelated.SetID = unrelated.OperationID
+			unrelated.InputTxid = strings.Repeat("07", 32)
+			if !paymentFirst {
+				stageDelegation(t, l, o, "armed")
+				stageDelegation(t, l, unrelated, "armed")
+			}
+			if err := l.ReserveVtxoOperation(t.Context(), payment, []VtxoOperationInput{input}, 100000); err != nil {
+				t.Fatal(err)
+			}
+			if paymentFirst {
+				if _, err := scheduleOneDelegation(l, t.Context(), o); !errors.Is(err, ErrVtxoOperationActive) {
+					t.Fatal("overlap", err)
+				}
+				if _, err := scheduleOneDelegation(l, t.Context(), unrelated); err != nil {
+					t.Fatal("unrelated schedule", err)
+				}
+			} else {
+				all, err := l.ListSpendingDelegations(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, s := range all {
+					want := "armed"
+					if s.Operation.OperationID == o.OperationID {
+						want = "invalidated"
+					}
+					if s.State() != want {
+						t.Fatal(s.State(), want)
+					}
+				}
+			}
+			if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{unrelated.OperationID, "claimed", `{}`, ""}, 100000); !errors.Is(err, ErrVtxoOperationActive) {
+				t.Fatal("claim while payment", err)
+			}
+		})
+	}
+}
+func TestSpendingDelegationClaimAndPaymentAtomicWinner(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		l, now, o := delegationFixture(t)
+		stageDelegation(t, l, o, "armed")
+		payment := testVtxoOperation(o.VaultID, "payment", vtxoPurposeSpend, vtxoStateReserved, 1000, 0, *now)
+		// Disjoint inputs still share the active signing lifecycle.
+		in := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x99}, 32), ValueSats: 2000, Script: []byte{0x51}}
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := l.AdvanceSpendingDelegation(context.Background(), SpendingDelegationEvent{o.OperationID, "claimed", `{}`, ""}, 100000)
+			results <- err
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			results <- l.ReserveVtxoOperation(context.Background(), payment, []VtxoOperationInput{in}, 100000)
+		}()
+		close(start)
+		wg.Wait()
+		close(results)
+		won, lost := 0, 0
+		for err := range results {
+			if err == nil {
+				won++
+			} else if errors.Is(err, ErrVtxoOperationActive) {
+				lost++
+			} else {
+				t.Fatal(err)
+			}
+		}
+		if won != 1 || lost != 1 {
+			t.Fatal(won, lost)
+		}
+	}
+}
+func TestSpendingDelegationBoundedExpiryAndFinalFence(t *testing.T) {
+	for _, phase := range []string{"armed", "claimed", "register_dispatched", "register_result", "tree_prepared", "nonces_committed", "tree_signed", "final_authorized", "final_dispatched", "final_result"} {
+		t.Run(phase, func(t *testing.T) {
+			l, now, o := delegationFixture(t)
+			stageDelegation(t, l, o, phase)
+			e := SpendingDelegationEvent{o.OperationID, "expired", `{"inputLive":true}`, ""}
+			*now = time.Unix(o.ExpiresAt, 0)
+			if _, err := l.AdvanceSpendingDelegation(t.Context(), e, 0); err == nil {
+				t.Fatal("quarantine skipped")
+			}
+			*now = now.Add(31 * time.Second)
+			if phase != "armed" && phase != "claimed" && !strings.HasPrefix(phase, "final_") {
+				if _, err := l.AdvanceSpendingDelegation(t.Context(), e, 0); err == nil {
+					t.Fatal("Operator cleanup bypassed")
+				}
+				for _, cleanup := range []string{"cleanup_pending", "cleanup_authorized", "cleanup_dispatched", "cleanup_result"} {
+					if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, cleanup, `{}`, ""}, 0); err != nil {
+						t.Fatal(cleanup, err)
+					}
+				}
+			}
+			_, err := l.AdvanceSpendingDelegation(t.Context(), e, 0)
+			final := strings.HasPrefix(phase, "final_")
+			if final && err == nil {
+				t.Fatal("released final authority")
+			}
+			if !final && err != nil {
+				t.Fatal(err)
+			}
+			used, err := l.SpentInPeriod(t.Context(), o.VaultID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := int64(0)
+			if final {
+				want = o.FeeSats
+			}
+			if used != want {
+				t.Fatal("fee hold", used, want)
+			}
+			if !final {
+				if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "final_authorized", `{}`, ""}, 0); err == nil {
+					t.Fatal("final signed after terminal")
+				}
+			}
+		})
+	}
+}
+func TestSpendingDelegationFinalVersusExpiryRace(t *testing.T) {
+	for _, late := range []bool{false, true} {
+		l, now, o := delegationFixture(t)
+		stageDelegation(t, l, o, "tree_signed")
+		if late {
+			*now = time.Unix(o.ExpiresAt+31, 0)
+		}
+		start := make(chan struct{})
+		results := make(chan string, 2)
+		var wg sync.WaitGroup
+		for _, phase := range []string{"cleanup_pending", "final_authorized"} {
+			wg.Add(1)
+			go func(phase string) {
+				defer wg.Done()
+				<-start
+				_, err := l.AdvanceSpendingDelegation(context.Background(), SpendingDelegationEvent{o.OperationID, phase, `{}`, ""}, 0)
+				if err == nil {
+					results <- phase
+				}
+			}(phase)
+		}
+		close(start)
+		wg.Wait()
+		close(results)
+		var states []string
+		for p := range results {
+			states = append(states, p)
+		}
+		want := "final_authorized"
+		if late {
+			want = "cleanup_pending"
+		}
+		if len(states) != 1 || states[0] != want {
+			t.Fatal(states, want)
+		}
+	}
+}
+func TestSpendingDelegationAllowanceAndImmutableTranscript(t *testing.T) {
+	l, now, o := delegationFixture(t)
+	stageDelegation(t, l, o, "armed")
+	if used, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err != nil || used != 0 {
+		t.Fatal(used, err)
+	}
+	if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "claimed", `{}`, ""}, o.FeeSats-1); !errors.Is(err, ErrPeriodAllowanceExceeded) {
+		t.Fatal(err)
+	}
+	stageDelegation(t, l, o, "nonces_committed")
+	if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "nonces_committed", `{"changed":true}`, ""}, 0); err == nil {
+		t.Fatal("nonce transcript overwritten")
+	}
+	stageDelegation(t, l, o, "confirmed")
+	if used, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err != nil || used != o.FeeSats {
+		t.Fatal(used, err)
+	}
+	*now = now.Add(24*time.Hour + time.Second)
+	if used, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err != nil || used != 0 {
+		t.Fatal(used, err)
+	}
+	if _, err := scheduleOneDelegation(l, t.Context(), o); err != nil {
+		t.Fatal("expired exact retry", err)
+	}
+	o.FeeSats++
+	if _, err := scheduleOneDelegation(l, t.Context(), o); err == nil {
+		t.Fatal("changed plan retry")
+	}
+}
+func TestSpendingDelegationTamperCannotHideOwnership(t *testing.T) {
+	for _, query := range []string{
+		`UPDATE light_delegation_operation SET vault_id='other'`,
+		`UPDATE light_delegation_operation SET payload=replace(payload,'123','0')`,
+		`UPDATE light_delegation_event SET phase='cancelled' WHERE phase='claimed'`,
+		`UPDATE light_delegation_event SET payload=replace(payload,'claimed','cancelled') WHERE phase='claimed'`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			l, _, o := delegationFixture(t)
+			createPolicyTestVault(t, l, "other", 0x62)
+			stageDelegation(t, l, o, "register_dispatched")
+			if _, err := l.db.Exec(query); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := l.ListSpendingDelegations(t.Context()); err == nil {
+				t.Fatal("tamper accepted")
+			}
+			if _, err := l.SpentInPeriod(t.Context(), o.VaultID, ""); err == nil {
+				t.Fatal("tamper hid allowance")
+			}
+		})
+	}
+}
+
+func TestSpendingDelegationRestartRetainsSingleTranscript(t *testing.T) {
+	l, now, o := delegationFixture(t)
+	stageDelegation(t, l, o, "nonces_committed")
+	var path string
+	rows, err := l.db.Query(`PRAGMA database_list`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows.Next() {
+		var seq int
+		var name string
+		if err := rows.Scan(&seq, &name, &path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows.Close()
+	if path == "" || !filepath.IsAbs(path) {
+		t.Fatal(path)
+	}
+	l.Close()
+	reopened, err := OpenLedger(path, func() time.Time { return *now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if err := reopened.SetIntegrityKey(testIntegrityKey()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "nonces_committed", `{"peer":"changed"}`, ""}, 0); err == nil {
+		t.Fatal("restart reused nonce")
+	}
+	all, err := reopened.ListSpendingDelegations(t.Context())
+	if err != nil || len(all) != 1 || all[0].State() != "nonces_committed" {
+		t.Fatal(all, err)
+	}
+}
+
+func TestSpendingDelegationDeletedNonceRecordCannotBeReplacedAtSameSequence(t *testing.T) {
+	l, _, o := delegationFixture(t)
+	sequence, err := OpenMonotonic(filepath.Join(t.TempDir(), "independent-sequence"), testIntegrityKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.AttachMonotonic(sequence); err != nil {
+		t.Fatal(err)
+	}
+	stageDelegation(t, l, o, "nonces_committed")
+	before, exists, err := sequence.read()
+	if err != nil || !exists {
+		t.Fatal(before, err)
+	}
+	if _, err := l.db.Exec(`DELETE FROM light_delegation_event WHERE phase='nonces_committed'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.ListSpendingDelegations(t.Context()); err == nil {
+		t.Fatal("deleted transcript trusted")
+	}
+	// The new peer transcript would bring the SQL count back to the old value.
+	// It must fail on the pre-mutation sequence, before any new signature can use it.
+	if _, err := l.AdvanceSpendingDelegation(t.Context(), SpendingDelegationEvent{o.OperationID, "nonces_committed", `{"peer":"changed"}`, ""}, 0); err == nil {
+		t.Fatal("removed nonce record replaced")
+	}
+	after, _, err := sequence.read()
+	if err != nil || after != before {
+		t.Fatal("sequence changed", after, before, err)
+	}
+}

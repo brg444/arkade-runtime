@@ -19,18 +19,16 @@ import (
 )
 
 type env struct {
-	svc           *Service
-	ledger        *policy.Ledger
-	savings       *savingsSnapshot
-	hot           *btcec.PrivateKey
-	externalOwner *btcec.PrivateKey
-	master        *btcec.PrivateKey
-	operator      *btcec.PrivateKey
-	boarding      *btcec.PrivateKey
-	p256          *ecdsa.PrivateKey
-	direct        *ecdsa.PrivateKey
-	credID        []byte
-	dbPath        string
+	svc      *Service
+	ledger   *policy.Ledger
+	hot      *btcec.PrivateKey
+	master   *btcec.PrivateKey
+	operator *btcec.PrivateKey
+	boarding *btcec.PrivateKey
+	p256     *ecdsa.PrivateKey
+	direct   *ecdsa.PrivateKey
+	credID   []byte
+	dbPath   string
 }
 
 const (
@@ -47,6 +45,51 @@ func newEnv(t *testing.T) *env {
 
 func newEnvForNetwork(t *testing.T, network string) *env {
 	t.Helper()
+	e := newUnenrolledEnvForNetwork(t, network)
+	service, ledger := e.svc, e.ledger
+	credentialID, passkey, direct := e.credID, e.p256, e.direct
+	hot, boarding := e.hot, e.boarding
+	service.LightEnabled = true
+	var err error
+	tokenHash := bytes.Repeat([]byte{0x42}, 32)
+	now := time.Now().UTC()
+	if err := ledger.PutInvite(tokenHash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	request := RegisterRequest{
+		CredentialID:           hex.EncodeToString(credentialID),
+		WebAuthnP256:           hex.EncodeToString(webauthn.CompressedP256(passkey)),
+		PhoneDirectP256:        hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:         hex.EncodeToString(hot.PubKey().SerializeCompressed()),
+		VtxoBoardingProgram:    program.VaultBoardV1,
+		VaultBoardingBIP340Pub: hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
+		ProtectionTier:         program.ProtectionTierLight,
+	}
+	request.SpendingPolicy, err = program.DefaultSpendingPolicyFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHexFor(network, request.SpendingPolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := service.previewVaultBoardEnrollmentDescriptor(fixture.VaultID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.DescriptorHash = preview.DescriptorHash
+	if err := service.CreateTenantVault(fixture.VaultID, tokenHash, request); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := service.snapshot(fixture.VaultID)
+	if snapshot.Savings != nil || snapshot.Board == nil || snapshot.PhoneBIP340 == nil {
+		t.Fatal("current Vault enrollment was not published")
+	}
+	return e
+}
+
+func newUnenrolledEnvForNetwork(t *testing.T, network string) *env {
+	t.Helper()
 	identity, err := deployment.IdentityFor(network)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +99,6 @@ func newEnvForNetwork(t *testing.T, network string) *env {
 		origin, rpID = deployment.MainnetRCOrigin, deployment.MainnetRCRPID
 	}
 	hot, _ := btcec.NewPrivateKey()
-	externalOwner, _ := btcec.NewPrivateKey()
 	master, _ := btcec.NewPrivateKey()
 	operator, _ := btcec.NewPrivateKey()
 	boarding, _ := btcec.NewPrivateKey()
@@ -88,53 +130,17 @@ func newEnvForNetwork(t *testing.T, network string) *env {
 		Stores: stores, Deployment: deployment.Config{
 			ClientOrigin: origin, RPID: rpID, Network: network,
 		}, IntegrityKey: integrityKey,
-		Keys: testKeys(t, master, LocalSigner{Priv: operator}), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
+		Keys: testKeys(t, master), VaultCosignerPub: master.PubKey(), ArkadeCosignerPub: operator.PubKey(),
 		ArkadeCosignerOrigin: testArkadeCosignerOrigin, ArkadeCosignerVersion: testArkadeCosignerVersion,
 		ArkResolver: resolver,
 	})
 	if err := ledger.SetIntegrityKey(integrityKey); err != nil {
 		t.Fatal(err)
 	}
-	credentialID := []byte{0x11}
-	tokenHash := bytes.Repeat([]byte{0x42}, 32)
-	now := time.Now().UTC()
-	if err := ledger.PutInvite(tokenHash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
-		t.Fatal(err)
-	}
-	request := RegisterRequest{
-		CredentialID:             hex.EncodeToString(credentialID),
-		WebAuthnP256:             hex.EncodeToString(webauthn.CompressedP256(passkey)),
-		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
-		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(externalOwner.PubKey())),
-		VtxoBoardingProgram:      program.VaultBoardV1,
-		VaultBoardingBIP340Pub:   hex.EncodeToString(schnorr.SerializePubKey(boarding.PubKey())),
-		ProtectionTier:           program.ProtectionTierStandard,
-	}
-	request.SpendingPolicy, err = program.DefaultSpendingPolicyFor(network)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.SpendingPolicyDigest, err = program.SpendingPolicyDigestHexFor(network, request.SpendingPolicy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	preview, err := service.previewVaultBoardEnrollmentDescriptor(fixture.VaultID, request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.DescriptorHash = preview.DescriptorHash
-	if err := service.CreateTenantVault(fixture.VaultID, tokenHash, request); err != nil {
-		t.Fatal(err)
-	}
-	snapshot := service.snapshot(fixture.VaultID)
-	if snapshot.Savings == nil {
-		t.Fatal("current Vault enrollment was not published")
-	}
 	return &env{
-		svc: service, ledger: ledger, savings: snapshot.Savings,
-		hot: hot, externalOwner: externalOwner, master: master, operator: operator, boarding: boarding,
-		p256: passkey, direct: direct, credID: credentialID, dbPath: dbPath,
+		svc: service, ledger: ledger,
+		hot: hot, master: master, operator: operator, boarding: boarding,
+		p256: passkey, direct: direct, credID: []byte{0x11}, dbPath: dbPath,
 	}
 }
 
@@ -147,9 +153,9 @@ func testStores(t *testing.T, ledger *policy.Ledger) arkadevaultv1.Stores {
 	return stores
 }
 
-func testKeys(t *testing.T, master *btcec.PrivateKey, emulator Signer) KeyCapabilities {
+func testKeys(t *testing.T, master *btcec.PrivateKey) KeyCapabilities {
 	t.Helper()
-	keys, err := NewFileBackedKeyCapabilities(master, emulator)
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}

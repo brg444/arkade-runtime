@@ -1,0 +1,151 @@
+package application
+
+import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
+
+	"github.com/arkade-os/arkd/pkg/ark-lib/intent"
+	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
+	"github.com/brg444/arkade-runtime/internal/deployment"
+
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
+)
+
+type spendingDelegateIntent struct {
+	Proof   string `json:"proof"`
+	Message string `json:"message"`
+}
+type spendingDelegationRequest struct {
+	VaultID        string                 `json:"vaultId"`
+	OperationID    string                 `json:"operationId"`
+	Intent         spendingDelegateIntent `json:"intent"`
+	ForfeitTxs     []string               `json:"forfeitTxs"`
+	DeleteIntent   spendingDelegateIntent `json:"deleteIntent"`
+	ExpiresAt      int64                  `json:"expiresAt"`
+	OwnerSignature string                 `json:"ownerSignature"`
+	Program        string                 `json:"program,omitempty"`
+	DescriptorHash string                 `json:"descriptorHash,omitempty"`
+}
+type spendingDelegationPlan struct {
+	Request        spendingDelegationRequest `json:"request"`
+	Renewal        spendingRenewalPlan       `json:"renewal"`
+	ValidAt        int64                     `json:"validAt"`
+	InputExpiresAt int64                     `json:"inputExpiresAt"`
+}
+
+func spendingDelegationRequestDigest(r spendingDelegationRequest) ([]byte, error) {
+	shared := spendingDelegationSetRequest{Program: r.Program, DescriptorHash: r.DescriptorHash, VaultID: r.VaultID}
+	return shared.planDigest(spendingDelegationInput{OperationID: r.OperationID, Intent: r.Intent, ForfeitTxs: r.ForfeitTxs, DeleteIntent: r.DeleteIntent, ExpiresAt: r.ExpiresAt, OwnerSignature: r.OwnerSignature})
+}
+func verifyDelegationRequest(r spendingDelegationRequest, c renewalContract, forfeitScript []byte) (spendingDelegationPlan, error) {
+	d := c.Binding
+	if r.Program != d.Program || r.DescriptorHash != c.DescriptorHash {
+		return spendingDelegationPlan{}, fmt.Errorf("renewal request context")
+	}
+
+	var out spendingDelegationPlan
+	if _, err := canonicalVtxoOperationID(r.OperationID); err != nil {
+		return out, err
+	}
+	if r.VaultID != d.VaultID || r.ExpiresAt <= 0 || r.ExpiresAt > (1<<53)-1 || len(r.ForfeitTxs) != 1 {
+		return out, fmt.Errorf("Light delegation scope")
+	}
+	digest, err := spendingDelegationRequestDigest(r)
+	if err != nil {
+		return out, err
+	}
+	if err := verifyRenewalOwner(d.OwnerPub, digest, r.OwnerSignature); err != nil {
+		return out, err
+	}
+	var message intent.RegisterMessage
+	if err := message.Decode(r.Intent.Message); err != nil {
+		return out, err
+	}
+	if message.ValidAt <= 0 || message.ValidAt > (1<<53)-1 || r.ExpiresAt <= message.ValidAt || r.ExpiresAt > message.ValidAt+86400 {
+		return out, fmt.Errorf("Light delegation lifetime")
+	}
+	p, err := parseCanonicalVaultBoardPSBT(r.Intent.Proof, maxVaultBoardProofBytes)
+	if err != nil {
+		return out, err
+	}
+	if len(p.Inputs) != 2 || len(p.UnsignedTx.TxIn) != 2 || len(p.UnsignedTx.TxOut) != 1 || p.Inputs[1].WitnessUtxo == nil {
+		return out, fmt.Errorf("Light delegation requires one output")
+	}
+	previous := p.UnsignedTx.TxIn[1].PreviousOutPoint
+	value := p.Inputs[1].WitnessUtxo.Value
+	receiver := p.UnsignedTx.TxOut[0].Value
+	hash, err := c.identityHash()
+	if err != nil {
+		return out, err
+	}
+	plan := spendingRenewalPlan{OperationID: r.OperationID, VaultID: r.VaultID, DescriptorHash: hash, Txid: previous.Hash.String(), Vout: previous.Index, ValueSats: value, ReceiverSats: receiver, FeeSats: value - receiver, FeePolicyDigest: hex.EncodeToString(make([]byte, 32)), RegisterExpireAt: r.ExpiresAt}
+	// x-only contracts use the even lift, which must also be the MuSig identity.
+	if _, err := verifyRenewalRegistration(r.Intent.Proof, r.Intent.Message, plan, c, message.ValidAt, r.ExpiresAt, append([]byte{2}, mustDecodeRenewalHex(d.CosignerPub)...)); err != nil {
+		return out, err
+	}
+	if err := verifyRenewalPartialForfeit(r.ForfeitTxs[0], plan, c, forfeitScript); err != nil {
+		return out, err
+	}
+	if err := verifyRenewalDelete(r.DeleteIntent, plan, c); err != nil {
+		return out, err
+	}
+	return spendingDelegationPlan{Request: r, Renewal: plan, ValidAt: message.ValidAt}, nil
+}
+func delegationForfeitScript(network string) ([]byte, error) {
+	pins, err := deployment.IdentityFor(network)
+	if err != nil {
+		return nil, err
+	}
+	pub := mustDecodeRenewalHex(pins.CheckpointForfeitPubHex)
+	return append([]byte{txscript.OP_0, 0x14}, btcutil.Hash160(pub)...), nil
+}
+func verifyRenewalPartialForfeit(raw string, p spendingRenewalPlan, c renewalContract, forfeitScript []byte) error {
+	if err := c.validateTree(); err != nil {
+		return err
+	}
+	d, tree := c.Binding, c.Tree
+
+	tx, err := parseCanonicalVaultBoardPSBT(raw, maxVaultBoardProofBytes)
+	if err != nil {
+		return err
+	}
+	if tx.UnsignedTx.Version != 3 || tx.UnsignedTx.LockTime != 0 || len(tx.Inputs) != 1 || len(tx.UnsignedTx.TxIn) != 1 || len(tx.Outputs) != 2 || len(tx.UnsignedTx.TxOut) != 2 || len(tx.Unknowns) != 0 {
+		return fmt.Errorf("Light delegated forfeit shape")
+	}
+	in := tx.UnsignedTx.TxIn[0]
+	utxo := tx.Inputs[0].WitnessUtxo
+	if in.PreviousOutPoint.Hash.String() != p.Txid || in.PreviousOutPoint.Index != p.Vout || in.Sequence != wire.MaxTxInSequenceNum || utxo == nil || utxo.Value != p.ValueSats || !bytes.Equal(utxo.PkScript, tree.PkScript) {
+		return fmt.Errorf("Light delegated forfeit input")
+	}
+	anchor := txutils.AnchorOutput()
+	out := tx.UnsignedTx.TxOut
+	// Stock connector is dust=330; its value is committed by the owner before
+	// the outpoint exists. Final verification requires that exact connector.
+	if out[0].Value != p.ValueSats+330-anchor.Value || !bytes.Equal(out[0].PkScript, forfeitScript) || out[1].Value != anchor.Value || !bytes.Equal(out[1].PkScript, anchor.PkScript) {
+		return fmt.Errorf("Light delegated forfeit outputs")
+	}
+	owner := mustDecodeRenewalHex(d.OwnerPub)
+	hash := txscript.SigHashAll | txscript.SigHashAnyOneCanPay
+	if err := requireExactLeafWithSighash(tx.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{owner}, hash); err != nil {
+		return err
+	}
+	return requireVerifiedSignersWithSighash(tx, 0, [][]byte{owner}, tree.SpendLeaf, hash)
+}
+
+// Delete authorization is BIP-322, with no monetary destination. Zero expiry
+// permits queue cleanup after downtime, but only for this exact original input.
+func verifyRenewalDelete(r spendingDelegateIntent, p spendingRenewalPlan, c renewalContract) error {
+
+	var message intent.DeleteMessage
+	if err := message.Decode(r.Message); err != nil {
+		return err
+	}
+	canonical, err := message.Encode()
+	if err != nil || canonical != r.Message || message.ExpireAt != 0 {
+		return fmt.Errorf("Light delegation delete message")
+	}
+	return verifyRenewalIntentProof(r.Proof, r.Message, p, c, &wire.TxOut{Value: 0, PkScript: []byte{txscript.OP_RETURN}})
+}

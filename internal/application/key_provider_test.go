@@ -11,8 +11,7 @@ import (
 
 func TestScopedKeyCapabilitiesPreserveExistingDerivations(t *testing.T) {
 	master, _ := btcec.NewPrivateKey()
-	emulator, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,8 +54,7 @@ func TestScopedKeyCapabilitiesPreserveExistingDerivations(t *testing.T) {
 
 func TestVaultBoardCapabilityIsAlwaysAvailable(t *testing.T) {
 	master, _ := btcec.NewPrivateKey()
-	emulator, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,17 +76,18 @@ func TestKeyCapabilitySurfaceIsSealedAndSemantic(t *testing.T) {
 		}
 	}
 	privateKeyType := reflect.TypeOf((*btcec.PrivateKey)(nil))
-	genericSignerType := reflect.TypeOf((*Signer)(nil)).Elem()
+
 	for _, surface := range []reflect.Type{reflect.TypeOf(Service{}), reflect.TypeOf(Deps{})} {
 		for i := 0; i < surface.NumField(); i++ {
 			field := surface.Field(i)
-			if field.Type == privateKeyType || field.Type == genericSignerType {
+			_, hasGenericSign := field.Type.MethodByName("Sign")
+			if field.Type == privateKeyType || hasGenericSign {
 				t.Fatalf("%s still receives raw or generic signing field %q", surface.Name(), field.Name)
 			}
 		}
 	}
-	if _, err := newSavingsRecoveryAuthorization(nil, "", nil, nil); err == nil {
-		t.Fatal("unvalidated Savings authorization accepted")
+	if _, err := (&fileBackedLedgerSavingsAuthorizer{}).authorizeTransition(t.Context(), ledgerSavingsTransitionAuthorization{}); err == nil {
+		t.Fatal("unvalidated Ledger Savings authorization accepted")
 	}
 	if _, err := newVtxoTransactionAuthorization(vtxoKeyContext{}, "", "", nil, nil); err == nil {
 		t.Fatal("unvalidated VTXO transaction authorization accepted")
@@ -100,8 +99,7 @@ func TestKeyCapabilitySurfaceIsSealedAndSemantic(t *testing.T) {
 
 func TestKeyCapabilitiesWipeBackendAndHandles(t *testing.T) {
 	master, _ := btcec.NewPrivateKey()
-	emulator, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}

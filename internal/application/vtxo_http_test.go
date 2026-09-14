@@ -279,7 +279,7 @@ func TestVaultBoardV1MatchesSDKVector(t *testing.T) {
 	svc := &Service{
 		Deployment:  deployment.Config{Network: deployment.NetworkMutinynet},
 		ArkResolver: stubArkResolver{signer: operator.PubKey().SerializeCompressed()},
-		keys:        testKeys(t, master, LocalSigner{Priv: operator}),
+		keys:        testKeys(t, master),
 	}
 	tree, err := svc.buildVtxoBoardTree(fixture.VaultID, enrolledSnapshot{PhoneBIP340: phone.PubKey()}, boarding.PubKey())
 	if err != nil {

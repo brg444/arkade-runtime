@@ -23,7 +23,7 @@ func TestRenewalCapturedStockParticipantPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var fixtures map[string]lightDelegationTree
+	var fixtures map[string]spendingDelegationTree
 	if err := json.Unmarshal(raw, &fixtures); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestRenewalCapturedStockParticipantPaths(t *testing.T) {
 	forfeit, _ := btcec.ParsePubKey(mustDecodeRenewalHex(pins.CheckpointForfeitPubHex))
 	for tier, fixture := range fixtures {
 		t.Run(tier, func(t *testing.T) {
-			flat, graph, err := canonicalLightRenewalTree(fixture.VtxoTree)
+			flat, graph, err := canonicalSpendingRenewalTree(fixture.VtxoTree)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,21 +96,21 @@ func participantPath(t *testing.T, full arktree.FlatTxTree, script []byte) arktr
 }
 
 func TestRenewalPrunedPathRequiresCompleteSignedRecovery(t *testing.T) {
-	f := newLightRenewalProofFixture(t)
+	f := newSpendingRenewalProofFixture(t)
 	owner, _ := btcec.NewPrivateKey()
 	operator, _ := btcec.NewPrivateKey()
 	other, _ := btcec.NewPrivateKey()
-	f, registered, full := buildLightRenewalFinalFixture(t, f, owner, operator, other)
+	f, registered, full := buildSpendingRenewalFinalFixture(t, f, owner, operator, other)
 	e := full
 	e.VtxoTree = participantPath(t, full.VtxoTree, f.tree.PkScript)
 	if len(e.VtxoTree) != 2 || len(full.VtxoTree) != 3 {
 		t.Fatal("expected two-participant fixture")
 	}
-	if _, err := verifyLightRenewalFinal(e, f.plan, f.descriptor, f.tree, registered); err != nil {
+	if _, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault); err != nil {
 		t.Fatal(err)
 	}
-	for name, mutate := range map[string]func(*lightRenewalFinalEvidence){
-		"missing owned leaf": func(e *lightRenewalFinalEvidence) {
+	for name, mutate := range map[string]func(*spendingRenewalFinalEvidence){
+		"missing owned leaf": func(e *spendingRenewalFinalEvidence) {
 			for i, n := range e.VtxoTree {
 				if len(n.Children) == 0 {
 					e.VtxoTree = append(e.VtxoTree[:i], e.VtxoTree[i+1:]...)
@@ -118,7 +118,7 @@ func TestRenewalPrunedPathRequiresCompleteSignedRecovery(t *testing.T) {
 				}
 			}
 		},
-		"missing shared root": func(e *lightRenewalFinalEvidence) {
+		"missing shared root": func(e *spendingRenewalFinalEvidence) {
 			for i, n := range e.VtxoTree {
 				if len(n.Children) > 0 {
 					e.VtxoTree = append(e.VtxoTree[:i], e.VtxoTree[i+1:]...)
@@ -126,7 +126,7 @@ func TestRenewalPrunedPathRequiresCompleteSignedRecovery(t *testing.T) {
 				}
 			}
 		},
-		"missing root signature": func(e *lightRenewalFinalEvidence) {
+		"missing root signature": func(e *spendingRenewalFinalEvidence) {
 			for i, n := range e.VtxoTree {
 				if len(n.Children) > 0 {
 					p, _ := parsePSBT(n.Tx)
@@ -135,7 +135,7 @@ func TestRenewalPrunedPathRequiresCompleteSignedRecovery(t *testing.T) {
 				}
 			}
 		},
-		"invalid leaf signature": func(e *lightRenewalFinalEvidence) {
+		"invalid leaf signature": func(e *spendingRenewalFinalEvidence) {
 			for i, n := range e.VtxoTree {
 				if len(n.Children) == 0 {
 					p, _ := parsePSBT(n.Tx)
@@ -144,7 +144,7 @@ func TestRenewalPrunedPathRequiresCompleteSignedRecovery(t *testing.T) {
 				}
 			}
 		},
-		"wrong recipient": func(e *lightRenewalFinalEvidence) {
+		"wrong recipient": func(e *spendingRenewalFinalEvidence) {
 			e.VtxoTree = nil
 			for _, n := range full.VtxoTree {
 				keep := len(n.Children) > 0
@@ -162,7 +162,7 @@ func TestRenewalPrunedPathRequiresCompleteSignedRecovery(t *testing.T) {
 			changed := e
 			changed.VtxoTree = append(arktree.FlatTxTree(nil), e.VtxoTree...)
 			mutate(&changed)
-			if _, err := verifyLightRenewalFinal(changed, f.plan, f.descriptor, f.tree, registered); err == nil {
+			if _, err := verifyRenewalFinal(changed, f.plan, f.contract, registered, txscript.SigHashDefault); err == nil {
 				t.Fatal("invalid recovery path accepted")
 			}
 		})
@@ -173,7 +173,7 @@ func TestRenewalDelegationSignsOnlyProvidedOwnedPath(t *testing.T) {
 	other, _ := btcec.NewPrivateKey()
 	f := newDelegatedFixture(t, other)
 	f.tree.VtxoTree = participantPath(t, f.tree.VtxoTree, f.f.tree.PkScript)
-	capsule, err := f.f.env.svc.keys.lightDelegation.prepareLightDelegationTree(t.Context(), f.f.descriptor, f.p, f.tree)
+	capsule, err := f.f.env.svc.keys.spendingDelegation.prepareSpendingDelegationTree(t.Context(), f.f.contract, f.p, f.tree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestRenewalPrunedGraphBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var fixtures map[string]lightDelegationTree
+	var fixtures map[string]spendingDelegationTree
 	if err := json.Unmarshal(raw, &fixtures); err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestRenewalPrunedGraphBounds(t *testing.T) {
 			raw, _ := json.Marshal(original)
 			var f arktree.FlatTxTree
 			_ = json.Unmarshal(raw, &f)
-			if _, _, err := canonicalLightRenewalTree(mutate(f)); err == nil {
+			if _, _, err := canonicalSpendingRenewalTree(mutate(f)); err == nil {
 				t.Fatal("malformed graph accepted")
 			}
 		})
@@ -281,7 +281,7 @@ func TestRenewalPrunedConnectorPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := participantPath(t, serialized, owned)
-	flat, graph, err := canonicalLightRenewalTree(path)
+	flat, graph, err := canonicalSpendingRenewalTree(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,13 +301,13 @@ func TestRenewalPrunedConnectorPath(t *testing.T) {
 			break
 		}
 	}
-	if _, _, err := canonicalLightRenewalTree(flat); err == nil {
+	if _, _, err := canonicalSpendingRenewalTree(flat); err == nil {
 		t.Fatal("missing connector descendant accepted")
 	}
 }
 
 func TestRenewalPrunedRecoveryRejectsMissingIntermediateAncestor(t *testing.T) {
-	f := newLightRenewalProofFixture(t)
+	f := newSpendingRenewalProofFixture(t)
 	owner, _ := btcec.NewPrivateKey()
 	operator, _ := btcec.NewPrivateKey()
 	var others []*btcec.PrivateKey
@@ -315,12 +315,12 @@ func TestRenewalPrunedRecoveryRejectsMissingIntermediateAncestor(t *testing.T) {
 		key, _ := btcec.NewPrivateKey()
 		others = append(others, key)
 	}
-	f, registered, e := buildLightRenewalFinalFixture(t, f, owner, operator, others...)
+	f, registered, e := buildSpendingRenewalFinalFixture(t, f, owner, operator, others...)
 	e.VtxoTree = participantPath(t, e.VtxoTree, f.tree.PkScript)
 	if len(e.VtxoTree) < 3 {
 		t.Fatal("fixture must have an intermediate ancestor")
 	}
-	if _, err := verifyLightRenewalFinal(e, f.plan, f.descriptor, f.tree, registered); err != nil {
+	if _, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault); err != nil {
 		t.Fatal(err)
 	}
 	rootID := e.VtxoTree.RootTxid()
@@ -330,7 +330,7 @@ func TestRenewalPrunedRecoveryRejectsMissingIntermediateAncestor(t *testing.T) {
 			break
 		}
 	}
-	if _, err := verifyLightRenewalFinal(e, f.plan, f.descriptor, f.tree, registered); err == nil {
+	if _, err := verifyRenewalFinal(e, f.plan, f.contract, registered, txscript.SigHashDefault); err == nil {
 		t.Fatal("missing recovery ancestor accepted")
 	}
 }

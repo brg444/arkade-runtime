@@ -14,27 +14,23 @@ const modulePath = "github.com/brg444/arkade-runtime"
 
 func TestInternalImportBoundaries(t *testing.T) {
 	goBinary := filepath.Join(goruntime.GOROOT(), "bin", "go")
-	cmd := exec.Command(goBinary, "list", "-json", "./...")
+	cmd := exec.Command(goBinary, "list", "-deps", "-json", "./...")
 	raw, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("go list: %v", err)
 	}
 
 	allowed := map[string]map[string]bool{
-		modulePath + "/internal/apperr":                 {},
-		modulePath + "/internal/contractpack":           {},
-		modulePath + "/internal/deployment":             {},
-		modulePath + "/internal/ports":                  {},
-		modulePath + "/internal/program":                {},
-		modulePath + "/internal/runtime":                {},
-		modulePath + "/internal/webauthn":               {},
-		modulePath + "/internal/vault":                  {},
-		modulePath + "/internal/vault/savings":          {modulePath + "/internal/program": true},
-		modulePath + "/internal/vault/light":            {modulePath + "/internal/program": true},
-		modulePath + "/internal/policy":                 {modulePath + "/internal/program": true},
-		modulePath + "/internal/iface/http":             {modulePath + "/internal/application": true},
-		modulePath + "/internal/profile/vaultedlightv1": {modulePath + "/internal/runtime": true, modulePath + "/internal/vault/light": true},
-		modulePath + "/internal/vault/connector":        {modulePath + "/internal/program": true, modulePath + "/internal/vault/savings": true},
+		modulePath + "/internal/apperr":        {},
+		modulePath + "/internal/contractpack":  {},
+		modulePath + "/internal/deployment":    {},
+		modulePath + "/internal/ports":         {},
+		modulePath + "/internal/program":       {},
+		modulePath + "/internal/runtime":       {},
+		modulePath + "/internal/webauthn":      {},
+		modulePath + "/internal/vault/savings": {modulePath + "/internal/program": true},
+		modulePath + "/internal/policy":        {modulePath + "/internal/program": true},
+		modulePath + "/internal/iface/http":    {modulePath + "/internal/application": true},
 		modulePath + "/internal/profile/arkadevaultv1": {
 			modulePath + "/internal/policy":  true,
 			modulePath + "/internal/program": true,
@@ -46,16 +42,9 @@ func TestInternalImportBoundaries(t *testing.T) {
 		modulePath + "/internal/application": true,
 		modulePath + "/internal/authorizer":  true,
 	}
-	// Only internal/application imports the connector implementation, for its
-	// named enrollment and withdrawal workflows. Profile declarations and
-	// release capabilities preserve this implementation import boundary.
-	connectorImporters := map[string]bool{
-		modulePath + "/internal/application": true,
-	}
 	nonProductionPackages := map[string]bool{
-		modulePath:                            true,
-		modulePath + "/fixture":               true,
-		modulePath + "/experiments/connector": true,
+		modulePath:              true,
+		modulePath + "/fixture": true,
 	}
 
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
@@ -64,17 +53,15 @@ func TestInternalImportBoundaries(t *testing.T) {
 		var pkg struct {
 			ImportPath string
 			Imports    []string
-			GoFiles    []string
-			CgoFiles   []string
 		}
 		if err := decoder.Decode(&pkg); err != nil {
 			t.Fatalf("decode go list: %v", err)
 		}
+		if strings.HasPrefix(pkg.ImportPath, "github.com/arkade-os/emulator") {
+			t.Errorf("retired signing dependency remains reachable: %s", pkg.ImportPath)
+		}
 		if !strings.HasPrefix(pkg.ImportPath, modulePath) {
 			continue
-		}
-		if pkg.ImportPath == modulePath+"/experiments/connector" && len(pkg.GoFiles)+len(pkg.CgoFiles) != 0 {
-			t.Error("connector experiment must contain test files only")
 		}
 		want, tracked := allowed[pkg.ImportPath]
 		if !tracked && !compositionRoots[pkg.ImportPath] && !nonProductionPackages[pkg.ImportPath] {
@@ -84,8 +71,8 @@ func TestInternalImportBoundaries(t *testing.T) {
 		seen[pkg.ImportPath] = true
 		var unexpected []string
 		for _, imported := range pkg.Imports {
-			if imported == modulePath+"/internal/vault/connector" && !connectorImporters[pkg.ImportPath] {
-				t.Errorf("unreleased connector must not be imported by production code: %s", pkg.ImportPath)
+			if imported == modulePath+"/internal/vault/connector" || imported == modulePath+"/internal/vault/light" || strings.HasPrefix(imported, "github.com/arkade-os/emulator") {
+				t.Errorf("retired program must not be imported: %s", pkg.ImportPath)
 			}
 			if imported == modulePath+"/fixture" && !nonProductionPackages[pkg.ImportPath] {
 				unexpected = append(unexpected, imported)

@@ -4,109 +4,50 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"database/sql"
-	"encoding/hex"
+
 	"fmt"
 	"path/filepath"
 	"sort"
-	"strings"
+
 	"testing"
 )
 
 // TestSchemaCompatibilityGolden pins the physical SQLite contract.
+// The current schema12 baseline removes only recovery_session from the captured
+// 046ddd78 objects; retained object definitions are byte-identical.
 // The structural startup validator remains the enforcement mechanism; this
 // digest catches intentional-looking SQL edits that preserve coarse column
 // types while changing stored bytes, constraints, or object definitions.
 func TestSchemaCompatibilityGolden(t *testing.T) {
-	testSchemaGolden(t, legacySchemaVersion, "c15fdd355bcf93cc34487f43178f133f95d59c9f501ef4544589eeeb0ed9a553")
-}
-
-func TestLightRenewalSchemaGolden(t *testing.T) {
-	testSchemaGolden(t, lightSchemaVersion, "a577b1311c302be332af46386f2de45c166aef422f3a2cf7186b2954100c6ee8")
-}
-
-func TestConnectorSchemaGolden(t *testing.T) {
-	// Schema 3 adds connector_enrollment and connector_operation (no secondary
-	// indexes: conflict discovery scans and authenticates every row) to the
-	// frozen schema-2 baseline. The earlier goldens prove every
-	// pre-existing object is byte-identical.
-	testSchemaGolden(t, connectorSchemaVersion, "29afa51371899c5f6185431170cd676e1a5ef5ac2beb89e5fdc12d6f5570c245")
-}
-
-func TestRecoveryBackupSchemaGolden(t *testing.T) {
-	testSchemaGolden(t, recoveryBackupSchemaVersion, "3de1e3291bdd6a56dd1b7b18f88ea4e3bea27ed737a8ac17e8416f67e8f852ba")
-}
-
-func TestLightDelegationSchemaGolden(t *testing.T) {
-	testSchemaGolden(t, 5, "ccd7170292a50cbff1db786235a0fc86d24bea1ab9362b4f3e6a01dffef65df5")
-}
-
-func testSchemaGolden(t *testing.T, version int, want string) {
-	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "vault.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
-	// Build the frozen historical DDL directly. SQLite ALTER TABLE rewrites
-	// quoted names, so relabeling or rebuilding today's schema is not a golden.
-	boardSchema, err := vaultBoardSchemaForNetwork("mutinynet")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ddl := range []string{createMultiTenantSchema, createVtxoSchema, boardSchema, createLightRenewalSchema, createConnectorSchema, createRecoveryBackupSchema, createLightDelegationSchema, createVaultBoardConflictSchema, createLedgerSavingsSchema} {
-		if _, err := db.Exec(strings.TrimSpace(ddl)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := db.Exec(`INSERT INTO schema_meta(version) VALUES(10)`); err != nil {
-		t.Fatal(err)
-	}
-
-	var canonical bytes.Buffer
-	fmt.Fprintf(&canonical, "schema_meta=%d\n", version)
-	rows, err := db.Query(`
-SELECT type, name, tbl_name, IFNULL(sql, '')
-  FROM sqlite_schema
- WHERE name NOT LIKE 'sqlite_%'
- ORDER BY type, name`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var kind, name, table, sqlText string
-		if err := rows.Scan(&kind, &name, &table, &sqlText); err != nil {
-			t.Fatal(err)
-		}
-		if version < 10 && (table == "ledger_savings_enrollment" || table == "ledger_savings_recovery_event") {
-			continue
-		}
-		if version < 9 && table == "vault_board_conflict" {
-			continue
-		}
-		if version < 5 && (table == "light_delegation_operation" || table == "light_delegation_event") {
-			continue
-		}
-		if version < recoveryBackupSchemaVersion && table == "recovery_backup" {
-			continue
-		}
-		// Freeze each deployed baseline verbatim, excluding only objects
-		// introduced after that version.
-		if version < lightSchemaVersion && (table == "light_renewal_operation" || table == "light_renewal_event") {
-			continue
-		}
-		if version < connectorSchemaVersion && (table == "connector_enrollment" || table == "connector_operation") {
-			continue
-		}
-		fmt.Fprintf(&canonical, "%s\x00%s\x00%s\x00%s\n", kind, name, table, sqlText)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(canonical.Bytes())
-	if got := hex.EncodeToString(sum[:]); got != want {
-		t.Fatalf("schema digest = %s, want %s\ncanonical schema:\n%s", got, want, canonical.String())
+	for _, network := range []string{"mainnet", "mutinynet"} {
+		t.Run(network, func(t *testing.T) {
+			l, err := OpenLedgerForNetwork(filepath.Join(t.TempDir(), "vault.sqlite"), nil, network)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer l.Close()
+			var canonical bytes.Buffer
+			fmt.Fprintf(&canonical, "schema_meta=%d\n", schemaVersion)
+			rows, err := l.db.Query(`SELECT type, name, tbl_name, IFNULL(sql, '') FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var kind, name, table, ddl string
+				if err := rows.Scan(&kind, &name, &table, &ddl); err != nil {
+					t.Fatal(err)
+				}
+				fmt.Fprintf(&canonical, "%s\x00%s\x00%s\x00%s\n", kind, name, table, ddl)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]string{"mainnet": "52a3ddddaf82070f3eb2898d8356d5389de2034dccd3f227c391f9cd573c66b6", "mutinynet": "dbedcef68c9076f3aca605decdf39f42f0243e7d61dc2cb9450cfe6edeedbcda"}[network]
+			if got := fmt.Sprintf("%x", sha256.Sum256(canonical.Bytes())); got != want {
+				t.Fatalf("schema12 %s digest %s, want %s", network, got, want)
+			}
+		})
 	}
 }
 

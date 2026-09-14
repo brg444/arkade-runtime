@@ -85,6 +85,9 @@ func (l *Ledger) SetIntegrityKey(key []byte) error {
 		}
 		return nil
 	}
+	if err := l.initializeIntegrityState(key); err != nil {
+		return err
+	}
 	l.integrityKey = append([]byte(nil), key...)
 	return nil
 }
@@ -254,7 +257,7 @@ func (l *Ledger) spentInWindow(ctx context.Context, q queryContext, vaultID stri
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
-	renewal, err := l.lightRenewalAllowance(ctx, q, vaultID, key)
+	renewal, err := l.spendingRenewalAllowance(ctx, q, vaultID, key)
 	if err != nil {
 		return 0, err
 	}
@@ -284,55 +287,17 @@ func (l *Ledger) AttachMonotonic(m *Monotonic) error {
 	return l.observeEconomicOutflowsLocked(l.db)
 }
 
+// Economic rows are append-only within the retained workflows. The authenticated
+// sequence base accounts for rows removed by the explicit retirement migration.
 func economicOutflowCount(q queryContext) (uint64, error) {
 	var n int64
-	query := `SELECT COUNT(*) FROM vtxo_operation`
-	var boardTables int
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('vault_board_authorization','vault_board_dispatch','vault_board_submission')`).Scan(&boardTables); err != nil {
-		return 0, err
-	}
-	if boardTables == 3 {
-		query = `SELECT (SELECT COUNT(*) FROM vtxo_operation) + (SELECT COUNT(*) FROM vault_board_authorization) + (SELECT COUNT(*) FROM vault_board_dispatch) + (SELECT COUNT(*) FROM vault_board_submission)`
-	}
-	var renewalTables int
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('light_renewal_operation','light_renewal_event')`).Scan(&renewalTables); err != nil {
-		return 0, err
-	}
-	if renewalTables == 2 {
-		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM light_renewal_operation) + (SELECT COUNT(*) FROM light_renewal_event)`
-	}
-	// Connector operations reserve both onchain inputs until chain evidence
-	// resolves them, so each durable operation advances the sequence exactly
-	// like every other economic-outflow reservation.
-	var connectorTables int
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('connector_enrollment','connector_operation')`).Scan(&connectorTables); err != nil {
-		return 0, err
-	}
-	if connectorTables == 2 {
-		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM connector_operation)`
-	}
-	var delegationTables int
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('light_delegation_operation','light_delegation_event')`).Scan(&delegationTables); err != nil {
-		return 0, err
-	}
-	if delegationTables == 2 {
-		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM light_delegation_operation) + (SELECT COUNT(*) FROM light_delegation_event)`
-	}
-	var ledgerSavingsTable int
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ledger_savings_recovery_event'`).Scan(&ledgerSavingsTable); err != nil {
-		return 0, err
-	}
-	if ledgerSavingsTable == 1 {
-		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM ledger_savings_recovery_event)`
-	}
-	var conflictTable int
-	if err := q.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vault_board_conflict'`).Scan(&conflictTable); err != nil {
-		return 0, err
-	}
-	if conflictTable == 1 {
-		query = `SELECT (` + query + `) + (SELECT COUNT(*) FROM vault_board_conflict)`
-	}
-	if err := q.QueryRowContext(context.Background(), query).Scan(&n); err != nil {
+	err := q.QueryRowContext(context.Background(), `SELECT
+  (SELECT COUNT(*) FROM vtxo_operation) +
+  (SELECT COUNT(*) FROM vault_board_authorization) + (SELECT COUNT(*) FROM vault_board_dispatch) + (SELECT COUNT(*) FROM vault_board_submission) +
+  (SELECT COUNT(*) FROM light_renewal_operation) + (SELECT COUNT(*) FROM light_renewal_event) +
+  (SELECT COUNT(*) FROM light_delegation_operation) + (SELECT COUNT(*) FROM light_delegation_event) +
+  (SELECT COUNT(*) FROM ledger_savings_recovery_event) + (SELECT COUNT(*) FROM vault_board_conflict)`).Scan(&n)
+	if err != nil {
 		return 0, err
 	}
 	if n < 0 {
@@ -345,7 +310,7 @@ func (l *Ledger) observeEconomicOutflowsLocked(q queryContext) error {
 	if l == nil || l.monotonic == nil {
 		return nil
 	}
-	n, err := economicOutflowCount(q)
+	n, err := l.currentEconomicSequence(q)
 	if err != nil {
 		return err
 	}

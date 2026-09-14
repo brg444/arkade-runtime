@@ -161,8 +161,7 @@ func newVaultBoardServiceFixtureForNetwork(t *testing.T, network string) vaultBo
 	operatorKey, _ := btcec.NewPrivateKey()
 	boarding, _ := btcec.NewPrivateKey()
 	hot, _ := btcec.NewPrivateKey()
-	owner, _ := btcec.NewPrivateKey()
-	keys, err := NewFileBackedKeyCapabilities(master, LocalSigner{Priv: emulator})
+	keys, err := NewFileBackedKeyCapabilities(master)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +182,9 @@ func newVaultBoardServiceFixtureForNetwork(t *testing.T, network string) vaultBo
 	if err := ledger.PutInvite(hash, now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
+	svc.LightEnabled = true
 	enrollment := defaultEnrollStartRequest(t)
+	enrollment.ProtectionTier = program.ProtectionTierLight
 	pins, err := program.PinsFor(network)
 	if err != nil {
 		t.Fatal(err)
@@ -201,9 +202,8 @@ func newVaultBoardServiceFixtureForNetwork(t *testing.T, network string) vaultBo
 	pass, _ := webauthn.NewP256()
 	direct, _ := webauthn.NewP256()
 	base := attestedFinish(t, svc, start, pass, []byte("cred-board-service"), RegisterRequest{
-		PhoneDirectP256:          hex.EncodeToString(webauthn.CompressedP256(direct)),
-		PhoneBIP340Pub:           hex.EncodeToString(hot.PubKey().SerializeCompressed()),
-		ExternalOwnerWalletXOnly: hex.EncodeToString(schnorr.SerializePubKey(owner.PubKey())),
+		PhoneDirectP256: hex.EncodeToString(webauthn.CompressedP256(direct)),
+		PhoneBIP340Pub:  hex.EncodeToString(hot.PubKey().SerializeCompressed()),
 	})
 	request := base
 	request.VtxoBoardingProgram = program.VaultBoardV1
@@ -841,7 +841,7 @@ func TestVaultBoardPersistedEnrollmentRequiresResolverBeforeReload(t *testing.T)
 	if err := reopened.SetIntegrityKey(testCredentialIntegrityKey); err != nil {
 		t.Fatal(err)
 	}
-	keys, err := NewFileBackedKeyCapabilities(fixture.master, LocalSigner{Priv: fixture.emulator})
+	keys, err := NewFileBackedKeyCapabilities(fixture.master)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,16 +8,15 @@ import (
 	"net/http"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/program"
 )
 
 type spendingDelegationSetResponse struct {
-	SetID      string                    `json:"setId"`
-	Operations []lightDelegationResponse `json:"operations"`
+	SetID      string                                `json:"setId"`
+	Operations []spendingDelegationOperationResponse `json:"operations"`
 }
 
-func (r spendingDelegationSetRequest) request(p spendingDelegationInput) lightDelegationRequest {
-	return lightDelegationRequest{VaultID: r.VaultID, OperationID: p.OperationID, Intent: p.Intent, ForfeitTxs: p.ForfeitTxs, DeleteIntent: p.DeleteIntent, ExpiresAt: p.ExpiresAt, OwnerSignature: p.OwnerSignature, Program: r.Program, DescriptorHash: r.DescriptorHash}
+func (r spendingDelegationSetRequest) request(p spendingDelegationInput) spendingDelegationRequest {
+	return spendingDelegationRequest{VaultID: r.VaultID, OperationID: p.OperationID, Intent: p.Intent, ForfeitTxs: p.ForfeitTxs, DeleteIntent: p.DeleteIntent, ExpiresAt: p.ExpiresAt, OwnerSignature: p.OwnerSignature, Program: r.Program, DescriptorHash: r.DescriptorHash}
 }
 
 func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingDelegationSetRequest) (spendingDelegationSetResponse, error) {
@@ -29,12 +28,12 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 	if err != nil || len(encoded) > maxJSONBody {
 		return out, fmt.Errorf("renewal set exceeds request limit")
 	}
-	c, err := s.delegationContract(r.VaultID, false)
+	c, err := s.delegationContract(r.VaultID)
 	if err != nil {
 		return out, err
 	}
 	var digest []byte
-	plans := make([]lightDelegationPlan, len(r.Plans))
+	plans := make([]spendingDelegationPlan, len(r.Plans))
 	err = func() error {
 		release, err := s.acquireVerification(ctx)
 		if err != nil {
@@ -68,18 +67,18 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		return out, err
 	}
 	setHash := hex.EncodeToString(digest)
-	all, err := s.Stores.LightDelegation.ListLightDelegations(ctx)
+	all, err := s.Stores.SpendingDelegation.ListSpendingDelegations(ctx)
 	if err != nil {
 		return out, err
 	}
-	prior := map[string]*policy.LightDelegationSnapshot{}
+	prior := map[string]*policy.SpendingDelegationSnapshot{}
 	for i := range all {
 		if all[i].Operation.SetID == r.SetID {
 			prior[all[i].Operation.OperationID] = &all[i]
 		}
 	}
 	out.SetID = r.SetID
-	out.Operations = make([]lightDelegationResponse, 0, len(plans))
+	out.Operations = make([]spendingDelegationOperationResponse, 0, len(plans))
 	if len(prior) > 0 {
 		if len(prior) != len(plans) {
 			return spendingDelegationSetResponse{}, fmt.Errorf("renewal set membership changed")
@@ -103,20 +102,14 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		// the supplied assertion or compare against a later unrelated counter.
 		return out, nil
 	}
-	var credentialID []byte
-	var count uint32
-	if c.Binding.Program == program.VaultPolicyV1 {
-		if r.Authorization == nil {
-			return out, fmt.Errorf("renewal passkey authorization required")
-		}
-		credentialID, count, err = s.verifyVtxoAuthorization(ctx, r.VaultID, digest, r.Authorization.WebAuthnAssertionRequest, r.Authorization.DirectSig)
-		if err != nil {
-			return out, err
-		}
-	} else if r.Authorization != nil {
-		return out, fmt.Errorf("unexpected Light renewal passkey authorization")
+	if r.Authorization == nil {
+		return out, fmt.Errorf("renewal passkey authorization required")
 	}
-	operations := make([]policy.LightDelegation, len(plans))
+	credentialID, count, err := s.verifyVtxoAuthorization(ctx, r.VaultID, digest, r.Authorization.WebAuthnAssertionRequest, r.Authorization.DirectSig)
+	if err != nil {
+		return out, err
+	}
+	operations := make([]policy.SpendingDelegation, len(plans))
 	now := s.vtxoNow().Unix()
 	for i, p := range plans {
 		if p.ValidAt < now || p.ValidAt > now+30*86400 {
@@ -134,13 +127,13 @@ func (s *Service) scheduleSpendingDelegationSet(ctx context.Context, r spendingD
 		if err != nil {
 			return out, err
 		}
-		planHash, err := lightDelegationRequestDigest(p.Request)
+		planHash, err := spendingDelegationRequestDigest(p.Request)
 		if err != nil {
 			return out, err
 		}
-		operations[i] = policy.LightDelegation{OperationID: p.Request.OperationID, VaultID: r.VaultID, InputTxid: p.Renewal.Txid, InputVout: p.Renewal.Vout, ValidAt: p.ValidAt, ExpiresAt: p.Request.ExpiresAt, FeeSats: p.Renewal.FeeSats, PlanDigest: hex.EncodeToString(planHash), Plan: string(raw), Program: r.Program, DescriptorHash: r.DescriptorHash, SetID: r.SetID, SetDigest: setHash, SetSize: len(plans), SetIndex: i}
+		operations[i] = policy.SpendingDelegation{OperationID: p.Request.OperationID, VaultID: r.VaultID, InputTxid: p.Renewal.Txid, InputVout: p.Renewal.Vout, ValidAt: p.ValidAt, ExpiresAt: p.Request.ExpiresAt, FeeSats: p.Renewal.FeeSats, PlanDigest: hex.EncodeToString(planHash), Plan: string(raw), Program: r.Program, DescriptorHash: r.DescriptorHash, SetID: r.SetID, SetDigest: setHash, SetSize: len(plans), SetIndex: i}
 	}
-	saved, err := s.Stores.LightDelegation.ScheduleVtxoDelegationSet(ctx, operations, credentialID, count)
+	saved, err := s.Stores.SpendingDelegation.ScheduleVtxoDelegationSet(ctx, operations, credentialID, count)
 	if err != nil {
 		return out, err
 	}
@@ -212,19 +205,8 @@ func (s *Service) verifySpendingDelegationRead(ctx context.Context, c renewalCon
 	return verifyRenewalOwner(c.Binding.OwnerPub, digest, r.OwnerSignature)
 }
 
-func (s *Service) spendingDelegationResponse(saved *policy.LightDelegationSnapshot, c renewalContract, withRecovery bool) (lightDelegationResponse, error) {
-	contract := c
-	if saved.Operation.Program == "" {
-		if c.lightDescriptor == nil {
-			return lightDelegationResponse{}, fmt.Errorf("legacy renewal program mismatch")
-		}
-		var err error
-		contract, err = legacyLightRenewalContract(*c.lightDescriptor, c.Tree)
-		if err != nil {
-			return lightDelegationResponse{}, err
-		}
-	}
-	response, err := s.delegationResponseForContract(saved, contract, withRecovery)
+func (s *Service) spendingDelegationResponse(saved *policy.SpendingDelegationSnapshot, c renewalContract, withRecovery bool) (spendingDelegationOperationResponse, error) {
+	response, err := s.delegationResponseForContract(saved, c, withRecovery)
 	if err != nil {
 		return response, err
 	}
@@ -257,7 +239,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 					writeMutationError(w, err)
 					return
 				}
-				c, err := s.delegationContract(req.VaultID, false)
+				c, err := s.delegationContract(req.VaultID)
 				if err != nil {
 					writeJSON(w, nil, err)
 					return
@@ -270,7 +252,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 				writeMutationError(w, err)
 				return
 			}
-			c, err := s.delegationContract(req.VaultID, false)
+			c, err := s.delegationContract(req.VaultID)
 			if err != nil {
 				writeJSON(w, nil, err)
 				return
@@ -280,8 +262,8 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 				return
 			}
 			if phase == "list" {
-				out := lightDelegationListResponse{Version: 1, Operations: []lightDelegationResponse{}}
-				all, err := s.Stores.LightDelegation.ListLightDelegations(r.Context())
+				out := spendingDelegationOperationListResponse{Version: 1, Operations: []spendingDelegationOperationResponse{}}
+				all, err := s.Stores.SpendingDelegation.ListSpendingDelegations(r.Context())
 				if err != nil {
 					writeJSON(w, nil, err)
 					return
@@ -317,7 +299,7 @@ func attachSpendingDelegationRoutes(mux *http.ServeMux, s *Service, origin strin
 				return
 			}
 			if phase == "cancel" {
-				saved, err = s.Stores.LightDelegation.AdvanceLightDelegation(r.Context(), policy.LightDelegationEvent{OperationID: req.OperationID, Phase: "cancelled", Evidence: `{}`}, c.Binding.SpendingPolicy.PeriodAllowanceSats)
+				saved, err = s.cancelSpendingDelegationAttempt(r.Context(), req.OperationID, c.Binding.SpendingPolicy.PeriodAllowanceSats)
 				if err != nil {
 					writeJSON(w, nil, err)
 					return

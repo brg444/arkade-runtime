@@ -9,7 +9,7 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -24,7 +24,6 @@ type LedgerSavingsCapability struct {
 // tenant descriptor and must not be treated as enrolled.
 type PublicStatus struct {
 	LedgerSavingsCapability    *LedgerSavingsCapability           `json:"ledgerSavingsCapability,omitempty"`
-	ConnectorCapability        *ConnectorCapability               `json:"connectorCapability,omitempty"`
 	SupportedSetups            []string                           `json:"supportedSetups"`
 	Network                    string                             `json:"network"`
 	ClientOrigin               string                             `json:"clientOrigin"`
@@ -38,52 +37,50 @@ type PublicStatus struct {
 
 // Status is the UI snapshot.
 type Status struct {
-	LedgerSavings             *LedgerSavingsStatus       `json:"ledgerSavings,omitempty"`
-	ConnectorEnrollment       *ConnectorEnrollmentStatus `json:"connectorEnrollment,omitempty"`
-	LightDescriptor           *light.Descriptor          `json:"lightDescriptor,omitempty"`
-	LightDescriptorHash       string                     `json:"lightDescriptorHash,omitempty"`
-	Enrolled                  bool                       `json:"enrolled"`
-	Network                   string                     `json:"network"`
-	ClientOrigin              string                     `json:"clientOrigin"`
-	RPID                      string                     `json:"rpId"`
-	VaultID                   string                     `json:"vaultId"`
-	TemplateVersion           string                     `json:"templateVersion"`
-	PolicyVersion             string                     `json:"policyVersion"`
-	ProtectionTier            string                     `json:"protectionTier"`
-	ExternalOwnerWalletPub    string                     `json:"externalOwnerWalletPub,omitempty"`
-	RecoveryKeyPub            string                     `json:"recoveryKeyPub,omitempty"`
-	VaultCosignerBasePub      string                     `json:"vaultCosignerBasePub,omitempty"`
-	ArkadeCosignerBasePub     string                     `json:"arkadeCosignerBasePub,omitempty"`
-	ArkadeCosignerOrigin      string                     `json:"arkadeCosignerOrigin"`
-	ArkadeCosignerVersion     string                     `json:"arkadeCosignerVersion"`
-	SavingsAddr               string                     `json:"savingsAddress"`
-	SavingsScript             string                     `json:"savingsScript,omitempty"`
-	PasskeyLoginAvailable     bool                       `json:"passkeyLoginAvailable"`
-	EnrollmentMode            string                     `json:"enrollmentMode"`
-	EnrollmentExpiresAt       string                     `json:"enrollmentExpiresAt,omitempty"`
-	PeriodAllowance           int64                      `json:"periodAllowance"`
-	PeriodSpent               int64                      `json:"periodSpent"`
-	PeriodRemaining           int64                      `json:"periodRemaining"`
-	TxCap                     int64                      `json:"txCap"`
-	AbsoluteFeeCap            int64                      `json:"absoluteFeeCap"`
-	FeerateCapSatPerV         int64                      `json:"feerateCapSatVb"`
-	SpendingPolicy            program.SpendingPolicy     `json:"spendingPolicy"`
-	SpendingPolicyDigest      string                     `json:"spendingPolicyDigest"`
-	PhoneBIP340Pub            string                     `json:"phoneBip340Pub,omitempty"`
-	PhoneDirectP256           string                     `json:"phoneDirectP256,omitempty"`
-	Warnings                  []string                   `json:"warnings,omitempty"`
-	VtxoVaultCosignerPub      string                     `json:"vtxoVaultCosignerPub"`
-	VtxoExitDelay             uint32                     `json:"vtxoExitDelay"`
-	VtxoExitDelayUnit         string                     `json:"vtxoExitDelayUnit"`
-	SpendingArkAddress        string                     `json:"spendingArkAddress"`
-	SpendingArkScript         string                     `json:"spendingArkScript"`
-	VtxoDelegatePub           string                     `json:"vtxoDelegatePub"`
-	VtxoBoardingActive        bool                       `json:"vtxoBoardingActive"`
-	VtxoBoardingProgram       string                     `json:"vtxoBoardingProgram"`
-	VtxoBoardingAddress       string                     `json:"vtxoBoardingAddress"`
-	VtxoBoardingScript        string                     `json:"vtxoBoardingScript"`
-	VtxoBoardingExitDelay     uint32                     `json:"vtxoBoardingExitDelay"`
-	VtxoBoardingExitDelayUnit string                     `json:"vtxoBoardingExitDelayUnit"`
+	LedgerSavings *LedgerSavingsStatus `json:"ledgerSavings,omitempty"`
+
+	Enrolled                  bool                   `json:"enrolled"`
+	Network                   string                 `json:"network"`
+	ClientOrigin              string                 `json:"clientOrigin"`
+	RPID                      string                 `json:"rpId"`
+	VaultID                   string                 `json:"vaultId"`
+	TemplateVersion           string                 `json:"templateVersion"`
+	PolicyVersion             string                 `json:"policyVersion"`
+	ProtectionTier            string                 `json:"protectionTier"`
+	ExternalOwnerWalletPub    string                 `json:"externalOwnerWalletPub,omitempty"`
+	RecoveryKeyPub            string                 `json:"recoveryKeyPub,omitempty"`
+	VaultCosignerBasePub      string                 `json:"vaultCosignerBasePub,omitempty"`
+	ArkadeCosignerBasePub     string                 `json:"arkadeCosignerBasePub,omitempty"`
+	ArkadeCosignerOrigin      string                 `json:"arkadeCosignerOrigin"`
+	ArkadeCosignerVersion     string                 `json:"arkadeCosignerVersion"`
+	SavingsAddr               string                 `json:"savingsAddress"`
+	SavingsScript             string                 `json:"savingsScript,omitempty"`
+	PasskeyLoginAvailable     bool                   `json:"passkeyLoginAvailable"`
+	EnrollmentMode            string                 `json:"enrollmentMode"`
+	EnrollmentExpiresAt       string                 `json:"enrollmentExpiresAt,omitempty"`
+	PeriodAllowance           int64                  `json:"periodAllowance"`
+	PeriodSpent               int64                  `json:"periodSpent"`
+	PeriodRemaining           int64                  `json:"periodRemaining"`
+	TxCap                     int64                  `json:"txCap"`
+	AbsoluteFeeCap            int64                  `json:"absoluteFeeCap"`
+	FeerateCapSatPerV         int64                  `json:"feerateCapSatVb"`
+	SpendingPolicy            program.SpendingPolicy `json:"spendingPolicy"`
+	SpendingPolicyDigest      string                 `json:"spendingPolicyDigest"`
+	PhoneBIP340Pub            string                 `json:"phoneBip340Pub,omitempty"`
+	PhoneDirectP256           string                 `json:"phoneDirectP256,omitempty"`
+	Warnings                  []string               `json:"warnings,omitempty"`
+	VtxoVaultCosignerPub      string                 `json:"vtxoVaultCosignerPub"`
+	VtxoExitDelay             uint32                 `json:"vtxoExitDelay"`
+	VtxoExitDelayUnit         string                 `json:"vtxoExitDelayUnit"`
+	SpendingArkAddress        string                 `json:"spendingArkAddress"`
+	SpendingArkScript         string                 `json:"spendingArkScript"`
+	VtxoDelegatePub           string                 `json:"vtxoDelegatePub"`
+	VtxoBoardingActive        bool                   `json:"vtxoBoardingActive"`
+	VtxoBoardingProgram       string                 `json:"vtxoBoardingProgram"`
+	VtxoBoardingAddress       string                 `json:"vtxoBoardingAddress"`
+	VtxoBoardingScript        string                 `json:"vtxoBoardingScript"`
+	VtxoBoardingExitDelay     uint32                 `json:"vtxoBoardingExitDelay"`
+	VtxoBoardingExitDelayUnit string                 `json:"vtxoBoardingExitDelayUnit"`
 }
 
 func statusWarnings(cred *policy.Credential) []string {
@@ -91,9 +88,6 @@ func statusWarnings(cred *policy.Credential) []string {
 		return nil
 	}
 	var out []string
-	if cred.TemplateVersion == savings.Template {
-		out = append(out, "A recovery already in flight cannot be cancelled if both cosigners are gone.")
-	}
 	if cred.Network == deployment.NetworkMutinynet {
 		out = append(out, "Mutinynet blocks are much faster than mainnet. Delays are block counts, not days.")
 	}
@@ -121,21 +115,17 @@ func (s *Service) PublicStatus() (PublicStatus, error) {
 		return PublicStatus{}, err
 	}
 	st := PublicStatus{
-		SupportedSetups:            []string{"standard", "advanced"},
-		ConnectorCapability:        currentConnectorCapability(),
+		SupportedSetups:            []string{},
 		Network:                    cfg.Network,
 		ClientOrigin:               cfg.ClientOrigin,
 		RPID:                       cfg.RPID,
-		TemplateVersion:            publicEnrollTemplate(s),
+		TemplateVersion:            program.SpendingOnlyTemplate,
 		PolicyVersion:              program.PolicyVersion,
 		SpendingPolicyCapabilities: caps,
 	}
 	if !s.LightOnlyEnrollment && s.LedgerSavingsEnabled && s.requireLedgerSavingsEnrollmentEnabled() == nil {
 		st.LedgerSavingsCapability = &LedgerSavingsCapability{Version: 1, TemplateVersion: savings.LedgerNativeTemplate}
-	}
-	if s.LightOnlyEnrollment {
-		st.SupportedSetups = []string{}
-		st.ConnectorCapability = nil
+		st.SupportedSetups = []string{"standard", "advanced"}
 	}
 	if s.LightEnabled {
 		st.SupportedSetups = append([]string{"light"}, st.SupportedSetups...)
@@ -176,29 +166,12 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		return Status{}, err
 	}
 	selected := spendingPolicyFromCredential(cred)
-	var digest string
-	var lightDescriptor *light.Descriptor
-	var lightHash string
-	if cred.TemplateVersion == light.Profile {
-		d, e := s.lightDescriptorForCredential(cred)
-		if e != nil {
-			return Status{}, e
-		}
-		lightDescriptor = &d
-		lightHash, err = light.DescriptorDigest(d)
-		if err != nil {
-			return Status{}, err
-		}
-		selected = program.SpendingPolicy(d.SpendingPolicy)
-		digest = d.SpendingPolicyDigest
-	} else {
-		if err := program.ValidateSpendingPolicyFor(cfg.Network, selected); err != nil {
-			return Status{}, fmt.Errorf("stored economic policy: %w", err)
-		}
-		digest, err = program.SpendingPolicyDigestHexFor(cfg.Network, selected)
-		if err != nil {
-			return Status{}, err
-		}
+	if err := program.ValidateSpendingPolicyFor(cfg.Network, selected); err != nil {
+		return Status{}, fmt.Errorf("stored economic policy: %w", err)
+	}
+	digest, err := program.SpendingPolicyDigestHexFor(cfg.Network, selected)
+	if err != nil {
+		return Status{}, err
 	}
 	allowance := selected.PeriodAllowanceSats
 	txCap := selected.TxRecipientCapSats
@@ -218,7 +191,7 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		ClientOrigin:         cfg.ClientOrigin,
 		RPID:                 cfg.RPID,
 		VaultID:              vaultID,
-		TemplateVersion:      publicEnrollTemplate(s),
+		TemplateVersion:      program.SpendingOnlyTemplate,
 		PolicyVersion:        policyVersion,
 		ProtectionTier:       cred.ProtectionTier,
 		PeriodAllowance:      allowance,
@@ -231,10 +204,6 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 		SpendingPolicyDigest: digest,
 	}
 	st.EnrollmentMode = "closed"
-	st.LightDescriptor, st.LightDescriptorHash = lightDescriptor, lightHash
-	if lightDescriptor != nil {
-		st.ProtectionTier = "light"
-	}
 	snap := s.snapshot(vaultID)
 	// Report the persisted descriptor inputs, not merely mutable runtime
 	// fields. LoadVaults/Register already require these to match runtime.
@@ -249,13 +218,11 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	st.ArkadeCosignerBasePub = hex.EncodeToString(cred.ArkadeCosignerBase)
 	st.ArkadeCosignerOrigin = cred.ArkadeCosignerOrigin
 	st.ArkadeCosignerVersion = cred.ArkadeCosignerVersion
-	if lightDescriptor == nil {
-		envelope, envelopeErr := s.loadVerifiedEnvelopeFor(vaultID, cred.ID)
-		if envelopeErr != nil {
-			return Status{}, envelopeErr
-		}
-		st.PasskeyLoginAvailable = envelope != nil
+	envelope, envelopeErr := s.loadVerifiedEnvelopeFor(vaultID, cred.ID)
+	if envelopeErr != nil {
+		return Status{}, envelopeErr
 	}
+	st.PasskeyLoginAvailable = envelope != nil
 	st.Warnings = statusWarnings(cred)
 	if snap.Savings != nil {
 		st.SavingsAddr = snap.Savings.Address
@@ -266,12 +233,6 @@ func (s *Service) statusFor(ctx context.Context, vaultID string) (Status, error)
 	}
 	if len(cred.PhoneDirectP256) > 0 {
 		st.PhoneDirectP256 = hex.EncodeToString(cred.PhoneDirectP256)
-	}
-	if isConnectorCredential(cred) {
-		st.ConnectorEnrollment, err = s.connectorEnrollmentStatus(cred, snap)
-		if err != nil {
-			return Status{}, err
-		}
 	}
 	if cred.TemplateVersion == savings.LedgerNativeTemplate {
 		identity, _, loadErr := s.verifiedLedgerSavings(cred)
@@ -311,12 +272,6 @@ func (s *Service) fillVtxoStatus(st *Status, vaultID string, snap enrolledSnapsh
 	}
 	st.SpendingArkAddress = tree.ArkAddress
 	st.SpendingArkScript = hex.EncodeToString(tree.PkScript)
-	if snap.Light != nil {
-		st.VtxoBoardingProgram = ""
-		st.VtxoBoardingExitDelay = 0
-		st.VtxoBoardingExitDelayUnit = ""
-		return
-	}
 	if tree.DelegatePub != nil {
 		st.VtxoDelegatePub = hex.EncodeToString(tree.DelegatePub.SerializeCompressed())
 	}

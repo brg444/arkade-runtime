@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	passkeyChallengeTicketPrefix         = "v1."
+	passkeyChallengeTicketPrefix         = "v2."
 	passkeyChallengeTicketLimit          = 2048
 	maxConsumedPasskeyChallenges         = 4096
 	maxConsumedPasskeyChallengesPerVault = 256
@@ -27,12 +27,12 @@ type consumedPasskeyChallenge struct {
 // Challenge issuance has no per-request server state. Only successful owner
 // authentication admits a spent ticket until its original expiry. The random
 // process key makes outstanding tickets unusable after restart.
-func (s *Service) issuePasskeyChallenge(vaultID, purpose, candidateTxid string, credentialID []byte) (*PasskeyChallengeResponse, error) {
+func (s *Service) issuePasskeyChallenge(vaultID, purpose string, credentialID []byte) (*PasskeyChallengeResponse, error) {
 	challenge, err := randomBytes(32)
 	if err != nil {
 		return nil, err
 	}
-	record := passkeyChallenge{VaultID: vaultID, Purpose: purpose, CandidateTxid: candidateTxid, Challenge: challenge, ExpiresAt: s.sessionNow().Add(passkeyChallengeTTL)}
+	record := passkeyChallenge{VaultID: vaultID, Purpose: purpose, Challenge: challenge, ExpiresAt: s.sessionNow().Add(passkeyChallengeTTL)}
 	payload, err := json.Marshal(record)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (s *Service) issuePasskeyChallenge(vaultID, purpose, candidateTxid string, 
 		}
 	}
 	mac := hmac.New(sha256.New, s.sessionChallengeKey)
-	_, _ = mac.Write([]byte("vaulted/passkey-challenge/v1\x00"))
+	_, _ = mac.Write([]byte("vaulted/passkey-challenge/v2\x00"))
 	_, _ = mac.Write(payload)
 	raw := append(payload, mac.Sum(nil)...)
 	return &PasskeyChallengeResponse{
@@ -75,7 +75,7 @@ func (s *Service) passkeyChallengeLocked(vaultID, id, purpose string) (passkeyCh
 	}
 	payload, tag := raw[:len(raw)-sha256.Size], raw[len(raw)-sha256.Size:]
 	mac := hmac.New(sha256.New, s.sessionChallengeKey)
-	_, _ = mac.Write([]byte("vaulted/passkey-challenge/v1\x00"))
+	_, _ = mac.Write([]byte("vaulted/passkey-challenge/v2\x00"))
 	_, _ = mac.Write(payload)
 	if !hmac.Equal(mac.Sum(nil), tag) {
 		return fail()
@@ -109,7 +109,7 @@ func (s *Service) consumePasskeyChallenge(vaultID, id, purpose string) ([]byte, 
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	ticketVaultID := vaultID
-	if purpose == lightBackupPurpose || purpose == recoveryArchivePurpose || purpose == "lnurl-register" || strings.HasPrefix(purpose, "lnurl-register:") || purpose == "lnurl-revoke" {
+	if purpose == recoveryArchivePurpose || purpose == "lnurl-register" || strings.HasPrefix(purpose, "lnurl-register:") || purpose == "lnurl-revoke" {
 		ticketVaultID = ""
 	}
 	if vaultID == "" {

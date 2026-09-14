@@ -4,15 +4,7 @@ package ports
 
 import (
 	"context"
-
-	"github.com/btcsuite/btcd/btcutil/psbt"
 )
-
-// Signer adds exactly one expected signature. Implementations must not
-// mutate the submitted transaction.
-type Signer interface {
-	Sign(ctx context.Context, ptx *psbt.Packet) (*psbt.Packet, error)
-}
 
 // ResolvedVtxo is one spendable VTXO as reported by the pinned indexer.
 type ResolvedVtxo struct {

@@ -9,7 +9,7 @@ import (
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 )
 
-// LedgerNativeTemplate is a new contract, not enabled by the live registry.
+// LedgerNativeTemplate identifies the retained protected Savings contract.
 const LedgerNativeTemplate = "phone-ledger-guardian-savings-v1"
 const ledgerDomain = "vaulted/ledger-guardian-savings-v1"
 

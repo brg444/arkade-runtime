@@ -26,8 +26,8 @@ func TestStoresFromLedgerKeepsOnePhysicalDatabase(t *testing.T) {
 	want := reflect.ValueOf(ledger).Pointer()
 	for name, store := range map[string]any{
 		"identity": stores.Identity, "allowance": stores.Allowance,
-		"VTXO operation":     stores.VtxoOperations,
-		"recovery operation": stores.RecoveryOperations, "map": stores.Maps,
+		"VTXO operation":          stores.VtxoOperations,
+		"Ledger Savings recovery": stores.LedgerSavings, "map": stores.Maps,
 		"Vault Board": stores.VaultBoard,
 	} {
 		if got := reflect.ValueOf(store).Pointer(); got != want {
@@ -82,7 +82,7 @@ func TestStoresRejectMissingCapabilities(t *testing.T) {
 		{name: "identity", clear: func(s *Stores) { s.Identity = nil }},
 		{name: "allowance", clear: func(s *Stores) { s.Allowance = nil }},
 		{name: "VTXO operation", clear: func(s *Stores) { s.VtxoOperations = nil }},
-		{name: "recovery operation", clear: func(s *Stores) { s.RecoveryOperations = nil }},
+		{name: "Ledger Savings recovery", clear: func(s *Stores) { s.LedgerSavings = nil }},
 		{name: "map", clear: func(s *Stores) { s.Maps = nil }},
 		{name: "Vault Board", clear: func(s *Stores) { s.VaultBoard = nil }},
 	} {

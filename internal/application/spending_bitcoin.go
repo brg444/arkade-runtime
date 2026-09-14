@@ -12,8 +12,8 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 )
 
-// An ordered output plan is shared by ordinary Bitcoin sends and signer setup.
-// Outputs are never merged: two equal approval outputs must remain two UTXOs.
+// Bitcoin payments commit an ordered output plan. Even equal destinations
+// remain distinct outputs when the owner authorizes them that way.
 type bitcoinPaymentOutput struct {
 	Script     string `json:"script"`
 	AmountSats int64  `json:"amountSats"`
@@ -49,30 +49,14 @@ func validateBitcoinOutputs(outputs []bitcoinPaymentOutput) (int64, error) {
 	}
 	return amount, nil
 }
-func (p bitcoinPaymentPlan) onchainOutputs() []bitcoinPaymentOutput {
-	if p.Outputs != nil {
-		return p.Outputs
-	}
-	outputs := make([]bitcoinPaymentOutput, p.ReserveCount)
-	for i := range outputs {
-		outputs[i] = bitcoinPaymentOutput{p.ReserveScript, p.ReserveSats}
-	}
-	return outputs
-}
 func (p bitcoinPaymentPlan) principal() int64 {
 	var amount int64
-	for _, output := range p.onchainOutputs() {
+	for _, output := range p.Outputs {
 		amount += output.AmountSats
 	}
 	return amount
 }
-func (p bitcoinPaymentPlan) kind() string {
-	if p.Outputs != nil {
-		return policy.SpendingBitcoinBatchKind
-	}
-	return policy.SavingsSetupBatchKind
-}
-func (p bitcoinPaymentPlan) bitcoinDigest(c bitcoinPaymentContext) ([]byte, error) {
+func (p bitcoinPaymentPlan) digest(c bitcoinPaymentContext) ([]byte, error) {
 	if err := c.spending.validateTree(); err != nil {
 		return nil, err
 	}
@@ -93,7 +77,7 @@ func (p bitcoinPaymentPlan) bitcoinDigest(c bitcoinPaymentContext) ([]byte, erro
 		p.ChangeSats+amount+p.FeeSats != p.ValueSats || p.RegisterExpireAt <= 0 || p.RegisterExpireAt > (1<<53)-1 {
 		return nil, fmt.Errorf("Bitcoin payment plan changed or exceeds policy")
 	}
-	return setupDigest("bitcoin-plan", p)
+	return bitcoinPaymentDigest("bitcoin-plan", p)
 }
 
 type spendingBitcoinPrepareRequest struct {
@@ -120,10 +104,10 @@ func (r spendingBitcoinPrepareRequest) digest() ([]byte, error) {
 		return nil, fmt.Errorf("Bitcoin payment expiry")
 	}
 	r.OwnerSignature = ""
-	return setupDigest("bitcoin-prepare", r)
+	return bitcoinPaymentDigest("bitcoin-prepare", r)
 }
 func (s *Service) prepareSpendingBitcoin(ctx context.Context, r spendingBitcoinPrepareRequest) (bitcoinPaymentPrepared, error) {
-	c, err := s.bitcoinPaymentContext(r.VaultID, true)
+	c, err := s.bitcoinPaymentContext(r.VaultID)
 	if err != nil {
 		return bitcoinPaymentPrepared{}, err
 	}
@@ -143,7 +127,7 @@ func (s *Service) prepareSpendingBitcoin(ctx context.Context, r spendingBitcoinP
 	if err != nil || !sig.Verify(digest, key) {
 		return bitcoinPaymentPrepared{}, fmt.Errorf("Bitcoin payment owner authorization required")
 	}
-	if prior, err := s.Stores.LightRenewal.GetLightRenewal(ctx, r.OperationID); err != nil {
+	if prior, err := s.Stores.SpendingRenewal.GetSpendingRenewal(ctx, r.OperationID); err != nil {
 		return bitcoinPaymentPrepared{}, err
 	} else if prior != nil {
 		prepared, err := bitcoinPaymentSnapshot(prior, c)

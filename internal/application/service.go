@@ -20,15 +20,11 @@ import (
 	"github.com/brg444/arkade-runtime/internal/ports"
 	arkadevaultv1 "github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/btcsuite/btcd/btcutil/psbt"
-	"github.com/btcsuite/btcd/wire"
 )
 
 // Service is the trusted VaultCosigner authorization boundary.
@@ -37,7 +33,7 @@ type Service struct {
 	Stores                 arkadevaultv1.Stores
 	Deployment             deployment.Config
 	LightDelegationEnabled bool
-	delegationRuntime      *lightDelegationRuntime
+	delegationAttempts     *spendingDelegationAttemptOwner
 	LedgerSavingsEnabled   bool
 	LightOnlyEnrollment    bool
 	LightEnabled           bool // admits new Light wallets only; existing wallets remain usable
@@ -58,36 +54,30 @@ type Service struct {
 	MaxConcurrentVerifications int
 	// MaxConcurrentFeeSelections bounds authenticated but potentially
 	// adversarial Operator CEL evaluation. Zero uses the conservative default.
-	MaxConcurrentFeeSelections int
-	ArkResolver                ports.ArkResolver
-	contractPackJSON           []byte
-	vaultPolicyHasExit         *bool
-	mu                         sync.Mutex
-	published                  atomic.Pointer[publishedIndex]
-	verificationOnce           sync.Once
-	verificationSlots          chan struct{}
-	feeSelectionOnce           sync.Once
-	feeSelectionSlots          chan struct{}
-	transitionRateMu           sync.Mutex
-	transitionRateHits         map[string][]time.Time
-	connectorWithdrawRateMu    sync.Mutex
-	connectorWithdrawRateHits  map[string][]time.Time
-	// connectorChain overrides the release-pinned chain view. Production
-	// leaves it nil so each call dials the pinned indexer; tests inject a
-	// scripted view. It never accepts digests, PSBTs, or caller assertions.
-	connectorChain              connectorChainView
-	sessionMu                   sync.Mutex
-	sessionChallengeKey         []byte
-	consumedPasskeyChallenges   map[[32]byte]consumedPasskeyChallenge
-	backupSessions              map[[32]byte]backupSession
-	SessionNow                  func() time.Time
-	afterLoadPending            func()
-	vaultBoardRuntime           *vaultBoardRuntime
-	lightRenewalOperatorDial    func(context.Context) (lightRenewalOperator, error)
-	lightDelegationOperatorDial func(context.Context) (lightDelegationOperator, error)
-	resolverReadyMu             sync.Mutex
-	resolverReadyAt             time.Time
-	resolverReadyErr            error
+	MaxConcurrentFeeSelections     int
+	ArkResolver                    ports.ArkResolver
+	contractPackJSON               []byte
+	vaultPolicyHasExit             *bool
+	mu                             sync.Mutex
+	published                      atomic.Pointer[publishedIndex]
+	verificationOnce               sync.Once
+	verificationSlots              chan struct{}
+	feeSelectionOnce               sync.Once
+	feeSelectionSlots              chan struct{}
+	transitionRateMu               sync.Mutex
+	transitionRateHits             map[string][]time.Time
+	sessionMu                      sync.Mutex
+	sessionChallengeKey            []byte
+	consumedPasskeyChallenges      map[[32]byte]consumedPasskeyChallenge
+	backupSessions                 map[[32]byte]backupSession
+	SessionNow                     func() time.Time
+	afterLoadPending               func()
+	vaultBoardRuntime              *vaultBoardRuntime
+	spendingRenewalOperatorDial    func(context.Context) (spendingRenewalOperator, error)
+	spendingDelegationOperatorDial func(context.Context) (spendingDelegationOperator, error)
+	resolverReadyMu                sync.Mutex
+	resolverReadyAt                time.Time
+	resolverReadyErr               error
 }
 
 // Deps is the constructor input. Private keys stay behind scoped capabilities.
@@ -129,8 +119,8 @@ func New(d Deps) *Service {
 		keys:                   d.Keys,
 		ArkResolver:            d.ArkResolver,
 	}
-	if key, ok := s.keys.lightDelegation.(*fileBackedVaultKeys); ok {
-		key.bindDelegationJournal(d.Stores.LightDelegation)
+	if key, ok := s.keys.spendingDelegation.(*fileBackedVaultKeys); ok {
+		key.bindDelegationJournal(d.Stores.SpendingDelegation)
 	}
 	if raw, err := liveContractPackJSONFor(d.Deployment.Network); err == nil {
 		s.contractPackJSON = raw
@@ -159,7 +149,7 @@ func (s *Service) WipeSecrets() {
 	if s == nil {
 		return
 	}
-	s.StopLightDelegation()
+	s.StopSpendingDelegation()
 	s.sessionMu.Lock()
 	zeroServiceBytes(s.sessionChallengeKey)
 	s.sessionChallengeKey = nil
@@ -177,8 +167,8 @@ var ErrVerificationBusy = errors.New("crypto verification capacity exhausted")
 
 // enrolledSnapshot is one immutable published enrollment for a single vault.
 type enrolledSnapshot struct {
-	ProtectionTier      string
-	Light               *light.Descriptor
+	ProtectionTier string
+
 	VaultID             string
 	CredentialID        []byte
 	PhoneBIP340         *btcec.PublicKey
@@ -238,15 +228,6 @@ type RegisterRequest struct {
 	ProtectionTier       string                 `json:"protectionTier"`
 	SpendingPolicy       program.SpendingPolicy `json:"spendingPolicy"`
 	SpendingPolicyDigest string                 `json:"spendingPolicyDigest"`
-	// Optional Savings connector origin. All-absent means a legacy vault.
-	// When present, ConnectorType must be p2tr or p2wpkh, ConnectorPub is the
-	// full 33-byte compressed origin key in lowercase hex (parity matters for
-	// P2WPKH), and Fingerprint/Path carry the BIP84/BIP86 or Electrum-native
-	// origin. Old clients simply omit these fields.
-	ConnectorType        string   `json:"connectorType,omitempty"`
-	ConnectorPub         string   `json:"connectorPub,omitempty"`
-	ConnectorFingerprint uint32   `json:"connectorFingerprint,omitempty"`
-	ConnectorPath        []uint32 `json:"connectorPath,omitempty"`
 }
 
 type parsedRegisterRequest struct {
@@ -259,8 +240,6 @@ type parsedRegisterRequest struct {
 	vaultID                           string
 	protectionTier                    string
 	spendingPolicy                    program.SpendingPolicy
-	connectorOrigin                   *connector.KeyOrigin
-	connectorPub                      *btcec.PublicKey
 }
 
 func (s *Service) requireLedgerIntegrity() error {
@@ -305,15 +284,8 @@ func (s *Service) createTenantVault(vaultID string, tokenHash []byte, req Regist
 	if err != nil {
 		return err
 	}
-	parsed, err = applyConnectorEnrollmentRequest(parsed, req, s.runtimeConfig().Network)
-	if err != nil {
-		return err
-	}
 	if req.LedgerSavings != nil {
 		return s.createLedgerSavingsTenantVault(vaultID, tokenHash, req, parsed, pending, childPub)
-	}
-	if parsed.connectorOrigin != nil {
-		return s.createConnectorTenantVault(vaultID, tokenHash, req, parsed, pending, childPub)
 	}
 	proposed, err := s.previewVaultBoardEnrollmentDescriptor(vaultID, req)
 	if err != nil {
@@ -448,10 +420,13 @@ func (s *Service) parseRegisterRequestIndependent(req RegisterRequest) (parsedRe
 		if !s.LightEnabled {
 			return parsed, fmt.Errorf("Light enrollment unavailable")
 		}
-		if req.ExternalOwnerWalletXOnly != "" || recoveryField(req) != "" || req.LedgerSavings != nil || hasConnectorRequest(req) {
+		if req.ExternalOwnerWalletXOnly != "" || recoveryField(req) != "" || req.LedgerSavings != nil {
 			return parsed, fmt.Errorf("Spending-only enrollment must not contain protected Savings keys")
 		}
 	} else {
+		if req.LedgerSavings == nil {
+			return parsed, fmt.Errorf("protected Savings requires Ledger enrollment")
+		}
 		parsed.externalOwner, err = s.parseOnboardingKey("externalOwnerWalletXOnly", req.ExternalOwnerWalletXOnly)
 		if err != nil {
 			return parsed, err
@@ -514,9 +489,6 @@ func (s *Service) LoadVaults() error {
 }
 
 func (s *Service) publishStoredEnrollment(cred *policy.Credential) error {
-	if cred.TemplateVersion == light.Profile {
-		return s.publishStoredLightEnrollment(cred)
-	}
 	phone, _, _, _, _, sv, err := s.rebuildFromCredential(cred)
 	if err != nil {
 		return err
@@ -555,32 +527,10 @@ func (s *Service) rebuildFromCredential(cred *policy.Credential) (
 		phone, err = btcec.ParsePubKey(cred.PhoneBIP340)
 		return
 	}
-	if isConnectorCredential(cred) {
-		fam, ferr := s.rebuildConnectorFamily(cred)
-		if ferr != nil {
-			return nil, nil, nil, nil, nil, nil, ferr
-		}
-		phone, externalOwner, recovery, vaultBase, arkadeBase, err = parseConnectorCredentialKeys(cred)
-		if err != nil {
-			return nil, nil, nil, nil, nil, nil, err
-		}
-		sv = &savingsSnapshot{
-			Address:             fam.Recovery.Savings.Address,
-			PkScript:            append([]byte(nil), fam.Recovery.Savings.PkScript...),
-			ExternalOwnerWallet: externalOwner,
-			RecoveryKey:         recovery,
-			VaultCosignerBase:   vaultBase,
-			ArkadeCosignerBase:  arkadeBase,
-		}
-		return phone, externalOwner, recovery, vaultBase, arkadeBase, sv, nil
-	}
 	if cred.TemplateVersion == savings.LedgerNativeTemplate {
 		return s.rebuildLedgerSavings(cred)
 	}
-	if cred.TemplateVersion != savings.Template {
-		return nil, nil, nil, nil, nil, nil, fmt.Errorf("unsupported vault template %q", cred.TemplateVersion)
-	}
-	return s.rebuildSavings(cred)
+	return nil, nil, nil, nil, nil, nil, fmt.Errorf("unsupported vault template %q", cred.TemplateVersion)
 }
 
 func (s *Service) requireCompatible(cred *policy.Credential) error {
@@ -792,7 +742,7 @@ func (s *Service) resolveSpendVaultRecord(vaultID string) (string, enrolledSnaps
 		return "", enrolledSnapshot{}, nil, err
 	}
 	snap := s.snapshot(id)
-	if snap.Savings == nil && snap.Light == nil && snap.ProtectionTier != program.ProtectionTierLight {
+	if snap.Savings == nil && snap.ProtectionTier != program.ProtectionTierLight {
 		return "", enrolledSnapshot{}, nil, fmt.Errorf("not enrolled")
 	}
 	if s.Stores.Identity == nil {
@@ -995,18 +945,6 @@ func decodeAssertion(req WebAuthnAssertionRequest) (webauthn.Assertion, error) {
 		AuthenticatorData: ad,
 		DERSignature:      sig,
 	}, nil
-}
-
-func parseAndVerifyPrevout(raw string) (*psbt.Packet, *wire.MsgTx, error) {
-	ptx, err := psbt.NewFromRawBytes(strings.NewReader(raw), true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("psbt: %w", err)
-	}
-	prev, err := vault.RequireVerifiedPrevout(ptx)
-	if err != nil {
-		return nil, nil, err
-	}
-	return ptx, prev, nil
 }
 
 func verifyDirectAuth(directPub, digest, compact []byte) error {

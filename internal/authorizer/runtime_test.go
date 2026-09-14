@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -21,22 +20,10 @@ import (
 	"github.com/brg444/arkade-runtime/internal/ports"
 	"github.com/brg444/arkade-runtime/internal/profile/arkadevaultv1"
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcutil/psbt"
 )
 
-type stubEmulatorSigner struct{}
-
-func (stubEmulatorSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
-	return nil, errors.New("stub public signer must not be called")
-}
-
-type nilEmulatorSigner struct{}
-
-func (*nilEmulatorSigner) Sign(context.Context, *psbt.Packet) (*psbt.Packet, error) {
-	return nil, errors.New("nil public signer must not be called")
-}
-
 type testArkResolver struct {
+	network    string
 	checkpoint []byte
 	operator   []byte
 }
@@ -55,20 +42,29 @@ func (r testArkResolver) SubmittedVtxoState(context.Context, []byte, []ports.Res
 
 func (r testArkResolver) CheckpointTapscript() []byte { return append([]byte(nil), r.checkpoint...) }
 func (r testArkResolver) OperatorSignerPub() []byte   { return append([]byte(nil), r.operator...) }
-func (testArkResolver) Network() string               { return deployment.NetworkMutinynet }
+func (r testArkResolver) Network() string {
+	if r.network != "" {
+		return r.network
+	}
+	return deployment.NetworkMutinynet
+}
 
-func openWithTestArkadeDialer(t *testing.T, ctx context.Context, cfg Config, dialArkade arkadeSignerDialer) (*Runtime, error) {
+func openWithTestResolver(t *testing.T, ctx context.Context, cfg Config) (*Runtime, error) {
 	t.Helper()
-	checkpoint, err := hex.DecodeString(deployment.MutinynetCheckpointTapscriptHex)
+	pins, err := deployment.IdentityFor(cfg.Deployment.Network)
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, err := hex.DecodeString(deployment.MutinynetOperatorSignerPubHex)
+	checkpoint, err := hex.DecodeString(pins.CheckpointTapscriptHex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return openWithArkadeDialers(ctx, cfg, dialArkade, func(context.Context, string) (ports.ArkResolver, error) {
-		return testArkResolver{checkpoint: checkpoint, operator: operator}, nil
+	operator, err := hex.DecodeString(pins.OperatorSignerPubHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return openWithResolver(ctx, cfg, func(context.Context, string) (ports.ArkResolver, error) {
+		return testArkResolver{network: cfg.Deployment.Network, checkpoint: checkpoint, operator: operator}, nil
 	})
 }
 
@@ -180,62 +176,6 @@ func TestCredentialIntegrityKeyUsesDomainSeparatedHKDF(t *testing.T) {
 	}
 }
 
-func TestProtectedRuntimeRevalidatesEmulatorDialResult(t *testing.T) {
-	expectedRaw, err := hex.DecodeString(deployment.MutinynetArkadeCosignerPubHex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected, err := btcec.ParsePubKey(expectedRaw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	valid := application.PublicEmulatorIdentity{
-		Origin: deployment.MutinynetArkadeCosignerOrigin, Version: deployment.MutinynetArkadeCosignerVersion, BasePub: expected,
-	}
-	pins, err := deployment.IdentityFor(deployment.NetworkMutinynet)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := validateArkadeDialResult(stubEmulatorSigner{}, valid, expected, pins); err != nil {
-		t.Fatal(err)
-	}
-	var typedNil *nilEmulatorSigner
-	other, err := btcec.NewPrivateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, test := range map[string]struct {
-		signer   application.Signer
-		identity application.PublicEmulatorIdentity
-	}{
-		"missing signer": {identity: valid},
-		"typed nil signer": {
-			signer: typedNil, identity: valid,
-		},
-		"wrong origin": {
-			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
-				Origin: "https://attacker.example", Version: valid.Version, BasePub: valid.BasePub,
-			},
-		},
-		"wrong version": {
-			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
-				Origin: valid.Origin, Version: "v0.0.0", BasePub: valid.BasePub,
-			},
-		},
-		"wrong key": {
-			signer: stubEmulatorSigner{}, identity: application.PublicEmulatorIdentity{
-				Origin: valid.Origin, Version: valid.Version, BasePub: other.PubKey(),
-			},
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if err := validateArkadeDialResult(test.signer, test.identity, expected, pins); err == nil {
-				t.Fatal("untrusted dial result accepted")
-			}
-		})
-	}
-}
-
 func TestWipePrivateKeyZerosScalar(t *testing.T) {
 	key, err := btcec.NewPrivateKey()
 	if err != nil {
@@ -307,42 +247,24 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 		PolicySequencePath:     filepath.Join(dir, "policy-sequence"),
 		VaultCosignerKeyFile:   vaultCosignerPath,
 	}
-	emulatorDials := 0
-	emulatorDial := func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, allowDeprecated bool) (application.Signer, application.PublicEmulatorIdentity, error) {
-		emulatorDials++
-		if origin != deployment.MutinynetArkadeCosignerOrigin ||
-			expected == nil || hex.EncodeToString(expected.SerializeCompressed()) != deployment.MutinynetArkadeCosignerPubHex ||
-			len(versions) != 1 || versions[0] != deployment.MutinynetArkadeCosignerVersion {
-			t.Fatalf("public emulator pin = %q %x %v", origin, expected.SerializeCompressed(), versions)
-		}
-		if allowDeprecated {
-			t.Fatalf("public emulator accepted a deprecated key on dial %d", emulatorDials)
-		}
-		return stubEmulatorSigner{}, application.PublicEmulatorIdentity{
-			Origin: origin, Version: versions[0], BasePub: expected,
-		}, nil
-	}
 
-	if _, err := openWithTestArkadeDialer(t, context.Background(), cfg, emulatorDial); err == nil || !strings.Contains(err.Error(), "enrollment token file") {
+	if _, err := openWithTestResolver(t, context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "enrollment token file") {
 		t.Fatalf("fresh ledger without enrollment secret: %v", err)
-	}
-	if emulatorDials != 0 {
-		t.Fatal("external service contacted before fresh-ledger bootstrap validation")
 	}
 
 	cfg.EnrollmentTokenFile = tokenPath
-	runtime, err := openWithTestArkadeDialer(t, context.Background(), cfg, emulatorDial)
+	runtime, err := openWithTestResolver(t, context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Construction has not checked the live chain or installed boarding yet.
 	// Starting successfully here proves it did not already launch the worker;
 	// production Open starts it only after those checks and initial readiness.
-	if err := runtime.service.StartLightDelegation(); err != nil {
+	if err := runtime.service.StartSpendingDelegation(); err != nil {
 		_ = runtime.Close()
 		t.Fatalf("background worker started before production checks: %v", err)
 	}
-	runtime.service.StopLightDelegation()
+	runtime.service.StopSpendingDelegation()
 	if len(runtime.service.IntegrityKeyCopy()) != 32 {
 		t.Fatal("fresh runtime did not derive a credential integrity key")
 	}
@@ -373,7 +295,7 @@ func TestRuntimeOwnsKeyAndLedgerAndPersistsInitialInvite(t *testing.T) {
 	// An empty deployment still requires the token file on every restart. The
 	// persisted row is authoritative, but startup never recovers the plaintext.
 	cfg.EnrollmentTokenFile = filepath.Join(dir, "already-removed-token")
-	if _, err := openWithTestArkadeDialer(t, context.Background(), cfg, emulatorDial); err == nil ||
+	if _, err := openWithTestResolver(t, context.Background(), cfg); err == nil ||
 		!strings.Contains(err.Error(), "enrollment token") {
 		t.Fatalf("empty restart without token: %v", err)
 	}
@@ -384,7 +306,7 @@ func TestProductionRegistryCompilesVaultAndLight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := registry.ProfileIDs(), []string{arkadevaultv1.ProfileID, "vaulted-light-v1"}; !reflect.DeepEqual(got, want) {
+	if got, want := registry.ProfileIDs(), []string{arkadevaultv1.ProfileID}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("compiled production profiles = %v, want %v", got, want)
 	}
 }
@@ -476,11 +398,8 @@ func TestRuntimeRequiresGatewaySecret(t *testing.T) {
 		VaultCosignerKeyFile: vaultCosignerPath,
 		EnrollmentTokenFile:  filepath.Join(dir, "enrollment-token"),
 	}
-	_, err = openWithTestArkadeDialer(t, context.Background(), cfg,
-		func(_ context.Context, origin string, expected *btcec.PublicKey, versions []string, _ bool) (application.Signer, application.PublicEmulatorIdentity, error) {
-			return stubEmulatorSigner{}, application.PublicEmulatorIdentity{Origin: origin, Version: versions[0], BasePub: expected}, nil
-		},
-	)
+	_, err = openWithTestResolver(t, context.Background(), cfg)
+
 	if err == nil || !strings.Contains(err.Error(), "VAULT_GATEWAY_SECRET") {
 		t.Fatalf("missing gateway secret: %v", err)
 	}

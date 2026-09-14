@@ -9,9 +9,25 @@ import (
 	"time"
 
 	"github.com/brg444/arkade-runtime/internal/policy"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
+
 	"github.com/brg444/arkade-runtime/internal/webauthn"
 )
+
+type BackupOpenRequest struct {
+	VaultID string `json:"vaultId"`
+	SessionAssertionRequest
+}
+type BackupRequest struct {
+	Token    string `json:"token"`
+	Revision uint64 `json:"revision,omitempty"`
+	Payload  string `json:"payload,omitempty"`
+}
+type BackupOpenResponse struct {
+	Token     string                 `json:"token"`
+	VaultID   string                 `json:"vaultId"`
+	ExpiresAt string                 `json:"expiresAt"`
+	Backup    *policy.RecoveryBackup `json:"backup"`
+}
 
 const maxBackupSessions = 256
 const backupSessionTTL = 8 * time.Hour
@@ -27,10 +43,10 @@ type backupSession struct {
 // Discovery has no tenant lookup or credential enumeration. It uses the same
 // stateless challenge boundary as enrolled sessions; sessions remain bounded.
 func (s *Service) issueBackupChallenge(purpose string) (*PasskeyChallengeResponse, error) {
-	return s.issuePasskeyChallenge("", purpose, "", nil)
+	return s.issuePasskeyChallenge("", purpose, nil)
 }
 
-func (s *Service) openBackup(ctx context.Context, req LightBackupOpenRequest, purpose string) (*RecoveryArchiveOpenResponse, error) {
+func (s *Service) openBackup(ctx context.Context, req BackupOpenRequest, purpose string) (*RecoveryArchiveOpenResponse, error) {
 	release, err := s.acquireVerification(ctx)
 	if err != nil {
 		return nil, err
@@ -107,7 +123,7 @@ func (s *Service) openBackup(ctx context.Context, req LightBackupOpenRequest, pu
 		return nil, ErrVerificationBusy
 	}
 	s.backupSessions[key] = session
-	return &RecoveryArchiveOpenResponse{LightBackupOpenResponse: LightBackupOpenResponse{Token: hex.EncodeToString(token), VaultID: req.VaultID, ExpiresAt: session.ExpiresAt.Format(time.RFC3339), Backup: backup}, Binding: session.Binding}, nil
+	return &RecoveryArchiveOpenResponse{BackupOpenResponse: BackupOpenResponse{Token: hex.EncodeToString(token), VaultID: req.VaultID, ExpiresAt: session.ExpiresAt.Format(time.RFC3339), Backup: backup}, Binding: session.Binding}, nil
 }
 
 func backupCredentialAllowed(cred *policy.Credential, purpose string) bool {
@@ -115,8 +131,6 @@ func backupCredentialAllowed(cred *policy.Credential, purpose string) bool {
 		return false
 	}
 	switch purpose {
-	case lightBackupPurpose:
-		return cred.TemplateVersion == light.Profile
 	case recoveryArchivePurpose:
 		return recoveryArchiveCredentialAllowed(cred)
 	default:

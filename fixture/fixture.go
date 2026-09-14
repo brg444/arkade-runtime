@@ -32,7 +32,6 @@ const (
 
 	HTTPAddr = "localhost:8787"
 
-	TemplateVersion = "phone-hww-recovery-savings-v1"
-	PolicyVersion   = program.PolicyVersion
-	Network         = program.NetworkMutinynet
+	PolicyVersion = program.PolicyVersion
+	Network       = program.NetworkMutinynet
 )

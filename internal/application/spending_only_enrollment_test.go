@@ -69,7 +69,7 @@ func TestFreshLightUsesSharedSpendingEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.ProtectionTier != "light" || status.LightDescriptor != nil || status.SavingsAddr != "" || status.ExternalOwnerWalletPub != "" {
+	if status.ProtectionTier != "light" || status.SavingsAddr != "" || status.ExternalOwnerWalletPub != "" {
 		t.Fatal("fresh Light did not use Spending-only configuration")
 	}
 	if !status.VtxoBoardingActive || status.VtxoBoardingProgram != program.VaultBoardV1 || status.VtxoBoardingAddress == "" || status.SpendingArkAddress == "" || status.VtxoDelegatePub == "" {

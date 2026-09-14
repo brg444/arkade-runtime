@@ -1,0 +1,283 @@
+package application
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+
+	arklib "github.com/arkade-os/arkd/pkg/ark-lib"
+	arkscript "github.com/arkade-os/arkd/pkg/ark-lib/script"
+	arktree "github.com/arkade-os/arkd/pkg/ark-lib/tree"
+	"github.com/arkade-os/arkd/pkg/ark-lib/txutils"
+	"github.com/brg444/arkade-runtime/internal/deployment"
+
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
+)
+
+type spendingRenewalFinalEvidence struct {
+	BatchID          string             `json:"batchId"`
+	BatchExpiry      uint32             `json:"batchExpiry"`
+	CommitmentPSBT   string             `json:"commitmentPsbt"`
+	VtxoTree         arktree.FlatTxTree `json:"vtxoTree"`
+	Connectors       arktree.FlatTxTree `json:"connectors"`
+	OwnerForfeitPSBT string             `json:"ownerForfeitPsbt"`
+}
+
+type verifiedSpendingRenewalFinal struct {
+	RequestDigest        []byte
+	CanonicalForfeitPSBT string
+	CommitmentTxid       string
+	ReceiverTxid         string
+	ReceiverVout         uint32
+}
+
+// Bound graph shape before invoking recursive protocol-library traversal.
+// Stock streams include complete parent transactions but omit other participants'
+// descendants. Keep their references in the canonical transcript while traversing
+// only supplied nodes; every supplied internal node must lead to a supplied leaf.
+// The signing/final verifier then binds the exact owned receiver and validates
+// every transaction, parent output, key and (at finalization) signature on its path.
+func canonicalSpendingRenewalTree(supplied arktree.FlatTxTree) (arktree.FlatTxTree, *arktree.TxTree, error) {
+	flat, err := canonicalVaultBoardTreeNodes(supplied)
+	if err != nil {
+		return nil, nil, err
+	}
+	byID := make(map[string]arktree.TxTreeNode, len(flat))
+	parents := make(map[string]int, len(flat))
+	for _, node := range flat {
+		p, err := parseCanonicalVaultBoardPSBT(node.Tx, maxVaultBoardProofBytes)
+		if err != nil || len(p.Inputs) != 1 || len(p.UnsignedTx.TxIn) != 1 || len(p.UnsignedTx.TxOut) == 0 || len(p.UnsignedTx.TxOut) > 512 {
+			return nil, nil, fmt.Errorf("Light renewal graph transaction shape")
+		}
+		var total int64
+		for _, out := range p.UnsignedTx.TxOut {
+			if out.Value < 0 || out.Value > 21_000_000*100_000_000 || total > 21_000_000*100_000_000-out.Value || len(out.PkScript) > 10000 {
+				return nil, nil, fmt.Errorf("Light renewal graph output bounds")
+			}
+			total += out.Value
+		}
+		if len(node.Children) > len(p.UnsignedTx.TxOut)-1 {
+			return nil, nil, fmt.Errorf("Light renewal graph child count")
+		}
+		byID[node.Txid] = node
+		for index, child := range node.Children {
+			if int64(index) >= int64(len(p.UnsignedTx.TxOut)) || child == node.Txid {
+				return nil, nil, fmt.Errorf("Light renewal graph edge")
+			}
+			// The protocol library slices this script when checking child keys.
+			// Every connector or VTXO branch output must be a real P2TR output.
+			if !txscript.IsPayToTaproot(p.UnsignedTx.TxOut[index].PkScript) {
+				return nil, nil, fmt.Errorf("Light renewal graph child output script")
+			}
+			parents[child]++
+			if parents[child] > 1 {
+				return nil, nil, fmt.Errorf("Light renewal graph repeated child")
+			}
+		}
+	}
+	roots := []string{}
+	for _, node := range flat {
+		if parents[node.Txid] == 0 {
+			roots = append(roots, node.Txid)
+		}
+	}
+	if len(roots) != 1 {
+		return nil, nil, fmt.Errorf("Light renewal graph root")
+	}
+	queue := append([]string(nil), roots...)
+	seen := make(map[string]bool, len(flat))
+	for len(queue) > 0 {
+		id := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		if seen[id] {
+			return nil, nil, fmt.Errorf("Light renewal graph cycle")
+		}
+		seen[id] = true
+		providedChildren := 0
+		for _, child := range byID[id].Children {
+			if _, present := byID[child]; present {
+				queue = append(queue, child)
+				providedChildren++
+			}
+		}
+		if len(byID[id].Children) > 0 && providedChildren == 0 {
+			return nil, nil, fmt.Errorf("Light renewal graph missing descendant path")
+		}
+	}
+	if len(seen) != len(flat) {
+		return nil, nil, fmt.Errorf("Light renewal graph disconnected")
+	}
+	graph, err := arktree.NewTxTree(flat)
+	return flat, graph, err
+}
+
+func verifyRenewalFinal(e spendingRenewalFinalEvidence, plan spendingRenewalPlan, c renewalContract, registration verifiedSpendingRenewalRegistration, ownerSighash txscript.SigHashType) (verifiedSpendingRenewalFinal, error) {
+	digest, err := plan.digestForContract(c)
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	return verifySpendingBatchFinal(e, plan, c, registration, ownerSighash, digest, c.domain("renewal-final"), nil)
+}
+
+// Callers validate their named plan before sharing batch-path verification.
+// Setup additionally requires distinct matching onchain outputs in the same
+// commitment that backs the forfeit connector and protected Spending change.
+func verifySpendingBatchFinal(e spendingRenewalFinalEvidence, plan spendingRenewalPlan, c renewalContract, registration verifiedSpendingRenewalRegistration, ownerSighash txscript.SigHashType, digest []byte, domain string, onchain []*wire.TxOut) (verifiedSpendingRenewalFinal, error) {
+	tree, d := c.Tree, c.Binding
+	if err := c.validateTree(); err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	if len(digest) != 32 || !bytes.Equal(digest, registration.PlanDigest) || len(registration.TreeSession) != 33 {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("batch registration binding")
+	}
+	if tree == nil || hex.EncodeToString(tree.PkScript) != d.ScriptPubKey || len(e.BatchID) == 0 || len(e.BatchID) > 256 {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal batch identity")
+	}
+	pins, err := deployment.IdentityFor(d.Network)
+	if err != nil || e.BatchExpiry != pins.VtxoTreeExpirySeconds {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal batch expiry")
+	}
+	commitment, err := parseCanonicalVaultBoardPSBT(e.CommitmentPSBT, maxVaultBoardProofBytes)
+	if err != nil || commitment.UnsignedTx.Version != 2 || commitment.UnsignedTx.LockTime != 0 || len(commitment.UnsignedTx.TxOut) < 2 {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal commitment")
+	}
+	// Match with multiplicity: one 1,000-sat output cannot replace two 500-sat outputs.
+	used := make(map[int]bool)
+	for _, required := range onchain {
+		matched := false
+		for i, out := range commitment.UnsignedTx.TxOut {
+			if i < 2 || used[i] || required == nil || out.Value != required.Value || !bytes.Equal(out.PkScript, required.PkScript) {
+				continue
+			}
+			used[i], matched = true, true
+			break
+		}
+		if !matched {
+			return verifiedSpendingRenewalFinal{}, fmt.Errorf("batch approval output missing or changed")
+		}
+	}
+	flat, vtxos, err := canonicalSpendingRenewalTree(e.VtxoTree)
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	forfeitPub, err := btcec.ParsePubKey(mustDecodeRenewalHex(pins.CheckpointForfeitPubHex))
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	expiry := arklib.RelativeLocktime{Type: arklib.LocktimeTypeSecond, Value: e.BatchExpiry}
+	if err := arktree.ValidateVtxoTree(vtxos, commitment, forfeitPub, expiry); err != nil {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal replacement tree: %w", err)
+	}
+	if err := verifyVaultBoardBatchOutput(vtxos, commitment, forfeitPub, expiry); err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	sweep := &arkscript.CSVMultisigClosure{MultisigClosure: arkscript.MultisigClosure{PubKeys: []*btcec.PublicKey{forfeitPub}}, Locktime: expiry}
+	sweepScript, err := sweep.Script()
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	sweepRoot := txscript.NewBaseTapLeaf(sweepScript).TapHash()
+	if err := arktree.ValidateTreeSigs(sweepRoot[:], commitment.UnsignedTx.TxOut[0].Value, vtxos); err != nil {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal requires signed recovery paths: %w", err)
+	}
+	receiverTxid, receiverVout, err := findExactVaultBoardReceiver(vtxos, tree.PkScript, plan.ReceiverSats)
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	for _, leaf := range vtxos.Leaves() {
+		if leaf.UnsignedTx.TxID() != receiverTxid {
+			continue
+		}
+		keys, err := txutils.ParseCosignerKeysFromArkPsbt(leaf, 0)
+		// Stock batches add an ephemeral Operator tree-signing key to the
+		// registered session key. Both signatures are verified above.
+		ownsSession := false
+		for _, key := range keys {
+			if bytes.Equal(key.SerializeCompressed(), registration.TreeSession) {
+				ownsSession = true
+			}
+		}
+		if err != nil || len(keys) != 2 || !ownsSession || bytes.Equal(keys[0].SerializeCompressed()[1:], keys[1].SerializeCompressed()[1:]) {
+			return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal receiver session changed")
+		}
+	}
+	connectorFlat, connectors, err := canonicalSpendingRenewalTree(e.Connectors)
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	if err := connectors.Validate(); err != nil {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal connector graph: %w", err)
+	}
+	rootInput := connectors.Root.UnsignedTx.TxIn[0].PreviousOutPoint
+	if rootInput.Hash != commitment.UnsignedTx.TxHash() || rootInput.Index != 1 {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal connector commitment changed")
+	}
+	var connectorTotal int64
+	for _, out := range connectors.Root.UnsignedTx.TxOut {
+		connectorTotal += out.Value
+	}
+	if connectorTotal != commitment.UnsignedTx.TxOut[1].Value {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal connector amount changed")
+	}
+	p, err := parseCanonicalVaultBoardPSBT(e.OwnerForfeitPSBT, maxVaultBoardProofBytes)
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	if p.UnsignedTx.Version != 3 || p.UnsignedTx.LockTime != 0 || len(p.Inputs) != 2 || len(p.UnsignedTx.TxIn) != 2 || len(p.Outputs) != 2 || len(p.UnsignedTx.TxOut) != 2 || len(p.Unknowns) != 0 {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal forfeit shape")
+	}
+	old := p.UnsignedTx.TxIn[0].PreviousOutPoint
+	if old.Hash.String() != plan.Txid || old.Index != plan.Vout {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal forfeit input changed")
+	}
+	var connector *wire.TxOut
+	funding := p.UnsignedTx.TxIn[1].PreviousOutPoint
+	for _, leaf := range connectors.Leaves() {
+		if funding.Hash == leaf.UnsignedTx.TxHash() && funding.Index == 0 {
+			connector = leaf.UnsignedTx.TxOut[0]
+		}
+	}
+	if connector == nil || connector.Value < 330 || connector.Value > 21_000_000*100_000_000-plan.ValueSats {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal connector leaf")
+	}
+	for i, want := range []*wire.TxOut{{Value: plan.ValueSats, PkScript: tree.PkScript}, connector} {
+		input := p.Inputs[i]
+		if p.UnsignedTx.TxIn[i].Sequence != wire.MaxTxInSequenceNum || input.WitnessUtxo == nil || input.WitnessUtxo.Value != want.Value || !bytes.Equal(input.WitnessUtxo.PkScript, want.PkScript) {
+			return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal forfeit prevout %d", i)
+		}
+	}
+	owner := mustDecodeRenewalHex(d.OwnerPub)
+	if err := requireExactLeafWithSighash(p.Inputs[0], tree.PkScript, tree.SpendLeaf, tree.SpendControl, [][]byte{owner}, ownerSighash); err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	if err := requireVerifiedSignersWithSighash(p, 0, [][]byte{owner}, tree.SpendLeaf, ownerSighash); err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	if len(p.Inputs[1].TaprootScriptSpendSig) != 0 || len(p.Inputs[1].TaprootKeySpendSig) != 0 || len(p.Inputs[1].PartialSigs) != 0 || len(p.Inputs[1].FinalScriptWitness) != 0 || len(p.Inputs[1].TaprootLeafScript) != 0 {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal connector must remain unsigned")
+	}
+	forfeited := p.UnsignedTx.TxOut[0]
+	forfeitScript := append([]byte{txscript.OP_0, 0x14}, btcutil.Hash160(forfeitPub.SerializeCompressed())...)
+	anchor := txutils.AnchorOutput()
+	if forfeited.Value != plan.ValueSats+connector.Value-anchor.Value || !bytes.Equal(forfeited.PkScript, forfeitScript) || p.UnsignedTx.TxOut[1].Value != anchor.Value || !bytes.Equal(p.UnsignedTx.TxOut[1].PkScript, anchor.PkScript) {
+		return verifiedSpendingRenewalFinal{}, fmt.Errorf("Light renewal forfeit destination or amount")
+	}
+	e.VtxoTree = flat
+	e.Connectors = connectorFlat
+	raw, err := json.Marshal(struct {
+		Plan     string                       `json:"plan"`
+		Evidence spendingRenewalFinalEvidence `json:"evidence"`
+	}{hex.EncodeToString(digest), e})
+	if err != nil {
+		return verifiedSpendingRenewalFinal{}, err
+	}
+	sum := sha256.Sum256(append([]byte(domain), raw...))
+	return verifiedSpendingRenewalFinal{sum[:], e.OwnerForfeitPSBT, commitment.UnsignedTx.TxID(), receiverTxid, receiverVout}, nil
+}
+
+func mustDecodeRenewalHex(encoded string) []byte { raw, _ := hex.DecodeString(encoded); return raw }

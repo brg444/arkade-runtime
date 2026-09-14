@@ -91,8 +91,9 @@ blocks further signing until a qualifying conflict is confirmed again. Six
 confirmations remain a finality assumption; signatures already dispatched
 cannot be revoked by a later deep reorganization.
 
-Schema 9 adds this conflict history while preserving existing authenticated rows.
-Deployment requires a stopped-service database and sequence backup and a
-schema-9-compatible Guardian for subsequent rollback. Funds whose original
+Schema 12 retains this authenticated conflict history. Its
+[retirement contract](ledger-schema-migration.md) preserves current account
+records and the independent sequence. Subsequent rollback requires a binary
+that can read schema 12. Funds whose original
 commitment inputs remain unspent still require Operator cooperation or the
 committed phone recovery delay; the client cannot force immediate boarding.

@@ -1,7 +1,6 @@
 package application
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"database/sql"
 	"encoding/hex"
@@ -16,14 +15,11 @@ import (
 	"github.com/brg444/arkade-runtime/internal/deployment"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/program"
-	"github.com/brg444/arkade-runtime/internal/vault/connector"
-	"github.com/brg444/arkade-runtime/internal/vault/light"
 	"github.com/brg444/arkade-runtime/internal/vault/savings"
 	"github.com/brg444/arkade-runtime/internal/webauthn"
-	"github.com/btcsuite/btcd/btcec/v2"
 )
 
-func archiveAssertion(t *testing.T, s *Service, id string, pass, direct *ecdsa.PrivateKey, credID []byte, purpose string) LightBackupOpenRequest {
+func archiveAssertion(t *testing.T, s *Service, id string, pass, direct *ecdsa.PrivateKey, credID []byte, purpose string) BackupOpenRequest {
 	t.Helper()
 	c, err := s.issueBackupChallenge(purpose)
 	if err != nil {
@@ -39,7 +35,7 @@ func archiveAssertion(t *testing.T, s *Service, id string, pass, direct *ecdsa.P
 	if err != nil {
 		t.Fatal(err)
 	}
-	return LightBackupOpenRequest{VaultID: id, SessionAssertionRequest: SessionAssertionRequest{ChallengeID: c.ChallengeID, CredentialID: hex.EncodeToString(credID), ClientDataJSON: hex.EncodeToString(a.ClientDataJSON), AuthenticatorData: hex.EncodeToString(a.AuthenticatorData), Signature: hex.EncodeToString(a.DERSignature), DirectProof: hex.EncodeToString(proof)}}
+	return BackupOpenRequest{VaultID: id, SessionAssertionRequest: SessionAssertionRequest{ChallengeID: c.ChallengeID, CredentialID: hex.EncodeToString(credID), ClientDataJSON: hex.EncodeToString(a.ClientDataJSON), AuthenticatorData: hex.EncodeToString(a.AuthenticatorData), Signature: hex.EncodeToString(a.DERSignature), DirectProof: hex.EncodeToString(proof)}}
 }
 func archivePayload(binding RecoveryArchiveBinding, headerTag, body string) string {
 	raw, _ := json.Marshal(map[string]any{"name": "vaulted-recovery-backup", "version": 1, "header": map[string]any{"binding": binding, "testHeader": headerTag}, "nonce": strings.Repeat("12", 12), "ciphertext": body})
@@ -48,43 +44,15 @@ func archivePayload(binding RecoveryArchiveBinding, headerTag, body string) stri
 
 func TestRecoveryArchiveEnrollmentFamiliesAndRestart(t *testing.T) {
 	for _, network := range []string{deployment.NetworkMainnet, deployment.NetworkMutinynet} {
-		for _, template := range []string{savings.Template, connector.Template} {
+		for _, template := range []string{savings.LedgerNativeTemplate} {
 			for _, tier := range []string{program.ProtectionTierStandard, program.ProtectionTierAdvanced} {
 				t.Run(network+"/"+template+"/"+tier, func(t *testing.T) {
-					f := newConnectorFixture(t, network)
-					phone, _ := btcec.NewPrivateKey()
-					hardware, _ := btcec.NewPrivateKey()
-					board, _ := btcec.NewPrivateKey()
-					var recovery *btcec.PrivateKey
-					if tier == program.ProtectionTierAdvanced {
-						recovery, _ = btcec.NewPrivateKey()
-					}
-					req := connectorEnrollRequestForNetwork(t, network, phone, hardware, board, tier, recovery, connector.NativeSegwit, false)
-					pass, _ := webauthn.NewP256()
-					direct, _ := webauthn.NewP256()
-					req.WebAuthnP256 = hex.EncodeToString(webauthn.CompressedP256(pass))
-					req.PhoneDirectP256 = hex.EncodeToString(webauthn.CompressedP256(direct))
-					id, _ := newOpaqueVaultID()
-					token := bytes.Repeat([]byte{0x71}, 32)
-					putConnectorInvite(t, f.led, token)
-					if template == savings.Template {
-						req.ConnectorType = ""
-						req.ConnectorPub = ""
-						req.ConnectorFingerprint = 0
-						req.ConnectorPath = nil
-						proposed, err := f.svc.previewVaultBoardEnrollmentDescriptor(id, req)
-						if err != nil {
-							t.Fatal(err)
-						}
-						req.DescriptorHash = proposed.DescriptorHash
-						if err := f.svc.CreateTenantVault(id, token, req); err != nil {
-							t.Fatal(err)
-						}
-					} else {
-						req = enrollConnectorVault(t, f.svc, id, token, req)
-					}
+					f := ledgerEnrollmentReadyForNetwork(t, tier == program.ProtectionTierAdvanced, network)
+					f.finish(t)
+					req, id := f.request, f.start.VaultID
+					pass, direct := f.pass, f.signer.direct
 					credID, _ := hex.DecodeString(req.CredentialID)
-					auth := func() LightBackupOpenRequest {
+					auth := func() BackupOpenRequest {
 						return archiveAssertion(t, f.svc, id, pass, direct, credID, recoveryArchivePurpose)
 					}
 					assertion := auth()
@@ -99,16 +67,16 @@ func TestRecoveryArchiveEnrollmentFamiliesAndRestart(t *testing.T) {
 						t.Fatal("ceremony replay")
 					}
 					payload := archivePayload(opened.Binding, "stable", strings.Repeat("A", 64))
-					saved, err := f.svc.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Payload: payload})
+					saved, err := f.svc.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Payload: payload})
 					if err != nil || saved.Revision != 1 {
 						t.Fatal(saved, err)
 					}
-					retry, err := f.svc.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Payload: payload})
+					retry, err := f.svc.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Payload: payload})
 					if err != nil || *retry != *saved {
 						t.Fatal("exact retry", err)
 					}
-					f.reopen(t)
-					if _, err := f.svc.ReadRecoveryArchive(LightBackupRequest{Token: opened.Token}); err == nil {
+					f.restart(t)
+					if _, err := f.svc.ReadRecoveryArchive(BackupRequest{Token: opened.Token}); err == nil {
 						t.Fatal("session survived restart")
 					}
 					restored, err := f.svc.OpenRecoveryArchive(t.Context(), auth())
@@ -116,7 +84,7 @@ func TestRecoveryArchiveEnrollmentFamiliesAndRestart(t *testing.T) {
 						t.Fatal("restore", err)
 					}
 					f.svc.SessionNow = func() time.Time { return time.Now().Add(8*time.Hour + time.Minute) }
-					if _, err := f.svc.ReadRecoveryArchive(LightBackupRequest{Token: restored.Token}); err == nil {
+					if _, err := f.svc.ReadRecoveryArchive(BackupRequest{Token: restored.Token}); err == nil {
 						t.Fatal("expired token")
 					}
 				})
@@ -127,14 +95,14 @@ func TestRecoveryArchiveEnrollmentFamiliesAndRestart(t *testing.T) {
 
 func TestRecoveryArchiveRejectsAuthenticationAndFamilySubstitution(t *testing.T) {
 	e := newEnv(t)
-	auth := func(purpose string) LightBackupOpenRequest {
+	auth := func(purpose string) BackupOpenRequest {
 		return archiveAssertion(t, e.svc, fixture.VaultID, e.p256, e.direct, e.credID, purpose)
 	}
-	for name, mutate := range map[string]func(*LightBackupOpenRequest){
-		"vault":        func(r *LightBackupOpenRequest) { r.VaultID = strings.Repeat("ff", 32) },
-		"credential":   func(r *LightBackupOpenRequest) { r.CredentialID = "abcd" },
-		"signature":    func(r *LightBackupOpenRequest) { r.Signature = "abcd" },
-		"direct proof": func(r *LightBackupOpenRequest) { r.DirectProof = strings.Repeat("00", 64) },
+	for name, mutate := range map[string]func(*BackupOpenRequest){
+		"vault":        func(r *BackupOpenRequest) { r.VaultID = strings.Repeat("ff", 32) },
+		"credential":   func(r *BackupOpenRequest) { r.CredentialID = "abcd" },
+		"signature":    func(r *BackupOpenRequest) { r.Signature = "abcd" },
+		"direct proof": func(r *BackupOpenRequest) { r.DirectProof = strings.Repeat("00", 64) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := auth(recoveryArchivePurpose)
@@ -144,37 +112,16 @@ func TestRecoveryArchiveRejectsAuthenticationAndFamilySubstitution(t *testing.T)
 			}
 		})
 	}
-	if _, err := e.svc.OpenRecoveryArchive(t.Context(), auth(lightBackupPurpose)); err == nil {
-		t.Fatal("Light challenge crossed route")
+	if _, err := e.svc.OpenRecoveryArchive(t.Context(), auth("light-backup")); err == nil {
+		t.Fatal("retired purpose crossed archive boundary")
 	}
-	if _, err := e.svc.OpenLightBackup(t.Context(), auth(lightBackupPurpose)); err == nil {
-		t.Fatal("Savings entered Light backup")
-	}
-	opened, err := e.svc.OpenRecoveryArchive(t.Context(), auth(recoveryArchivePurpose))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.svc.ReadLightBackup(LightBackupRequest{Token: opened.Token}); err == nil {
-		t.Fatal("Savings token entered Light route")
-	}
-	l := enrolledBackupFixture(t)
-	if _, err := l.env.svc.OpenRecoveryArchive(t.Context(), archiveAssertion(t, l.env.svc, l.start.VaultID, l.env.p256, l.env.direct, l.env.credID, recoveryArchivePurpose)); err == nil {
-		t.Fatal("Light entered Savings backup")
-	}
-	lightOpen, err := l.env.svc.OpenLightBackup(t.Context(), backupAssertion(t, l))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := l.env.svc.ReadRecoveryArchive(LightBackupRequest{Token: lightOpen.Token}); err == nil {
-		t.Fatal("Light token entered Savings route")
-	}
-	for _, template := range []string{"", light.Profile, "future-savings-v99"} {
+	for _, template := range []string{"", "vaulted-light-v1", "phone-connector-recovery-savings-v1", "phone-connector-recovery-savings-v2", "future-savings-v99"} {
 		if recoveryArchiveCredentialAllowed(&policy.Credential{TemplateVersion: template, ProtectionTier: program.ProtectionTierStandard}) {
 			t.Fatal("unknown template", template)
 		}
 	}
 	for _, tier := range []string{"", "light", "future-tier"} {
-		if recoveryArchiveCredentialAllowed(&policy.Credential{TemplateVersion: savings.Template, ProtectionTier: tier}) {
+		if recoveryArchiveCredentialAllowed(&policy.Credential{TemplateVersion: "phone-hww-recovery-savings-v1", ProtectionTier: tier}) {
 			t.Fatal("unknown tier", tier)
 		}
 	}
@@ -193,26 +140,26 @@ func TestRecoveryArchiveHeaderBindingCASAndMalformedWrites(t *testing.T) {
 	first, second := auth(), auth()
 	body := strings.Repeat("A", 64)
 	payload := archivePayload(first.Binding, "immutable", body)
-	if _, err := s.WriteRecoveryArchive(LightBackupRequest{Token: first.Token, Payload: payload}); err != nil {
+	if _, err := s.WriteRecoveryArchive(BackupRequest{Token: first.Token, Payload: payload}); err != nil {
 		t.Fatal(err)
 	}
 	for name, mutate := range map[string]func(*RecoveryArchiveBinding){
 		"vault": func(b *RecoveryArchiveBinding) { b.VaultID = strings.Repeat("ff", 32) }, "network": func(b *RecoveryArchiveBinding) { b.Network = "mainnet" },
-		"template": func(b *RecoveryArchiveBinding) { b.TemplateVersion = connector.Template }, "tier": func(b *RecoveryArchiveBinding) { b.ProtectionTier = "advanced" },
+		"template": func(b *RecoveryArchiveBinding) { b.TemplateVersion = "phone-connector-recovery-savings-v1" }, "tier": func(b *RecoveryArchiveBinding) { b.ProtectionTier = "advanced" },
 		"policy": func(b *RecoveryArchiveBinding) { b.PolicyVersion = "invalid" }, "policy digest": func(b *RecoveryArchiveBinding) { b.SpendingPolicyDigest = strings.Repeat("11", 32) },
 		"descriptor": func(b *RecoveryArchiveBinding) { b.DescriptorHash = strings.Repeat("11", 32) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := first.Binding
 			mutate(&b)
-			if _, err := s.WriteRecoveryArchive(LightBackupRequest{Token: first.Token, Revision: 1, Payload: archivePayload(b, "immutable", body)}); err == nil {
+			if _, err := s.WriteRecoveryArchive(BackupRequest{Token: first.Token, Revision: 1, Payload: archivePayload(b, "immutable", body)}); err == nil {
 				t.Fatal("substituted binding")
 			}
 		})
 	}
 	for _, bad := range []string{`{"phoneKey":"plaintext"}`, payload + `{}`, strings.Replace(payload, body, "bad!", 1), strings.Replace(payload, strings.Repeat("12", 12), "ff", 1), strings.Repeat("x", policy.MaxRecoveryBackupBytes+1), archivePayload(first.Binding, "different", body)} {
 		for _, token := range []string{first.Token, second.Token} {
-			if _, err := s.WriteRecoveryArchive(LightBackupRequest{Token: token, Revision: 1, Payload: bad}); err == nil {
+			if _, err := s.WriteRecoveryArchive(BackupRequest{Token: token, Revision: 1, Payload: bad}); err == nil {
 				t.Fatal("invalid archive replaced valid snapshot")
 			}
 		}
@@ -223,7 +170,7 @@ func TestRecoveryArchiveHeaderBindingCASAndMalformedWrites(t *testing.T) {
 		wg.Add(1)
 		go func(i int, token string) {
 			defer wg.Done()
-			_, err := s.WriteRecoveryArchive(LightBackupRequest{Token: token, Revision: 1, Payload: archivePayload(first.Binding, "immutable", strings.Repeat(string(rune('B'+i)), 64))})
+			_, err := s.WriteRecoveryArchive(BackupRequest{Token: token, Revision: 1, Payload: archivePayload(first.Binding, "immutable", strings.Repeat(string(rune('B'+i)), 64))})
 			errs <- err
 		}(i, token)
 	}
@@ -242,7 +189,7 @@ func TestRecoveryArchiveHeaderBindingCASAndMalformedWrites(t *testing.T) {
 	if restored.Backup == nil || restored.Backup.Revision != 2 {
 		t.Fatal("reopen")
 	}
-	if _, err := s.WriteRecoveryArchive(LightBackupRequest{Token: restored.Token, Revision: 2, Payload: archivePayload(first.Binding, "different", body)}); err == nil {
+	if _, err := s.WriteRecoveryArchive(BackupRequest{Token: restored.Token, Revision: 2, Payload: archivePayload(first.Binding, "different", body)}); err == nil {
 		t.Fatal("reopen allowed header replacement")
 	}
 	// Disk row MACs are verified by the store; an authenticated different descriptor
@@ -253,7 +200,7 @@ func TestRecoveryArchiveHeaderBindingCASAndMalformedWrites(t *testing.T) {
 		s.backupSessions[k] = v
 	}
 	s.sessionMu.Unlock()
-	if _, err := s.ReadRecoveryArchive(LightBackupRequest{Token: restored.Token}); err == nil {
+	if _, err := s.ReadRecoveryArchive(BackupRequest{Token: restored.Token}); err == nil {
 		t.Fatal("enrollment change not rechecked")
 	}
 }
@@ -299,7 +246,7 @@ func TestRecoveryArchiveHTTPBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	payload := archivePayload(opened.Binding, "fixed", strings.Repeat("A", 1_100_000))
-	write, _ := json.Marshal(LightBackupRequest{Token: opened.Token, Payload: payload})
+	write, _ := json.Marshal(BackupRequest{Token: opened.Token, Payload: payload})
 	response := boundaryHTTPCall(t, h, http.MethodPost, "/v1/recovery-archive/write", "application/json", fixture.Origin, string(write))
 	if response.Code != http.StatusOK {
 		t.Fatal("archive over ordinary mutation cap failed", response.Code, response.Body.String())
@@ -325,7 +272,7 @@ func TestRecoveryArchiveHTTPBoundary(t *testing.T) {
 func TestRecoveryArchiveRejectsTamperedEnrollmentBeforeReadOrWrite(t *testing.T) {
 	e := newEnv(t)
 	s := e.svc
-	auth := func() LightBackupOpenRequest {
+	auth := func() BackupOpenRequest {
 		return archiveAssertion(t, s, fixture.VaultID, e.p256, e.direct, e.credID, recoveryArchivePurpose)
 	}
 	opened, err := s.OpenRecoveryArchive(t.Context(), auth())
@@ -333,7 +280,7 @@ func TestRecoveryArchiveRejectsTamperedEnrollmentBeforeReadOrWrite(t *testing.T)
 		t.Fatal(err)
 	}
 	payload := archivePayload(opened.Binding, "fixed", strings.Repeat("A", 64))
-	if _, err := s.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Payload: payload}); err != nil {
+	if _, err := s.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Payload: payload}); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", e.dbPath)
@@ -344,10 +291,10 @@ func TestRecoveryArchiveRejectsTamperedEnrollmentBeforeReadOrWrite(t *testing.T)
 	if _, err := db.Exec(`UPDATE vault SET network='mainnet' WHERE vault_id=?`, fixture.VaultID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ReadRecoveryArchive(LightBackupRequest{Token: opened.Token}); err == nil {
+	if _, err := s.ReadRecoveryArchive(BackupRequest{Token: opened.Token}); err == nil {
 		t.Fatal("tampered enrollment read")
 	}
-	if _, err := s.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Revision: 1, Payload: payload}); err == nil {
+	if _, err := s.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Revision: 1, Payload: payload}); err == nil {
 		t.Fatal("tampered enrollment write")
 	}
 	if _, err := s.OpenRecoveryArchive(t.Context(), auth()); err == nil {

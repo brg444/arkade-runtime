@@ -36,21 +36,39 @@ type ledgerEnrollmentFixture struct {
 
 func ledgerEnrollmentReady(t *testing.T, advanced bool) ledgerEnrollmentFixture {
 	t.Helper()
+	return ledgerEnrollmentReadyForNetwork(t, advanced, deployment.NetworkMutinynet)
+}
+
+func ledgerEnrollmentReadyForNetwork(t *testing.T, advanced bool, network string) ledgerEnrollmentFixture {
+	t.Helper()
 	tier := program.ProtectionTierStandard
 	if advanced {
 		tier = program.ProtectionTierAdvanced
 	}
 	dbPath := filepath.Join(t.TempDir(), "ledger.sqlite")
-	ledger, err := policy.OpenLedger(dbPath, nil)
+	ledger, err := policy.OpenLedgerForNetwork(dbPath, nil, network)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = ledger.Close() })
 	svc := enrollService(t, ledger)
-	token, start := startTestEnrollmentWithTier(t, svc, ledger, 0x3c, program.DefaultSpendingPolicy(), tier)
+	svc.Deployment.Network = network
+	if network == deployment.NetworkMainnet {
+		svc.Deployment.ClientOrigin = deployment.MainnetRCOrigin
+		svc.Deployment.RPID = deployment.MainnetRCRPID
+	}
+	identity, err := deployment.IdentityFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
 	svc.LedgerSavingsEnabled = true
-	svc.ArkResolver = readyArkResolver{network: deployment.NetworkMutinynet, checkpoint: mustDecode(t, deployment.MutinynetCheckpointTapscriptHex), signer: mustDecode(t, deployment.MutinynetOperatorSignerPubHex)}
-	signer := newLedgerTransitionFixture(t, advanced)
+	svc.ArkResolver = readyArkResolver{network: network, checkpoint: mustDecode(t, identity.CheckpointTapscriptHex), signer: mustDecode(t, identity.OperatorSignerPubHex)}
+	selected, err := program.DefaultSpendingPolicyFor(network)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, start := startTestEnrollmentWithTier(t, svc, ledger, 0x3c, selected, tier)
+	signer := newLedgerTransitionFixtureForNetwork(t, advanced, network)
 	hot, err := btcec.NewPrivateKey()
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +112,7 @@ func (f *ledgerEnrollmentFixture) restart(t *testing.T) {
 	if err := f.ledger.Close(); err != nil {
 		t.Fatal(err)
 	}
-	ledger, err := policy.OpenLedger(f.dbPath, nil)
+	ledger, err := policy.OpenLedgerForNetwork(f.dbPath, nil, f.svc.runtimeConfig().Network)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +424,7 @@ func TestLedgerSavingsRecoveryArchivePersistsCompositeAcrossRestart(t *testing.T
 		f := ledgerEnrollmentReady(t, advanced)
 		f.finish(t)
 		f.svc.LedgerSavingsEnabled = false
-		auth := func() LightBackupOpenRequest {
+		auth := func() BackupOpenRequest {
 			return archiveAssertion(t, f.svc, f.start.VaultID, f.pass, f.signer.direct, mustDecode(t, f.request.CredentialID), recoveryArchivePurpose)
 		}
 		opened, err := f.svc.OpenRecoveryArchive(t.Context(), auth())
@@ -414,17 +432,17 @@ func TestLedgerSavingsRecoveryArchivePersistsCompositeAcrossRestart(t *testing.T
 			t.Fatal("archive identity", err)
 		}
 		payload := archivePayload(opened.Binding, "immutable-ledger-header", strings.Repeat("A", 64))
-		saved, err := f.svc.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Payload: payload})
+		saved, err := f.svc.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Payload: payload})
 		if err != nil {
 			t.Fatal(err)
 		}
 		wrong := opened.Binding
-		wrong.TemplateVersion = savings.Template
-		if _, err := f.svc.WriteRecoveryArchive(LightBackupRequest{Token: opened.Token, Revision: 1, Payload: archivePayload(wrong, "immutable-ledger-header", strings.Repeat("A", 64))}); err == nil {
+		wrong.TemplateVersion = "phone-hww-recovery-savings-v1"
+		if _, err := f.svc.WriteRecoveryArchive(BackupRequest{Token: opened.Token, Revision: 1, Payload: archivePayload(wrong, "immutable-ledger-header", strings.Repeat("A", 64))}); err == nil {
 			t.Fatal("archive contract substituted")
 		}
 		f.restart(t)
-		if _, err := f.svc.ReadRecoveryArchive(LightBackupRequest{Token: opened.Token}); err == nil {
+		if _, err := f.svc.ReadRecoveryArchive(BackupRequest{Token: opened.Token}); err == nil {
 			t.Fatal("old archive session survived restart")
 		}
 		recovered, err := f.svc.OpenRecoveryArchive(t.Context(), auth())
