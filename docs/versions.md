@@ -5,7 +5,7 @@ domains identify separate contracts. Their numeric suffixes are independent.
 
 | Contract                    | Implemented values                                                               |
 | --------------------------- | -------------------------------------------------------------------------------- |
-| SQLite schema               | `schema_meta.version = 12`, with authenticated retirement from the exact schema 11 baseline |
+| SQLite schema               | `schema_meta.version = 12` |
 | Full-wallet profile         | `arkade-vault-v1`                                                                |
 | Spending-only account | `vaulted-spending-v1` with `vault-policy-v1` |
 | Ledger Savings | `phone-ledger-guardian-savings-v1` |
@@ -14,10 +14,9 @@ domains identify separate contracts. Their numeric suffixes are independent.
 | Full-wallet Spending policy | `vault-spending-policy-v1`                                                       |
 | Recovery binding | v4 for shared Spending; v6 for Ledger Savings |
 
-Ledger Savings uses `phone-ledger-guardian-savings-v1`. Connector v1 and v2
-are retired from application admission, signing, recovery and HTTP dispatch.
-Schema 12 retires their database tables and authenticated account ownership.
-Historical Light admission, HTTP routes, signing capability and profile are also removed. Historical Light accounts retire from the exact schema 11 baseline, and shared stores reject their former fee-only renewal and delegation records. Direct-hardware Savings application paths, covenant builders and outbound signing transport are removed. Schema 12 also removes its recovery store and authenticated accounts. Contract Pack baseline v3 declares schema 12 and only the retained programs on both networks. Public status and readiness advertise `vaulted-spending-v1`; qualified Ledger enrollment remains an explicit capability. Final engineering candidate qualification is still required.
+Contract Pack baseline v3 declares schema 12 and the supported programs on both
+networks. Public status and readiness advertise `vaulted-spending-v1`; Ledger
+enrollment is exposed through its qualified capability.
 
 The runtime holds scoped Guardian capabilities and uses stock Operator and chain
 interfaces. It has no Emulator client, generic signer or script-engine dependency.
@@ -37,7 +36,7 @@ parameters shared with the wallet. Domain strings are pinned by source and
 cross-language fixtures. Renaming a domain can change keys, MACs, or signed
 preimages even when no visible product behavior changes.
 
-The [retained baseline](retained-contract-baseline.md) records retired entries,
-current Recovery Kit versions and preserved signing parameters.
+The [retained baseline](retained-contract-baseline.md) records current Recovery Kit versions
+and signing parameters.
 
 [Storage](storage.md) describes structural validation and migration behavior.
