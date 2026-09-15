@@ -277,8 +277,17 @@ func (l *Ledger) ReserveSpendingRenewal(ctx context.Context, r SpendingRenewalOp
 				return ErrVtxoOperationActive
 			}
 		}
-		if err := l.rejectConcurrentVtxoOperationLocked(ctx, tx, r.VaultID, ""); err != nil {
-			return err
+		// Reverse direction is input-scoped too: a nonterminal normal Spending
+		// operation reserves only its own outpoints, so an independent input may
+		// back this renewal. Overlapping inputs are still refused.
+		renewalInputTxid, err := hex.DecodeString(r.InputTxid)
+		if err != nil || len(renewalInputTxid) != 32 {
+			return fmt.Errorf("Light renewal input identity")
+		}
+		if err := l.rejectOverlappingVtxoInputs(ctx, tx, "", []VtxoOperationInput{{
+			Txid: renewalInputTxid, Vout: int(r.InputVout),
+		}}); err != nil {
+			return ErrVtxoOperationActive
 		}
 		if err := l.rejectDispatchedDelegation(ctx, tx, r.VaultID); err != nil {
 			return err

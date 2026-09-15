@@ -3,6 +3,7 @@ package policy
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -99,36 +100,55 @@ func TestBitcoinBatchConfirmedWindowAndImmutableReplay(t *testing.T) {
 	}
 }
 func TestSpendingRenewalAndPaymentReserveAtomically(t *testing.T) {
-	l, now, op := renewalFixture(t)
-	ctx := context.Background()
-	payment := testVtxoOperation(op.VaultID, "concurrent-payment", vtxoPurposeSpend, vtxoStateReserved, 1000, 0, *now)
-	payment.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
-	input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x99}, 32), ValueSats: 2000, Script: []byte{0x51}}
-	var wg sync.WaitGroup
-	wg.Add(2)
-	start := make(chan struct{})
-	results := make(chan error, 2)
-	go func() { defer wg.Done(); <-start; _, err := l.ReserveSpendingRenewal(ctx, op, 10000); results <- err }()
-	go func() {
-		defer wg.Done()
-		<-start
-		results <- l.ReserveVtxoOperation(ctx, payment, []VtxoOperationInput{input}, 10000)
-	}()
-	close(start)
-	wg.Wait()
-	close(results)
-	success, conflict := 0, 0
-	for err := range results {
-		if err == nil {
-			success++
-		} else if errors.Is(err, ErrVtxoOperationActive) {
-			conflict++
-		} else {
-			t.Fatal(err)
-		}
-	}
-	if success != 1 || conflict != 1 {
-		t.Fatalf("success=%d conflict=%d", success, conflict)
+	for _, tc := range []struct {
+		name                     string
+		sameInput                bool
+		wantSuccess, wantConflict int
+	}{
+		{"independent inputs coexist", false, 2, 0},
+		{"overlapping input conflicts", true, 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l, now, op := renewalFixture(t)
+			ctx := context.Background()
+			payment := testVtxoOperation(op.VaultID, "concurrent-payment", vtxoPurposeSpend, vtxoStateReserved, 1000, 0, *now)
+			payment.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+			input := VtxoOperationInput{Txid: bytes.Repeat([]byte{0x99}, 32), ValueSats: 2000, Script: []byte{0x51}}
+			if tc.sameInput {
+				txid, err := hex.DecodeString(op.InputTxid)
+				if err != nil || len(txid) != 32 {
+					t.Fatal("fixture input")
+				}
+				input.Txid = txid
+				input.Vout = int(op.InputVout)
+			}
+			var wg sync.WaitGroup
+			wg.Add(2)
+			start := make(chan struct{})
+			results := make(chan error, 2)
+			go func() { defer wg.Done(); <-start; _, err := l.ReserveSpendingRenewal(ctx, op, 10000); results <- err }()
+			go func() {
+				defer wg.Done()
+				<-start
+				results <- l.ReserveVtxoOperation(ctx, payment, []VtxoOperationInput{input}, 10000)
+			}()
+			close(start)
+			wg.Wait()
+			close(results)
+			success, conflict := 0, 0
+			for err := range results {
+				if err == nil {
+					success++
+				} else if errors.Is(err, ErrVtxoOperationActive) || strings.Contains(err.Error(), "already reserved") {
+					conflict++
+				} else {
+					t.Fatal(err)
+				}
+			}
+			if success != tc.wantSuccess || conflict != tc.wantConflict {
+				t.Fatalf("success=%d conflict=%d", success, conflict)
+			}
+		})
 	}
 }
 func TestSpendingRenewalTamperedCorrelationCannotHideReservations(t *testing.T) {
