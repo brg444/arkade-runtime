@@ -285,3 +285,28 @@ func TestSpendingRenewalExpiredUndispatchedFinalCanBeFenced(t *testing.T) {
 		}
 	}
 }
+
+func TestRenewalReservationIsInputScoped(t *testing.T) {
+	l, now, op := renewalFixture(t)
+	ctx := context.Background()
+	if _, err := l.ReserveSpendingRenewal(ctx, op, 100000); err != nil {
+		t.Fatal(err)
+	}
+	// Reusing the reserved outpoint is still refused.
+	same := op
+	same.OperationID = strings.Repeat("06", 16)
+	same.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+	if _, err := l.ReserveSpendingRenewal(ctx, same, 100000); !errors.Is(err, ErrVtxoOperationActive) {
+		t.Fatalf("reused input must be refused: %v", err)
+	}
+	// An independent eligible input may back a new operation while the first
+	// one is still nonterminal (including a submitted, unconfirmed batch).
+	indep := op
+	indep.OperationID = strings.Repeat("07", 16)
+	indep.InputTxid = strings.Repeat("ab", 32)
+	indep.InputVout = op.InputVout + 1
+	indep.ExpiresAt = now.Add(time.Minute).Format(time.RFC3339)
+	if _, err := l.ReserveSpendingRenewal(ctx, indep, 100000); err != nil {
+		t.Fatalf("independent input must be allowed: %v", err)
+	}
+}

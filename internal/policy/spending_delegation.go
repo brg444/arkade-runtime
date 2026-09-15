@@ -401,7 +401,15 @@ func (l *Ledger) ScheduleVtxoDelegationSet(ctx context.Context, plans []Spending
 				return err
 			}
 		}
-		if err := l.rejectActiveSpendingRenewal(ctx, tx, first.VaultID); err != nil {
+		memberInputs := make([]VtxoOperationInput, 0, len(members))
+		for i := range members {
+			txid, err := hex.DecodeString(members[i].InputTxid)
+			if err != nil || len(txid) != 32 {
+				return fmt.Errorf("Light delegation input identity")
+			}
+			memberInputs = append(memberInputs, VtxoOperationInput{Txid: txid, Vout: int(members[i].InputVout)})
+		}
+		if err := l.rejectActiveSpendingRenewal(ctx, tx, first.VaultID, memberInputs); err != nil {
 			return err
 		}
 		for i := range members {
@@ -503,7 +511,11 @@ func (l *Ledger) AdvanceSpendingDelegation(ctx context.Context, e SpendingDelega
 			if err := l.rejectConcurrentVtxoOperationLocked(ctx, tx, s.Operation.VaultID, ""); err != nil {
 				return err
 			}
-			if err := l.rejectActiveSpendingRenewal(ctx, tx, s.Operation.VaultID); err != nil {
+			delegationTxid, err := hex.DecodeString(s.Operation.InputTxid)
+			if err != nil || len(delegationTxid) != 32 {
+				return fmt.Errorf("Light delegation input identity")
+			}
+			if err := l.rejectActiveSpendingRenewal(ctx, tx, s.Operation.VaultID, []VtxoOperationInput{{Txid: delegationTxid, Vout: int(s.Operation.InputVout)}}); err != nil {
 				return err
 			}
 			used, err := l.spentInWindow(ctx, tx, s.Operation.VaultID)

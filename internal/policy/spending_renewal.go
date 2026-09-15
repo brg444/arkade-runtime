@@ -265,8 +265,15 @@ func (l *Ledger) ReserveSpendingRenewal(ctx context.Context, r SpendingRenewalOp
 		if err := validateSpendingRenewalOperation(r); err != nil {
 			return err
 		}
+		// Input-scoped conflict: a submitted/uncertain renewal reserves the
+		// outpoint it spends, but not the whole wallet. An independent eligible
+		// input may back a new operation while an earlier one awaits
+		// confirmation. Reusing the reserved outpoint is still refused.
 		for _, prior := range all {
-			if prior.Operation.VaultID == r.VaultID && !renewalTerminal(prior) {
+			if prior.Operation.VaultID != r.VaultID || renewalTerminal(prior) {
+				continue
+			}
+			if prior.Operation.InputTxid == r.InputTxid && prior.Operation.InputVout == r.InputVout {
 				return ErrVtxoOperationActive
 			}
 		}
@@ -471,7 +478,13 @@ func (l *Ledger) spendingRenewalAllowance(ctx context.Context, q queryContext, v
 	}
 	return total, nil
 }
-func (l *Ledger) rejectActiveSpendingRenewal(ctx context.Context, q queryContext, vault string) error {
+// rejectActiveSpendingRenewal refuses a new operation only when it would reuse
+// an outpoint still reserved by a nonterminal renewal. Independent inputs are
+// allowed while an earlier operation awaits confirmation. An empty input set
+// falls back to the conservative wallet-wide check.
+func (l *Ledger) rejectActiveSpendingRenewal(
+	ctx context.Context, q queryContext, vault string, inputs []VtxoOperationInput,
+) error {
 	key, err := l.integrityKeyCopy()
 	if err != nil {
 		return err
@@ -482,8 +495,16 @@ func (l *Ledger) rejectActiveSpendingRenewal(ctx context.Context, q queryContext
 		return err
 	}
 	for _, s := range all {
-		if s.Operation.VaultID == vault && !renewalTerminal(s) {
+		if s.Operation.VaultID != vault || renewalTerminal(s) {
+			continue
+		}
+		if len(inputs) == 0 {
 			return ErrVtxoOperationActive
+		}
+		for _, in := range inputs {
+			if s.Operation.InputTxid == hex.EncodeToString(in.Txid) && int64(s.Operation.InputVout) == int64(in.Vout) {
+				return ErrVtxoOperationActive
+			}
 		}
 	}
 	return nil
