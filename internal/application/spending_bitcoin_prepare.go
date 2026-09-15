@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/arkade-os/arkd/pkg/ark-lib/arkfee"
+	"github.com/brg444/arkade-runtime/internal/apperr"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/brg444/arkade-runtime/internal/ports"
 )
@@ -57,14 +58,14 @@ func (s *Service) reserveBitcoinPlan(ctx context.Context, v ports.ResolvedVtxo, 
 	stable := false
 	for i := 0; i < 8; i++ {
 		if p.ChangeSats < 330 {
-			return bitcoinPaymentPrepared{}, fmt.Errorf("Spending output is too small for Bitcoin payment and protected change")
+			return bitcoinPaymentPrepared{}, apperr.New(apperr.CodeRejected, "the payment leaves less protected change than the network dust minimum; try a smaller amount")
 		}
 		fee, feeDigest, err := s.bitcoinPaymentFee(ctx, v, p, c)
 		if err != nil {
 			return bitcoinPaymentPrepared{}, err
 		}
 		if fee > 5000 || fee > uint64(c.spending.Binding.SpendingPolicy.AbsoluteFeeCapSats) {
-			return bitcoinPaymentPrepared{}, fmt.Errorf("Bitcoin payment fee exceeds policy")
+			return bitcoinPaymentPrepared{}, apperr.New(apperr.CodeRejected, "the network fee exceeds this device's limit; try a smaller amount or retry later")
 		}
 		p.FeeSats, p.FeePolicyDigest = int64(fee), feeDigest
 		next := p.ValueSats - p.principal() - p.FeeSats
@@ -75,7 +76,7 @@ func (s *Service) reserveBitcoinPlan(ctx context.Context, v ports.ResolvedVtxo, 
 		p.ChangeSats = next
 	}
 	if !stable {
-		return bitcoinPaymentPrepared{}, fmt.Errorf("Bitcoin payment fee did not converge")
+		return bitcoinPaymentPrepared{}, apperr.New(apperr.CodeRejected, "the network fee could not be finalized; retry the payment")
 	}
 	digest, err := p.digest(c)
 	if err != nil {

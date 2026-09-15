@@ -3,10 +3,12 @@ package application
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
 
+	"github.com/brg444/arkade-runtime/internal/apperr"
 	"github.com/brg444/arkade-runtime/internal/policy"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/txscript"
@@ -141,12 +143,34 @@ func (s *Service) prepareSpendingBitcoin(ctx context.Context, r spendingBitcoinP
 		return prepared, nil
 	}
 	if r.ExpiresAt <= s.vtxoNow().Unix() || r.ExpiresAt > s.vtxoNow().Add(5*time.Minute).Unix() {
-		return bitcoinPaymentPrepared{}, fmt.Errorf("Bitcoin payment expired; check its status before retrying")
+		return bitcoinPaymentPrepared{}, apperr.New(apperr.CodeRejected, "Bitcoin payment expired; check its status before retrying")
 	}
 	v, err := s.liveRenewalInput(ctx, c.spending.Tree, r.Txid, r.Vout)
 	if err != nil {
-		return bitcoinPaymentPrepared{}, err
+		// Fixed, bounded message: the underlying resolver error is not exposed.
+		return bitcoinPaymentPrepared{}, apperr.New(apperr.CodeRejected, "the selected Spending output is no longer available; refresh and retry")
 	}
 	p := bitcoinPaymentPlan{OperationID: r.OperationID, VaultID: r.VaultID, DescriptorHash: c.spending.DescriptorHash, Txid: r.Txid, Vout: r.Vout, ValueSats: int64(v.ValueSats), Outputs: r.Outputs, RegisterExpireAt: r.ExpiresAt}
-	return s.reserveBitcoinPlan(ctx, v, p, c)
+	prepared, err := s.reserveBitcoinPlan(ctx, v, p, c)
+	if err != nil {
+		return bitcoinPaymentPrepared{}, prepareRejection(err)
+	}
+	return prepared, nil
+}
+
+// prepareRejection classifies the bounded, secret-free reasons a Bitcoin
+// prepare can be refused so the authenticated client can present actionable
+// state and tell a definitive rejection from an ambiguous outcome. Dependency,
+// database and transport errors stay unclassified and are redacted as before.
+func prepareRejection(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, policy.ErrVtxoOperationActive):
+		return apperr.New(apperr.CodeRejected, "another Spending payment is still active; finish or cancel it before starting a new one")
+	case errors.Is(err, policy.ErrPeriodAllowanceExceeded):
+		return apperr.New(apperr.CodeRejected, "this payment exceeds the remaining Spending allowance")
+	default:
+		return err
+	}
 }
